@@ -1566,11 +1566,8 @@ resource "kubernetes_config_map" "stoat_caddy_config" {
   }
 
   data = {
-    "Caddyfile" = <<-EOT
-      {
-        auto_https disable_redirects
-      }
-      ${local.stoat_domain} {
+    "Caddyfile" = <<-EO
+      ${local.stoat_domain}:80 {
         handle_path /api/* {
           reverse_proxy stoat-api:3000
         }
