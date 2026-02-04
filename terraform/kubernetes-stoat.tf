@@ -1567,6 +1567,9 @@ resource "kubernetes_config_map" "stoat_caddy_config" {
 
   data = {
     "Caddyfile" = <<-EOT
+      {
+        auto_https disable_redirects
+      }
       ${local.stoat_domain} {
         handle_path /api/* {
           reverse_proxy stoat-api:3000
@@ -1710,7 +1713,7 @@ resource "kubectl_manifest" "stoat_route" {
       - name: main-gateway
         namespace: nginx-gateway
       hostnames:
-      - ${var.domain}
+      - notdiscord.${var.domain}
       rules:
       - backendRefs:
         - name: stoat-caddy
