@@ -3,9 +3,6 @@ import { setupSession } from '../session';
 import { processAttachments } from '../attachments';
 import { createPlan } from '../planning';
 import { getModelForAgent } from '../../templates/registry';
-import { generateThreadName } from '../../modules/litellm/opus';
-import { getDiscordClient, createThread } from '../../modules/discord/index';
-import { getChatClient } from '../../modules/chat';
 import { trajectoryEvaluator } from '../../modules/reflexion/evaluator';
 import { streamProgressToDiscord } from '../../modules/agentic/progress';
 import { addReflectionToHistory, addKeyInsight } from '../../modules/reflexion/memory';
@@ -31,34 +28,9 @@ export async function executeArchitectureFlow(
 ): Promise<FlowResult> {
     log.info('Phase: ARCHITECTURE_FLOW');
 
-    // Create thread if not already in one
-    let finalThreadId = context.threadId;
-    let responseChannelId = context.channelId;
-
-    if (!context.isThread) {
-        log.info('Creating thread for architecture discussion');
-        const threadName = await generateThreadName(context.history.current_message);
-  const chatClient = getChatClient();
-        if (chatClient && chatClient.platform !== 'discord') {
-            const newThread = await chatClient.createThread(
-                message.channel_id,
-                message.id,
-                threadName
-            );
-            finalThreadId = newThread.id;
-            responseChannelId = newThread.id;
-        } else {
-            const client = getDiscordClient();
-            const newThread = await createThread(
-                client,
-                message.channel_id,
-                message.id,
-                threadName
-            );
-            finalThreadId = newThread.id;
-            responseChannelId = newThread.id;
-        }
-    }
+    // Project channel creation handled in pipeline
+    const finalThreadId = context.workspaceId;
+    const responseChannelId = context.workspaceId;
 
     // Setup session
     const sessionResult = await setupSession(finalThreadId, context.channelId);
@@ -66,8 +38,7 @@ export async function executeArchitectureFlow(
 
     // Process attachments
     const processedAttachments = await processAttachments(
-        context.history.current_attachments,
-        !context.filterContext.is_secondary_bot
+        context.history.current_attachments
     );
 
     // Evaluate previous trajectory if exists

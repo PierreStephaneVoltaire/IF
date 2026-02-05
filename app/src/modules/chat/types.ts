@@ -66,6 +66,7 @@ export interface ChatChannel {
   name: string;
   type: 'text' | 'thread' | 'dm';
   parentId?: string;
+  parentName?: string;
 }
 
 /**
@@ -89,6 +90,11 @@ export interface ChatClient {
   getHistory: (channelId: string, limit?: number) => Promise<ChatMessage[]>;
   addReaction: (channelId: string, messageId: string, emoji: string) => Promise<void>;
   createThread: (channelId: string, messageId: string, name: string) => Promise<ChatThread>;
+  createProjectChannel: (
+    guildId: string,
+    name: string,
+    categoryName?: string
+  ) => Promise<ChatChannel>;
   getChannel: (channelId: string) => Promise<ChatChannel | null>;
 
   // Platform info

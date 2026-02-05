@@ -20,7 +20,8 @@
     "stoat.js": "^7.3.6",
     "undici": "^6.2.1",
     "uuid": "^9.0.1",
-    "@kubernetes/client-node": "^0.20.0"
+    "@kubernetes/client-node": "^0.20.0",
+    "ws": "^8.16.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",

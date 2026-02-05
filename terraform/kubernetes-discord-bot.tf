@@ -270,6 +270,11 @@ resource "kubernetes_deployment" "discord_bot" {
           }
 
           env {
+            name  = "STOAT_BASE_URL"
+            value = "https://notdiscord.${var.domain}/api"
+          }
+
+          env {
             name  = "LITELLM_MAX_CONNECTIONS"
             value = "50"
           }

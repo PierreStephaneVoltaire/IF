@@ -37,6 +37,7 @@ function createChatClient(): ChatClient {
       return new StoatAdapter({
         token: config.STOAT_TOKEN,
         botId: config.STOAT_BOT_ID || '',
+        baseURL: config.STOAT_BASE_URL,
       });
 
     default:

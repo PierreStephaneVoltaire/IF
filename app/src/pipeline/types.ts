@@ -6,7 +6,6 @@ export interface FilterContext {
   is_self: boolean;
   is_stale: boolean;
   is_mentioned: boolean;
-  is_secondary_bot: boolean;
   force_respond: boolean;
   is_breakglass: boolean;
   breakglass_model?: string;
@@ -18,13 +17,16 @@ export interface FilterResult {
   context: FilterContext;
 }
 
-export interface ThreadContext {
-  is_thread: boolean;
-  thread_id: string | null;
+
+export interface ChannelContext {
+  is_project_channel: boolean;
+  workspace_id: string | null;
   channel_id: string;
   channel_name: string;
   channel_type: number;
   parent_id: string | null;
+  parent_name: string | null;
+  should_process: boolean;
 }
 
 export interface AttachmentCategory {
@@ -53,7 +55,7 @@ export interface PipelineContext {
   execution_id: string;
   message: DiscordMessagePayload;
   filter: FilterContext;
-  thread: ThreadContext;
+  channel: ChannelContext;
   history: FormattedHistory;
   should_respond: boolean;
   is_technical: boolean;

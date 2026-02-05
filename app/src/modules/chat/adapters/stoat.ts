@@ -2,6 +2,10 @@
  * Stoat Adapter - wraps stoat.js to implement ChatClient interface
  */
 
+// Polyfill WebSocket for stoat.js (it expects a global WebSocket)
+import { WebSocket } from 'ws';
+(global as unknown as { WebSocket: typeof WebSocket }).WebSocket = WebSocket;
+
 type StoatClient = any;
 import type {
   ChatClient,
@@ -18,6 +22,7 @@ const log = createLogger('CHAT:STOAT');
 export interface StoatAdapterConfig {
   token: string;
   botId: string;
+  baseURL?: string; // e.g., https://stoat.chat/api or https://notdiscord.example.com/api
 }
 
 // Type definitions for Stoat.js (since we don't have exact types)
@@ -70,6 +75,9 @@ export class StoatAdapter implements ChatClient {
 
   private client: StoatClient;
   private config: StoatAdapterConfig;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 5;
+  private readonly reconnectBaseDelayMs = 1000;
   private messageHandler?: (message: ChatMessage) => Promise<void>;
   private reactionHandler?: (reaction: ChatReaction) => Promise<void>;
   private readyHandler?: () => Promise<void>;
@@ -77,8 +85,10 @@ export class StoatAdapter implements ChatClient {
 
   constructor(config: StoatAdapterConfig) {
     this.config = config;
-    const StoatClientCtor = (require('stoat.js') as { Client: new () => StoatClient }).Client;
-    this.client = new StoatClientCtor();
+    const StoatClientCtor = (require('stoat.js') as { Client: new (options?: { baseURL?: string }) => StoatClient }).Client;
+    // Pass baseURL to the Stoat client constructor if provided
+    const clientOptions = config.baseURL ? { baseURL: config.baseURL } : undefined;
+    this.client = new StoatClientCtor(clientOptions);
     this.setupEventHandlers();
   }
 
@@ -126,6 +136,20 @@ export class StoatAdapter implements ChatClient {
         await this.threadDeleteHandler(channel.id);
       }
     });
+
+    this.client.on('disconnect', async (reason: unknown) => {
+      log.warn('Stoat client disconnected', { reason });
+      this.isReady = false;
+      await this.handleReconnect();
+    });
+
+    this.client.on('error', async (error: unknown) => {
+      log.error('Stoat client error', { error });
+      const errorData = error as { type?: string; data?: { type?: string } };
+      if (errorData?.data?.type === 'InvalidSession') {
+        log.error('InvalidSession error - STOAT_TOKEN may be invalid or expired');
+      }
+    });
   }
 
   private convertMessage(message: StoatMessage): ChatMessage {
@@ -162,10 +186,21 @@ export class StoatAdapter implements ChatClient {
 
   async connect(): Promise<void> {
     log.info('Connecting to Stoat...');
-    // Stoat uses loginBot method
-    await (this.client as unknown as { loginBot: (token: string) => Promise<void> }).loginBot(
-      this.config.token
-    );
+
+    if (!this.config.token) {
+      throw new Error('STOAT_TOKEN is not configured');
+    }
+
+    try {
+      // Stoat uses loginBot method
+      await (this.client as unknown as { loginBot: (token: string) => Promise<void> }).loginBot(
+        this.config.token
+      );
+      log.info('Successfully logged in to Stoat');
+    } catch (error) {
+      log.error('Failed to connect to Stoat', { error });
+      throw error;
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -271,6 +306,26 @@ export class StoatAdapter implements ChatClient {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  private async handleReconnect(): Promise<void> {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      log.error(`Max reconnection attempts (${this.maxReconnectAttempts}) reached. Giving up.`);
+      return;
+    }
+
+    this.reconnectAttempts += 1;
+    const delay = this.reconnectBaseDelayMs * Math.pow(2, this.reconnectAttempts - 1);
+    log.info(`Attempting Stoat reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+    await this.sleep(delay);
+
+    try {
+      await this.connect();
+      this.reconnectAttempts = 0;
+    } catch (error) {
+      log.error('Stoat reconnection failed', { error });
+      await this.handleReconnect();
+    }
+  }
+
   async getHistory(channelId: string, limit = 50): Promise<ChatMessage[]> {
     // Stoat API for fetching history may differ
     log.debug(`Fetching history for Stoat channel ${channelId}, limit ${limit}`);
@@ -316,6 +371,71 @@ export class StoatAdapter implements ChatClient {
     };
   }
 
+  async createProjectChannel(
+    guildId: string,
+    name: string,
+    categoryName: string = 'Projects'
+  ): Promise<ChatChannel> {
+    log.info(`Creating project channel in Stoat server ${guildId}: ${name}`);
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 4)
+      .join('-')
+      .substring(0, 100) || `project-${Date.now()}`;
+
+    const clientAny = this.client as unknown as {
+      servers?: {
+        get?: (id: string) => {
+          channels?: {
+            create?: (options: { name: string; type?: string; parentId?: string }) => Promise<{ id: string; name: string; parentId?: string | null }>;
+            find?: (predicate: (channel: { id: string; name?: string; type?: string; parentId?: string | null }) => boolean) => { id: string; name?: string; type?: string; parentId?: string | null } | undefined;
+          };
+        } | undefined;
+      };
+    };
+
+    const server = clientAny.servers?.get ? clientAny.servers.get(guildId) : undefined;
+    if (!server || !server.channels) {
+      throw new Error(`Stoat server not available for guild ${guildId}`);
+    }
+
+    const existingCategory = server.channels.find
+      ? server.channels.find((channel) => (channel.type === 'category' || channel.type === 'Category')
+          && (channel.name || '').toLowerCase() === categoryName.toLowerCase())
+      : undefined;
+
+    let categoryId: string | undefined = existingCategory?.id;
+
+    if (!categoryId && server.channels.create) {
+      const category = await server.channels.create({
+        name: categoryName,
+        type: 'category',
+      });
+      categoryId = category.id;
+    }
+
+    if (!server.channels.create) {
+      throw new Error('Stoat channel create method not available');
+    }
+
+    const created = await server.channels.create({
+      name: slug,
+      type: 'text',
+      parentId: categoryId,
+    });
+
+    return {
+      id: created.id,
+      name: created.name || slug,
+      type: 'text',
+      parentId: created.parentId || categoryId,
+      parentName: categoryName,
+    };
+  }
+
   async getChannel(channelId: string): Promise<ChatChannel | null> {
     try {
       // Stoat channel fetching API may differ
@@ -337,6 +457,7 @@ export class StoatAdapter implements ChatClient {
         name: channel?.name || 'unknown',
         type: 'text',
         parentId: channel?.parentId || undefined,
+        parentName: undefined,
       };
     } catch (error) {
       log.error(`Failed to fetch Stoat channel ${channelId}`, { error });

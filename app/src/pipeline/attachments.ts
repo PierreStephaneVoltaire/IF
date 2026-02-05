@@ -7,12 +7,7 @@ const log = createLogger('ATTACHMENTS');
 
 export async function processAttachments(
   attachments: AttachmentCategory,
-  isSecondaryBot: boolean
 ): Promise<ProcessedAttachment[]> {
-  if (isSecondaryBot) {
-    log.info('Skipping attachments (is_secondary_bot: true)');
-    return [];
-  }
 
   const allAttachments = [
     ...attachments.images,

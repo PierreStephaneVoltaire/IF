@@ -83,6 +83,8 @@ variable "stoat_bot_id" {
   default     = ""
 }
 
+
+
 variable "chat_platform" {
   description = "Chat platform to use: discord, stoat, or both"
   type        = string
@@ -103,20 +105,6 @@ variable "stoat_rabbitmq_pass" {
   type        = string
   sensitive   = true
   default     = "rabbitpass"
-}
-
-variable "stoat_minio_user" {
-  description = "MinIO root username for Stoat"
-  type        = string
-  sensitive   = true
-  default     = "minioautumn"
-}
-
-variable "stoat_minio_pass" {
-  description = "MinIO root password for Stoat"
-  type        = string
-  sensitive   = true
-  default     = "minioautumn"
 }
 
 variable "stoat_encryption_key" {

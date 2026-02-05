@@ -44,15 +44,7 @@ export interface ChannelInfo {
   name: string;
   type: ChannelType;
   parent_id: string | null;
-}
-
-export interface ThreadContext {
-  is_thread: boolean;
-  thread_id: string | null;
-  channel_id: string;
-  channel_name: string;
-  channel_type: number;
-  parent_id: string | null;
+  parent_name?: string | null;
 }
 
 export interface SendMessageOptions {

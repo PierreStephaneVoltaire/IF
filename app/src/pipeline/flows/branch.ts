@@ -81,9 +81,9 @@ export async function executeBranchFlow(
     log.info(`Using tier4 aggregator: ${aggregatorModel}`);
 
     // 2. Planning with Opus (theory/suggestions only)
-    const sessionResult = await setupSession(context.threadId, context.channelId);
+    const sessionResult = await setupSession(context.workspaceId, context.channelId);
     const planning = await createPlan({
-        threadId: context.threadId,
+        threadId: context.workspaceId,
         branchName: sessionResult.branchName,
         session: sessionResult.session,
         history: context.history,
@@ -124,17 +124,17 @@ Keep each approach concise but thorough. Focus on the "what" and "why", not the 
 
     // Show progress for all 3 models
     await Promise.all([
-        streamProgressToDiscord(context.threadId, {
+        streamProgressToDiscord(context.workspaceId, {
             type: 'branching',
             branchingPhase: 'model1',
             model: branchModels[0]
         }),
-        streamProgressToDiscord(context.threadId, {
+        streamProgressToDiscord(context.workspaceId, {
             type: 'branching',
             branchingPhase: 'model2',
             model: branchModels[1]
         }),
-        streamProgressToDiscord(context.threadId, {
+        streamProgressToDiscord(context.workspaceId, {
             type: 'branching',
             branchingPhase: 'model3',
             model: branchModels[2]
@@ -163,7 +163,7 @@ Keep each approach concise but thorough. Focus on the "what" and "why", not the 
     // 4. Aggregation with tier4 model
     log.info('Aggregating approaches with tier4 model');
 
-    await streamProgressToDiscord(context.threadId, {
+    await streamProgressToDiscord(context.workspaceId, {
         type: 'branching',
         branchingPhase: 'consolidator',
         model: aggregatorModel
@@ -231,7 +231,7 @@ Analyze these 9 approaches and produce your JSON output now.`;
     // 6. Wait for first vote
     log.info('Waiting for poll vote');
     
-    await streamProgressToDiscord(context.threadId, {
+    await streamProgressToDiscord(context.workspaceId, {
         type: 'branching',
         branchingPhase: 'waiting_for_vote',
         model: 'poll'
@@ -260,7 +260,7 @@ Analyze these 9 approaches and produce your JSON output now.`;
         log.info('User selected "Other", lowering confidence and asking for clarification');
         
         // Lower confidence by 10
-        await updateSessionConfidence(context.threadId, -10);
+        await updateSessionConfidence(context.workspaceId, -10);
 
         // Save poll entry to session
         const pollEntry: PollHistoryEntry = {
@@ -271,9 +271,9 @@ Analyze these 9 approaches and produce your JSON output now.`;
             timestamp: new Date().toISOString()
         };
 
-        const session = await getSession(context.threadId);
+        const session = await getSession(context.workspaceId);
         if (session) {
-            await updateSession(context.threadId, {
+            await updateSession(context.workspaceId, {
                 poll_entries: [...(session.poll_entries || []), pollEntry]
             });
         }
@@ -297,9 +297,9 @@ Analyze these 9 approaches and produce your JSON output now.`;
         timestamp: new Date().toISOString()
     };
 
-    const session = await getSession(context.threadId);
+    const session = await getSession(context.workspaceId);
     if (session) {
-        await updateSession(context.threadId, {
+        await updateSession(context.workspaceId, {
             poll_entries: [...(session.poll_entries || []), pollEntry]
         });
     }

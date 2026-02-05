@@ -28,7 +28,6 @@ export async function checkShouldRespond(
   const config = getConfig();
   log.info(`Checking if bot should respond`);
   log.info(`Force respond: ${input.filter.force_respond}`);
-  log.info(`Is secondary bot (${config.OTHER_BOT_USERNAME}): ${input.filter.is_secondary_bot}`);
 
   // Bypass for breakglass flow
   if (input.filter.is_breakglass) {
@@ -44,7 +43,7 @@ export async function checkShouldRespond(
   if (input.filter.force_respond) {
     const reason = input.filter.is_mentioned
       ? 'User @mentioned the bot'
-      : `Message from ${config.OTHER_BOT_USERNAME}`;
+      : 'Forced response';
     log.info(`Force respond triggered: ${reason}`);
 
     return {
@@ -68,7 +67,6 @@ export async function checkShouldRespond(
     {
       author: input.history.current_author,
       force_respond: input.filter.force_respond,
-      is_secondary_bot: input.filter.is_secondary_bot,
       history: input.history.formatted_history,
       message: input.history.current_message,
     },
@@ -81,12 +79,6 @@ export async function checkShouldRespond(
   let finalShouldRespond = opusResult.should_respond;
   let finalReason = opusResult.reason;
 
-  if (input.filter.is_secondary_bot && !finalShouldRespond) {
-    const config = getConfig();
-    log.info(`Overriding: ${config.OTHER_BOT_USERNAME} messages always get a response`);
-    finalShouldRespond = true;
-    finalReason = `Message from ${config.OTHER_BOT_USERNAME} (override)`;
-  }
 
   log.info(`Final decision: should_respond=${finalShouldRespond}, reason=${finalReason}`);
 

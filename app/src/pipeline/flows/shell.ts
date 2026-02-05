@@ -23,7 +23,7 @@ export async function executeShellFlow(
   context: FlowContext
 ): Promise<FlowResult> {
   log.info('Phase: SHELL_FLOW');
-  log.info(`Thread: ${context.threadId}`);
+  log.info(`Workspace: ${context.workspaceId}`);
 
   // Get the prompt category and model for shell commands
   const promptCategory = getPromptForTaskType(TaskType.SHELL_COMMAND);
@@ -40,7 +40,7 @@ export async function executeShellFlow(
   const response = await executeSimpleTask(
     promptCategory,
     fullHistory,
-    context.threadId,
+    context.workspaceId,
     model,
     false // No tools for shell flow - just suggestions
   );
@@ -50,6 +50,6 @@ export async function executeShellFlow(
   return {
     response,
     model,
-    responseChannelId: context.threadId,
+    responseChannelId: context.channelId,
   };
 }

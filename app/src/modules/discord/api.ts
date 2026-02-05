@@ -111,6 +111,47 @@ export async function createThread(
   return thread;
 }
 
+export async function createProjectChannel(
+  client: Client,
+  guildId: string,
+  name: string,
+  categoryName: string = 'Projects'
+): Promise<TextChannel> {
+  log.info(`createProjectChannel in guild ${guildId}, name: ${name}`);
+
+  const guild = await client.guilds.fetch(guildId);
+
+  const existingCategory = guild.channels.cache.find(
+    (channel) => channel.type === ChannelType.GuildCategory
+      && channel.name.toLowerCase() === categoryName.toLowerCase()
+  );
+
+  const category = existingCategory
+    ? existingCategory
+    : await guild.channels.create({
+        name: categoryName,
+        type: ChannelType.GuildCategory,
+      });
+
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 4)
+    .join('-')
+    .substring(0, 100) || `project-${Date.now()}`;
+
+  const channel = await guild.channels.create({
+    name: slug,
+    type: ChannelType.GuildText,
+    parent: category.id,
+  });
+
+  log.info(`Project channel created: ${channel.id}`);
+  return channel as TextChannel;
+}
+
 export async function getChannel(client: Client, channelId: string): Promise<ChannelInfo> {
   log.info(`getChannel ${channelId}`);
 
@@ -125,7 +166,13 @@ export async function getChannel(client: Client, channelId: string): Promise<Cha
     name: 'name' in channel ? (channel.name as string) : 'unknown',
     type: channel.type,
     parent_id: 'parentId' in channel ? (channel.parentId as string | null) : null,
+    parent_name: null,
   };
+
+  if (info.parent_id) {
+    const parent = await client.channels.fetch(info.parent_id);
+    info.parent_name = parent && 'name' in parent ? (parent.name as string) : null;
+  }
 
   log.info(`Channel info: type=${info.type}, name=${info.name}`);
   return info;

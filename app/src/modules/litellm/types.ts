@@ -203,7 +203,6 @@ export interface PlanningResult {
 export interface ShouldRespondContext {
   author: string;
   force_respond: boolean;
-  is_secondary_bot: boolean;
   history: string;
   message: string;
 }

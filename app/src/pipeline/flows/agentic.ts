@@ -5,7 +5,8 @@ import { createPlan } from '../planning';
 import { executeSequentialThinkingLoop } from '../../modules/agentic/loop';
 import { getMaxTurns, getCheckpointInterval, getModelForAgent } from '../../templates/registry';
 import { generateThreadName } from '../../modules/litellm/opus';
-import { getDiscordClient, createThread } from '../../modules/discord/index';
+import { getDiscordClient, createProjectChannel } from '../../modules/discord/index';
+import { getConfig } from '../../config';
 import { getChatClient } from '../../modules/chat';
 import type { FlowContext, FlowResult } from './types';
 import type { DiscordMessagePayload } from '../../modules/discord/types';
@@ -18,32 +19,34 @@ export async function executeAgenticFlow(
 ): Promise<FlowResult> {
   log.info('Phase: AGENTIC_FLOW');
 
-  // Create thread if not already in one
-  let finalThreadId = context.threadId;
-  let responseChannelId = context.threadId;
+  // Create project channel if not already in one
+  let finalThreadId = context.workspaceId;
+  let responseChannelId = context.workspaceId;
 
-  if (!context.isThread) {
-    log.info('Creating thread for agentic execution');
+  if (!context.isProjectChannel) {
+    log.info('Creating project channel for agentic execution');
     const threadName = await generateThreadName(context.history.current_message);
-  const chatClient = getChatClient();
+    const chatClient = getChatClient();
+    const parentName = context.parentName;
+    const guildId = message.guild_id || getConfig().DISCORD_GUILD_ID;
     if (chatClient && chatClient.platform !== 'discord') {
-      const newThread = await chatClient.createThread(
-        message.channel_id,
-        message.id,
-        threadName
+      const newChannel = await chatClient.createProjectChannel(
+        guildId,
+        threadName,
+        parentName || 'Projects'
       );
-      finalThreadId = newThread.id;
-      responseChannelId = newThread.id;
+      finalThreadId = newChannel.id;
+      responseChannelId = newChannel.id;
     } else {
       const client = getDiscordClient();
-      const newThread = await createThread(
+      const newChannel = await createProjectChannel(
         client,
-        message.channel_id,
-        message.id,
-        threadName
+        guildId,
+        threadName,
+        parentName || 'Projects'
       );
-      finalThreadId = newThread.id;
-      responseChannelId = newThread.id;
+      finalThreadId = newChannel.id;
+      responseChannelId = newChannel.id;
     }
   }
 
@@ -53,8 +56,7 @@ export async function executeAgenticFlow(
 
   // Process attachments
   const processedAttachments = await processAttachments(
-    context.history.current_attachments,
-    !context.filterContext.is_secondary_bot
+    context.history.current_attachments
   );
 
   // Generate plan

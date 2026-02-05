@@ -23,7 +23,6 @@ export function filterMessage(message: DiscordMessagePayload): FilterResult {
         is_self: true,
         is_stale: false,
         is_mentioned: false,
-        is_secondary_bot: false,
         force_respond: false,
         is_breakglass: false,
       },
@@ -45,7 +44,6 @@ export function filterMessage(message: DiscordMessagePayload): FilterResult {
         is_self: false,
         is_stale: true,
         is_mentioned: false,
-        is_secondary_bot: false,
         force_respond: false,
         is_breakglass: false,
       },
@@ -54,9 +52,6 @@ export function filterMessage(message: DiscordMessagePayload): FilterResult {
 
   const isMentioned = checkMention(message, config.DISCORD_BOT_ID);
   log.info(`Mentions bot: ${isMentioned}`);
-
-  const isSecondaryBot = authorUsername === config.OTHER_BOT_USERNAME.toLowerCase();
-  log.info(`Is secondary bot (${config.OTHER_BOT_USERNAME}): ${isSecondaryBot}`);
 
   // Check for breakglass pattern: @{modelname} at start of message
   const breakglassMatch = message.content.match(/^@(opus|sonnet|gemini|qwen|gpt|default|glm)\b/i);
@@ -67,7 +62,7 @@ export function filterMessage(message: DiscordMessagePayload): FilterResult {
     log.info(`Breakglass detected: model=${breakglassModel}`);
   }
 
-  const forceRespond = isMentioned || isSecondaryBot || isBreakglass;
+  const forceRespond = isMentioned || isBreakglass;
 
   log.info(`Filter result: passed=true`);
 
@@ -77,7 +72,6 @@ export function filterMessage(message: DiscordMessagePayload): FilterResult {
       is_self: false,
       is_stale: false,
       is_mentioned: isMentioned,
-      is_secondary_bot: isSecondaryBot,
       force_respond: forceRespond,
       is_breakglass: isBreakglass,
       breakglass_model: breakglassModel,

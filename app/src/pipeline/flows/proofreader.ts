@@ -40,6 +40,6 @@ export async function executeProofreaderFlow(
   return {
     response: content,
     model,
-    responseChannelId: context.threadId,
+    responseChannelId: context.channelId,
   };
 }

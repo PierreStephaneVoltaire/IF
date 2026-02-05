@@ -32,7 +32,8 @@ export async function formatAndSendResponse(input: ResponseInput): Promise<void>
   }
 
   const chatClient = getChatClient();
-  const client = chatClient && chatClient.platform !== 'discord' ? null : getDiscordClient();
+  // Only get Discord client if we're NOT using a chat client (i.e., we're on Discord)
+  const client = chatClient ? null : getDiscordClient();
 
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];

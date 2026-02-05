@@ -13,7 +13,6 @@ export interface Config {
   DYNAMODB_EXECUTIONS_TABLE: string;
   S3_ARTIFACT_BUCKET: string;
   BOT_USERNAME: string;
-  OTHER_BOT_USERNAME: string;
   STALENESS_MINUTES: number;
   PLANNER_MODEL_ID: string;
   // Redis configuration
@@ -22,8 +21,11 @@ export interface Config {
   // Stoat configuration
   STOAT_TOKEN: string | undefined;
   STOAT_BOT_ID: string | undefined;
+  STOAT_BASE_URL: string | undefined; // e.g., https://stoat.chat/api or https://notdiscord.example.com/api
   // Chat platform selection
   CHAT_PLATFORM: 'discord' | 'stoat';
+  // Project category name for workspace channels
+  PROJECTS_CATEGORY_NAME: string;
   // LiteLLM connection pooling
   LITELLM_MAX_CONNECTIONS: number;
 }
@@ -41,6 +43,14 @@ function optionalEnv(name: string, defaultValue: string): string {
   return process.env[name] || defaultValue;
 }
 
+function maskTokenEdge(token: string | undefined): string {
+  if (!token) return 'not configured';
+  if (token.length <= 6) {
+    return `${token} (len:${token.length})`;
+  }
+  return `${token.slice(0, 3)}...${token.slice(-3)} (len:${token.length})`;
+}
+
 export function loadConfig(): Config {
   log.info('Loading environment variables');
 
@@ -55,7 +65,6 @@ export function loadConfig(): Config {
     DYNAMODB_EXECUTIONS_TABLE: optionalEnv('DYNAMODB_EXECUTIONS_TABLE', 'discord_executions'),
     S3_ARTIFACT_BUCKET: optionalEnv('S3_ARTIFACT_BUCKET', 'discord-bot-artifacts'),
     BOT_USERNAME: optionalEnv('BOT_USERNAME', 'nepnep'),
-    OTHER_BOT_USERNAME: optionalEnv('OTHER_BOT_USERNAME', 'bot2'),
     STALENESS_MINUTES: parseInt(optionalEnv('STALENESS_MINUTES', '30'), 10),
     PLANNER_MODEL_ID: optionalEnv('PLANNER_MODEL_ID', 'kimi-k2.5'),
     // Redis configuration
@@ -64,8 +73,11 @@ export function loadConfig(): Config {
     // Stoat configuration
     STOAT_TOKEN: process.env.STOAT_TOKEN,
     STOAT_BOT_ID: process.env.STOAT_BOT_ID,
+    STOAT_BASE_URL: process.env.STOAT_BASE_URL,
     // Chat platform selection
     CHAT_PLATFORM: optionalEnv('CHAT_PLATFORM', 'discord') as 'discord' | 'stoat',
+    // Project category name for workspace channels
+    PROJECTS_CATEGORY_NAME: optionalEnv('PROJECTS_CATEGORY_NAME', 'Projects'),
     // LiteLLM connection pooling
     LITELLM_MAX_CONNECTIONS: parseInt(optionalEnv('LITELLM_MAX_CONNECTIONS', '50'), 10),
   };
@@ -80,13 +92,14 @@ export function loadConfig(): Config {
   log.info(`DYNAMODB_EXECUTIONS_TABLE: ${config.DYNAMODB_EXECUTIONS_TABLE}`);
   log.info(`S3_ARTIFACT_BUCKET: ${config.S3_ARTIFACT_BUCKET}`);
   log.info(`BOT_USERNAME: ${config.BOT_USERNAME}`);
-  log.info(`OTHER_BOT_USERNAME: ${config.OTHER_BOT_USERNAME}`);
   log.info(`STALENESS_MINUTES: ${config.STALENESS_MINUTES}`);
+  log.info(`PROJECTS_CATEGORY_NAME: ${config.PROJECTS_CATEGORY_NAME}`);
   log.info(`PLANNER_MODEL_ID: ${config.PLANNER_MODEL_ID}`);
   log.info(`REDIS_ENABLED: ${config.REDIS_ENABLED}`);
   log.info(`REDIS_URL: ${config.REDIS_URL || 'not configured'}`);
   log.info(`STOAT_BOT_ID: ${config.STOAT_BOT_ID || 'not configured'}`);
-  log.info(`STOAT_TOKEN: ${config.STOAT_TOKEN ? '***masked***' : 'not configured'}`);
+  log.info(`STOAT_TOKEN: ${maskTokenEdge(config.STOAT_TOKEN)}`);
+  log.info(`STOAT_BASE_URL: ${config.STOAT_BASE_URL || 'not configured'}`);
   log.info(`CHAT_PLATFORM: ${config.CHAT_PLATFORM}`);
   log.info(`LITELLM_MAX_CONNECTIONS: ${config.LITELLM_MAX_CONNECTIONS}`);
   log.info('Config loaded successfully');

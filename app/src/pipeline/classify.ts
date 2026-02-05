@@ -21,38 +21,6 @@ export function shouldSkipPlanning(taskType: TaskType): boolean {
   return skipPlanningTasks.has(taskType);
 }
 
-/**
- * Tasks that need full sequential thinking (session + tools + planning)
- * These tasks involve CODE GENERATION and EXECUTION
- */
-export function needsSequentialThinking(taskType: TaskType): boolean {
-  const sequentialTasks = new Set([
-    TaskType.CODING_IMPLEMENTATION,
-    TaskType.DEVOPS_IMPLEMENTATION,
-    TaskType.DATABASE_DESIGN,
-    TaskType.CODE_REVIEW,
-    TaskType.DOCUMENTATION_WRITER,
-    TaskType.TOOL_EXECUTION,
-    TaskType.COMMAND_RUNNER,
-    TaskType.TEST_RUNNER,
-  ]);
-
-  return sequentialTasks.has(taskType);
-}
-
-/**
- * Tasks that are architecture/design focused (NO code generation)
- * These tasks generate PLANS and DESIGNS only
- */
-export function needsArchitectureFlow(taskType: TaskType): boolean {
-  const architectureTasks = new Set([
-    TaskType.ARCHITECTURE_ANALYSIS,
-    TaskType.TECHNICAL_QA,  // Can be architecture if asking about design
-  ]);
-
-  return architectureTasks.has(taskType);
-}
-
 export function isBranchRequest(message: string, confidenceScore?: number): boolean {
   const lower = message.toLowerCase();
 
@@ -87,6 +55,22 @@ export function isBranchRequest(message: string, confidenceScore?: number): bool
   
   return hasTrigger || lowConfidence;
 }
+// Determine if a flow needs workspace access
+export function flowNeedsWorkspace(flowType: FlowType): boolean {
+  switch (flowType) {
+    case FlowType.SEQUENTIAL_THINKING:
+    case FlowType.ARCHITECTURE:
+    case FlowType.BRANCH:
+      return true;
+    case FlowType.SOCIAL:
+    case FlowType.PROOFREADER:
+    case FlowType.SHELL:
+    case FlowType.SIMPLE:
+    case FlowType.BREAKGLASS:
+    default:
+      return false;
+  }
+}
 
 export function classifyFlow(
   isTechnical: boolean,
@@ -104,6 +88,7 @@ export function classifyFlow(
     return FlowType.BREAKGLASS;
   }
 
+
   // 2. Check for branch flow (multi-solution brainstorming or low confidence)
   if (message && isBranchRequest(message, confidenceScore)) {
     log.info(`Routing to: BRANCH flow (detected multi-solution request or low confidence)`);
@@ -112,37 +97,37 @@ export function classifyFlow(
 
   const effectiveTaskType = taskType || inferTaskType(isTechnical);
 
-  // 3. Check for social flow (casual chat, greetings)
-  if (effectiveTaskType === TaskType.SOCIAL) {
-    log.info(`Routing to: SOCIAL flow for ${effectiveTaskType}`);
-    return FlowType.SOCIAL;
+  // Map task type to flow type using clean switch statement
+  switch (effectiveTaskType) {
+    case TaskType.SOCIAL:
+      log.info(`Routing to: SOCIAL flow for ${effectiveTaskType}`);
+      return FlowType.SOCIAL;
+    case TaskType.PROOFREADER:
+      log.info(`Routing to: PROOFREADER flow for ${effectiveTaskType}`);
+      return FlowType.PROOFREADER;
+    case TaskType.SHELL_COMMAND:
+      log.info(`Routing to: SHELL flow for shell command suggestions`);
+      return FlowType.SHELL;
+    case TaskType.ARCHITECTURE_ANALYSIS:
+      log.info(`Routing to: ARCHITECTURE flow for ${effectiveTaskType}`);
+      return FlowType.ARCHITECTURE;
+    case TaskType.CODING_IMPLEMENTATION:
+    case TaskType.DEVOPS_IMPLEMENTATION:
+    case TaskType.DATABASE_DESIGN:
+    case TaskType.CODE_REVIEW:
+    case TaskType.DOCUMENTATION_WRITER:
+    case TaskType.TOOL_EXECUTION:
+    case TaskType.COMMAND_RUNNER:
+    case TaskType.TEST_RUNNER:
+      log.info(`Routing to: SEQUENTIAL_THINKING flow for ${effectiveTaskType}`);
+      return FlowType.SEQUENTIAL_THINKING;
+    case TaskType.GENERAL_CONVO:
+    case TaskType.TECHNICAL_QA:
+    case TaskType.DOC_SEARCH:
+    case TaskType.EXPLANATION:
+    case TaskType.WRITING:
+    default:
+      log.info(`Routing to: SIMPLE flow for ${effectiveTaskType}`);
+      return FlowType.SIMPLE;
   }
-
-  // 4. Check for proofreader flow (grammar/spellcheck only)
-  if (effectiveTaskType === TaskType.PROOFREADER) {
-    log.info(`Routing to: PROOFREADER flow for ${effectiveTaskType}`);
-    return FlowType.PROOFREADER;
-  }
-
-  // 5. Check for shell command flow (suggesting commands, not executing)
-  if (effectiveTaskType === TaskType.SHELL_COMMAND) {
-    log.info(`Routing to: SHELL flow for shell command suggestions`);
-    return FlowType.SHELL;
-  }
-
-  // 6. Check for architecture flow (design/planning WITHOUT code generation)
-  if (needsArchitectureFlow(effectiveTaskType)) {
-    log.info(`Routing to: ARCHITECTURE flow for ${effectiveTaskType}`);
-    return FlowType.ARCHITECTURE;
-  }
-
-  // 5. Check for sequential thinking (merged agentic + technical - WITH code generation)
-  if (useAgenticLoop || needsSequentialThinking(effectiveTaskType)) {
-    log.info(`Routing to: SEQUENTIAL_THINKING flow for ${effectiveTaskType}`);
-    return FlowType.SEQUENTIAL_THINKING;
-  }
-
-  // 5. Default to simple flow
-  log.info(`Routing to: SIMPLE flow for ${effectiveTaskType}`);
-  return FlowType.SIMPLE;
 }

@@ -2,7 +2,7 @@
  * Discord Adapter - wraps discord.js to implement ChatClient interface
  */
 
-import { Client, GatewayIntentBits, Partials, TextChannel, ThreadChannel, Message, AttachmentBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, TextChannel, ThreadChannel, Message, AttachmentBuilder, ChannelType } from 'discord.js';
 import type {
   ChatClient,
   ChatMessage,
@@ -277,6 +277,49 @@ export class DiscordAdapter implements ChatClient {
     };
   }
 
+  async createProjectChannel(
+    guildId: string,
+    name: string,
+    categoryName: string = 'Projects'
+  ): Promise<ChatChannel> {
+    const guild = await this.client.guilds.fetch(guildId);
+
+    const existingCategory = guild.channels.cache.find(
+      (channel) => channel.type === ChannelType.GuildCategory
+        && channel.name.toLowerCase() === categoryName.toLowerCase()
+    );
+
+    const category = existingCategory
+      ? existingCategory
+      : await guild.channels.create({
+          name: categoryName,
+          type: ChannelType.GuildCategory,
+        });
+
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 4)
+      .join('-')
+      .substring(0, 100) || `project-${Date.now()}`;
+
+    const channel = await guild.channels.create({
+      name: slug,
+      type: ChannelType.GuildText,
+      parent: category.id,
+    });
+
+    return {
+      id: channel.id,
+      name: channel.name,
+      type: 'text',
+      parentId: channel.parentId || undefined,
+      parentName: category.name,
+    };
+  }
+
   async getChannel(channelId: string): Promise<ChatChannel | null> {
     try {
       const channel = await this.client.channels.fetch(channelId);
@@ -294,6 +337,7 @@ export class DiscordAdapter implements ChatClient {
         name: 'name' in channel ? (channel.name as string) : 'unknown',
         type,
         parentId: 'parentId' in channel ? (channel.parentId as string) : undefined,
+        parentName: (channel as { parent?: { name?: string } }).parent?.name,
       };
     } catch (error) {
       log.error(`Failed to fetch channel ${channelId}`, { error });

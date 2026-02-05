@@ -51,7 +51,6 @@ export async function shouldRespond(
   const systemPrompt = renderTemplate(template, {
     author: context.author,
     force_respond: String(context.force_respond),
-    is_secondary_bot: String(context.is_secondary_bot),
     history: context.history,
     message: context.message,
   });
@@ -181,7 +180,25 @@ export async function generateThreadName(content: string): Promise<string> {
   });
 
   const name = extractContent(response).trim();
-  log.info(`generateThreadName result: ${name}`);
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 4)
+    .join('-')
+    .substring(0, 100);
 
-  return name || content.substring(0, 50);
+  const fallback = content
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 4)
+    .join('-')
+    .substring(0, 100);
+
+  log.info(`generateThreadName result: ${slug || fallback || name}`);
+
+  return slug || fallback || name || content.substring(0, 50);
 }

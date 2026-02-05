@@ -1,14 +1,16 @@
 import type { FormattedHistory, ProcessedAttachment, FilterContext } from '../types';
 
 export interface FlowContext {
-  threadId: string;
+  workspaceId: string;
   channelId: string;
   messageId: string;
   history: FormattedHistory;
   filterContext: FilterContext;
-  isThread: boolean;
+  isProjectChannel: boolean;
+  needsWorkspace: boolean;
   executionId: string;
   userAddedFilesMessage?: string; // NEW: Message about newly synced files
+  parentName?: string | null;
 }
 
 export interface FlowResult {

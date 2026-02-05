@@ -12,7 +12,7 @@ export async function executeTechnicalSimpleFlow(
   log.info('Phase: TECHNICAL_SIMPLE_FLOW');
 
   const result = await executeTechnicalSimple({
-    threadId: context.threadId,
+    threadId: context.workspaceId,
     history: context.history,
     taskType,
   });
@@ -20,6 +20,6 @@ export async function executeTechnicalSimpleFlow(
   return {
     response: result.response,
     model: result.model,
-    responseChannelId: context.threadId,
+    responseChannelId: context.workspaceId,
   };
 }

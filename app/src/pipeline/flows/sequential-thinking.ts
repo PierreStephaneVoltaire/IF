@@ -4,9 +4,6 @@ import { processAttachments } from '../attachments';
 import { createPlan } from '../planning';
 import { executeSequentialThinkingLoop } from '../../modules/agentic/loop';
 import { getMaxTurns, getCheckpointInterval, getModelForAgent } from '../../templates/registry';
-import { generateThreadName } from '../../modules/litellm/opus';
-import { getDiscordClient, createThread } from '../../modules/discord/index';
-import { getChatClient } from '../../modules/chat';
 import { trajectoryEvaluator } from '../../modules/reflexion/evaluator';
 import { streamProgressToDiscord } from '../../modules/agentic/progress';
 import { addReflectionToHistory, addKeyInsight } from '../../modules/reflexion/memory';
@@ -23,34 +20,9 @@ export async function executeSequentialThinkingFlow(
 ): Promise<FlowResult> {
     log.info('Phase: SEQUENTIAL_THINKING_FLOW');
 
-    // Create thread if not already in one
-    let finalThreadId = context.threadId;
-    let responseChannelId = context.channelId;
-
-    if (!context.isThread) {
-        log.info('Creating thread for execution');
-        const threadName = await generateThreadName(context.history.current_message);
-  const chatClient = getChatClient();
-        if (chatClient && chatClient.platform !== 'discord') {
-            const newThread = await chatClient.createThread(
-                message.channel_id,
-                message.id,
-                threadName
-            );
-            finalThreadId = newThread.id;
-            responseChannelId = newThread.id;
-        } else {
-            const client = getDiscordClient();
-            const newThread = await createThread(
-                client,
-                message.channel_id,
-                message.id,
-                threadName
-            );
-            finalThreadId = newThread.id;
-            responseChannelId = newThread.id;
-        }
-    }
+    // Project channel creation handled in pipeline
+    const finalThreadId = context.workspaceId;
+    const responseChannelId = context.workspaceId;
 
     // Setup session (this gets or creates the session in DynamoDB)
     const sessionResult = await setupSession(finalThreadId, context.channelId);
@@ -59,9 +31,8 @@ export async function executeSequentialThinkingFlow(
 
     // Process attachments
     const processedAttachments = await processAttachments(
-        context.history.current_attachments,
-        !context.filterContext.is_secondary_bot
-    );
+        context.history.current_attachments
+      );
 
     // Evaluate previous trajectory if exists (for Reflexion)
     let previousEvaluation = null;
@@ -115,7 +86,7 @@ export async function executeSequentialThinkingFlow(
     }
 
     // Show reflection progress in Discord
-    await streamProgressToDiscord(context.threadId, {
+    await streamProgressToDiscord(context.workspaceId, {
         type: 'reflection',
         confidence: loopResult.finalConfidence,
         model: loopResult.turns[loopResult.turns.length - 1]?.modelUsed || 'unknown'

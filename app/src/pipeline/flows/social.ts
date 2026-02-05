@@ -39,6 +39,6 @@ export async function executeSocialFlow(
   return {
     response: content,
     model,
-    responseChannelId: context.threadId,
+    responseChannelId: context.channelId,
   };
 }

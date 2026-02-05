@@ -14,7 +14,6 @@ locals {
   mongodb_host = "stoat-mongodb"
   redis_host   = "redis"  # Using existing redis from kubernetes-redis.tf
   rabbit_host  = "stoat-rabbitmq"
-  minio_host   = "stoat-minio"
 
   # Generate encryption key if not provided (32 bytes = 44 chars in base64)
   stoat_encryption_key = var.stoat_encryption_key != "" ? var.stoat_encryption_key : base64encode(random_password.stoat_encryption_key[0].result)
@@ -41,10 +40,6 @@ resource "kubernetes_secret" "stoat_secrets" {
     # RabbitMQ credentials
     RABBITMQ_DEFAULT_USER = var.stoat_rabbitmq_user
     RABBITMQ_DEFAULT_PASS = var.stoat_rabbitmq_pass
-
-    # MinIO credentials
-    MINIO_ROOT_USER     = var.stoat_minio_user
-    MINIO_ROOT_PASSWORD = var.stoat_minio_pass
 
     # File encryption key (auto-generated if not provided)
     STOAT_ENCRYPTION_KEY = local.stoat_encryption_key
@@ -76,11 +71,11 @@ resource "kubernetes_config_map" "stoat_config" {
       redis = "redis://${local.redis_host}:6379"
 
       [hosts]
-      app = "http://${local.stoat_domain}"
-      api = "http://${local.stoat_domain}/api"
-      events = "ws://${local.stoat_domain}/ws"
-      autumn = "http://${local.stoat_domain}/autumn"
-      january = "http://${local.stoat_domain}/january"
+      app = "https://${local.stoat_domain}"
+      api = "https://${local.stoat_domain}/api"
+      events = "wss://${local.stoat_domain}/ws"
+      autumn = "https://${local.stoat_domain}/autumn"
+      january = "https://${local.stoat_domain}/january"
       voso_legacy = ""
       voso_legacy_ws = ""
 
@@ -188,12 +183,12 @@ resource "kubernetes_config_map" "stoat_config" {
       emojis = [128, 128]
 
       [files.s3]
-      endpoint = "http://${local.minio_host}:9000"
+      endpoint = "https://s3.${var.region}.amazonaws.com"
       path_style_buckets = false
-      region = "minio"
-      access_key_id = "${var.stoat_minio_user}"
-      secret_access_key = "${var.stoat_minio_pass}"
-      default_bucket = "revolt-uploads"
+      region = "${var.region}"
+      access_key_id = "${var.aws_access_key}"
+      secret_access_key = "${var.aws_secret_key}"
+      default_bucket = "${aws_s3_bucket.stoat_uploads.bucket}"
 
       [features]
     EOT
@@ -510,242 +505,6 @@ resource "kubernetes_service" "stoat_rabbitmq" {
 }
 
 # ============================================
-# MINIO (S3-compatible storage)
-# ============================================
-
-resource "kubernetes_persistent_volume_claim" "stoat_minio_data" {
-  metadata {
-    name      = "stoat-minio-data"
-    namespace = local.stoat_namespace
-  }
-
-  spec {
-    access_modes = ["ReadWriteOnce"]
-    resources {
-      requests = {
-        storage = "20Gi"
-      }
-    }
-    storage_class_name = "do-block-storage"
-  }
-}
-
-resource "kubernetes_deployment" "stoat_minio" {
-  metadata {
-    name      = "stoat-minio"
-    namespace = local.stoat_namespace
-    labels = {
-      app = "stoat-minio"
-    }
-  }
-
-  spec {
-    replicas = 1
-
-    selector {
-      match_labels = {
-        app = "stoat-minio"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "stoat-minio"
-        }
-      }
-
-      spec {
-        node_selector = {
-          "workload-type" = "general"
-        }
-
-        toleration {
-          key      = "dedicated"
-          operator = "Equal"
-          value    = "general"
-          effect   = "NoSchedule"
-        }
-
-        container {
-          name    = "minio"
-          image   = "quay.io/minio/minio:latest"
-          command = ["/usr/bin/minio"]
-          args    = ["server", "/data"]
-
-          port {
-            container_port = 9000
-            name           = "s3"
-          }
-
-          port {
-            container_port = 9001
-            name           = "console"
-          }
-
-          env {
-            name = "MINIO_ROOT_USER"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.stoat_secrets.metadata[0].name
-                key  = "MINIO_ROOT_USER"
-              }
-            }
-          }
-
-          env {
-            name = "MINIO_ROOT_PASSWORD"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.stoat_secrets.metadata[0].name
-                key  = "MINIO_ROOT_PASSWORD"
-              }
-            }
-          }
-
-          env {
-            name  = "MINIO_DOMAIN"
-            value = "minio"
-          }
-
-          volume_mount {
-            name       = "minio-data"
-            mount_path = "/data"
-          }
-
-          resources {
-            requests = {
-              memory = "512Mi"
-              cpu    = "250m"
-            }
-            limits = {
-              memory = "1Gi"
-              cpu    = "500m"
-            }
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/minio/health/live"
-              port = 9000
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
-
-          readiness_probe {
-            http_get {
-              path = "/minio/health/ready"
-              port = 9000
-            }
-            initial_delay_seconds = 5
-            period_seconds        = 5
-          }
-        }
-
-        volume {
-          name = "minio-data"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.stoat_minio_data.metadata[0].name
-          }
-        }
-      }
-    }
-  }
-}
-
-resource "kubernetes_service" "stoat_minio" {
-  metadata {
-    name      = "stoat-minio"
-    namespace = local.stoat_namespace
-    labels = {
-      app = "stoat-minio"
-    }
-  }
-
-  spec {
-    type = "ClusterIP"
-
-    selector = {
-      app = "stoat-minio"
-    }
-
-    port {
-      port        = 9000
-      target_port = 9000
-      name        = "s3"
-    }
-
-    port {
-      port        = 9001
-      target_port = 9001
-      name        = "console"
-    }
-  }
-}
-
-# ============================================
-# MINIO BUCKET CREATION JOB
-# ============================================
-
-resource "kubernetes_job" "stoat_minio_create_buckets" {
-  metadata {
-    name      = "stoat-minio-create-buckets"
-    namespace = local.stoat_namespace
-  }
-
-  spec {
-    template {
-      metadata {
-        labels = {
-          app = "stoat-minio-create-buckets"
-        }
-      }
-
-      spec {
-        restart_policy = "OnFailure"
-
-        container {
-          name    = "mc"
-          image   = "quay.io/minio/mc:latest"
-          command = ["/bin/sh", "-c"]
-          args = [
-            <<-EOT
-            until /usr/bin/mc alias set minio http://stoat-minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
-              echo 'Waiting for minio...' && sleep 2
-            done
-            /usr/bin/mc mb minio/revolt-uploads --ignore-existing || true
-            EOT
-          ]
-
-          env {
-            name = "MINIO_ROOT_USER"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.stoat_secrets.metadata[0].name
-                key  = "MINIO_ROOT_USER"
-              }
-            }
-          }
-
-          env {
-            name = "MINIO_ROOT_PASSWORD"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.stoat_secrets.metadata[0].name
-                key  = "MINIO_ROOT_PASSWORD"
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  depends_on = [kubernetes_deployment.stoat_minio]
-}
-
-# ============================================
 # API SERVER
 # ============================================
 
@@ -791,7 +550,7 @@ resource "kubernetes_deployment" "stoat_api" {
           image = "ghcr.io/revoltchat/server:20250930-2"
 
           port {
-            container_port = 3000
+            container_port = 14702
             name           = "api"
           }
 
@@ -867,8 +626,8 @@ resource "kubernetes_service" "stoat_api" {
     }
 
     port {
-      port        = 3000
-      target_port = 3000
+      port        = 14702
+      target_port = 14702
       name        = "api"
     }
   }
@@ -920,7 +679,7 @@ resource "kubernetes_deployment" "stoat_events" {
           image = "ghcr.io/revoltchat/bonfire:20250930-2"
 
           port {
-            container_port = 3000
+            container_port = 14703
             name           = "events"
           }
 
@@ -975,8 +734,8 @@ resource "kubernetes_service" "stoat_events" {
     }
 
     port {
-      port        = 3000
-      target_port = 3000
+      port        = 14703
+      target_port = 14703
       name        = "events"
     }
   }
@@ -1034,12 +793,12 @@ resource "kubernetes_deployment" "stoat_web" {
 
           env {
             name  = "HOSTNAME"
-            value = "http://${local.stoat_domain}"
+            value = "https://${local.stoat_domain}"
           }
 
           env {
             name  = "REVOLT_PUBLIC_URL"
-            value = "http://${local.stoat_domain}/api"
+            value = "https://${local.stoat_domain}/api"
           }
 
           resources {
@@ -1128,7 +887,7 @@ resource "kubernetes_deployment" "stoat_autumn" {
           image = "ghcr.io/revoltchat/autumn:20250930-2"
 
           port {
-            container_port = 3000
+            container_port = 14704
             name           = "autumn"
           }
 
@@ -1162,7 +921,7 @@ resource "kubernetes_deployment" "stoat_autumn" {
 
   depends_on = [
     kubernetes_deployment.stoat_mongodb,
-    kubernetes_job.stoat_minio_create_buckets,
+    aws_s3_bucket.stoat_uploads,
   ]
 }
 
@@ -1183,8 +942,8 @@ resource "kubernetes_service" "stoat_autumn" {
     }
 
     port {
-      port        = 3000
-      target_port = 3000
+      port        = 14704
+      target_port = 14704
       name        = "autumn"
     }
   }
@@ -1236,7 +995,7 @@ resource "kubernetes_deployment" "stoat_january" {
           image = "ghcr.io/revoltchat/january:20250930-2"
 
           port {
-            container_port = 3000
+            container_port = 14705
             name           = "january"
           }
 
@@ -1286,112 +1045,9 @@ resource "kubernetes_service" "stoat_january" {
     }
 
     port {
-      port        = 3000
-      target_port = 3000
+      port        = 14705
+      target_port = 14705
       name        = "january"
-    }
-  }
-}
-
-# ============================================
-# TENOR PROXY (GifBox)
-# ============================================
-
-resource "kubernetes_deployment" "stoat_gifbox" {
-  metadata {
-    name      = "stoat-gifbox"
-    namespace = local.stoat_namespace
-    labels = {
-      app = "stoat-gifbox"
-    }
-  }
-
-  spec {
-    replicas = 1
-
-    selector {
-      match_labels = {
-        app = "stoat-gifbox"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "stoat-gifbox"
-        }
-      }
-
-      spec {
-        node_selector = {
-          "workload-type" = "general"
-        }
-
-        toleration {
-          key      = "dedicated"
-          operator = "Equal"
-          value    = "general"
-          effect   = "NoSchedule"
-        }
-
-        container {
-          name  = "gifbox"
-          image = "ghcr.io/revoltchat/gifbox:20250930-2"
-
-          port {
-            container_port = 3000
-            name           = "gifbox"
-          }
-
-          volume_mount {
-            name       = "stoat-config"
-            mount_path = "/Revolt.toml"
-            sub_path   = "Revolt.toml"
-          }
-
-          resources {
-            requests = {
-              memory = "128Mi"
-              cpu    = "100m"
-            }
-            limits = {
-              memory = "512Mi"
-              cpu    = "250m"
-            }
-          }
-        }
-
-        volume {
-          name = "stoat-config"
-          config_map {
-            name = kubernetes_config_map.stoat_config.metadata[0].name
-          }
-        }
-      }
-    }
-  }
-}
-
-resource "kubernetes_service" "stoat_gifbox" {
-  metadata {
-    name      = "stoat-gifbox"
-    namespace = local.stoat_namespace
-    labels = {
-      app = "stoat-gifbox"
-    }
-  }
-
-  spec {
-    type = "ClusterIP"
-
-    selector = {
-      app = "stoat-gifbox"
-    }
-
-    port {
-      port        = 3000
-      target_port = 3000
-      name        = "gifbox"
     }
   }
 }
@@ -1471,7 +1127,6 @@ resource "kubernetes_deployment" "stoat_crond" {
 
   depends_on = [
     kubernetes_deployment.stoat_mongodb,
-    kubernetes_deployment.stoat_minio,
   ]
 }
 
@@ -1556,168 +1211,166 @@ resource "kubernetes_deployment" "stoat_pushd" {
 }
 
 # ============================================
-# CADDY REVERSE PROXY
+# HTTP ROUTES (Gateway API)
 # ============================================
 
-resource "kubernetes_config_map" "stoat_caddy_config" {
-  metadata {
-    name      = "stoat-caddy-config"
-    namespace = local.stoat_namespace
-  }
-
-  data = {
-    "Caddyfile" = <<-EOT
-
-      ${local.stoat_domain}:80 {
-        handle_path /api/* {
-          reverse_proxy stoat-api:3000
-        }
-
-        handle_path /ws/* {
-          reverse_proxy stoat-events:3000
-        }
-
-        handle_path /autumn/* {
-          reverse_proxy stoat-autumn:3000
-        }
-
-        handle_path /january/* {
-          reverse_proxy stoat-january:3000
-        }
-
-        handle {
-          reverse_proxy stoat-web:5000
-        }
-      }
-    EOT
-  }
-}
-
-resource "kubernetes_deployment" "stoat_caddy" {
-  metadata {
-    name      = "stoat-caddy"
-    namespace = local.stoat_namespace
-    labels = {
-      app = "stoat-caddy"
-    }
-  }
-
-  spec {
-    replicas = 1
-
-    selector {
-      match_labels = {
-        app = "stoat-caddy"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "stoat-caddy"
-        }
-      }
-
-      spec {
-        node_selector = {
-          "workload-type" = "general"
-        }
-
-        toleration {
-          key      = "dedicated"
-          operator = "Equal"
-          value    = "general"
-          effect   = "NoSchedule"
-        }
-
-        container {
-          name  = "caddy"
-          image = "public.ecr.aws/docker/library/caddy:2"
-
-          port {
-            container_port = 80
-            name           = "http"
-          }
-
-          port {
-            container_port = 443
-            name           = "https"
-          }
-
-          volume_mount {
-            name       = "caddy-config"
-            mount_path = "/etc/caddy/Caddyfile"
-            sub_path   = "Caddyfile"
-          }
-
-          resources {
-            requests = {
-              memory = "128Mi"
-              cpu    = "100m"
-            }
-            limits = {
-              memory = "512Mi"
-              cpu    = "500m"
-            }
-          }
-        }
-
-        volume {
-          name = "caddy-config"
-          config_map {
-            name = kubernetes_config_map.stoat_caddy_config.metadata[0].name
-          }
-        }
-      }
-    }
-  }
-}
-
-resource "kubernetes_service" "stoat_caddy" {
-  metadata {
-    name      = "stoat-caddy"
-    namespace = local.stoat_namespace
-    labels = {
-      app = "stoat-caddy"
-    }
-  }
-
-  spec {
-    type = "ClusterIP"
-
-    selector = {
-      app = "stoat-caddy"
-    }
-
-    port {
-      port        = 80
-      target_port = 80
-      name        = "http"
-    }
-  }
-}
-
-
-
-resource "kubectl_manifest" "stoat_route" {
+resource "kubectl_manifest" "stoat_api_route" {
   yaml_body = <<-YAML
     apiVersion: gateway.networking.k8s.io/v1
     kind: HTTPRoute
     metadata:
-      name: stoat-route
+      name: stoat-api-route
       namespace: ${kubernetes_namespace.discord_bot.metadata[0].name}
     spec:
       parentRefs:
       - name: main-gateway
         namespace: nginx-gateway
+        sectionName: https-stoat
       hostnames:
       - notdiscord.${var.domain}
       rules:
-      - backendRefs:
-        - name: stoat-caddy
-          port: 80
+      - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+        filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+        backendRefs:
+        - name: stoat-api
+          port: 14702
   YAML
 
-  depends_on = [ kubernetes_service.stoat_caddy]
+  depends_on = [kubernetes_service.stoat_api]
+}
+
+resource "kubectl_manifest" "stoat_ws_route" {
+  yaml_body = <<-YAML
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: stoat-ws-route
+      namespace: ${kubernetes_namespace.discord_bot.metadata[0].name}
+    spec:
+      parentRefs:
+      - name: main-gateway
+        namespace: nginx-gateway
+        sectionName: https-stoat
+      hostnames:
+      - notdiscord.${var.domain}
+      rules:
+      - matches:
+        - path:
+            type: PathPrefix
+            value: /ws
+        filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+        backendRefs:
+        - name: stoat-events
+          port: 14703
+  YAML
+
+  depends_on = [kubernetes_service.stoat_events]
+}
+
+resource "kubectl_manifest" "stoat_autumn_route" {
+  yaml_body = <<-YAML
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: stoat-autumn-route
+      namespace: ${kubernetes_namespace.discord_bot.metadata[0].name}
+    spec:
+      parentRefs:
+      - name: main-gateway
+        namespace: nginx-gateway
+        sectionName: https-stoat
+      hostnames:
+      - notdiscord.${var.domain}
+      rules:
+      - matches:
+        - path:
+            type: PathPrefix
+            value: /autumn
+        filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+        backendRefs:
+        - name: stoat-autumn
+          port: 14704
+  YAML
+
+  depends_on = [kubernetes_service.stoat_autumn]
+}
+
+resource "kubectl_manifest" "stoat_january_route" {
+  yaml_body = <<-YAML
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: stoat-january-route
+      namespace: ${kubernetes_namespace.discord_bot.metadata[0].name}
+    spec:
+      parentRefs:
+      - name: main-gateway
+        namespace: nginx-gateway
+        sectionName: https-stoat
+      hostnames:
+      - notdiscord.${var.domain}
+      rules:
+      - matches:
+        - path:
+            type: PathPrefix
+            value: /january
+        filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+        backendRefs:
+        - name: stoat-january
+          port: 14705
+  YAML
+
+  depends_on = [kubernetes_service.stoat_january]
+}
+
+# Web route does NOT need URL rewrite - it serves the root path
+resource "kubectl_manifest" "stoat_web_route" {
+  yaml_body = <<-YAML
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: stoat-web-route
+      namespace: ${kubernetes_namespace.discord_bot.metadata[0].name}
+    spec:
+      parentRefs:
+      - name: main-gateway
+        namespace: nginx-gateway
+        sectionName: https-stoat
+      hostnames:
+      - notdiscord.${var.domain}
+      rules:
+      - matches:
+        - path:
+            type: PathPrefix
+            value: /
+        backendRefs:
+        - name: stoat-web
+          port: 5000
+  YAML
+
+  depends_on = [kubernetes_service.stoat_web]
 }
 

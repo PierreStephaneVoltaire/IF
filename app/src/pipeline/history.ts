@@ -5,7 +5,7 @@ import type { ChatMessage } from '../modules/chat/types';
 import { createLogger } from '../utils/logger';
 import type { DiscordMessagePayload, DiscordAttachment } from '../modules/discord/types';
 import type { PollHistoryEntry } from '../modules/dynamodb/types';
-import type { FormattedHistory, AttachmentCategory, ThreadContext } from './types';
+import type { FormattedHistory, AttachmentCategory, ChannelContext } from './types';
 
 const log = createLogger('HISTORY');
 
@@ -17,30 +17,37 @@ const TEXT_EXTENSIONS = [
 
 export async function formatHistory(
   currentMessage: DiscordMessagePayload,
-  thread: ThreadContext
+  channel: ChannelContext
 ): Promise<FormattedHistory> {
-  log.info(`Formatting history for channel ${thread.channel_id}`);
+  log.info(`Formatting history for channel ${channel.channel_id}`);
 
   const config = getConfig();
-  const client = getDiscordClient();
   const chatClient = getChatClient();
+  // Only get Discord client if we're NOT using a chat client (i.e., we're on Discord)
+  const client = chatClient ? null : getDiscordClient();
 
-  const channelId = thread.thread_id || thread.channel_id;
+  const channelId = channel.workspace_id || channel.channel_id;
 
-  // If we're not in a thread yet (thread_id is null), don't fetch channel history
-  // This prevents context poisoning when creating new threads
+  // If we're not in a project channel yet (workspace_id is null), don't fetch channel history
+  // This prevents context poisoning when creating new channels
   let messages: Awaited<ReturnType<typeof getMessages>> = [];
-  if (thread.thread_id) {
+  if (channel.workspace_id) {
     if (chatClient && chatClient.platform !== 'discord') {
       const chatMessages = await chatClient.getHistory(channelId, 50);
       messages = chatMessages.map(mapChatMessageToDiscordHistory);
-      log.info(`Fetched ${messages.length} messages from ${chatClient.platform} channel ${thread.thread_id}`);
+      log.info(`Fetched ${messages.length} messages from ${chatClient.platform} channel ${channel.workspace_id}`);
     } else {
-      messages = await getMessages(client, channelId, 50);
-      log.info(`Fetched ${messages.length} messages from thread ${thread.thread_id}`);
+      // Only call getMessages if client is not null (we're on Discord)
+      if (client) {
+        messages = await getMessages(client, channelId, 50);
+        log.info(`Fetched ${messages.length} messages from channel ${channel.workspace_id}`);
+      } else {
+        log.warn('Discord client not available, skipping history fetch');
+        messages = [];
+      }
     }
   } else {
-    log.info('Not in a thread yet - using empty history for new thread creation');
+    log.info('Not in a project channel yet - using empty history for new channel creation');
   }
 
   const cutoffTime = new Date();

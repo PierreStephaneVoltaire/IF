@@ -10,7 +10,7 @@ import {
 import { getSession } from '../modules/dynamodb/sessions';
 import type { DiscordMessagePayload } from '../modules/discord/types';
 import { filterMessage } from './filter';
-import { detectThread, shouldProcess } from './thread';
+import { detectChannel } from './channel';
 import { formatHistory } from './history';
 import { checkShouldRespond } from './should-respond';
 import { classifyFlow } from './classify';
@@ -26,13 +26,15 @@ import {
   executeProofreaderFlow,        // NEW: Grammar/spellcheck (tier 1)
   type FlowContext,
 } from './flows';
+import { flowNeedsWorkspace } from './classify';
 import type { PipelineResult } from './types';
 import { FlowType } from '../modules/litellm/types';
 import { s3Sync } from '../modules/workspace/s3-sync';
 import { discordFileSync, type SyncResult } from '../modules/workspace/file-sync';
-import { getDiscordClient } from '../modules/discord/index';
+import { getDiscordClient, createProjectChannel } from '../modules/discord/index';
 import { getChatClient } from '../modules/chat';
-
+import { generateThreadName } from '../modules/litellm/opus';
+import { getConfig } from '../config';
 const log = createLogger('PIPELINE');
 
 export async function processMessage(
@@ -48,6 +50,8 @@ export async function processMessage(
   log.info(`Channel: ${message.channel_id}`);
 
   let threadId: string | undefined;
+  let flowType: FlowType | null = null;
+  let needsWorkspace: boolean = false;
 
   try {
     // Phase 1: Pre-processing
@@ -63,11 +67,11 @@ export async function processMessage(
       };
     }
 
-    log.info('Phase: THREAD_DETECTION');
-    const thread = await detectThread(message);
+    log.info('Phase: CHANNEL_DETECTION');
+    const channel = await detectChannel(message);
 
-    if (!shouldProcess(thread)) {
-      log.info(`Message not in processable channel: ${thread.channel_name}`);
+    if (!channel.should_process) {
+      log.info(`Message not in processable channel: ${channel.channel_name}`);
       return {
         success: true,
         execution_id: executionId,
@@ -75,11 +79,11 @@ export async function processMessage(
       };
     }
 
-    threadId = thread.thread_id || thread.channel_id;
+    threadId = channel.workspace_id || channel.channel_id;
     await createExecution(threadId, message.id);
 
     log.info('Phase: FORMAT_HISTORY');
-    const history = await formatHistory(message, thread);
+    const history = await formatHistory(message, channel);
 
     log.info('Phase: SHOULD_RESPOND');
     const respondDecision = await checkShouldRespond({
@@ -97,34 +101,87 @@ export async function processMessage(
       };
     }
 
-    // Phase: WORKSPACE_SYNC (Inbound)
-    // CRITICAL: Only sync workspace if we are in a thread
-    // Social/proofreader flows don't need workspace, skip S3 sync for efficiency
-    const isSocialOrProofreader = respondDecision.task_type === 'social' || respondDecision.task_type === 'proofreader';
+    // Phase: CLASSIFY (moved before workspace sync to determine if workspace is needed)
+    log.info('Phase: CLASSIFY');
+
+    // Get session for confidence score
+    // Only if threadId is defined, otherwise skip session lookup
+    let confidenceScore = 0.5; // Default value
+    if (threadId) {
+      const session = await getSession(threadId);
+      confidenceScore = session?.confidence_score ?? 0.5;
+    }
+
+    flowType = classifyFlow(
+      respondDecision.is_technical,
+      respondDecision.task_type,
+      false,
+      filterResult.context,
+      message.content,
+      confidenceScore
+    );
+
+    // Determine if this flow needs workspace access
+    needsWorkspace = flowNeedsWorkspace(flowType);
+    log.info(`Flow ${flowType} needs workspace: ${needsWorkspace}`);
+
+    // Phase: WORKSPACE_SETUP (optional project channel creation + inbound sync)
+    // CRITICAL: Only sync workspace if flow needs it AND we are in a project channel
     let syncResult: SyncResult = { synced: [], added: [], updated: [] };
-    
-    if (thread.is_thread && !isSocialOrProofreader) {
-      log.info('Phase: WORKSPACE_SYNC');
+
+    if (needsWorkspace) {
+      log.info('Phase: WORKSPACE_SETUP');
       const chatClient = getChatClient();
       const client = getDiscordClient();
+      const config = getConfig();
 
-      // 1. Restore from S3 to workspace
-      await s3Sync.syncFromS3(threadId);
+      if (!channel.is_project_channel) {
+        log.info('Creating project channel for workspace-required flow');
+        const threadName = await generateThreadName(history.current_message);
+        const guildId = message.guild_id || config.DISCORD_GUILD_ID;
+        const parentName = config.PROJECTS_CATEGORY_NAME;
 
-      // 2. Sync latest attachments from Discord to workspace
-      // CRITICAL: Only sync if we are in a thread. NOT the main channel.
-      // Syncing main channel would download ALL history attachments.
-      if (thread.thread_id) {
+        if (chatClient && chatClient.platform !== 'discord') {
+          const newChannel = await chatClient.createProjectChannel(
+            guildId,
+            threadName,
+            parentName
+          );
+          threadId = newChannel.id;
+          channel.is_project_channel = true;
+          channel.workspace_id = newChannel.id;
+        } else if (client) {
+          const newChannel = await createProjectChannel(
+            client,
+            guildId,
+            threadName,
+            parentName
+          );
+          threadId = newChannel.id;
+          channel.is_project_channel = true;
+          channel.workspace_id = newChannel.id;
+        }
+      }
+
+      if (channel.is_project_channel && threadId) {
+        log.info('Phase: WORKSPACE_SYNC');
+
+        // 1. Restore from S3 to workspace
+        await s3Sync.syncFromS3(threadId);
+
+        // 2. Sync latest attachments from Discord to workspace
+        // CRITICAL: Only sync if we are in a project channel. NOT the main channel.
+        // Syncing main channel would download ALL history attachments.
         if (chatClient && chatClient.platform !== 'discord') {
           log.info('Skipping discord file sync for non-Discord platform');
-        } else {
-          syncResult = await discordFileSync.syncToWorkspace(client, thread.thread_id);
+        } else if (client) {
+          syncResult = await discordFileSync.syncToWorkspace(client, threadId);
         }
       } else {
-        log.info('Skipping workspace file sync (not in a thread yet)');
+        log.info('Skipping workspace file sync (project channel not available)');
       }
     } else {
-      log.info(`Skipping WORKSPACE_SYNC (not in thread or simple flow: ${respondDecision.task_type})`);
+      log.info(`Skipping WORKSPACE_SETUP (flow ${flowType} doesn't need workspace)`);
     }
     const newFilesMessage = discordFileSync.getNewFilesMessage(syncResult);
 
@@ -132,14 +189,16 @@ export async function processMessage(
 
     // Build flow context
     const flowContext: FlowContext = {
-      threadId,
-      channelId: thread.channel_id,
+      workspaceId: threadId!,
+      channelId: channel.is_project_channel ? (channel.workspace_id || channel.channel_id) : channel.channel_id,
       messageId: message.id,
       history,
       filterContext: filterResult.context,
-      isThread: thread.is_thread,
+      isProjectChannel: channel.is_project_channel,
+      needsWorkspace,
       executionId,
       userAddedFilesMessage: newFilesMessage, // Pass to flows
+      parentName: channel.parent_name ?? null,
     };
 
     // Phase 2: Route to appropriate flow
@@ -151,20 +210,7 @@ export async function processMessage(
         filterResult.context.breakglass_model
       );
     } else {
-      // Get session for confidence score
-      const session = await getSession(threadId);
-      const confidenceScore = session?.confidence_score;
-
-      log.info('Phase: CLASSIFY');
-      const flowType = classifyFlow(
-        respondDecision.is_technical,
-        respondDecision.task_type,
-        false,
-        filterResult.context,
-        message.content,
-        confidenceScore
-      );
-
+      // Flow type has already been classified above and stored in flowType
       switch (flowType) {
         case FlowType.SEQUENTIAL_THINKING:
           flowResult = await executeSequentialThinkingFlow(flowContext, message);
@@ -196,17 +242,17 @@ export async function processMessage(
 
     // Phase 3: Post-processing
     await updateExecution(executionId, {
-      gemini_response: { response_length: flowResult.response.length },
+      gemini_response: { response_length: flowResult!.response.length },
     });
 
     log.info('Phase: SEND_RESPONSE');
     await formatAndSendResponse({
-      response: flowResult.response,
-      channelId: flowResult.responseChannelId,
-      threadId: threadId,
+      response: flowResult!.response,
+      channelId: flowResult!.responseChannelId,
+      threadId: threadId!,
     });
 
-    await markExecutionCompleted(executionId, flowResult.model);
+    await markExecutionCompleted(executionId, flowResult!.model);
 
     const elapsed = Date.now() - startTime;
     log.info('========== END PROCESSING ==========');
@@ -234,14 +280,17 @@ export async function processMessage(
       error: errorMessage,
     };
   } finally {
-    // Phase: S3_SYNC (Outbound) - Always runs to preserve artifacts
-    if (threadId) {
+    // Phase: S3_SYNC (Outbound) - Only runs if flow needs workspace access
+    // This prevents unnecessary S3 syncs for social, proofreader flows that don't need persistence
+    if (threadId && needsWorkspace) {
       log.info('Phase: S3_SYNC');
       try {
         await s3Sync.syncToS3(threadId);
       } catch (syncError) {
         log.error(`Failed to sync to S3 in finally block: ${syncError}`);
       }
+    } else if (threadId && !needsWorkspace) {
+      log.info(`Skipping S3 sync (flow ${flowType} doesn't require workspace access)`);
     }
   }
 }
