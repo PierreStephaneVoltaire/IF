@@ -2,34 +2,6 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('CONFIG');
 
-export interface Config {
-  DISCORD_TOKEN: string;
-  DISCORD_BOT_ID: string;
-  DISCORD_GUILD_ID: string;
-  LITELLM_BASE_URL: string;
-  LITELLM_API_KEY: string;
-  AWS_REGION: string;
-  DYNAMODB_SESSIONS_TABLE: string;
-  DYNAMODB_EXECUTIONS_TABLE: string;
-  S3_ARTIFACT_BUCKET: string;
-  BOT_USERNAME: string;
-  STALENESS_MINUTES: number;
-  PLANNER_MODEL_ID: string;
-  // Redis configuration
-  REDIS_URL: string | undefined;
-  REDIS_ENABLED: boolean;
-  // Stoat configuration
-  STOAT_TOKEN: string | undefined;
-  STOAT_BOT_ID: string | undefined;
-  STOAT_BASE_URL: string | undefined; // e.g., https://stoat.chat/api or https://notdiscord.example.com/api
-  // Chat platform selection
-  CHAT_PLATFORM: 'discord' | 'stoat';
-  // Project category name for workspace channels
-  PROJECTS_CATEGORY_NAME: string;
-  // LiteLLM connection pooling
-  LITELLM_MAX_CONNECTIONS: number;
-}
-
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -51,10 +23,10 @@ function maskTokenEdge(token: string | undefined): string {
   return `${token.slice(0, 3)}...${token.slice(-3)} (len:${token.length})`;
 }
 
-export function loadConfig(): Config {
+export function loadConfig() {
   log.info('Loading environment variables');
 
-  const config: Config = {
+  const config = {
     DISCORD_TOKEN: requireEnv('DISCORD_TOKEN'),
     DISCORD_BOT_ID: optionalEnv('DISCORD_BOT_ID', ''),
     DISCORD_GUILD_ID: optionalEnv('DISCORD_GUILD_ID', ''),
@@ -107,9 +79,9 @@ export function loadConfig(): Config {
   return config;
 }
 
-let configInstance: Config | null = null;
+let configInstance: ReturnType<typeof loadConfig> | null = null;
 
-export function getConfig(): Config {
+export function getConfig() {
   if (!configInstance) {
     configInstance = loadConfig();
   }

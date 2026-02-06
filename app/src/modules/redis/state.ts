@@ -16,14 +16,14 @@ const SESSION_TTL_SECONDS = 3600; // 1 hour
  * Also fires-and-forgets to DynamoDB for durability
  */
 export async function updateThreadState(
-  threadId: string,
+  channelId: string,
   state: Partial<ThreadState>
 ): Promise<void> {
   const client = await getRedisClient();
 
   if (client) {
     try {
-      const threadKey = `${THREAD_KEY_PREFIX}${threadId}`;
+      const threadKey = `${THREAD_KEY_PREFIX}${channelId}`;
       const startTime = Date.now();
 
       // Use pipeline for atomic multi-operation
@@ -37,20 +37,20 @@ export async function updateThreadState(
         .exec();
 
       const elapsedMs = Date.now() - startTime;
-      log.debug(`Thread state updated in Redis for ${threadId} (${elapsedMs}ms)`);
+      log.debug(`Thread state updated in Redis for ${channelId} (${elapsedMs}ms)`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      log.error(`Failed to update thread state in Redis for ${threadId}`, { error: errorMessage });
+      log.error(`Failed to update thread state in Redis for ${channelId}`, { error: errorMessage });
     }
   }
 
   // Fire-and-forget to DynamoDB for durability
-  updateSession(threadId, {
+  updateSession(channelId, {
     ...state,
     last_discord_timestamp: new Date().toISOString(),
   }).catch((error) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error(`Failed to update session in DynamoDB for ${threadId}`, { error: errorMessage });
+    log.error(`Failed to update session in DynamoDB for ${channelId}`, { error: errorMessage });
   });
 }
 
@@ -58,14 +58,14 @@ export async function updateThreadState(
  * Get thread state from Redis (hot path)
  * Falls back to DynamoDB if Redis unavailable or key missing
  */
-export async function getThreadState(threadId: string): Promise<ThreadState | null> {
+export async function getThreadState(channelId: string): Promise<ThreadState | null> {
   return withRedisFallback(
     async (client) => {
-      const threadKey = `${THREAD_KEY_PREFIX}${threadId}`;
+      const threadKey = `${THREAD_KEY_PREFIX}${channelId}`;
       const state = await client.hGetAll(threadKey);
 
       if (Object.keys(state).length === 0) {
-        log.debug(`Thread state not found in Redis for ${threadId}`);
+        log.debug(`Thread state not found in Redis for ${channelId}`);
         return null;
       }
 
@@ -79,7 +79,7 @@ export async function getThreadState(threadId: string): Promise<ThreadState | nu
     },
     async () => {
       // Fallback to DynamoDB
-      const session = await getSession(threadId);
+      const session = await getSession(channelId);
 
       if (!session) {
         return null;
@@ -101,7 +101,7 @@ export async function getThreadState(threadId: string): Promise<ThreadState | nu
  * Cache session data in Redis for active executions
  */
 export async function cacheSession(
-  threadId: string,
+  channelId: string,
   sessionData: SessionCache
 ): Promise<void> {
   const client = await getRedisClient();
@@ -111,12 +111,12 @@ export async function cacheSession(
   }
 
   try {
-    const sessionKey = `${SESSION_KEY_PREFIX}${threadId}`;
+    const sessionKey = `${SESSION_KEY_PREFIX}${channelId}`;
 
     await client
       .multi()
       .hSet(sessionKey, {
-        threadId: sessionData.threadId,
+        channelId: sessionData.channelId,
         confidenceScore: String(sessionData.confidenceScore),
         currentTurn: String(sessionData.currentTurn),
         model: sessionData.model,
@@ -128,17 +128,17 @@ export async function cacheSession(
       .expire(sessionKey, SESSION_TTL_SECONDS)
       .exec();
 
-    log.debug(`Session cached in Redis for ${threadId}`);
+    log.debug(`Session cached in Redis for ${channelId}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error(`Failed to cache session in Redis for ${threadId}`, { error: errorMessage });
+    log.error(`Failed to cache session in Redis for ${channelId}`, { error: errorMessage });
   }
 }
 
 /**
  * Get cached session from Redis
  */
-export async function getCachedSession(threadId: string): Promise<SessionCache | null> {
+export async function getCachedSession(channelId: string): Promise<SessionCache | null> {
   const client = await getRedisClient();
 
   if (!client) {
@@ -146,7 +146,7 @@ export async function getCachedSession(threadId: string): Promise<SessionCache |
   }
 
   try {
-    const sessionKey = `${SESSION_KEY_PREFIX}${threadId}`;
+    const sessionKey = `${SESSION_KEY_PREFIX}${channelId}`;
     const data = await client.hGetAll(sessionKey);
 
     if (Object.keys(data).length === 0) {
@@ -154,7 +154,7 @@ export async function getCachedSession(threadId: string): Promise<SessionCache |
     }
 
     return {
-      threadId: data.threadId,
+      channelId: data.channelId,
       confidenceScore: parseInt(data.confidenceScore, 10) || 80,
       currentTurn: parseInt(data.currentTurn, 10) || 0,
       model: data.model || 'gemini-3-pro',
@@ -165,7 +165,7 @@ export async function getCachedSession(threadId: string): Promise<SessionCache |
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error(`Failed to get cached session from Redis for ${threadId}`, { error: errorMessage });
+    log.error(`Failed to get cached session from Redis for ${channelId}`, { error: errorMessage });
     return null;
   }
 }
@@ -173,7 +173,7 @@ export async function getCachedSession(threadId: string): Promise<SessionCache |
 /**
  * Delete cached session from Redis
  */
-export async function deleteCachedSession(threadId: string): Promise<void> {
+export async function deleteCachedSession(channelId: string): Promise<void> {
   const client = await getRedisClient();
 
   if (!client) {
@@ -181,12 +181,12 @@ export async function deleteCachedSession(threadId: string): Promise<void> {
   }
 
   try {
-    const sessionKey = `${SESSION_KEY_PREFIX}${threadId}`;
+    const sessionKey = `${SESSION_KEY_PREFIX}${channelId}`;
     await client.del(sessionKey);
-    log.debug(`Cached session deleted for ${threadId}`);
+    log.debug(`Cached session deleted for ${channelId}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error(`Failed to delete cached session for ${threadId}`, { error: errorMessage });
+    log.error(`Failed to delete cached session for ${channelId}`, { error: errorMessage });
   }
 }
 
@@ -195,7 +195,7 @@ export async function deleteCachedSession(threadId: string): Promise<void> {
  * This is the primary pattern for per-turn updates
  */
 export async function updateTurnState(
-  threadId: string,
+  channelId: string,
   turnNumber: number,
   confidence: number,
   model: string,
@@ -206,7 +206,7 @@ export async function updateTurnState(
 
   if (!client) {
     // Just update DynamoDB if Redis unavailable
-    updateSession(threadId, {
+    updateSession(channelId, {
       current_turn: turnNumber,
       confidence_score: confidence,
       model,
@@ -215,8 +215,8 @@ export async function updateTurnState(
   }
 
   try {
-    const threadKey = `${THREAD_KEY_PREFIX}${threadId}`;
-    const lockKey = `lock:${threadId}`;
+    const threadKey = `${THREAD_KEY_PREFIX}${channelId}`;
+    const lockKey = `lock:${channelId}`;
     const startTime = Date.now();
 
     // Pipeline all operations together for single round-trip
@@ -234,9 +234,9 @@ export async function updateTurnState(
       .exec();
 
     const elapsedMs = Date.now() - startTime;
-    log.debug(`Turn state updated in pipeline for ${threadId} turn ${turnNumber} (${elapsedMs}ms)`);
+    log.debug(`Turn state updated in pipeline for ${channelId} turn ${turnNumber} (${elapsedMs}ms)`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error(`Failed to update turn state for ${threadId}`, { error: errorMessage });
+    log.error(`Failed to update turn state for ${channelId}`, { error: errorMessage });
   }
 }

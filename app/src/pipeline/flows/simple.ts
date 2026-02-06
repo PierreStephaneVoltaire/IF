@@ -12,7 +12,7 @@ export async function executeSimpleFlow(
   log.info('Phase: SIMPLE_FLOW');
   
   const result = await executeSimple({
-    threadId: context.workspaceId,
+    channelId: context.channelId,
     history: context.history,
     isTechnical: false,
     taskType,

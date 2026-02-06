@@ -154,7 +154,7 @@ DynamoDB persistence for debugging:
 
 **Table Structure:**
 ```
-pk: threadId
+pk: channelid
 sk: TURN#{turn}#{timestamp}
 ttl: 30 days auto-expire
 ```
@@ -250,13 +250,13 @@ const result = await executeSequentialThinkingLoop(
     currentTurn: 0,
     model: getModelForAgent('python-coder'),
     agentRole: 'python-coder',
-    tools: await getTools(threadId),
+    tools: await getTools(channelid),
     checkpointInterval: 5,
   },
   'Refactor the authentication module',
-  threadId,
+  channelid,
   80,  // Initial confidence
-  `/workspace/${threadId}`
+  `/workspace/${channelid}`
 );
 
 if (result.success) {
@@ -274,8 +274,8 @@ if (result.success) {
 ```bash
 aws dynamodb query \
   --table-name discord-messages \
-  --key-condition-expression "pk = :threadId" \
-  --expression-attribute-values '{":threadId":{"S":"1234567890"}}'
+  --key-condition-expression "pk = :channelid" \
+  --expression-attribute-values '{":channelid":{"S":"1234567890"}}'
 ```
 
 **Consume events:**

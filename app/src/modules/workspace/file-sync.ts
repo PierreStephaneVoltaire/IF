@@ -22,17 +22,17 @@ export interface SyncResult {
 export class DiscordFileSync {
     // Store known files to detect new ones
     // In a real app, this should probably be in DynamoDB
-    private knownFiles: Map<string, Set<string>> = new Map(); // threadId -> Set of filenames
+    private knownFiles: Map<string, Set<string>> = new Map(); // channelid -> Set of filenames
 
     async syncToWorkspace(
         client: Client,
-        threadId: string,
+        channelid: string,
         historyLimit: number = 100
     ): Promise<SyncResult> {
-        log.info(`Syncing attachments for thread: ${threadId}`);
+        log.info(`Syncing attachments for thread: ${channelid}`);
 
         // 1. Fetch history
-        const messages = await getMessages(client, threadId, historyLimit);
+        const messages = await getMessages(client, channelid, historyLimit);
 
         // 2. Extract and de-duplicate attachments (keep latest)
         const latestAttachments = new Map<string, AttachmentInfo>();
@@ -59,7 +59,7 @@ export class DiscordFileSync {
             updated: []
         };
 
-        const threadKnownFiles = this.getKnownFiles(threadId);
+        const threadKnownFiles = this.getKnownFiles(channelid);
 
         // 3. Download and write to workspace
         for (const [filename, info] of latestAttachments.entries()) {
@@ -71,7 +71,7 @@ export class DiscordFileSync {
                 }
 
                 const buffer = await response.arrayBuffer();
-                await workspaceManager.writeFile(threadId, filename, Buffer.from(buffer));
+                await workspaceManager.writeFile(channelid, filename, Buffer.from(buffer));
 
                 result.synced.push(filename);
 
@@ -90,11 +90,11 @@ export class DiscordFileSync {
         return result;
     }
 
-    private getKnownFiles(threadId: string): Set<string> {
-        if (!this.knownFiles.has(threadId)) {
-            this.knownFiles.set(threadId, new Set());
+    private getKnownFiles(channelid: string): Set<string> {
+        if (!this.knownFiles.has(channelid)) {
+            this.knownFiles.set(channelid, new Set());
         }
-        return this.knownFiles.get(threadId)!;
+        return this.knownFiles.get(channelid)!;
     }
 
     getNewFilesMessage(syncResult: SyncResult): string {

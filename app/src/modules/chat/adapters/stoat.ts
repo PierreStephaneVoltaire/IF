@@ -12,7 +12,6 @@ import type {
   ChatMessage,
   ChatReaction,
   SendMessageOptions,
-  ChatThread,
   ChatChannel,
 } from '../types';
 import { createLogger } from '../../../utils/logger';
@@ -29,6 +28,8 @@ export interface StoatAdapterConfig {
 interface StoatMessage {
   id: string;
   channelId: string;
+  guildId?: string; // Stoat may have serverId or guildId
+  serverId?: string; // Alternative name for guild/server ID
   content: string;
   author: {
     id: string;
@@ -49,6 +50,8 @@ interface StoatMessage {
   timestamp: string;
   channel: {
     sendMessage: (content: string) => Promise<unknown>;
+    guildId?: string; // May be on the channel object
+    serverId?: string;
   };
   reply?: {
     channelId: string;
@@ -81,7 +84,7 @@ export class StoatAdapter implements ChatClient {
   private messageHandler?: (message: ChatMessage) => Promise<void>;
   private reactionHandler?: (reaction: ChatReaction) => Promise<void>;
   private readyHandler?: () => Promise<void>;
-  private threadDeleteHandler?: (threadId: string) => Promise<void>;
+  private threadDeleteHandler?: (channelid: string) => Promise<void>;
 
   constructor(config: StoatAdapterConfig) {
     this.config = config;
@@ -153,10 +156,13 @@ export class StoatAdapter implements ChatClient {
   }
 
   private convertMessage(message: StoatMessage): ChatMessage {
+    // Try to get guild/server ID from message or channel
+    const guildId = message.guildId || message.serverId || message.channel.guildId || message.channel.serverId || null;
+    
     return {
       id: message.id,
       channelId: message.channelId,
-      guildId: null, // Stoat may have different server/guild concept
+      guildId: guildId,
       content: message.content,
       author: {
         id: message.author.id,
@@ -211,6 +217,7 @@ export class StoatAdapter implements ChatClient {
   }
 
   onMessage(handler: (message: ChatMessage) => Promise<void>): void {
+    log.info('Registering message handler for Stoat');
     this.messageHandler = handler;
   }
 
@@ -222,7 +229,7 @@ export class StoatAdapter implements ChatClient {
     this.readyHandler = handler;
   }
 
-  onThreadDelete(handler: (threadId: string) => Promise<void>): void {
+  onThreadDelete(handler: (channelid: string) => Promise<void>): void {
     this.threadDeleteHandler = handler;
   }
 
@@ -361,14 +368,8 @@ export class StoatAdapter implements ChatClient {
     log.debug(`Adding reaction ${emoji} to message ${messageId} in channel ${channelId}`);
   }
 
-  async createThread(channelId: string, messageId: string, name: string): Promise<ChatThread> {
-    // Stoat thread creation API may differ
-    log.info(`Creating thread in Stoat channel ${channelId}: ${name}`);
-    return {
-      id: `${channelId}-thread-${Date.now()}`,
-      name: name.substring(0, 100),
-      channelId,
-    };
+  async createThread(channelId: string, messageId: string, name: string): Promise<ChatChannel> {
+    throw new Error('createThread is deprecated; use createProjectChannel instead');
   }
 
   async createProjectChannel(

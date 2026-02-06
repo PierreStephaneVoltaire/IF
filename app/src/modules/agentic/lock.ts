@@ -3,7 +3,7 @@ import { createLogger } from '../../utils/logger';
 const log = createLogger('AGENTIC:LOCK');
 
 export interface ExecutionLock {
-  threadId: string;
+  channelId: string;
   abort: boolean;
   currentTurn: number;
   startedAt: Date;
@@ -16,16 +16,16 @@ const executionLocks = new Map<string, ExecutionLock>();
 /**
  * Creates a new execution lock for a thread
  */
-export function createLock(threadId: string): ExecutionLock {
+export function createLock(channelId: string): ExecutionLock {
   const lock: ExecutionLock = {
-    threadId,
+    channelId,
     abort: false,
     currentTurn: 0,
     startedAt: new Date(),
   };
   
-  executionLocks.set(threadId, lock);
-  log.info(`Created execution lock for thread ${threadId}`);
+  executionLocks.set(channelId, lock);
+  log.info(`Created execution lock for channel ${channelId}`);
   
   return lock;
 }
@@ -33,22 +33,22 @@ export function createLock(threadId: string): ExecutionLock {
 /**
  * Gets an existing lock for a thread
  */
-export function getLock(threadId: string): ExecutionLock | undefined {
-  return executionLocks.get(threadId);
+export function getLock(channelId: string): ExecutionLock | undefined {
+  return executionLocks.get(channelId);
 }
 
 /**
  * Checks if a thread has an active lock
  */
-export function hasActiveLock(threadId: string): boolean {
-  return executionLocks.has(threadId);
+export function hasActiveLock(channelId: string): boolean {
+  return executionLocks.has(channelId);
 }
 
 /**
  * Updates the current turn for a lock
  */
-export function updateLockTurn(threadId: string, turn: number): void {
-  const lock = executionLocks.get(threadId);
+export function updateLockTurn(channelId: string, turn: number): void {
+  const lock = executionLocks.get(channelId);
   if (lock) {
     lock.currentTurn = turn;
   }
@@ -57,23 +57,23 @@ export function updateLockTurn(threadId: string, turn: number): void {
 /**
  * Sets the abort flag on a lock
  */
-export function abortLock(threadId: string): void {
-  const lock = executionLocks.get(threadId);
+export function abortLock(channelId: string): void {
+  const lock = executionLocks.get(channelId);
   if (lock) {
     lock.abort = true;
-    log.warn(`Abort flag set for thread ${threadId}`);
+    log.warn(`Abort flag set for channel ${channelId}`);
   }
 }
 
 /**
  * Releases a lock
  */
-export function releaseLock(threadId: string): void {
-  const lock = executionLocks.get(threadId);
+export function releaseLock(channelId: string): void {
+  const lock = executionLocks.get(channelId);
   if (lock) {
     const duration = Date.now() - lock.startedAt.getTime();
-    log.info(`Released execution lock for thread ${threadId} (duration: ${duration}ms, turns: ${lock.currentTurn})`);
-    executionLocks.delete(threadId);
+    log.info(`Released execution lock for channel ${channelId} (duration: ${duration}ms, turns: ${lock.currentTurn})`);
+    executionLocks.delete(channelId);
   }
 }
 
@@ -87,7 +87,7 @@ export function getAllLocks(): ExecutionLock[] {
 /**
  * Checks if a lock has been aborted
  */
-export function isAborted(threadId: string): boolean {
-  const lock = executionLocks.get(threadId);
+export function isAborted(channelId: string): boolean {
+  const lock = executionLocks.get(channelId);
   return lock?.abort ?? false;
 }

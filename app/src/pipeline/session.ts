@@ -6,13 +6,13 @@ import type { PlanningResult } from '../modules/litellm/types';
 const log = createLogger('SESSION');
 
 export async function setupSession(
-  threadId: string | null,
+  workspaceId: string | null,
   channelId: string
 ): Promise<{ session: Session; branchName: string; isNew: boolean }> {
-  const effectiveId = threadId || channelId;
-  log.info(`Looking up session for thread ${effectiveId}`);
+  const effectiveId = workspaceId || channelId;
+  log.info(`Looking up session for channel ${effectiveId}`);
 
-  const branchName = `thread-${effectiveId}`;
+  const branchName = `channel-${effectiveId}`;
   log.info(`Branch name: ${branchName}`);
 
   const existingSession = await getOrCreateSession(effectiveId, branchName);
@@ -29,13 +29,13 @@ export async function setupSession(
 }
 
 export async function updateSessionAfterExecution(
-  threadId: string,
+  channelId: string,
   planning: PlanningResult | null,
   currentMessage: string,
   timestamp: string,
   currentSession?: Session
 ): Promise<void> {
-  log.info(`Updating session after execution: ${threadId}`);
+  log.info(`Updating session after execution: ${channelId}`);
 
   const updates: SessionUpdate = {
     last_discord_timestamp: timestamp,
@@ -60,6 +60,6 @@ export async function updateSessionAfterExecution(
     }
   }
 
-  await updateSession(threadId, updates);
+  await updateSession(channelId, updates);
   log.info('Session updated successfully');
 }

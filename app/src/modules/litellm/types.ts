@@ -81,6 +81,11 @@ export enum TaskType {
 
   // Shell Command Suggestions
   SHELL_COMMAND = 'shell-command',
+
+  // Thinking Flows
+  MORAL_ETHICAL = 'moral-ethical',
+  PHILOSOPHICAL = 'philosophical',
+  FACTUAL_TRIVIA = 'factual-trivia',
 }
 
 export enum AgentRole {
@@ -105,6 +110,9 @@ export enum FlowType {
   ARCHITECTURE = 'architecture', // Theoretical/design planning flow (no code generation)
   SOCIAL = 'social', // NEW: Social interactions (tier 1 models)
   PROOFREADER = 'proofreader', // NEW: Grammar/spellcheck only (tier 1 models)
+  DIALECTIC = 'dialectic', // NEW: Thesis → Antithesis → Synthesis (philosophical)
+  CONSENSUS = 'consensus', // NEW: Multi-source factual consensus
+  ANGEL_DEVIL = 'angel-devil', // NEW: Angel/Devil debate (moral/ethical)
 }
 
 export enum TaskComplexity {
@@ -208,7 +216,7 @@ export interface ShouldRespondContext {
 }
 
 export interface PlanningContext {
-  thread_id: string;
+  channel_id: string;
   branch_name: string;
   sub_topics: string;
   history: string;

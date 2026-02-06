@@ -13,13 +13,13 @@ Manages isolated workspaces for each Discord thread, syncing files to/from S3 an
 Central orchestrator for workspace operations:
 
 **Core Functions:**
-- `initializeWorkspace(threadId)` - Creates workspace directory, syncs from S3
-- `cleanupWorkspace(threadId)` - Syncs to S3, deletes local workspace
-- `readFile(threadId, filePath)` - Reads file from workspace
-- `writeFile(threadId, filePath, content)` - Writes file to workspace
-- `listFiles(threadId)` - Lists all files in workspace
-- `syncToS3(threadId)` - Uploads workspace to S3
-- `syncFromS3(threadId)` - Downloads workspace from S3
+- `initializeWorkspace(channelid)` - Creates workspace directory, syncs from S3
+- `cleanupWorkspace(channelid)` - Syncs to S3, deletes local workspace
+- `readFile(channelid, filePath)` - Reads file from workspace
+- `writeFile(channelid, filePath, content)` - Writes file to workspace
+- `listFiles(channelid)` - Lists all files in workspace
+- `syncToS3(channelid)` - Uploads workspace to S3
+- `syncFromS3(channelid)` - Downloads workspace from S3
 
 **Workspace Structure:**
 ```
@@ -71,19 +71,19 @@ Handles Discord attachment downloads and uploads:
 
 **Inbound (User → Workspace):**
 ```typescript
-await downloadAttachments(threadId, message.attachments);
+await downloadAttachments(channelid, message.attachments);
 // Downloads from Discord URLs → /workspace/<thread-id>/
 ```
 
 **Outbound (Workspace → Discord):**
 ```typescript
-await uploadFileToDiscord(threadId, 'src/index.ts', channelId);
+await uploadFileToDiscord(channelid, 'src/index.ts', channelId);
 // Reads from workspace → Sends as Discord attachment
 ```
 
 **Key Functions:**
-- `downloadAttachments(threadId, attachments)` - Save Discord files to workspace
-- `uploadFileToDiscord(threadId, filePath, channelId)` - Send file as Discord attachment
+- `downloadAttachments(channelid, attachments)` - Save Discord files to workspace
+- `uploadFileToDiscord(channelid, filePath, channelId)` - Send file as Discord attachment
 - `getFileExtension(filename)` - Extract extension for validation
 
 ### Response Parser (`response-parser.ts`)
@@ -127,7 +127,7 @@ All tests pass!
 
 ```typescript
 // Automatically called when execution starts
-await workspaceManager.initializeWorkspace(threadId);
+await workspaceManager.initializeWorkspace(channelid);
 // → Creates /workspace/<thread-id>/
 // → Syncs from S3 if previous state exists
 // → Otherwise starts with empty workspace
@@ -137,7 +137,7 @@ await workspaceManager.initializeWorkspace(threadId);
 
 ```typescript
 // Discord message handler
-await downloadAttachments(threadId, message.attachments);
+await downloadAttachments(channelid, message.attachments);
 // → Saves files to /workspace/<thread-id>/
 // → Available immediately for model execution
 ```
@@ -150,12 +150,12 @@ const result = await chatCompletion({
   messages: [
     {
       role: 'system',
-      content: `You have access to workspace at /workspace/${threadId}. ` +
+      content: `You have access to workspace at /workspace/${channelid}. ` +
                `Files uploaded by user are already there.`
     },
     // ...
   ],
-  tools: await getTools(threadId), // MCP filesystem tools
+  tools: await getTools(channelid), // MCP filesystem tools
 });
 
 // Model can:
@@ -192,7 +192,7 @@ for (const part of parts) {
     await sendMessage(channelId, part.content);
   } else if (part.type === 'file') {
     // Read from workspace and attach
-    const content = await workspaceManager.readFile(threadId, part.filePath);
+    const content = await workspaceManager.readFile(channelid, part.filePath);
     await sendMessage(channelId, {
       content: `📎 **${part.content}**`,
       files: [{ name: part.content, data: content }]
@@ -205,7 +205,7 @@ for (const part of parts) {
 
 ```typescript
 // Automatically called after execution
-await workspaceManager.syncToS3(threadId);
+await workspaceManager.syncToS3(channelid);
 // → Uploads /workspace/<thread-id>/ to S3
 // → Preserves state for next execution
 ```
@@ -214,7 +214,7 @@ await workspaceManager.syncToS3(threadId);
 
 ```typescript
 // Called when thread is deleted or after long inactivity
-await workspaceManager.cleanupWorkspace(threadId);
+await workspaceManager.cleanupWorkspace(channelid);
 // → Syncs to S3 one final time
 // → Deletes /workspace/<thread-id>/
 // → S3 data remains for history
@@ -226,7 +226,7 @@ await workspaceManager.cleanupWorkspace(threadId);
 
 ```typescript
 try {
-  const content = await workspaceManager.readFile(threadId, 'missing.txt');
+  const content = await workspaceManager.readFile(channelid, 'missing.txt');
 } catch (err) {
   // Sends Discord message:
   // ⚠️ *Could not attach file `missing.txt`. It may not have been created or saved properly.*
@@ -237,7 +237,7 @@ try {
 
 ```typescript
 try {
-  await workspaceManager.syncToS3(threadId);
+  await workspaceManager.syncToS3(channelid);
 } catch (err) {
   log.error(`S3 sync failed: ${err.message}`);
   // Continues execution - local files still available

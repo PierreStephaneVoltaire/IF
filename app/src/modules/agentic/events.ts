@@ -6,14 +6,14 @@ const log = createLogger('AGENTIC:EVENTS');
 const QUEUE_URL = process.env.AGENTIC_EVENTS_QUEUE_URL;
 
 export type AgenticEvent =
-  | { type: 'execution_started'; threadId: string; taskType: string; agentRole: string; }
-  | { type: 'turn_completed'; threadId: string; turn: number; confidence: number; status: string; }
-  | { type: 'model_escalated'; threadId: string; from: string; to: string; reason: string; }
-  | { type: 'execution_completed'; threadId: string; totalTurns: number; finalStatus: string; }
-  | { type: 'execution_aborted'; threadId: string; reason: 'user_stop' | 'max_turns' | 'stuck'; }
-  | { type: 'commit_created'; threadId: string; branch: string; commitHash: string; }
-  | { type: 'branch_merged'; threadId: string; branch: string; }
-  | { type: 'branch_rejected'; threadId: string; branch: string; };
+  | { type: 'execution_started'; channelId: string; taskType: string; agentRole: string; }
+  | { type: 'turn_completed'; channelId: string; turn: number; confidence: number; status: string; }
+  | { type: 'model_escalated'; channelId: string; from: string; to: string; reason: string; }
+  | { type: 'execution_completed'; channelId: string; totalTurns: number; finalStatus: string; }
+  | { type: 'execution_aborted'; channelId: string; reason: 'user_stop' | 'max_turns' | 'stuck'; }
+  | { type: 'commit_created'; channelId: string; branch: string; commitHash: string; }
+  | { type: 'branch_merged'; channelId: string; branch: string; }
+  | { type: 'branch_rejected'; channelId: string; branch: string; };
 
 let sqsClient: SQSClient | null = null;
 
@@ -45,15 +45,15 @@ export async function emitEvent(event: AgenticEvent): Promise<void> {
             DataType: 'String',
             StringValue: event.type,
           },
-          threadId: {
+          channelId: {
             DataType: 'String',
-            StringValue: 'threadId' in event ? event.threadId : 'unknown',
+            StringValue: 'channelId' in event ? event.channelId : 'unknown',
           },
         },
       })
     );
 
-    log.debug(`Emitted event: ${event.type} for thread ${'threadId' in event ? event.threadId : 'unknown'}`);
+    log.debug(`Emitted event: ${event.type} for channel ${'channelId' in event ? event.channelId : 'unknown'}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     log.error(`Failed to emit event to SQS: ${errorMessage}`);
@@ -65,7 +65,7 @@ export async function emitEvent(event: AgenticEvent): Promise<void> {
  * Emits an execution started event
  */
 export async function emitExecutionStarted(params: {
-  threadId: string;
+  channelId: string;
   taskType: string;
   agentRole: string;
 }): Promise<void> {
@@ -79,7 +79,7 @@ export async function emitExecutionStarted(params: {
  * Emits a turn completed event
  */
 export async function emitTurnCompleted(params: {
-  threadId: string;
+  channelId: string;
   turn: number;
   confidence: number;
   status: string;
@@ -94,7 +94,7 @@ export async function emitTurnCompleted(params: {
  * Emits a model escalated event
  */
 export async function emitModelEscalated(params: {
-  threadId: string;
+  channelId: string;
   from: string;
   to: string;
   reason: string;
@@ -109,7 +109,7 @@ export async function emitModelEscalated(params: {
  * Emits an execution completed event
  */
 export async function emitExecutionCompleted(params: {
-  threadId: string;
+  channelId: string;
   totalTurns: number;
   finalStatus: string;
 }): Promise<void> {
@@ -123,7 +123,7 @@ export async function emitExecutionCompleted(params: {
  * Emits an execution aborted event
  */
 export async function emitExecutionAborted(params: {
-  threadId: string;
+  channelId: string;
   reason: 'user_stop' | 'max_turns' | 'stuck';
 }): Promise<void> {
   await emitEvent({
@@ -136,7 +136,7 @@ export async function emitExecutionAborted(params: {
  * Emits a commit created event
  */
 export async function emitCommitCreated(params: {
-  threadId: string;
+  channelId: string;
   branch: string;
   commitHash: string;
 }): Promise<void> {
@@ -150,7 +150,7 @@ export async function emitCommitCreated(params: {
  * Emits a branch merged event
  */
 export async function emitBranchMerged(params: {
-  threadId: string;
+  channelId: string;
   branch: string;
 }): Promise<void> {
   await emitEvent({
@@ -163,7 +163,7 @@ export async function emitBranchMerged(params: {
  * Emits a branch rejected event
  */
 export async function emitBranchRejected(params: {
-  threadId: string;
+  channelId: string;
   branch: string;
 }): Promise<void> {
   await emitEvent({

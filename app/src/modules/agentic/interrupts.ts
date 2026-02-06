@@ -28,17 +28,17 @@ const COMMAND_KEYWORDS: Record<string, InterruptCommand['type']> = {
  * Checks Discord for emoji reactions and command messages
  * 
  * TODO Phase 2: Implement Discord API integration
- * - Use getDiscordClient() to fetch messages from threadId
+ * - Use getDiscordClient() to fetch messages from channelId
  * - Check reactions on bot's recent messages (last 5-10)
  * - Parse command messages using parseInterruptCommand()
  * - Return most recent interrupt, prioritizing STOP > CLARIFY > others
  */
-export async function checkForInterrupts(threadId: string): Promise<InterruptCommand | null> {
+export async function checkForInterrupts(channelId: string): Promise<InterruptCommand | null> {
   // TODO: Implement Discord API calls to check for:
   // 1. Emoji reactions on recent progress messages
   // 2. Command messages in the thread
   
-  log.debug(`Checking for interrupts in thread ${threadId}`);
+  log.debug(`Checking for interrupts in channel ${channelId}`);
   
   // Placeholder implementation
   // In production, this would:

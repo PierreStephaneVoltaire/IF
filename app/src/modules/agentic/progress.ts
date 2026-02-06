@@ -1,13 +1,15 @@
 import { EmbedBuilder, TextChannel, ThreadChannel, Message } from 'discord.js';
 import { getDiscordClient } from '../discord/index';
 import { getChatClient } from '../chat';
+import { getConfig } from '../../config';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('AGENTIC:PROGRESS');
 
 export interface ProgressUpdate {
   type: 'turn_start' | 'turn_complete' | 'tool_execution' | 'checkpoint' | 'escalation' | 'clarification_request' |
-  'planning' | 'should_respond' | 'reflection' | 'branching' | 'prompt_ready';
+  'planning' | 'should_respond' | 'reflection' | 'branching' | 'prompt_ready' |
+  'dialectic' | 'consensus' | 'angel_devil';
   turnNumber?: number;
   maxTurns?: number;
   confidence?: number;
@@ -25,77 +27,66 @@ export interface ProgressUpdate {
   promptPreview?: string;
   inputTokens?: number;
   outputTokens?: number;
+  dialecticPhase?: 'thesis' | 'antithesis' | 'synthesis';
+  consensusPhase?: 'independent' | 'judging';
+  angelDevilPhase?: 'debating' | 'judging';
 }
 
 /**
- * Streams progress updates to Discord thread
+ * Streams progress updates to a channel
  */
 /**
  * Posts a commit message to Discord with reaction options
  */
 export async function postCommitMessage(
-  threadId: string,
+  channelId: string,
   commit: { message: string; branch: string; commitHash: string; files: string[] }
 ): Promise<string> {
-  try {
-    const client = getDiscordClient();
-    const channel = await client.channels.fetch(threadId);
-
-    if (!channel || !channel.isTextBased()) {
-      throw new Error(`Channel ${threadId} is not text-based`);
-    }
-
-    const textChannel = channel as TextChannel | ThreadChannel;
-
-    const embed = new EmbedBuilder()
-      .setTitle(`📝 Commit: ${commit.message}`)
-      .setDescription(
-        `**Branch:** \`${commit.branch}\`\n` +
-        `**Files:** ${commit.files.join(', ') || 'None'}\n` +
-        `**Hash:** \`${commit.commitHash.substring(0, 7)}\``
-      )
-      .setFooter({ text: '👍 to merge | 👎 to reject' })
-      .setColor(0x00ff00)
-      .setTimestamp();
-
-    const message = await textChannel.send({ embeds: [embed] });
-
-    // Add reaction options
-    await message.react('👍');
-    await message.react('👎');
-
-    log.info(`Posted commit message ${message.id} for branch ${commit.branch}`);
-    return message.id;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error(`Failed to post commit message: ${errorMessage}`);
-    throw error;
-  }
+  throw new Error('Commit workflow is disabled in channel-based mode');
 }
 
 export async function streamProgressToDiscord(
-  threadId: string,
+  channelId: string,
   update: ProgressUpdate
 ): Promise<void> {
   try {
-  const chatClient = getChatClient();
+    const chatClient = getChatClient();
     if (chatClient && chatClient.platform !== 'discord') {
       const summary = update.clarificationMessage
         || update.promptPreview
         || update.phase
         || update.status
         || update.type;
-      await chatClient.sendMessage(threadId, {
+      await chatClient.sendMessage(channelId, {
         content: `**${update.type}** ${summary ? `- ${summary}` : ''}`,
       });
       return;
     }
+    const config = getConfig();
+    if (config.CHAT_PLATFORM !== 'discord') {
+      log.warn('Skipping Discord progress update: Discord client not available for non-Discord platform', {
+        platform: config.CHAT_PLATFORM,
+        channelId,
+        updateType: update.type,
+      });
+      return;
+    }
 
-    const client = getDiscordClient();
-    const channel = await client.channels.fetch(threadId);
+    let client: ReturnType<typeof getDiscordClient>;
+    try {
+      client = getDiscordClient();
+    } catch (error) {
+      log.warn('Skipping Discord progress update: Discord client not initialized', {
+        channelId,
+        updateType: update.type,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    const channel = await client.channels.fetch(channelId);
 
     if (!channel || (!channel.isTextBased() && !(channel instanceof ThreadChannel))) {
-      log.warn(`Channel ${threadId} not found or not text-based`);
+      log.warn(`Channel ${channelId} not found or not text-based`);
       return;
     }
 
@@ -311,7 +302,7 @@ export async function streamProgressToDiscord(
         log.debug(`Unknown progress update type: ${update.type}`);
     }
   } catch (error) {
-    log.error('Failed to send progress update to Discord', { error, threadId, updateType: update.type });
+    log.error('Failed to send progress update to Discord', { error, channelId, updateType: update.type });
   }
 }
 

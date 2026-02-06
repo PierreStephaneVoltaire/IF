@@ -7,9 +7,9 @@ const log = createLogger('LITELLM:EXECUTOR');
 
 export async function executeTask(
   context: ExecuteContext,
-  threadId: string
+  channelid: string
 ): Promise<string> {
-  log.info(`executeTask for thread ${threadId}`);
+  log.info(`executeTask for thread ${channelid}`);
   log.info(`Branch: ${context.branchName}`);
 
   const tools = await getTools();
@@ -57,11 +57,11 @@ Use the provided tools to:
 export async function executeSimpleTask(
   promptCategory: string,
   history: string,
-  threadId: string,
+  channelid: string,
   model?: string,
   enableTools: boolean = false
 ): Promise<string> {
-  log.info(`executeSimpleTask for thread ${threadId}, prompt: ${promptCategory}, model: ${model || 'general'}, tools: ${enableTools}`);
+  log.info(`executeSimpleTask for thread ${channelid}, prompt: ${promptCategory}, model: ${model || 'general'}, tools: ${enableTools}`);
 
   const systemPrompt = loadPrompt(promptCategory);
   log.info(`System prompt loaded: ${promptCategory}, length: ${systemPrompt.length}`);

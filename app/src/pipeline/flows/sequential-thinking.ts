@@ -21,13 +21,13 @@ export async function executeSequentialThinkingFlow(
     log.info('Phase: SEQUENTIAL_THINKING_FLOW');
 
     // Project channel creation handled in pipeline
-    const finalThreadId = context.workspaceId;
+    const finalChannelId = context.workspaceId;
     const responseChannelId = context.workspaceId;
 
     // Setup session (this gets or creates the session in DynamoDB)
-    const sessionResult = await setupSession(finalThreadId, context.channelId);
+    const sessionResult = await setupSession(finalChannelId, context.channelId);
     const branchName = sessionResult.branchName;
-    const workspacePath = `/workspace/${finalThreadId}`;
+    const workspacePath = `/workspace/${finalChannelId}`;
 
     // Process attachments
     const processedAttachments = await processAttachments(
@@ -43,7 +43,7 @@ export async function executeSequentialThinkingFlow(
 
     // Generate plan (with Reflexion context)
     const planning = await createPlan({
-        threadId: finalThreadId,
+        channelId: finalChannelId,
         branchName: sessionResult.branchName,
         session: sessionResult.session,
         history: context.history,
@@ -69,7 +69,7 @@ export async function executeSequentialThinkingFlow(
             checkpointInterval: getCheckpointInterval(planning.complexity),
         },
         planning.reformulated_prompt,
-        finalThreadId,
+        finalChannelId,
         sessionResult.session.confidence_score,
         workspacePath
     );
@@ -80,7 +80,7 @@ export async function executeSequentialThinkingFlow(
     // Sync workspace to S3 before reflection
     try {
         const { s3Sync } = await import('../../modules/workspace/s3-sync');
-        await s3Sync.syncToS3(finalThreadId);
+        await s3Sync.syncToS3(finalChannelId);
     } catch (e) {
         log.warn(`S3 sync before reflection failed: ${e}`);
     }
@@ -135,7 +135,7 @@ export async function executeSequentialThinkingFlow(
     };
 
     await updateSessionAfterExecution(
-        finalThreadId,
+        finalChannelId,
         updatedPlanning,
         context.history.current_message,
         message.timestamp,
@@ -143,7 +143,7 @@ export async function executeSequentialThinkingFlow(
     );
 
     // Save Reflexion data to DynamoDB
-    await updateSession(finalThreadId, {
+    await updateSession(finalChannelId, {
         reflections: updatedReflections,
         key_insights: updatedKeyInsights,
         last_trajectory_summary: trajectorySummaryText,

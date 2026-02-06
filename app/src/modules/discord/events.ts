@@ -48,7 +48,7 @@ export function setupEventHandlers(client: Client, onMessage: MessageHandler): v
 
   client.on('messageCreate', async (message: Message) => {
     log.info(`on_message: ${message.id} in channel ${message.channel.id}`);
-
+    log.info(`Message content: ${message.guildId}`);
     if (message.author.bot) return;
 
     const payload = messageToPayload(message);
@@ -73,15 +73,15 @@ export function setupEventHandlers(client: Client, onMessage: MessageHandler): v
       }
     }
 
-    const threadId = reaction.message.channelId;
+    const channelid = reaction.message.channelId;
     const emoji = reaction.emoji.name;
 
     if (emoji === '👍') {
-      log.info(`Positive feedback received for thread ${threadId}`);
-      await updateSessionConfidence(threadId, 15);
+      log.info(`Positive feedback received for thread ${channelid}`);
+      await updateSessionConfidence(channelid, 15);
     } else if (emoji === '👎') {
-      log.info(`Negative feedback received for thread ${threadId}`);
-      await updateSessionConfidence(threadId, -20);
+      log.info(`Negative feedback received for thread ${channelid}`);
+      await updateSessionConfidence(channelid, -20);
     }
   });
 

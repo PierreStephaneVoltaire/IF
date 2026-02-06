@@ -146,7 +146,7 @@ const updatedInsights = addKeyInsight(
 );
 
 // Save to DynamoDB
-await updateSession(threadId, {
+await updateSession(channelid, {
   reflections: updatedReflections,
   key_insights: updatedInsights,
   last_trajectory_summary: "Turns: 8, Tools: write_file, execute_command, Status: success"
@@ -204,7 +204,7 @@ const evaluation = await evaluator.evaluateTrajectory(...);
 const reflection = buildReflection(planning.reflection, evaluation);
 
 // Save to DynamoDB
-await updateSession(threadId, {
+await updateSession(channelid, {
   reflections: addReflectionToHistory(session.reflections, reflection),
   key_insights: addKeyInsight(session.key_insights, reflection.key_insight),
   last_trajectory_summary: generateSummary(turns),

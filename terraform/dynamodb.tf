@@ -28,10 +28,10 @@ resource "aws_dynamodb_table" "chat_history" {
 resource "aws_dynamodb_table" "discord_sessions" {
   name         = "discord_sessions"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "thread_id"
+  hash_key     = "channel_id"
 
   attribute {
-    name = "thread_id"
+    name = "channel_id"
     type = "S"
   }
 
@@ -51,13 +51,13 @@ resource "aws_dynamodb_table" "discord_executions" {
   }
 
   attribute {
-    name = "thread_id"
+    name = "channel_id"
     type = "S"
   }
 
   global_secondary_index {
-    name            = "thread_id-index"
-    hash_key        = "thread_id"
+    name            = "channel_id-index"
+    hash_key        = "channel_id"
     projection_type = "ALL"
   }
 
@@ -75,11 +75,11 @@ resource "aws_dynamodb_table" "discord_executions" {
 resource "aws_dynamodb_table" "discord_messages" {
   name         = "discord-messages"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "threadId"
+  hash_key     = "channelid"
   range_key    = "sortKey"
 
   attribute {
-    name = "threadId"
+    name = "channelid"
     type = "S"
   }
 

@@ -41,63 +41,63 @@ export class WorkspaceManager {
         return podName;
     }
 
-    async ensureWorkspace(threadId: string): Promise<string> {
-        const path = `/workspace/${threadId}`;
+    async ensureWorkspace(channelid: string): Promise<string> {
+        const path = `/workspace/${channelid}`;
         log.info(`Ensuring workspace: ${path}`);
 
         const podName = await this.getSandboxPod();
         log.info(`Executing mkdir in pod: ${podName}, container: mcp-shell`);
 
-        await this.runCommand(threadId, ['mkdir', '-p', path]);
+        await this.runCommand(channelid, ['mkdir', '-p', path]);
         
         log.info(`✅ Workspace directory created successfully: ${path}`);
         return path;
     }
 
-    async writeFile(threadId: string, filePath: string, content: string | Buffer): Promise<void> {
-        const workspacePath = `/workspace/${threadId}`;
+    async writeFile(channelid: string, filePath: string, content: string | Buffer): Promise<void> {
+        const workspacePath = `/workspace/${channelid}`;
         const fullPath = `${workspacePath}/${filePath}`;
         const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
 
         log.info(`Writing file: ${fullPath}`);
 
         if (dir !== workspacePath) {
-            await this.runCommand(threadId, ['mkdir', '-p', dir]);
+            await this.runCommand(channelid, ['mkdir', '-p', dir]);
         }
 
         // Use base64 to avoid issues with special characters in shell
         const base64Content = Buffer.from(content).toString('base64');
-        await this.runCommand(threadId, [
+        await this.runCommand(channelid, [
             'sh',
             '-c',
             `echo "${base64Content}" | base64 -d > "${fullPath}"`
         ]);
     }
 
-    async readFile(threadId: string, filePath: string): Promise<Buffer> {
-        const fullPath = `/workspace/${threadId}/${filePath}`;
+    async readFile(channelid: string, filePath: string): Promise<Buffer> {
+        const fullPath = `/workspace/${channelid}/${filePath}`;
         log.info(`Reading file: ${fullPath}`);
 
-        const result = await this.runCommand(threadId, ['cat', fullPath], true);
+        const result = await this.runCommand(channelid, ['cat', fullPath], true);
         return Buffer.from(result);
     }
 
-    async listFiles(threadId: string): Promise<string[]> {
-        const path = `/workspace/${threadId}`;
+    async listFiles(channelid: string): Promise<string[]> {
+        const path = `/workspace/${channelid}`;
         log.info(`Listing files in: ${path}`);
 
-        const result = await this.runCommand(threadId, ['find', '.', '-type', 'f'], false, path);
+        const result = await this.runCommand(channelid, ['find', '.', '-type', 'f'], false, path);
         return result.split('\n').map(f => f.trim()).filter(f => f && f !== '.');
     }
 
-    async deleteWorkspace(threadId: string): Promise<void> {
-        const path = `/workspace/${threadId}`;
+    async deleteWorkspace(channelid: string): Promise<void> {
+        const path = `/workspace/${channelid}`;
         log.info(`Deleting workspace: ${path}`);
-        await this.runCommand(threadId, ['rm', '-rf', path]);
+        await this.runCommand(channelid, ['rm', '-rf', path]);
     }
 
     async runCommand(
-        threadId: string,
+        channelid: string,
         command: string[],
         isBinary = false,
         cwd?: string

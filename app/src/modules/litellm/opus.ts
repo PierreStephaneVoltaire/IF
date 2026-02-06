@@ -94,13 +94,13 @@ export async function shouldRespond(
 
 export async function generatePlan(
   context: PlanningContext,
-  threadId: string
+  channelid: string
 ): Promise<PlanningResult> {
-  log.info(`generatePlan for thread ${threadId}`);
+  log.info(`generatePlan for thread ${channelid}`);
 
   const template = loadTemplate('planning');
   const systemPrompt = renderTemplate(template, {
-    thread_id: context.thread_id,
+    channel_id: context.channel_id,
     branch_name: context.branch_name,
     sub_topics: context.sub_topics,
     history: context.history,

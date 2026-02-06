@@ -23,7 +23,7 @@ export interface Reflection {
 }
 
 export interface Session {
-  thread_id: string;
+  channel_id: string;
   branch_name: string;
   topic_summary: string;
   has_progress: boolean;
@@ -60,7 +60,7 @@ export interface Session {
 
 export interface Execution {
   execution_id: string;
-  thread_id: string;
+  channel_id: string;
   message_id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   created_at: string;

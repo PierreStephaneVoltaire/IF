@@ -176,7 +176,7 @@ You have access to previous execution results and reflections:
   }
 }
 
-## Thread ID: {{thread_id}}
+## Thread ID: {{channel_id}}
 ## Workspace: {{workspace_path}}
 ## Previous Confidence: {{previous_confidence}}%
 ## User Added Files: {{user_added_files}}

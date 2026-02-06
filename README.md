@@ -15,12 +15,15 @@ An autonomous multi-agent Discord bot that can execute complex multi-turn tasks,
 - 🔒 Thread-safe execution with abort flags
 - ⚡ Intelligent task classification and routing
 - 🏗️ **Architecture Flow** - Design/planning mode without code generation
+- ⚖️ **Dialectic Synthesis** - Thesis → Antithesis → Synthesis for philosophical questions
+- 🔍 **Multi-Source Consensus** - Factual verification across multiple models
+- 😇😈 **Angel/Devil Debate** - Balanced moral/ethical analysis
 
 ## Architecture
 
 ### Execution Flows
 
-The bot supports 5 execution flows based on task classification:
+The bot supports 8 execution flows based on task classification:
 
 ```
 User Message
@@ -52,6 +55,18 @@ User Message
     │   └─→ Suggests ready-to-run shell commands
     │   └─→ NO scripts - one-liners only
     │
+    ├─→ DIALECTIC (philosophical synthesis)
+    │   └─→ Thesis → Antithesis → Synthesis
+    │   └─→ For abstract "what is the meaning of..." questions
+    │
+    ├─→ CONSENSUS (multi-source factual verification)
+    │   └─→ 3 models answer independently → Judge synthesizes
+    │   └─→ For "is it true that..." factual questions
+    │
+    ├─→ ANGEL_DEVIL (moral/ethical debate)
+    │   └─→ Angel argues FOR → Devil argues AGAINST → Judge balances
+    │   └─→ For "should I..." ethical dilemmas
+    │
     └─→ BREAKGLASS (emergency override)
         └─→ Direct Opus access, bypasses all checks
 ```
@@ -65,6 +80,9 @@ User Message
 | **BRANCH** | Explore alternatives | ❌ No | ❌ No | "Compare approaches...", "Pros and cons..." |
 | **SEQUENTIAL** | Implementation | ✅ Yes | ✅ Yes | "Implement...", "Refactor...", "Create..." |
 | **SHELL** | Command help | ❌ No | ❌ No | "How to grep...", "kubectl command..." |
+| **DIALECTIC** | Philosophical synthesis | ❌ No | ❌ No | "What is the meaning of...", "Philosophically speaking..." |
+| **CONSENSUS** | Factual verification | ❌ No | ❌ No | "Is it true that...", "Fact check...", "Verify..." |
+| **ANGEL_DEVIL** | Moral/ethical debate | ❌ No | ❌ No | "Should I...", "Is it ethical...", "Moral dilemma" |
 | **BREAKGLASS** | Emergency | ✅ Yes | ✅ Yes | `!breakglass` prefix |
 
 ### Reflexion Learning Pattern
@@ -256,6 +274,79 @@ Trigger with phrases like "different approaches", "pros and cons", "explore opti
 - "multiple solutions", "brainstorm", "different ways"
 - "compare approaches", "tradeoffs", "which approach"
 
+### 7. Dialectic Synthesis Flow (Philosophical)
+
+For abstract philosophical questions seeking understanding through dialectical exploration.
+
+**Process:**
+1. Random Tier 2 Model A generates a **Thesis** (strongest position)
+2. Random Tier 2 Model B generates an **Antithesis** (counter-position, aware of thesis)
+3. Random Tier 4 Synthesizer creates a **Synthesis** (higher-order resolution)
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Model A: Thesis]
+    B --> C[Model B: Antithesis]
+    C --> D[Model C: Synthesis]
+    D --> E[User gets layered philosophical exploration]
+```
+
+**Best for:** "What is the meaning of life?", "What is consciousness?", "What is justice?"
+
+**Triggers:**
+- "meaning of", "nature of", "philosophically", "existential"
+- "what is the purpose", "what is reality", "what is truth"
+
+### 8. Multi-Source Consensus Flow (Factual)
+
+For factual questions requiring verification across multiple independent sources.
+
+**Process:**
+1. Three random Tier 2 models answer the question **independently**
+2. Random Tier 4 Judge compares answers, identifies consensus/disagreement
+3. Returns synthesis with confidence indicator
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Model A: Independent Answer]
+    A --> C[Model B: Independent Answer]
+    A --> D[Model C: Independent Answer]
+    B --> E[Judge: Compare & Synthesize]
+    C --> E
+    D --> E
+    E --> F[Consensus or Disagreement Report]
+```
+
+**Best for:** "Is it true that...", "How many...", "When did...", "Fact check..."
+
+**Triggers:**
+- "is it true that", "fact check", "verify", "actually true"
+- "how many", "when did", "where is", "who was"
+
+### 9. Angel/Devil Debate Flow (Moral/Ethical)
+
+For moral dilemmas and ethical questions requiring balanced consideration of both sides.
+
+**Process:**
+1. Random Tier 2 Model A (Angel) argues **FOR** the position
+2. Random Tier 2 Model B (Devil) argues **AGAINST** the position
+3. Random Tier 4 Judge synthesizes a **balanced, nuanced response**
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Angel: Argue FOR]
+    A --> C[Devil: Argue AGAINST]
+    B --> D[Judge: Balanced Synthesis]
+    C --> D
+    D --> E[Nuanced answer with both sides]
+```
+
+**Best for:** "Should I...", "Is it ethical...", "Moral dilemma", "Right or wrong"
+
+**Triggers:**
+- "should I", "is it right to", "ethical", "moral", "dilemma"
+- "right or wrong", "good or bad"
+
 ## Project Structure
 
 ```
@@ -290,11 +381,16 @@ app/
 │   ├── pipeline/             # Message processing pipeline
 │   │   └── flows/
 │   │       ├── sequential-thinking.ts  # Code generation flow
-│   │       ├── architecture.ts         # Design/planning flow (NEW)
+│   │       ├── architecture.ts         # Design/planning flow
 │   │       ├── branch.ts               # Multi-solution brainstorming
+│   │       ├── dialectic.ts            # Thesis → Antithesis → Synthesis
+│   │       ├── consensus.ts            # Multi-source factual verification
+│   │       ├── angel-devil.ts          # Moral debate (FOR vs AGAINST)
 │   │       ├── simple.ts               # Quick responses
 │   │       ├── shell.ts                # Command suggestions
 │   │       └── breakglass.ts           # Emergency override
+│   │       └── social.ts               # Social interactions (tier 1)
+│   │       └── proofreader.ts          # Grammar/spellcheck (tier 1)
 │   ├── templates/            # Prompt templates with Sequential Thinking
 │   │   ├── planning.txt      # Opus planning with step-by-step reasoning
 │   │   └── prompts/
@@ -433,8 +529,8 @@ Bot: ⏹️ Execution stop requested. Will halt at next turn.
 ```bash
 aws dynamodb query \
   --table-name discord-messages \
-  --key-condition-expression "pk = :threadId" \
-  --expression-attribute-values '{":threadId":{"S":"1234567890"}}'
+  --key-condition-expression "pk = :channelid" \
+  --expression-attribute-values '{":channelid":{"S":"1234567890"}}'
 ```
 
 **Application Logs:**
@@ -455,7 +551,7 @@ aws sqs receive-message \
 ```typescript
 import { getLock } from './modules/agentic/lock';
 
-const lock = getLock(threadId);
+const lock = getLock(channelid);
 console.log(lock);
 ```
 

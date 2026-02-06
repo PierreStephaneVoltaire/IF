@@ -11,7 +11,7 @@ import type { FormattedHistory, ProcessedAttachment } from './types';
 const log = createLogger('EXECUTE');
 
 export interface TechnicalExecuteInput {
-  threadId: string;
+  channelId: string;
   branchName: string;
   planning: PlanningResult;
   history: FormattedHistory;
@@ -19,22 +19,16 @@ export interface TechnicalExecuteInput {
 }
 
 export interface SimpleExecuteInput {
-  threadId: string;
+  channelId: string;
   history: FormattedHistory;
   isTechnical: boolean;
-  taskType: TaskType;
-}
-
-export interface TechnicalSimpleExecuteInput {
-  threadId: string;
-  history: FormattedHistory;
   taskType: TaskType;
 }
 
 export async function executeTechnicalTask(
   input: TechnicalExecuteInput
 ): Promise<{ response: string; model: string }> {
-  log.info(`Starting Gemini execution for thread ${input.threadId}`);
+  log.info(`Starting Gemini execution for channel ${input.channelId}`);
   log.info(`Branch: ${input.branchName}`);
   log.info(`Topic: ${input.planning.topic_slug}`);
   log.info(`Task type: ${input.planning.task_type}, Agent role: ${input.planning.agent_role}`);
@@ -82,7 +76,7 @@ ${input.planning.instruction_content}
       branchName: input.branchName,
       model: modelName,
     },
-    input.threadId
+    input.channelId
   );
 
   log.info(`Gemini response length: ${response.length}`);
@@ -94,43 +88,10 @@ ${input.planning.instruction_content}
   };
 }
 
-export async function executeTechnicalSimple(
-  input: TechnicalSimpleExecuteInput
-): Promise<{ response: string; model: string }> {
-  log.info(`Starting technical-simple execution for thread ${input.threadId}`);
-  log.info(`Task type: ${input.taskType}`);
-
-  // Get template and model from registry
-  const promptCategory = getPromptForTaskType(input.taskType);
-  const model = getModelForTaskType(input.taskType);
-
-  log.info(`Using prompt category: ${promptCategory}, model: ${model}`);
-
-  const fullHistory = input.history.formatted_history
-    ? `${input.history.formatted_history}\n\n${input.history.current_author}: ${input.history.current_message}`
-    : `${input.history.current_author}: ${input.history.current_message}`;
-
-  // Technical-simple tasks don't need tools (they're Q&A, explanations, etc.)
-  const response = await executeSimpleTask(
-    promptCategory,
-    fullHistory,
-    input.threadId,
-    model,
-    false // No tools for technical-simple
-  );
-
-  log.info(`Technical-simple execution complete, response length: ${response.length}`);
-
-  return {
-    response,
-    model,
-  };
-}
-
 export async function executeSimple(
   input: SimpleExecuteInput
 ): Promise<{ response: string; model: string }> {
-  log.info(`Starting simple execution for thread ${input.threadId}`);
+  log.info(`Starting simple execution for channel ${input.channelId}`);
   log.info(`Task type: ${input.taskType}`);
 
   // Get template and model from registry based on task type
@@ -146,7 +107,7 @@ export async function executeSimple(
   const response = await executeSimpleTask(
     promptCategory,
     fullHistory,
-    input.threadId,
+    input.channelId,
     model,
     false // Simple flow never needs tools
   );
@@ -170,7 +131,7 @@ const BREAKGLASS_MODEL_MAP: Record<string, string> = {
 };
 
 export interface BreakglassExecuteInput {
-  threadId: string;
+  channelId: string;
   modelName: string;
   history: FormattedHistory;
 }
@@ -178,7 +139,7 @@ export interface BreakglassExecuteInput {
 export async function executeBreakglass(
   input: BreakglassExecuteInput
 ): Promise<{ response: string; model: string }> {
-  log.info(`Starting breakglass execution for thread ${input.threadId}`);
+  log.info(`Starting breakglass execution for channel ${input.channelId}`);
   log.info(`Requested model: ${input.modelName}`);
 
   // Map the model name to actual LiteLLM model string
@@ -209,7 +170,7 @@ export async function executeBreakglass(
   const response = await executeSimpleTask(
     'breakglass',
     userPrompt,
-    input.threadId,
+    input.channelId,
     actualModel,
     false // No tools for breakglass
   );

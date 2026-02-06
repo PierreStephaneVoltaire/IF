@@ -8,7 +8,7 @@ const log = createLogger('DYNAMODB:QUERIES');
 
 export interface ExecutionLogEntry {
   execution_id: string;
-  thread_id: string;
+  channel_id: string;
   timestamp: string;
   eventType?: string;
   taskType?: string;
@@ -43,23 +43,23 @@ export interface ConfidenceHistoryEntry {
  * Query execution logs for a thread
  */
 export async function queryExecutionLogs(
-  threadId: string,
+  channelid: string,
   limit: number = 10
 ): Promise<ExecutionLogEntry[]> {
   const client = getDynamoDBClient();
   const config = getConfig();
 
-  log.info(`Querying execution logs for thread ${threadId}, limit ${limit}`);
+  log.info(`Querying execution logs for thread ${channelid}, limit ${limit}`);
 
   try {
     const startTime = Date.now();
     const result = await client.send(
       new QueryCommand({
         TableName: config.DYNAMODB_EXECUTIONS_TABLE,
-        IndexName: 'thread_id-index',
-        KeyConditionExpression: 'thread_id = :threadId',
+        IndexName: 'channel_id-index',
+        KeyConditionExpression: 'channel_id = :channelid',
         ExpressionAttributeValues: {
-          ':threadId': threadId,
+          ':channelid': channelid,
         },
         ScanIndexForward: false, // Most recent first
         Limit: limit * 3, // Get more to filter and group
@@ -72,7 +72,7 @@ export async function queryExecutionLogs(
     log.info(`Found ${items.length} execution log entries`);
     return items;
   } catch (error) {
-    log.error(`Failed to query execution logs for thread ${threadId}`, { error: String(error) });
+    log.error(`Failed to query execution logs for thread ${channelid}`, { error: String(error) });
     throw error;
   }
 }
@@ -81,10 +81,10 @@ export async function queryExecutionLogs(
  * Get execution summaries for display in /logs command
  */
 export async function getExecutionSummaries(
-  threadId: string,
+  channelid: string,
   count: number = 5
 ): Promise<ExecutionSummary[]> {
-  const logs = await queryExecutionLogs(threadId, count * 5);
+  const logs = await queryExecutionLogs(channelid, count * 5);
 
   // Group by execution and get the most significant event for each
   const executionMap = new Map<string, ExecutionLogEntry[]>();
@@ -137,10 +137,10 @@ export async function getExecutionSummaries(
  * Get confidence history for a thread
  */
 export async function getConfidenceHistory(
-  threadId: string,
+  channelid: string,
   limit: number = 10
 ): Promise<ConfidenceHistoryEntry[]> {
-  const logs = await queryExecutionLogs(threadId, limit * 2);
+  const logs = await queryExecutionLogs(channelid, limit * 2);
 
   // Filter for turn-based entries with confidence
   const entries: ConfidenceHistoryEntry[] = logs

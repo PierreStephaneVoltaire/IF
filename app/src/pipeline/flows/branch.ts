@@ -5,6 +5,7 @@ import { createPlan } from '../planning';
 import { setupSession } from '../session';
 import { streamProgressToDiscord } from '../../modules/agentic/progress';
 import { getDiscordClient } from '../../modules/discord/index';
+import { getChatClient } from '../../modules/chat';
 import { createPoll, waitForPollVote, PollOption, type PollResult } from '../../modules/discord/api';
 import { updateSession, updateSessionConfidence, getSession } from '../../modules/dynamodb/sessions';
 import type { FlowContext, FlowResult } from './types';
@@ -83,7 +84,7 @@ export async function executeBranchFlow(
     // 2. Planning with Opus (theory/suggestions only)
     const sessionResult = await setupSession(context.workspaceId, context.channelId);
     const planning = await createPlan({
-        threadId: context.workspaceId,
+        channelId: context.workspaceId,
         branchName: sessionResult.branchName,
         session: sessionResult.session,
         history: context.history,
@@ -221,6 +222,14 @@ Analyze these 9 approaches and produce your JSON output now.`;
         { id: 'D', label: 'Other', description: 'None of the above - I have a different approach in mind' }
     ];
 
+    const chatClient = getChatClient();
+    if (chatClient) {
+      // Polls are not supported on non-Discord platforms yet
+      log.warn('Branch flow with polls not supported on non-Discord platforms, falling back to simple flow');
+      // TODO: Implement alternative voting mechanism for non-Discord platforms
+      throw new Error('Branch flow not supported on non-Discord platforms');
+    }
+    
     const client = getDiscordClient();
     const pollMessageId = await createPoll(client, context.channelId, {
         question: pollData.question,

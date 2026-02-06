@@ -8,7 +8,6 @@ import type {
   ChatMessage,
   ChatReaction,
   SendMessageOptions,
-  ChatThread,
   ChatChannel,
 } from '../types';
 import { createLogger } from '../../../utils/logger';
@@ -31,7 +30,7 @@ export class DiscordAdapter implements ChatClient {
   private messageHandler?: (message: ChatMessage) => Promise<void>;
   private reactionHandler?: (reaction: ChatReaction) => Promise<void>;
   private readyHandler?: () => Promise<void>;
-  private threadDeleteHandler?: (threadId: string) => Promise<void>;
+  private threadDeleteHandler?: (channelid: string) => Promise<void>;
 
   constructor(config: DiscordAdapterConfig) {
     this.config = config;
@@ -165,7 +164,7 @@ export class DiscordAdapter implements ChatClient {
     this.readyHandler = handler;
   }
 
-  onThreadDelete(handler: (threadId: string) => Promise<void>): void {
+  onThreadDelete(handler: (channelid: string) => Promise<void>): void {
     this.threadDeleteHandler = handler;
   }
 
@@ -255,26 +254,8 @@ export class DiscordAdapter implements ChatClient {
     await message.react(emoji);
   }
 
-  async createThread(channelId: string, messageId: string, name: string): Promise<ChatThread> {
-    const channel = await this.client.channels.fetch(channelId);
-    if (!channel || channel.type !== 0) {
-      // 0 = GuildText
-      throw new Error(`Invalid channel for thread creation: ${channelId}`);
-    }
-
-    const textChannel = channel as TextChannel;
-    const message = await textChannel.messages.fetch(messageId);
-
-    const thread = await message.startThread({
-      name: name.substring(0, 100),
-      autoArchiveDuration: 1440,
-    });
-
-    return {
-      id: thread.id,
-      name: thread.name,
-      channelId: thread.parentId || channelId,
-    };
+  async createThread(channelId: string, messageId: string, name: string): Promise<ChatChannel> {
+    throw new Error('createThread is deprecated; use createProjectChannel instead');
   }
 
   async createProjectChannel(

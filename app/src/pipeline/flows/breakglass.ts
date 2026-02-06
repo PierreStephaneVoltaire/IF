@@ -12,7 +12,7 @@ export async function executeBreakglassFlow(
   log.info(`Breakglass model: ${modelName}`);
 
   const result = await executeBreakglass({
-    threadId: context.workspaceId,
+    channelId: context.channelId,
     modelName,
     history: context.history,
   });

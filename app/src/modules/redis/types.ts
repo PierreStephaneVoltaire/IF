@@ -11,7 +11,7 @@ export interface ThreadState {
 }
 
 export interface SessionCache {
-  threadId: string;
+  channelId: string;
   confidenceScore: number;
   currentTurn: number;
   model: string;
@@ -22,7 +22,7 @@ export interface SessionCache {
 }
 
 export interface ExecutionLock {
-  threadId: string;
+  channelId: string;
   executionId: string;
   startedAt: string;
 }

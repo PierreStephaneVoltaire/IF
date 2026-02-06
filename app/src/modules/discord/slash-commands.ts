@@ -196,13 +196,13 @@ export async function handleSlashCommand(interaction: ChatInputCommandInteractio
 async function handleStatus(interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply();
 
-  const threadId = interaction.channelId;
-  const lock = getLock(threadId);
-  const session = await getSession(threadId);
-  const redisLockOwner = await checkLock(threadId);
-  const redisAbort = await checkAbortFlag(threadId);
-  const redisState = await getThreadState(threadId);
-  const cachedSession = await getCachedSession(threadId);
+  const channelid = interaction.channelId;
+  const lock = getLock(channelid);
+  const session = await getSession(channelid);
+  const redisLockOwner = await checkLock(channelid);
+  const redisAbort = await checkAbortFlag(channelid);
+  const redisState = await getThreadState(channelid);
+  const cachedSession = await getCachedSession(channelid);
 
   const embed = new EmbedBuilder()
     .setTitle('📊 Execution Status')
@@ -267,7 +267,7 @@ async function handleStatus(interaction: ChatInputCommandInteraction): Promise<v
     });
     embed.addFields({
       name: '📁 Workspace',
-      value: session.workspace_path || `/workspace/${threadId}`,
+      value: session.workspace_path || `/workspace/${channelid}`,
       inline: false,
     });
 
@@ -306,20 +306,20 @@ async function handleStatus(interaction: ChatInputCommandInteraction): Promise<v
  */
 async function handleWorkspace(interaction: ChatInputCommandInteraction): Promise<void> {
   const subcommand = interaction.options.getSubcommand();
-  const threadId = interaction.channelId;
+  const channelid = interaction.channelId;
 
   switch (subcommand) {
     case 'list':
-      await handleWorkspaceList(interaction, threadId);
+      await handleWorkspaceList(interaction, channelid);
       break;
     case 'sync':
-      await handleWorkspaceSync(interaction, threadId);
+      await handleWorkspaceSync(interaction, channelid);
       break;
     case 'clean':
-      await handleWorkspaceClean(interaction, threadId);
+      await handleWorkspaceClean(interaction, channelid);
       break;
     case 'upload':
-      await handleWorkspaceUpload(interaction, threadId);
+      await handleWorkspaceUpload(interaction, channelid);
       break;
     default:
       await interaction.reply({
@@ -334,15 +334,15 @@ async function handleWorkspace(interaction: ChatInputCommandInteraction): Promis
  */
 async function handleWorkspaceList(
   interaction: ChatInputCommandInteraction,
-  defaultThreadId: string
+  defaultChannelId: string
 ): Promise<void> {
   await interaction.deferReply();
 
   const threadName = interaction.options.getString('thread_name');
-  const threadId = threadName || defaultThreadId;
+  const channelid = threadName || defaultChannelId;
 
   try {
-    const files = await listS3Files(threadId);
+    const files = await listS3Files(channelid);
 
     if (files.length === 0) {
       await interaction.editReply({
@@ -377,12 +377,12 @@ async function handleWorkspaceList(
  */
 async function handleWorkspaceSync(
   interaction: ChatInputCommandInteraction,
-  threadId: string
+  channelid: string
 ): Promise<void> {
   await interaction.deferReply();
 
   // Check if there's an active lock
-  if (hasActiveLock(threadId)) {
+  if (hasActiveLock(channelid)) {
     await interaction.editReply({
       content: '⚠️ Cannot sync while execution is in progress. Please wait or abort first.',
     });
@@ -390,7 +390,7 @@ async function handleWorkspaceSync(
   }
 
   try {
-    await s3Sync.syncToS3(threadId);
+    await s3Sync.syncToS3(channelid);
     await interaction.editReply({
       content: '✅ **Sync Complete**\nWorkspace synced to S3 successfully.',
     });
@@ -407,7 +407,7 @@ async function handleWorkspaceSync(
  */
 async function handleWorkspaceClean(
   interaction: ChatInputCommandInteraction,
-  threadId: string
+  channelid: string
 ): Promise<void> {
   // Check admin permissions
   const member = interaction.member;
@@ -424,7 +424,7 @@ async function handleWorkspaceClean(
   }
 
   // Check if there's an active lock
-  if (hasActiveLock(threadId)) {
+  if (hasActiveLock(channelid)) {
     await interaction.reply({
       content: '⚠️ Cannot clean while execution is in progress. Please abort first.',
       ephemeral: true,
@@ -436,10 +436,10 @@ async function handleWorkspaceClean(
 
   try {
     // Delete local workspace
-    await workspaceManager.deleteWorkspace(threadId);
+    await workspaceManager.deleteWorkspace(channelid);
 
     // Delete S3 prefix
-    const deletedCount = await deleteS3Prefix(threadId);
+    const deletedCount = await deleteS3Prefix(channelid);
 
     await interaction.editReply({
       content: `🗑️ **Workspace Cleaned**\n- Local workspace deleted\n- ${deletedCount} files deleted from S3`,
@@ -457,14 +457,14 @@ async function handleWorkspaceClean(
  */
 async function handleWorkspaceUpload(
   interaction: ChatInputCommandInteraction,
-  threadId: string
+  channelid: string
 ): Promise<void> {
   await interaction.deferReply();
 
   const filePath = interaction.options.getString('file_path', true);
 
   try {
-    const buffer = await getS3File(threadId, filePath);
+    const buffer = await getS3File(channelid, filePath);
     const fileName = filePath.split('/').pop() || filePath;
 
     const attachment = new AttachmentBuilder(buffer, { name: fileName });
@@ -495,7 +495,7 @@ async function handleFlow(interaction: ChatInputCommandInteraction): Promise<voi
   await interaction.deferReply();
 
   const flowType = interaction.options.getString('type', true) as FlowType;
-  const threadId = interaction.channelId;
+  const channelid = interaction.channelId;
 
   // Validate flow type
   const validFlows: FlowType[] = [
@@ -513,7 +513,7 @@ async function handleFlow(interaction: ChatInputCommandInteraction): Promise<voi
   }
 
   try {
-    const session = await getSession(threadId);
+    const session = await getSession(channelid);
 
     if (!session) {
       await interaction.editReply({
@@ -523,7 +523,7 @@ async function handleFlow(interaction: ChatInputCommandInteraction): Promise<voi
     }
 
     // Update session with flow override
-    await updateSession(threadId, {
+    await updateSession(channelid, {
       flow_override: flowType,
     });
 
@@ -552,10 +552,10 @@ async function handleLogs(interaction: ChatInputCommandInteraction): Promise<voi
   await interaction.deferReply();
 
   const count = interaction.options.getInteger('count') || 5;
-  const threadId = interaction.channelId;
+  const channelid = interaction.channelId;
 
   try {
-    const summaries = await getExecutionSummaries(threadId, count);
+    const summaries = await getExecutionSummaries(channelid, count);
 
     if (summaries.length === 0) {
       await interaction.editReply({
@@ -595,11 +595,11 @@ async function handleLogs(interaction: ChatInputCommandInteraction): Promise<voi
 async function handleConfidence(interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply();
 
-  const threadId = interaction.channelId;
+  const channelid = interaction.channelId;
 
   try {
-    const session = await getSession(threadId);
-    const history = await getConfidenceHistory(threadId, 10);
+    const session = await getSession(channelid);
+    const history = await getConfidenceHistory(channelid, 10);
 
     if (!session && history.length === 0) {
       await interaction.editReply({
@@ -684,10 +684,10 @@ async function handleConfidence(interaction: ChatInputCommandInteraction): Promi
 async function handleEscalation(interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply();
 
-  const threadId = interaction.channelId;
+  const channelid = interaction.channelId;
 
   try {
-    const session = await getSession(threadId);
+    const session = await getSession(channelid);
     const escalations = getEscalationHistory(session as Session | null);
 
     if (escalations.length === 0) {

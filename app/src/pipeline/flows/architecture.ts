@@ -29,11 +29,11 @@ export async function executeArchitectureFlow(
     log.info('Phase: ARCHITECTURE_FLOW');
 
     // Project channel creation handled in pipeline
-    const finalThreadId = context.workspaceId;
+    const finalChannelId = context.workspaceId;
     const responseChannelId = context.workspaceId;
 
     // Setup session
-    const sessionResult = await setupSession(finalThreadId, context.channelId);
+    const sessionResult = await setupSession(finalChannelId, context.channelId);
     const branchName = sessionResult.branchName;
 
     // Process attachments
@@ -49,7 +49,7 @@ export async function executeArchitectureFlow(
 
     // Generate plan (with Reflexion context)
     const planning = await createPlan({
-        threadId: finalThreadId,
+        channelId: finalChannelId,
         branchName: sessionResult.branchName,
         session: sessionResult.session,
         history: context.history,
@@ -98,7 +98,7 @@ export async function executeArchitectureFlow(
     };
 
     // Update session with reflection and evaluation
-    await updateSession(finalThreadId, {
+    await updateSession(finalChannelId, {
         reflections: addReflectionToHistory(
             sessionResult.session.reflections,
             reflection
@@ -112,7 +112,7 @@ export async function executeArchitectureFlow(
     });
 
     // Stream completion to Discord
-    await streamProgressToDiscord(finalThreadId, {
+    await streamProgressToDiscord(finalChannelId, {
         type: 'reflection',
         checkpointData: {
             score: evaluation.score,

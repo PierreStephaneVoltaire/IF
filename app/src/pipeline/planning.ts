@@ -15,7 +15,7 @@ import { getConfig } from '../config';
 const log = createLogger('PLANNING');
 
 export interface PlanningInput {
-  threadId: string;
+  channelId: string;
   branchName: string;
   session: Session;
   history: FormattedHistory;
@@ -26,7 +26,7 @@ export interface PlanningInput {
 }
 
 export async function createPlan(input: PlanningInput): Promise<PlanningResult> {
-  log.info(`Generating plan for thread ${input.threadId}`);
+  log.info(`Generating plan for channel ${input.channelId}`);
   log.info(`Existing topics: ${JSON.stringify(Object.keys(input.session.sub_topics || {}))}`);
 
   const attachmentNames = input.processedAttachments
@@ -41,7 +41,7 @@ export async function createPlan(input: PlanningInput): Promise<PlanningResult> 
   log.info(`Calling Opus for planning (with Reflexion context)`);
 
   // Show planning progress in Discord
-  await streamProgressToDiscord(input.threadId, {
+  await streamProgressToDiscord(input.channelId, {
     type: 'planning',
     model: getConfig().PLANNER_MODEL_ID,
     phase: 'planning'
@@ -49,7 +49,7 @@ export async function createPlan(input: PlanningInput): Promise<PlanningResult> 
 
   const result = await generatePlan(
     {
-      thread_id: input.threadId,
+      channel_id: input.channelId,
       branch_name: input.branchName,
       sub_topics: JSON.stringify(input.session.sub_topics || {}),
       history: input.history.formatted_history,
@@ -57,7 +57,7 @@ export async function createPlan(input: PlanningInput): Promise<PlanningResult> 
       attachments: attachmentNames,
       user_added_files: input.userAddedFilesMessage || '',
       previous_confidence: input.previousConfidence || 0,
-      workspace_path: input.session.workspace_path || `/workspace/${input.threadId}`,
+      workspace_path: input.session.workspace_path || `/workspace/${input.channelId}`,
 
       // Reflexion context
       trajectory_summary: input.session.last_trajectory_summary || 'No previous execution.',
@@ -65,11 +65,11 @@ export async function createPlan(input: PlanningInput): Promise<PlanningResult> 
       reflections,
       key_insights: keyInsights,
     },
-    input.threadId
+    input.channelId
   );
 
   // Show prompt ready in Discord
-  await streamProgressToDiscord(input.threadId, {
+  await streamProgressToDiscord(input.channelId, {
     type: 'prompt_ready',
     promptPreview: result.reformulated_prompt.substring(0, 200)
   });

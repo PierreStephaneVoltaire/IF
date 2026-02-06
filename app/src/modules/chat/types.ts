@@ -82,14 +82,16 @@ export interface ChatClient {
   onMessage: (handler: (message: ChatMessage) => Promise<void>) => void;
   onReaction: (handler: (reaction: ChatReaction) => Promise<void>) => void;
   onReady: (handler: () => Promise<void>) => void;
-  onThreadDelete: (handler: (threadId: string) => Promise<void>) => void;
+  // Thread deletion hook is kept for backward compatibility
+  onThreadDelete: (handler: (channelid: string) => Promise<void>) => void;
 
   // Actions
   sendMessage: (channelId: string, options: SendMessageOptions) => Promise<void>;
   sendMessageChunks: (channelId: string, content: string, maxLength?: number) => Promise<void>;
   getHistory: (channelId: string, limit?: number) => Promise<ChatMessage[]>;
   addReaction: (channelId: string, messageId: string, emoji: string) => Promise<void>;
-  createThread: (channelId: string, messageId: string, name: string) => Promise<ChatThread>;
+  // Threads are deprecated; use project channels instead
+  // createThread: (channelId: string, messageId: string, name: string) => Promise<ChatThread>;
   createProjectChannel: (
     guildId: string,
     name: string,

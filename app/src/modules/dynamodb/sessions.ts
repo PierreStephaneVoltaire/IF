@@ -6,8 +6,8 @@ import type { Session, SessionUpdate } from './types';
 
 const log = createLogger('DYNAMODB:SESSIONS');
 
-export async function getSession(threadId: string): Promise<Session | null> {
-  log.info(`getSession: ${threadId}`);
+export async function getSession(channelid: string): Promise<Session | null> {
+  log.info(`getSession: ${channelid}`);
 
   const client = getDynamoDBClient();
   const config = getConfig();
@@ -16,7 +16,7 @@ export async function getSession(threadId: string): Promise<Session | null> {
   const result = await client.send(
     new GetCommand({
       TableName: config.DYNAMODB_SESSIONS_TABLE,
-      Key: { thread_id: threadId },
+      Key: { channel_id: channelid },
     })
   );
   const elapsedMs = Date.now() - startTime;
@@ -33,7 +33,7 @@ export async function getSession(threadId: string): Promise<Session | null> {
 }
 
 export async function createSession(session: Session): Promise<void> {
-  log.info(`createSession: ${session.thread_id}`);
+  log.info(`createSession: ${session.channel_id}`);
 
   const client = getDynamoDBClient();
   const config = getConfig();
@@ -48,11 +48,11 @@ export async function createSession(session: Session): Promise<void> {
   const elapsedMs = Date.now() - startTime;
   log.info(`⏱️ DynamoDB createSession completed in ${elapsedMs}ms`);
 
-  log.info(`Session created successfully: ${session.thread_id}`);
+  log.info(`Session created successfully: ${session.channel_id}`);
 }
 
-export async function updateSession(threadId: string, updates: SessionUpdate): Promise<void> {
-  log.info(`updateSession: ${threadId}`, { fields: Object.keys(updates) });
+export async function updateSession(channelid: string, updates: SessionUpdate): Promise<void> {
+  log.info(`updateSession: ${channelid}`, { fields: Object.keys(updates) });
 
   const client = getDynamoDBClient();
   const config = getConfig();
@@ -78,7 +78,7 @@ export async function updateSession(threadId: string, updates: SessionUpdate): P
   await client.send(
     new UpdateCommand({
       TableName: config.DYNAMODB_SESSIONS_TABLE,
-      Key: { thread_id: threadId },
+      Key: { channel_id: channelid },
       UpdateExpression: `SET ${updateExpressions.join(', ')}`,
       ExpressionAttributeNames: expressionAttributeNames,
       ExpressionAttributeValues: expressionAttributeValues,
@@ -87,18 +87,18 @@ export async function updateSession(threadId: string, updates: SessionUpdate): P
   const elapsedMs = Date.now() - startTime;
   log.info(`⏱️ DynamoDB updateSession completed in ${elapsedMs}ms`);
 
-  log.info(`Session updated successfully: ${threadId}`);
+  log.info(`Session updated successfully: ${channelid}`);
 }
 
-export async function getOrCreateSession(threadId: string, branchName: string): Promise<Session> {
-  log.info(`getOrCreateSession: ${threadId}`);
+export async function getOrCreateSession(channelid: string, branchName: string): Promise<Session> {
+  log.info(`getOrCreateSession: ${channelid}`);
 
-  let session = await getSession(threadId);
+  let session = await getSession(channelid);
 
   if (!session) {
     log.info(`Session not found, creating new session`);
     session = {
-      thread_id: threadId,
+      channel_id: channelid,
       branch_name: branchName,
       topic_summary: '',
       has_progress: false,
@@ -107,8 +107,8 @@ export async function getOrCreateSession(threadId: string, branchName: string): 
       last_message: '',
       created_at: new Date().toISOString(),
       sub_topics: {},
-      workspace_path: `/workspace/${threadId}`,
-      s3_prefix: `s3://discord-bot-artifacts/threads/${threadId}/`,
+      workspace_path: `/workspace/${channelid}`,
+      s3_prefix: `s3://discord-bot-artifacts/threads/${channelid}/`,
       synced_files: [],
     };
 
@@ -119,29 +119,29 @@ export async function getOrCreateSession(threadId: string, branchName: string): 
 }
 
 export async function updateSessionConfidence(
-  threadId: string,
+  channelid: string,
   adjustment: number
 ): Promise<void> {
-  const session = await getSession(threadId);
+  const session = await getSession(channelid);
   if (!session) return;
 
   const currentScore = session.confidence_score || 50;
   const newScore = Math.min(100, Math.max(10, currentScore + adjustment));
 
-  log.info(`Updating confidence for thread ${threadId}: ${currentScore} -> ${newScore} (adj: ${adjustment})`);
+  log.info(`Updating confidence for thread ${channelid}: ${currentScore} -> ${newScore} (adj: ${adjustment})`);
 
-  await updateSession(threadId, { confidence_score: newScore });
+  await updateSession(channelid, { confidence_score: newScore });
 }
 
-export async function deleteSession(threadId: string): Promise<void> {
-  log.info(`Deleting session from DynamoDB: ${threadId}`);
+export async function deleteSession(channelid: string): Promise<void> {
+  log.info(`Deleting session from DynamoDB: ${channelid}`);
   const client = getDynamoDBClient();
   const config = getConfig();
 
   const startTime = Date.now();
   await client.send(new DeleteCommand({
     TableName: config.DYNAMODB_SESSIONS_TABLE,
-    Key: { thread_id: threadId },
+    Key: { channel_id: channelid },
   }));
   const elapsedMs = Date.now() - startTime;
   log.info(`⏱️ DynamoDB deleteSession completed in ${elapsedMs}ms`);

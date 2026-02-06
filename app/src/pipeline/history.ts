@@ -222,7 +222,7 @@ function mapChatMessageToDiscordHistory(message: ChatMessage): Awaited<ReturnTyp
 /**
  * Format a poll entry for inclusion in history
  */
-export function formatPollEntry(entry: PollHistoryEntry): string {
+function formatPollEntry(entry: PollHistoryEntry): string {
   let formatted = `Bot: ${entry.question}\n\n`;
   
   entry.options.forEach(opt => {
@@ -238,7 +238,7 @@ export function formatPollEntry(entry: PollHistoryEntry): string {
 /**
  * Format multiple poll entries for history
  */
-export function formatPollEntries(entries: PollHistoryEntry[]): string {
+function formatPollEntries(entries: PollHistoryEntry[]): string {
   if (!entries || entries.length === 0) return '';
   
   return entries.map(entry => formatPollEntry(entry)).join('\n\n---\n\n');

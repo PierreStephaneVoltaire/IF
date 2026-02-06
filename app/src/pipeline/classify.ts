@@ -4,11 +4,11 @@ import type { FilterContext } from './types';
 
 const log = createLogger('CLASSIFY');
 
-export function inferTaskType(isTechnical: boolean): TaskType {
+function inferTaskType(isTechnical: boolean): TaskType {
   return isTechnical ? TaskType.CODING_IMPLEMENTATION : TaskType.GENERAL_CONVO;
 }
 
-export function shouldSkipPlanning(taskType: TaskType): boolean {
+function shouldSkipPlanning(taskType: TaskType): boolean {
   const skipPlanningTasks = new Set([
     TaskType.TECHNICAL_QA,
     TaskType.DOC_SEARCH,
@@ -21,7 +21,11 @@ export function shouldSkipPlanning(taskType: TaskType): boolean {
   return skipPlanningTasks.has(taskType);
 }
 
-export function isBranchRequest(message: string, confidenceScore?: number): boolean {
+function isBranchRequest(
+  message: string,
+  confidenceScore?: number,
+  isTechnical?: boolean
+): boolean {
   const lower = message.toLowerCase();
 
   // Branch flow triggers: Architectural exploration, multiple approaches, theoretical discussion
@@ -45,28 +49,135 @@ export function isBranchRequest(message: string, confidenceScore?: number): bool
   ];
 
   const hasTrigger = branchTriggers.some(trigger => lower.includes(trigger));
-  
-  // Also trigger branch flow if confidence is below 60
-  const lowConfidence = confidenceScore !== undefined && confidenceScore < 60;
-  
+
+  // Also trigger branch flow if confidence is below 60 (only for technical flows)
+  const normalizedConfidence = confidenceScore !== undefined && confidenceScore <= 1
+    ? confidenceScore * 100
+    : confidenceScore;
+  const lowConfidence =
+    isTechnical === true &&
+    normalizedConfidence !== undefined &&
+    normalizedConfidence < 60;
+
   if (lowConfidence) {
     log.info(`Branch flow triggered due to low confidence: ${confidenceScore}`);
   }
-  
+
   return hasTrigger || lowConfidence;
+}
+
+/**
+ * Check if message is a moral/ethical dilemma (Angel/Devil flow)
+ */
+function isAngelDevilRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+
+  const angelDevilTriggers = [
+    'should i',
+    'is it right to',
+    'is it wrong to',
+    'ethical',
+    'moral',
+    'dilemma',
+    'dilemna',
+    'morally',
+    'ethically',
+    'right or wrong',
+    'good or bad',
+    'ought i',
+    'would it be wrong',
+    'would it be right',
+  ];
+
+  return angelDevilTriggers.some(trigger => lower.includes(trigger));
+}
+
+/**
+ * Check if message is a philosophical/abstract question (Dialectic flow)
+ */
+function isDialecticRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+
+  const dialecticTriggers = [
+    'meaning of',
+    'nature of',
+    'philosophically',
+    'philosophy',
+    'existential',
+    'what is the purpose',
+    'what is life',
+    'what is consciousness',
+    'what is reality',
+    'what is truth',
+    'what is justice',
+    'what is beauty',
+    'what is good',
+    'what is evil',
+    'what is free will',
+    'what is identity',
+    'what is the self',
+    'in theory',
+    'theoretically',
+    'abstractly',
+    'metaphysical',
+    'ontological',
+    'epistemological',
+    'aesthetics',
+  ];
+
+  return dialecticTriggers.some(trigger => lower.includes(trigger));
+}
+
+/**
+ * Check if message is a factual/trivia question (Consensus flow)
+ */
+function isConsensusRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+
+  const consensusTriggers = [
+    'is it true that',
+    'fact check',
+    'fact-check',
+    'verify',
+    'actually true',
+    'really true',
+    'how many',
+    'when did',
+    'where is',
+    'who was',
+    'what is the capital',
+    'what year',
+    'what date',
+    'is it correct that',
+    'can you confirm',
+    'tell me if',
+    'is this accurate',
+    'is this correct',
+    'what happened',
+    'did you know',
+    'trivia',
+    'population of',
+    'height of',
+    'distance to',
+  ];
+
+  return consensusTriggers.some(trigger => lower.includes(trigger));
 }
 // Determine if a flow needs workspace access
 export function flowNeedsWorkspace(flowType: FlowType): boolean {
   switch (flowType) {
     case FlowType.SEQUENTIAL_THINKING:
-    case FlowType.ARCHITECTURE:
-    case FlowType.BRANCH:
       return true;
     case FlowType.SOCIAL:
     case FlowType.PROOFREADER:
     case FlowType.SHELL:
     case FlowType.SIMPLE:
     case FlowType.BREAKGLASS:
+    case FlowType.ARCHITECTURE:
+    case FlowType.BRANCH:
+    case FlowType.DIALECTIC:
+    case FlowType.CONSENSUS:
+    case FlowType.ANGEL_DEVIL:
     default:
       return false;
   }
@@ -88,11 +199,28 @@ export function classifyFlow(
     return FlowType.BREAKGLASS;
   }
 
-
   // 2. Check for branch flow (multi-solution brainstorming or low confidence)
-  if (message && isBranchRequest(message, confidenceScore)) {
+  if (message && isBranchRequest(message, confidenceScore, isTechnical)) {
     log.info(`Routing to: BRANCH flow (detected multi-solution request or low confidence)`);
     return FlowType.BRANCH;
+  }
+
+  // 3. Check for thinking flows (Angel/Devil, Dialectic, Consensus)
+  // Priority: Angel/Devil (moral) > Dialectic (philosophical) > Consensus (factual)
+
+  if (message && isAngelDevilRequest(message)) {
+    log.info(`Routing to: ANGEL_DEVIL flow (detected moral/ethical dilemma)`);
+    return FlowType.ANGEL_DEVIL;
+  }
+
+  if (message && isDialecticRequest(message)) {
+    log.info(`Routing to: DIALECTIC flow (detected philosophical/abstract question)`);
+    return FlowType.DIALECTIC;
+  }
+
+  if (message && isConsensusRequest(message)) {
+    log.info(`Routing to: CONSENSUS flow (detected factual/trivia question)`);
+    return FlowType.CONSENSUS;
   }
 
   const effectiveTaskType = taskType || inferTaskType(isTechnical);

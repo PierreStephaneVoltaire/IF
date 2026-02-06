@@ -50,7 +50,12 @@ export function filterMessage(message: DiscordMessagePayload): FilterResult {
     };
   }
 
-  const isMentioned = checkMention(message, config.DISCORD_BOT_ID);
+  // Get the appropriate bot ID based on platform
+  const botId = config.CHAT_PLATFORM === 'stoat' && config.STOAT_BOT_ID
+    ? config.STOAT_BOT_ID
+    : config.DISCORD_BOT_ID;
+  
+  const isMentioned = checkMention(message, botId);
   log.info(`Mentions bot: ${isMentioned}`);
 
   // Check for breakglass pattern: @{modelname} at start of message

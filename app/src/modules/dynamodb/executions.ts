@@ -10,7 +10,7 @@ const log = createLogger('DYNAMODB:EXECUTIONS');
 const TTL_MINUTES = 15;
 
 export async function createExecution(
-  threadId: string,
+  channelid: string,
   messageId: string
 ): Promise<string> {
   const executionId = generateExecutionId();
@@ -24,7 +24,7 @@ export async function createExecution(
 
   const execution: Execution = {
     execution_id: executionId,
-    thread_id: threadId,
+    channel_id: channelid,
     message_id: messageId,
     status: 'pending',
     created_at: now.toISOString(),

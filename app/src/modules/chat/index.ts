@@ -66,7 +66,6 @@ export type {
   ChatAttachment,
   ChatMention,
   SendMessageOptions,
-  ChatThread,
   ChatChannel,
   ChatClientConfig,
 } from './types';

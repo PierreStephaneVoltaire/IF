@@ -199,11 +199,11 @@ function updateExecutionState(state: ExecutionState, turn: ExecutionTurn): void 
 }
 
 async function askUserForClarification(
-  threadId: string,
+  channelId: string,
   state: ExecutionState,
   reason: string
 ): Promise<void> {
-  log.warn(`Asking user for clarification in thread ${threadId}: ${reason}`);
+  log.warn(`Asking user for clarification in channel ${channelId}: ${reason}`);
 
   const clarificationMessage = formatClarificationRequest(
     reason,
@@ -211,7 +211,7 @@ async function askUserForClarification(
     state.turnNumber
   );
 
-  await streamProgressToDiscord(threadId, {
+  await streamProgressToDiscord(channelId, {
     type: 'clarification_request',
     clarificationMessage,
     turnNumber: state.turnNumber,
@@ -220,12 +220,12 @@ async function askUserForClarification(
 }
 
 async function checkpointProgress(
-  threadId: string,
+  channelId: string,
   state: ExecutionState,
   turns: ExecutionTurn[]
 ): Promise<void> {
   log.info(`Checkpointing progress at turn ${state.turnNumber}`);
-  await streamProgressToDiscord(threadId, {
+  await streamProgressToDiscord(channelId, {
     type: 'checkpoint',
     checkpointData: {
       turnNumber: state.turnNumber,
@@ -239,11 +239,11 @@ async function checkpointProgress(
 export async function executeSequentialThinkingLoop(
   config: AgenticExecutionConfig,
   initialPrompt: string,
-  threadId: string,
+  channelId: string,
   initialConfidence: number = 80,
   workspacePath: string = '/workspace'
 ): Promise<{ success: boolean; finalResponse: string; turns: ExecutionTurn[]; finalConfidence: number }> {
-  log.info(`Starting sequential thinking loop for thread ${threadId} (Agent: ${config.agentRole})`);
+  log.info(`Starting sequential thinking loop for channel ${channelId} (Agent: ${config.agentRole})`);
 
   // Track total loop elapsed time
   const loopStartTime = Date.now();
@@ -251,16 +251,16 @@ export async function executeSequentialThinkingLoop(
   const executionId = generateExecutionId();
 
   // Create execution lock (Redis if available, fallback to in-memory)
-  const lockAcquired = await acquireRedisLock(threadId, executionId);
+  const lockAcquired = await acquireRedisLock(channelId, executionId);
   if (!lockAcquired) {
-    log.warn(`Unable to acquire lock for thread ${threadId}`);
+    log.warn(`Unable to acquire lock for channel ${channelId}`);
     return { success: false, finalResponse: 'Execution already in progress.', turns: [], finalConfidence: initialConfidence };
   }
 
-  const lock = createLock(threadId);
+  const lock = createLock(channelId);
 
-  await cacheSession(threadId, {
-    threadId,
+  await cacheSession(channelId, {
+    channelId,
     confidenceScore: initialConfidence,
     currentTurn: 0,
     model: config.model,
@@ -271,7 +271,7 @@ export async function executeSequentialThinkingLoop(
 
   // Log execution start
   await logExecutionStart({
-    threadId,
+    channelId,
     taskType: config.agentRole,
     agentRole: config.agentRole,
     model: config.model,
@@ -279,7 +279,7 @@ export async function executeSequentialThinkingLoop(
 
   // Emit execution started event
   await emitExecutionStarted({
-    threadId,
+    channelId,
     taskType: config.agentRole,
     agentRole: config.agentRole,
   });
@@ -319,18 +319,18 @@ export async function executeSequentialThinkingLoop(
   while (state.turnNumber < config.maxTurns) {
     state.turnNumber++;
 
-    const redisAbort = await checkRedisAbortFlag(threadId);
-    if (redisAbort || (await isAborted(threadId))) {
-      log.info(`Execution aborted via lock for thread ${threadId}`);
-      await emitExecutionAborted({ threadId, reason: 'user_stop' });
-      await releaseRedisLock(threadId);
-      await releaseLock(threadId);
-      await deleteCachedSession(threadId);
+    const redisAbort = await checkRedisAbortFlag(channelId);
+    if (redisAbort || (await isAborted(channelId))) {
+      log.info(`Execution aborted via lock for channel ${channelId}`);
+      await emitExecutionAborted({ channelId, reason: 'user_stop' });
+      await releaseRedisLock(channelId);
+      await releaseLock(channelId);
+      await deleteCachedSession(channelId);
       return { success: false, finalResponse: 'Execution aborted.', turns, finalConfidence: state.confidenceScore };
     }
 
     // Stream turn start
-    await streamProgressToDiscord(threadId, {
+    await streamProgressToDiscord(channelId, {
       type: 'turn_start',
       turnNumber: state.turnNumber,
       maxTurns: config.maxTurns,
@@ -339,14 +339,14 @@ export async function executeSequentialThinkingLoop(
     });
 
     // Check for interrupts
-    const interrupt = await checkForInterrupts(threadId);
+    const interrupt = await checkForInterrupts(channelId);
     if (interrupt) {
       recordInterrupt(state, interrupt);
       const handled = await handleInterrupt(interrupt, state, conversationHistory);
 
       if (handled.action === 'stop') {
         log.info(`Execution stopped by user interrupt`);
-        await checkpointProgress(threadId, state, turns);
+        await checkpointProgress(channelId, state, turns);
         return { success: false, finalResponse: handled.message, turns, finalConfidence: state.confidenceScore };
       }
     }
@@ -377,9 +377,9 @@ export async function executeSequentialThinkingLoop(
         consecutiveLowConfidenceTurns = 0;
       }
 
-      await updateLockTurn(threadId, state.turnNumber);
+      await updateLockTurn(channelId, state.turnNumber);
       await updateTurnState(
-        threadId,
+        channelId,
         state.turnNumber,
         state.confidenceScore,
         currentModel,
@@ -387,8 +387,8 @@ export async function executeSequentialThinkingLoop(
         executionId
       );
 
-      await cacheSession(threadId, {
-        threadId,
+      await cacheSession(channelId, {
+        channelId,
         confidenceScore: state.confidenceScore,
         currentTurn: state.turnNumber,
         model: currentModel,
@@ -402,7 +402,7 @@ export async function executeSequentialThinkingLoop(
 
       // FIX: Fix arguments to log and emit functions
       await logTurnToDb({
-        threadId,
+        channelId,
         turn: turn.turnNumber,
         model: turn.modelUsed,
         agentRole: config.agentRole,
@@ -412,14 +412,14 @@ export async function executeSequentialThinkingLoop(
       });
 
       await emitTurnCompleted({
-        threadId,
+        channelId,
         turn: turn.turnNumber,
         confidence: turn.confidence,
         status: turn.status
       });
 
       // Stream turn completion with model and token info
-      await streamProgressToDiscord(threadId, {
+      await streamProgressToDiscord(channelId, {
         type: 'turn_complete',
         turnNumber: turn.turnNumber,
         confidence: turn.confidence,
@@ -455,7 +455,7 @@ export async function executeSequentialThinkingLoop(
         resetEscalationState(state);
 
         await emitModelEscalated({
-          threadId,
+          channelId,
           from: fromModel,
           to: currentModel,
           reason: escalation.reason
@@ -477,14 +477,14 @@ export async function executeSequentialThinkingLoop(
       }
 
       if (turn.status === 'needs_clarification') {
-        await askUserForClarification(threadId, state, turn.response);
+        await askUserForClarification(channelId, state, turn.response);
         break;
       }
 
       // Check if stuck
       if (isStuck(state.confidenceScore, consecutiveLowConfidenceTurns) && isAtMaxEscalation(currentModel)) {
         await askUserForClarification(
-          threadId,
+          channelId,
           state,
           `Confidence critically low (${state.confidenceScore}%) for ${consecutiveLowConfidenceTurns} turns. Need guidance.`
         );
@@ -494,7 +494,7 @@ export async function executeSequentialThinkingLoop(
       // Add to history for next turn
       conversationHistory.push({ role: 'assistant', content: turn.response });
 
-      await refreshRedisLock(threadId, executionId);
+      await refreshRedisLock(channelId, executionId);
 
     } catch (error) {
       log.error(`Error in turn ${state.turnNumber}`, { error: String(error) });
@@ -507,7 +507,7 @@ export async function executeSequentialThinkingLoop(
     }
 
     if (state.turnNumber % config.checkpointInterval === 0) {
-      await checkpointProgress(threadId, state, turns);
+      await checkpointProgress(channelId, state, turns);
     }
   }
 
@@ -518,14 +518,14 @@ export async function executeSequentialThinkingLoop(
 
   // FIX: logExecutionComplete arguments
   await logExecutionComplete({
-    threadId,
+    channelId,
     totalTurns: state.turnNumber,
     finalStatus: turns[turns.length - 1]?.status || 'unknown',
     success: turns[turns.length - 1]?.status === 'complete'
   });
 
   await emitExecutionCompleted({
-    threadId,
+    channelId,
     totalTurns: state.turnNumber,
     finalStatus: turns[turns.length - 1]?.status || 'unknown'
   });
@@ -534,7 +534,7 @@ export async function executeSequentialThinkingLoop(
   log.info(`⏱️ Total Loop Elapsed Time: ${totalLoopElapsedMs}ms (${(totalLoopElapsedMs / 1000).toFixed(2)}s)`);
 
   // Send final summary to Discord with token usage and elapsed time
-  await streamProgressToDiscord(threadId, {
+  await streamProgressToDiscord(channelId, {
     type: 'checkpoint',
     checkpointData: {
       turnNumber: state.turnNumber,
@@ -549,9 +549,9 @@ export async function executeSequentialThinkingLoop(
     },
   });
 
-  await releaseLock(threadId);
-  await releaseRedisLock(threadId);
-  await deleteCachedSession(threadId);
+  await releaseLock(channelId);
+  await releaseRedisLock(channelId);
+  await deleteCachedSession(channelId);
 
   return { success: true, finalResponse, turns, finalConfidence: state.confidenceScore };
 }

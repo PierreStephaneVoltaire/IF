@@ -33,14 +33,14 @@ export interface S3FileInfo {
  * List files in S3 for a given thread prefix
  */
 export async function listS3Files(
-  threadId: string,
+  channelid: string,
   prefix?: string
 ): Promise<S3FileInfo[]> {
   const s3 = getS3Client();
   const bucket = getBucketName();
   const fullPrefix = prefix
-    ? `threads/${threadId}/${prefix}`
-    : `threads/${threadId}/`;
+    ? `threads/${channelid}/${prefix}`
+    : `threads/${channelid}/`;
 
   log.info(`Listing S3 files: ${bucket}/${fullPrefix}`);
 
@@ -65,7 +65,7 @@ export async function listS3Files(
               key: obj.Key,
               size: obj.Size || 0,
               lastModified: obj.LastModified || new Date(),
-              relativePath: obj.Key.replace(`threads/${threadId}/`, ''),
+              relativePath: obj.Key.replace(`threads/${channelid}/`, ''),
             });
           }
         }
@@ -74,10 +74,10 @@ export async function listS3Files(
       continuationToken = response.NextContinuationToken;
     } while (continuationToken);
 
-    log.info(`Found ${files.length} files in S3 for thread ${threadId}`);
+    log.info(`Found ${files.length} files in S3 for thread ${channelid}`);
     return files;
   } catch (error) {
-    log.error(`Failed to list S3 files for thread ${threadId}`, { error: String(error) });
+    log.error(`Failed to list S3 files for thread ${channelid}`, { error: String(error) });
     throw error;
   }
 }
@@ -86,12 +86,12 @@ export async function listS3Files(
  * Get a file from S3 as a buffer
  */
 export async function getS3File(
-  threadId: string,
+  channelid: string,
   filePath: string
 ): Promise<Buffer> {
   const s3 = getS3Client();
   const bucket = getBucketName();
-  const key = `threads/${threadId}/${filePath}`;
+  const key = `threads/${channelid}/${filePath}`;
 
   log.info(`Getting S3 file: ${bucket}/${key}`);
 
@@ -127,11 +127,11 @@ export async function getS3File(
  * Check if a file exists in S3
  */
 export async function s3FileExists(
-  threadId: string,
+  channelid: string,
   filePath: string
 ): Promise<boolean> {
   try {
-    await getS3File(threadId, filePath);
+    await getS3File(channelid, filePath);
     return true;
   } catch (error) {
     if (String(error).includes('NoSuchKey') || String(error).includes('404')) {
@@ -144,19 +144,19 @@ export async function s3FileExists(
 /**
  * Delete all files for a thread from S3
  */
-export async function deleteS3Prefix(threadId: string): Promise<number> {
+export async function deleteS3Prefix(channelid: string): Promise<number> {
   const s3 = getS3Client();
   const bucket = getBucketName();
-  const prefix = `threads/${threadId}/`;
+  const prefix = `threads/${channelid}/`;
 
   log.info(`Deleting S3 prefix: ${bucket}/${prefix}`);
 
   try {
     // First, list all objects
-    const files = await listS3Files(threadId);
+    const files = await listS3Files(channelid);
 
     if (files.length === 0) {
-      log.info(`No files to delete in S3 for thread ${threadId}`);
+      log.info(`No files to delete in S3 for thread ${channelid}`);
       return 0;
     }
 
@@ -171,10 +171,10 @@ export async function deleteS3Prefix(threadId: string): Promise<number> {
     });
 
     await s3.send(command);
-    log.info(`Deleted ${files.length} files from S3 for thread ${threadId}`);
+    log.info(`Deleted ${files.length} files from S3 for thread ${channelid}`);
     return files.length;
   } catch (error) {
-    log.error(`Failed to delete S3 prefix for thread ${threadId}`, { error: String(error) });
+    log.error(`Failed to delete S3 prefix for thread ${channelid}`, { error: String(error) });
     throw error;
   }
 }

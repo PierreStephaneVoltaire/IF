@@ -9,7 +9,7 @@ const TABLE_NAME = process.env.DYNAMODB_EXECUTIONS_TABLE || 'discord_executions'
 
 export interface ExecutionLog {
   execution_id: string;     // Unique ID for this execution log entry
-  thread_id: string;        // Discord thread ID
+  channel_id: string;       // Channel ID
   turn: number;
   model: string;
   agentRole: AgentRole;
@@ -32,7 +32,7 @@ export interface ExecutionLog {
  * Logs a turn execution to DynamoDB
  */
 export async function logTurnToDb(params: {
-  threadId: string;
+  channelId: string;
   turn: number;
   model: string;
   agentRole: AgentRole;
@@ -47,12 +47,12 @@ export async function logTurnToDb(params: {
     const now = new Date();
     const ttl = Math.floor(now.getTime() / 1000) + (30 * 24 * 60 * 60); // 30 days
 
-    // Generate execution_id as threadId-timestamp-turn
-    const execution_id = `${params.threadId}-${now.getTime()}-turn${params.turn}`;
+    // Generate execution_id as channelId-timestamp-turn
+    const execution_id = `${params.channelId}-${now.getTime()}-turn${params.turn}`;
 
     const logEntry = {
       execution_id,
-      thread_id: params.threadId,
+      channel_id: params.channelId,
       turn: params.turn,
       model: params.model,
       agentRole: params.agentRole,
@@ -75,7 +75,7 @@ export async function logTurnToDb(params: {
     const elapsedMs = Date.now() - startTime;
     log.debug(`⏱️ DynamoDB logTurnToDb completed in ${elapsedMs}ms`);
 
-    log.debug(`Logged turn ${params.turn} for thread ${params.threadId}`);
+    log.debug(`Logged turn ${params.turn} for channel ${params.channelId}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     log.error(`Failed to log turn to DynamoDB: ${errorMessage}`);
@@ -87,7 +87,7 @@ export async function logTurnToDb(params: {
  * Logs an execution start event
  */
 export async function logExecutionStart(params: {
-  threadId: string;
+  channelId: string;
   taskType: string;
   agentRole: AgentRole;
   model: string;
@@ -97,8 +97,8 @@ export async function logExecutionStart(params: {
     const now = new Date();
     const ttl = Math.floor(now.getTime() / 1000) + (30 * 24 * 60 * 60);
 
-    // Generate execution_id as threadId-timestamp-start
-    const execution_id = `${params.threadId}-${now.getTime()}-start`;
+    // Generate execution_id as channelId-timestamp-start
+    const execution_id = `${params.channelId}-${now.getTime()}-start`;
 
     const startTime = Date.now();
     await docClient.send(
@@ -106,7 +106,7 @@ export async function logExecutionStart(params: {
         TableName: TABLE_NAME,
         Item: {
           execution_id,
-          thread_id: params.threadId,
+          channel_id: params.channelId,
           eventType: 'execution_started',
           taskType: params.taskType,
           agentRole: params.agentRole,
@@ -119,7 +119,7 @@ export async function logExecutionStart(params: {
     const elapsedMs = Date.now() - startTime;
     log.info(`⏱️ DynamoDB logExecutionStart completed in ${elapsedMs}ms`);
 
-    log.info(`Logged execution start for thread ${params.threadId}`);
+    log.info(`Logged execution start for channel ${params.channelId}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     log.error(`Failed to log execution start: ${errorMessage}`);
@@ -130,7 +130,7 @@ export async function logExecutionStart(params: {
  * Logs an execution completion event
  */
 export async function logExecutionComplete(params: {
-  threadId: string;
+  channelId: string;
   totalTurns: number;
   finalStatus: string;
   success: boolean;
@@ -140,8 +140,8 @@ export async function logExecutionComplete(params: {
     const now = new Date();
     const ttl = Math.floor(now.getTime() / 1000) + (30 * 24 * 60 * 60);
 
-    // Generate execution_id as threadId-timestamp-end
-    const execution_id = `${params.threadId}-${now.getTime()}-end`;
+    // Generate execution_id as channelId-timestamp-end
+    const execution_id = `${params.channelId}-${now.getTime()}-end`;
 
     const startTime = Date.now();
     await docClient.send(
@@ -149,7 +149,7 @@ export async function logExecutionComplete(params: {
         TableName: TABLE_NAME,
         Item: {
           execution_id,
-          thread_id: params.threadId,
+          channel_id: params.channelId,
           eventType: 'execution_completed',
           totalTurns: params.totalTurns,
           finalStatus: params.finalStatus,
@@ -162,7 +162,7 @@ export async function logExecutionComplete(params: {
     const elapsedMs = Date.now() - startTime;
     log.info(`⏱️ DynamoDB logExecutionComplete completed in ${elapsedMs}ms`);
 
-    log.info(`Logged execution completion for thread ${params.threadId}`);
+    log.info(`Logged execution completion for channel ${params.channelId}`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     log.error(`Failed to log execution completion: ${errorMessage}`);

@@ -91,24 +91,7 @@ export async function createThread(
   messageId: string,
   name: string
 ): Promise<ThreadChannel> {
-  log.info(`createThread from message ${messageId}, name: ${name}`);
-
-  const channel = await client.channels.fetch(channelId);
-  if (!channel || channel.type !== ChannelType.GuildText) {
-    log.error(`Channel ${channelId} not found or not a text channel`);
-    throw new Error(`Invalid channel for thread creation: ${channelId}`);
-  }
-
-  const textChannel = channel as TextChannel;
-  const message = await textChannel.messages.fetch(messageId);
-
-  const thread = await message.startThread({
-    name: name.substring(0, 100),
-    autoArchiveDuration: 1440,
-  });
-
-  log.info(`Thread created: ${thread.id}`);
-  return thread;
+  throw new Error('createThread is deprecated; use createProjectChannel instead');
 }
 
 export async function createProjectChannel(

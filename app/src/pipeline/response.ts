@@ -11,11 +11,11 @@ const MAX_DISCORD_LENGTH = 1900;
 export interface ResponseInput {
   response: string;
   channelId: string;
-  threadId: string; // NEW: Required for workspace access
+  workspaceId: string; // Required for workspace access
 }
 
 export async function formatAndSendResponse(input: ResponseInput): Promise<void> {
-  log.info(`Formatting response for Discord (Thread: ${input.threadId})`);
+  log.info(`Formatting response (Workspace: ${input.workspaceId})`);
   log.info(`Raw response length: ${input.response.length}`);
   log.info(`First 200 chars: ${input.response.substring(0, 200)}`);
 
@@ -31,8 +31,9 @@ export async function formatAndSendResponse(input: ResponseInput): Promise<void>
     });
   }
 
+  log.info(`Sending response to channel ${input.channelId}`);
   const chatClient = getChatClient();
-  // Only get Discord client if we're NOT using a chat client (i.e., we're on Discord)
+  // Only get Discord client if we're NOT using a non-Discord chat client
   const client = chatClient ? null : getDiscordClient();
 
   for (let i = 0; i < parts.length; i++) {
@@ -56,12 +57,12 @@ export async function formatAndSendResponse(input: ResponseInput): Promise<void>
     } else if (part.type === 'file' && part.filePath) {
       try {
         log.info(`📎 Attempting to fetch file from workspace`);
-        log.info(`  Thread ID: ${input.threadId}`);
+        log.info(`  Workspace ID: ${input.workspaceId}`);
         log.info(`  File path: ${part.filePath}`);
-        log.info(`  Workspace base: /workspace/${input.threadId}`);
-        log.info(`  Full expected path: /workspace/${input.threadId}/${part.filePath}`);
+        log.info(`  Workspace base: /workspace/${input.workspaceId}`);
+        log.info(`  Full expected path: /workspace/${input.workspaceId}/${part.filePath}`);
 
-        const content = await workspaceManager.readFile(input.threadId, part.filePath);
+        const content = await workspaceManager.readFile(input.workspaceId, part.filePath);
         log.info(`✅ File read successful! Size: ${content.length} bytes`);
 
         if (chatClient && chatClient.platform !== 'discord') {
@@ -88,7 +89,7 @@ export async function formatAndSendResponse(input: ResponseInput): Promise<void>
         log.info(`✅ File uploaded to Discord: ${part.content}`);
       } catch (err) {
         log.error(`❌ Failed to attach file ${part.filePath}`);
-        log.error(`  Thread ID: ${input.threadId}`);
+        log.error(`  Workspace ID: ${input.workspaceId}`);
         log.error(`  Error: ${String(err)}`);
         log.error(`  Stack: ${err instanceof Error ? err.stack : 'N/A'}`);
 
