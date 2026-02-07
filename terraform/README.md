@@ -66,7 +66,7 @@ Terraform configuration for deploying the Discord bot and Stoat (Revolt) self-ho
 - Tracks individual message executions
 - Status, model used, input/output context
 - TTL: Auto-expire old records
-- GSI: `thread_id-index` for querying by thread
+- GSI: `channel_id-index` for querying by thread
 
 **3. discord-messages**
 - Turn-by-turn execution logs
@@ -297,8 +297,8 @@ aws dynamodb list-tables
 
 aws dynamodb query \
   --table-name discord-messages \
-  --key-condition-expression "pk = :threadId" \
-  --expression-attribute-values '{":threadId":{"S":"1234567890"}}'
+  --key-condition-expression "pk = :channelid" \
+  --expression-attribute-values '{":channelid":{"S":"1234567890"}}'
 ```
 
 ### Check SQS
