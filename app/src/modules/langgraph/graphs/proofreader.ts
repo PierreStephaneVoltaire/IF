@@ -96,6 +96,8 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
     });
 
     await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
 
     // Upload metadata
     const metadata = {

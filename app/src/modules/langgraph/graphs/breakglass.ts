@@ -123,6 +123,8 @@ async function respondNode(state: BreakglassGraphState): Promise<BreakglassGraph
     });
 
     await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
 
     // Upload metadata
     const metadata = {

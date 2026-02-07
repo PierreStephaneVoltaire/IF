@@ -1,5 +1,5 @@
 import { TaskType, AgentRole, TaskComplexity } from '../modules/litellm/types';
-import { MODEL_TIERS } from '../modules/agentic/escalation';
+import { MODEL_TIERS } from '../modules/langgraph/model-tiers';
 
 /**
  * Map agent roles to model tiers

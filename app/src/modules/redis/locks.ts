@@ -1,12 +1,8 @@
 import type { RedisClientType } from 'redis';
 import { getRedisClient, withRedisFallback } from './index';
 import { createLogger } from '../../utils/logger';
-import {
-  createLock as createInMemoryLock,
-  releaseLock as releaseInMemoryLock,
-  hasActiveLock,
-  abortLock,
-} from '../agentic/lock';
+const inMemoryLocks = new Set<string>();
+const inMemoryAborts = new Set<string>();
 
 const log = createLogger('REDIS:LOCKS');
 
@@ -44,13 +40,13 @@ export async function acquireLock(
     },
     async () => {
       // Fallback: check in-memory lock
-      if (hasActiveLock(channelId)) {
+      if (inMemoryLocks.has(channelId)) {
         log.debug(`In-memory lock exists for channel ${channelId}`);
         return false;
       }
 
       // Create in-memory lock
-      createInMemoryLock(channelId);
+      inMemoryLocks.add(channelId);
       log.info(`In-memory lock created for channel ${channelId}`, { executionId });
       return true;
     },
@@ -76,7 +72,7 @@ export async function releaseLock(channelId: string): Promise<void> {
   }
 
   // Always release in-memory lock for consistency
-  releaseInMemoryLock(channelId);
+  inMemoryLocks.delete(channelId);
 }
 
 /**
@@ -91,7 +87,7 @@ export async function refreshLock(
 
   if (!client) {
     // In-memory locks don't need refresh
-    return hasActiveLock(channelId);
+    return inMemoryLocks.has(channelId);
   }
 
   try {
@@ -136,7 +132,7 @@ export async function checkLock(channelId: string): Promise<string | null> {
   }
 
   // Fallback to in-memory
-  return hasActiveLock(channelId) ? 'in-memory' : null;
+  return inMemoryLocks.has(channelId) ? 'in-memory' : null;
 }
 
 /**
@@ -157,7 +153,7 @@ export async function setAbortFlag(channelId: string): Promise<void> {
   }
 
   // Always set in-memory abort for immediate effect
-  abortLock(channelId);
+  inMemoryAborts.add(channelId);
 }
 
 /**
@@ -178,8 +174,7 @@ export async function checkAbortFlag(channelId: string): Promise<boolean> {
   }
 
   // Fallback to in-memory
-  const { isAborted } = await import('../agentic/lock');
-  return isAborted(channelId);
+  return inMemoryAborts.has(channelId);
 }
 
 /**

@@ -1,8 +1,6 @@
 import { createLogger } from '../utils/logger';
 import { getDiscordClient } from '../modules/discord/index';
-import { abortLock } from '../modules/agentic/lock';
 import { setAbortFlag } from '../modules/redis';
-import { emitExecutionAborted } from '../modules/agentic/events';
 import { Client } from 'discord.js';
 
 const log = createLogger('HANDLERS:REACTIONS');
@@ -58,7 +56,6 @@ async function handleAbortReaction(message: any, user: any): Promise<void> {
 
   // Set abort flag on Redis (fallback to in-memory)
   await setAbortFlag(message.channelId);
-  abortLock(message.channelId);
 
   // Send confirmation message
   await message.channel.send('⏹️ Execution stop requested. Will halt at next turn.');

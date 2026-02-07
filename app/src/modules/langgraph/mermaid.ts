@@ -8,9 +8,15 @@
  */
 
 import { createLogger } from '../../utils/logger';
+import { exec } from 'child_process';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import { promisify } from 'util';
 import type { GraphState, ExecutionTurn } from './state';
 
 const log = createLogger('MERMAID');
+const execAsync = promisify(exec);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -228,6 +234,26 @@ export class MermaidGenerator {
     }
 
     return diagram;
+  }
+
+  /**
+   * Render Mermaid diagram to PNG buffer using mermaid-cli.
+   */
+  async renderPng(mermaidSource: string): Promise<Buffer> {
+    log.info('Rendering Mermaid diagram to PNG');
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mermaid-'));
+    const mmdPath = path.join(tmpDir, 'diagram.mmd');
+    const pngPath = path.join(tmpDir, 'diagram.png');
+
+    try {
+      await fs.writeFile(mmdPath, mermaidSource, 'utf-8');
+      await execAsync(`npx @mermaid-js/mermaid-cli -i "${mmdPath}" -o "${pngPath}"`);
+      const buffer = await fs.readFile(pngPath);
+      return buffer;
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   }
 }
 

@@ -12,7 +12,7 @@
  */
 
 import { createLogger } from '../../../utils/logger';
-import { MODEL_TIERS } from '../../agentic/escalation';
+import { MODEL_TIERS } from '../model-tiers';
 import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
@@ -208,6 +208,8 @@ Help the user think through this by considering different priorities`;
       });
 
       await logger.uploadMermaid(mermaidSource);
+      const mermaidPng = await generator.renderPng(mermaidSource);
+      await logger.uploadDiagramPng(mermaidPng);
 
       const metadata = {
         flowType: FlowType.ANGEL_DEVIL,

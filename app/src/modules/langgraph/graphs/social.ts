@@ -96,6 +96,8 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
     });
 
     await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
 
     // Upload metadata
     const metadata = {

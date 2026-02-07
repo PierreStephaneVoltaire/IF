@@ -97,6 +97,8 @@ async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
     });
 
     await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
 
     // Upload metadata
     const metadata = {

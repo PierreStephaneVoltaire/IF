@@ -12,7 +12,7 @@
  */
 
 import { createLogger } from '../../../utils/logger';
-import { MODEL_TIERS } from '../../agentic/escalation';
+import { MODEL_TIERS } from '../model-tiers';
 import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
@@ -206,6 +206,8 @@ Provide exactly 3 options representing the best approaches from all models.
     });
 
     await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
 
     // Upload metadata
     const metadata = {

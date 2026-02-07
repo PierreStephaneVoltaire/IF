@@ -20,14 +20,16 @@
  */
 
 import { createLogger } from '../../../utils/logger';
+import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { chatCompletion, extractContent, getTools } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType, type AgentRole, type ExecutionState, type ExecutionTurn, type ToolCall } from '../../litellm/types';
 import { createExecutionLogger, type ExecutionLogger } from '../logger';
 import { getMermaidGenerator } from '../mermaid';
+import { getCheckpointer } from '../checkpointer';
 import { setupSession } from '../../../pipeline/session';
-import { checkEscalationTriggers, getNextModel, isAtMaxEscalation, MODEL_CAPABILITY_ORDER } from '../../agentic/escalation';
-import { calculateConfidence, getConfidenceLevel } from '../../agentic/confidence';
+import { checkEscalationTriggers, getNextModel, isAtMaxEscalation, MODEL_CAPABILITY_ORDER } from '../escalation';
+import { calculateConfidence, getConfidenceLevel } from '../confidence';
 import { acquireLock as acquireRedisLock, releaseLock as releaseRedisLock, checkAbortFlag, refreshLock } from '../../redis';
 import { streamProgressToDiscord } from '../../agentic/progress';
 import { loadPrompt } from '../../../templates/loader';
@@ -47,6 +49,43 @@ const LOW_CONFIDENCE_THRESHOLD = 30;
 const CONSECUTIVE_LOW_CONFIDENCE_LIMIT = 3;
 const NO_PROGRESS_LIMIT = 5;
 const SAME_ERROR_LIMIT = 3;
+
+// ============================================================================
+// LangGraph State Annotation
+// ============================================================================
+
+const SequentialStateAnnotation = Annotation.Root({
+  channelId: Annotation<string>(),
+  executionId: Annotation<string>(),
+  initialPrompt: Annotation<string>(),
+  flowType: Annotation<FlowType>(),
+  agentRole: Annotation<string | undefined>(),
+  workspacePath: Annotation<string>(),
+  turnNumber: Annotation<number>(),
+  maxTurns: Annotation<number>(),
+  currentModel: Annotation<string>(),
+  conversationHistory: Annotation<Message[]>(),
+  turns: Annotation<ExecutionTurn[]>(),
+  confidenceScore: Annotation<number>(),
+  consecutiveLowConfidenceTurns: Annotation<number>(),
+  errorCount: Annotation<number>(),
+  sameErrorCount: Annotation<number>(),
+  lastError: Annotation<string | null>(),
+  noProgressTurns: Annotation<number>(),
+  fileChanges: Annotation<string[]>(),
+  escalations: Annotation<EscalationEvent[]>(),
+  status: Annotation<ExecutionStatus>(),
+  abortRequested: Annotation<boolean>(),
+  totalInputTokens: Annotation<number>(),
+  totalOutputTokens: Annotation<number>(),
+  finalResponse: Annotation<string>(),
+  traversedNodes: Annotation<string[]>(),
+  logBuffer: Annotation<LogEntry[]>(),
+  checkpointInterval: Annotation<number>(),
+  lastCheckpointTurn: Annotation<number>(),
+  failureMetadata: Annotation<FailureMetadata | undefined>(),
+  reflectionResult: Annotation<SequentialGraphState['reflectionResult']>(),
+} as any);
 
 // ============================================================================
 // State Types
@@ -675,7 +714,7 @@ async function abortNode(state: SequentialGraphState): Promise<Partial<Sequentia
 /**
  * Finalize node: Log completion, generate diagram, upload to S3
  */
-async function finalizeNode(state: SequentialGraphState, logger: ExecutionLogger): Promise<GraphResult> {
+async function finalizeNode(state: SequentialGraphState, logger: ExecutionLogger): Promise<Partial<SequentialGraphState>> {
   enterNode(state, 'finalize');
 
   try {
@@ -694,6 +733,8 @@ async function finalizeNode(state: SequentialGraphState, logger: ExecutionLogger
     } as any);
 
     await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
     addLog(state, 'INFO', 'finalize', 'Mermaid diagram uploaded');
 
     // Upload metadata
@@ -718,23 +759,13 @@ async function finalizeNode(state: SequentialGraphState, logger: ExecutionLogger
     await logger.flush();
     addLog(state, 'INFO', 'finalize', 'Logs flushed to S3');
 
-    return {
-      response: state.finalResponse || state.initialPrompt,
-      model: state.currentModel,
-      traversedNodes: state.traversedNodes,
-      error: state.status === 'stuck' ? 'Execution got stuck' : undefined,
-      failureMetadata: state.failureMetadata,
-    };
+    return {};
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     log.error(`Finalization error: ${errorMsg}`);
 
     return {
-      response: state.finalResponse || `Execution completed with error: ${errorMsg}`,
-      model: state.currentModel,
-      traversedNodes: state.traversedNodes,
-      error: errorMsg,
-      failureMetadata: state.failureMetadata,
+      finalResponse: state.finalResponse || `Execution completed with error: ${errorMsg}`,
     };
   }
 }
@@ -830,36 +861,6 @@ export interface SequentialThinkingGraphInput {
 }
 
 export function createSequentialThinkingGraph() {
-  // Note: This is a simplified StateGraph-like implementation
-  // In a full LangGraph implementation, we would use:
-  // const graph = new StateGraph(SequentialGraphState)
-  //   .addNode('setup', setupNode)
-  //   .addNode('plan', planNode)
-  //   .addNode('execute_turn', executeTurnNode)
-  //   .addNode('evaluate_turn', evaluateTurnNode)
-  //   .addNode('check_escalation', checkEscalationNode)
-  //   .addNode('checkpoint', checkpointNode)
-  //   .addNode('reflect', reflectNode)
-  //   .addNode('ask_clarification', askClarificationNode)
-  //   .addNode('abort', abortNode)
-  //   .addNode('finalize', finalizeNode)
-  //   .addEdge('setup', 'plan')
-  //   .addEdge('plan', 'execute_turn')
-  //   .addEdge('execute_turn', 'evaluate_turn')
-  //   .addConditionalEdges('evaluate_turn', shouldContinue, {
-  //     abort,
-  //     reflect,
-  //     ask_clarification,
-  //     check_escalation,
-  //     checkpoint,
-  //     execute_turn,
-  //   })
-  //   .addEdge('checkpoint', 'execute_turn')
-  //   .addEdge('check_escalation', 'execute_turn')
-  //   .addEdge('ask_clarification', 'finalize')
-  //   .addEdge('abort', 'finalize')
-  //   .addEdge('reflect', 'finalize');
-
   return {
     name: 'SequentialThinkingGraph',
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
@@ -869,113 +870,80 @@ export function createSequentialThinkingGraph() {
         channelId: options.channelId,
         executionId: options.executionId,
       });
+      const graph = new StateGraph(SequentialStateAnnotation as any)
+        .addNode('setup', setupNode)
+        .addNode('plan', planNode)
+        .addNode('execute_turn', executeTurnNode)
+        .addNode('evaluate_turn', evaluateTurnNode)
+        .addNode('check_escalation', checkEscalationNode)
+        .addNode('checkpoint', checkpointNode)
+        .addNode('reflect', reflectNode)
+        .addNode('ask_clarification', askClarificationNode)
+        .addNode('abort', abortNode)
+        .addNode('finalize', async (state: SequentialGraphState) => finalizeNode(state, logger))
+        .addEdge(START, 'setup')
+        .addEdge('setup', 'plan')
+        .addEdge('plan', 'execute_turn')
+        .addEdge('execute_turn', 'evaluate_turn')
+        .addConditionalEdges('evaluate_turn', shouldContinue as any, {
+          abort: 'abort',
+          reflect: 'reflect',
+          ask_clarification: 'ask_clarification',
+          check_escalation: 'check_escalation',
+          checkpoint: 'checkpoint',
+          execute_turn: 'execute_turn',
+        })
+        .addEdge('checkpoint', 'execute_turn')
+        .addEdge('check_escalation', 'execute_turn')
+        .addEdge('ask_clarification', 'finalize')
+        .addEdge('abort', 'finalize')
+        .addEdge('reflect', 'finalize')
+        .addEdge('finalize', END)
+        .compile({
+          checkpointer: getCheckpointer() as any,
+        });
 
-      let state = createInitialState(options);
-      logger.recordNode('setup');
+      const initialState = createInitialState(options);
 
       try {
-        // Phase 1: Setup
-        const setupResult = await setupNode(state);
-        state = { ...state, ...setupResult };
+        const finalState = await graph.invoke(initialState, {
+          configurable: { thread_id: options.channelId },
+        });
 
-        if (state.status === 'aborted' || state.status === 'stuck') {
-          return await finalizeNode(state, logger);
-        }
-
-        // Phase 2: Plan
-        logger.recordNode('plan');
-        const planResult = await planNode(state);
-        state = { ...state, ...planResult };
-
-        // Phase 3: Execution Loop
-        while (state.status === 'running' && state.turnNumber < state.maxTurns) {
-          logger.recordNode(`execute_turn_${state.turnNumber + 1}`);
-
-          // Execute turn
-          const turnResult = await executeTurnNode(state);
-          state = { ...state, ...turnResult };
-
-          if (state.status === 'stuck') {
-            // Check for escalation possibility
-            const canEscalate = !isAtMaxEscalation(state.currentModel);
-            if (canEscalate && state.consecutiveLowConfidenceTurns < CONSECUTIVE_LOW_CONFIDENCE_LIMIT) {
-              logger.recordNode('check_escalation');
-              const escalationResult = await checkEscalationNode(state);
-              state = { ...state, ...escalationResult };
-            }
-            continue;
-          }
-
-          // Evaluate turn
-          logger.recordNode(`evaluate_turn_${state.turnNumber}`);
-          const evalResult = await evaluateTurnNode(state);
-          state = { ...state, ...evalResult };
-
-          // Determine next action
-          const nextAction = shouldContinue(state);
-
-          switch (nextAction) {
-            case 'abort':
-              logger.recordNode('abort');
-              const abortResult = await abortNode(state);
-              state = { ...state, ...abortResult };
-              return await finalizeNode(state, logger);
-
-            case 'complete':
-            case 'reflect':
-              logger.recordNode('reflect');
-              const reflectResult = await reflectNode(state);
-              state = { ...state, ...reflectResult };
-              return await finalizeNode(state, logger);
-
-            case 'ask_clarification':
-              logger.recordNode('ask_clarification');
-              await askClarificationNode(state);
-              return await finalizeNode(state, logger);
-
-            case 'check_escalation':
-              logger.recordNode('check_escalation');
-              const escalationResult = await checkEscalationNode(state);
-              state = { ...state, ...escalationResult };
-              break;
-
-            case 'checkpoint':
-              logger.recordNode(`checkpoint_${state.turnNumber}`);
-              await checkpointNode(state);
-              break;
-
-            case 'execute_turn':
-            default:
-              // Continue loop
-              break;
-          }
-        }
-
-        // Max turns reached - reflect and finalize
-        if (state.turnNumber >= state.maxTurns) {
-          logger.recordNode('reflect');
-          const reflectResult = await reflectNode(state);
-          state = { ...state, ...reflectResult };
-        }
-
-        return await finalizeNode(state, logger);
-
+        return {
+          response: finalState.finalResponse || finalState.initialPrompt,
+          model: finalState.currentModel,
+          traversedNodes: finalState.traversedNodes,
+          error: finalState.status === 'stuck' ? 'Execution got stuck' : undefined,
+          failureMetadata: finalState.failureMetadata,
+        };
       } catch (error) {
-        log.error(`SequentialThinkingGraph error: ${error}`);
-
         const errorMsg = error instanceof Error ? error.message : String(error);
-        state.status = 'stuck';
-        state.failureMetadata = {
-          failed_node: 'graph_invoke',
-          failed_model: state.currentModel,
-          error_type: getErrorType(error),
-          error_message: errorMsg,
-          provider: extractProvider(state.currentModel),
-          timestamp: new Date().toISOString(),
-          turn_number: state.turnNumber,
+        log.error(`SequentialThinkingGraph error: ${errorMsg}`);
+
+        const failedState = {
+          ...initialState,
+          status: 'stuck' as const,
+          failureMetadata: {
+            failed_node: 'graph_invoke',
+            failed_model: initialState.currentModel,
+            error_type: getErrorType(error),
+            error_message: errorMsg,
+            provider: extractProvider(initialState.currentModel),
+            timestamp: new Date().toISOString(),
+            turn_number: initialState.turnNumber,
+          },
         };
 
-        return await finalizeNode(state, logger);
+        await finalizeNode(failedState, logger);
+
+        return {
+          response: failedState.finalResponse || `Execution completed with error: ${errorMsg}`,
+          model: failedState.currentModel,
+          traversedNodes: failedState.traversedNodes,
+          error: errorMsg,
+          failureMetadata: failedState.failureMetadata,
+        };
       }
     },
   };

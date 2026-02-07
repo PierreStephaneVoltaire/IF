@@ -8,7 +8,6 @@ import {
   Routes,
   Client,
 } from 'discord.js';
-import { getLock, hasActiveLock } from '../agentic/lock';
 import { checkAbortFlag, checkLock, getThreadState, getCachedSession } from '../redis';
 import { getSession, updateSession } from '../dynamodb/sessions';
 import { listS3Files, formatFileTree, deleteS3Prefix, getS3File } from '../workspace/s3-helpers';
@@ -213,7 +212,6 @@ async function handleStatus(interaction: ChatInputCommandInteraction): Promise<v
   await interaction.deferReply();
 
   const channelid = interaction.channelId;
-  const lock = getLock(channelid);
   const session = await getSession(channelid);
   const redisLockOwner = await checkLock(channelid);
   const redisAbort = await checkAbortFlag(channelid);
@@ -222,19 +220,19 @@ async function handleStatus(interaction: ChatInputCommandInteraction): Promise<v
 
   const embed = new EmbedBuilder()
     .setTitle('📊 Execution Status')
-    .setColor(lock ? 0xffa500 : 0x00ff00)
+    .setColor(redisLockOwner ? 0xffa500 : 0x00ff00)
     .setTimestamp();
 
   // Lock Status
-  if (lock) {
+  if (redisLockOwner) {
     embed.addFields({
       name: '🔒 Lock Status',
-      value: `**Locked** (Turn ${lock.currentTurn})`,
+      value: `**Locked** (Owner: ${redisLockOwner})`,
       inline: true,
     });
     embed.addFields({
       name: '🛑 Abort Flag',
-      value: lock.abort || redisAbort ? '**SET**' : 'Not set',
+      value: redisAbort ? '**SET**' : 'Not set',
       inline: true,
     });
   } else {
@@ -398,7 +396,7 @@ async function handleWorkspaceSync(
   await interaction.deferReply();
 
   // Check if there's an active lock
-  if (hasActiveLock(channelid)) {
+  if (await checkLock(channelid)) {
     await interaction.editReply({
       content: '⚠️ Cannot sync while execution is in progress. Please wait or abort first.',
     });
@@ -440,7 +438,7 @@ async function handleWorkspaceClean(
   }
 
   // Check if there's an active lock
-  if (hasActiveLock(channelid)) {
+  if (await checkLock(channelid)) {
     await interaction.reply({
       content: '⚠️ Cannot clean while execution is in progress. Please abort first.',
       ephemeral: true,
@@ -767,12 +765,24 @@ async function handleReplay(interaction: ChatInputCommandInteraction): Promise<v
       return;
     }
 
-    // Format and show checkpoint info
-    const embedText = formatReplayEmbed(replayInfo, '\n**Use `/replay force` to resume execution from this checkpoint.**');
-
     await interaction.editReply({
-      content: embedText,
+      content: '🔄 **Replaying Execution**\n\nResuming from last checkpoint...',
     });
+
+    const flowType = replayInfo.checkpoint?.checkpoint.flowType || FlowType.SEQUENTIAL_THINKING;
+    const replayResult = await replayExecution(channelid, flowType, {
+      initialPrompt: replayInfo.checkpoint?.checkpoint.initialPrompt,
+    });
+
+    if (replayResult.success) {
+      await interaction.editReply({
+        content: `✅ **Replay Complete**\n\n${replayResult.response}`,
+      });
+    } else {
+      await interaction.editReply({
+        content: `❌ **Replay Failed**\n\n${replayResult.error || replayResult.response}`,
+      });
+    }
   } catch (error) {
     log.error('Failed to get replay info:', { error: String(error) });
     await interaction.editReply({

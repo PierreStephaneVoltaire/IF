@@ -160,6 +160,8 @@ export function createArchitectureGraph() {
         });
 
         await logger.uploadMermaid(mermaidSource);
+        const mermaidPng = await generator.renderPng(mermaidSource);
+        await logger.uploadDiagramPng(mermaidPng);
 
         // Upload metadata
         const metadata = {
