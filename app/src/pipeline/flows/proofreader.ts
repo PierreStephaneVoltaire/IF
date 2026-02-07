@@ -2,6 +2,8 @@ import { createLogger } from '../../utils/logger';
 import { chatCompletion } from '../../modules/litellm/index';
 import { getModelFromTier } from '../../templates/registry';
 import { loadPrompt } from '../../templates/loader';
+import { getModelParams } from '../../modules/langgraph/temperature';
+import { FlowType } from '../../modules/litellm/types';
 import type { FlowContext, FlowResult } from './types';
 
 const log = createLogger('FLOW:PROOFREADER');
@@ -27,12 +29,17 @@ export async function executeProofreaderFlow(
   // Load prompt from template file
   const systemPrompt = loadPrompt('proofreader');
 
+  const params = getModelParams(FlowType.PROOFREADER);
+  log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
+
   const response = await chatCompletion({
     model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: context.history.current_message },
     ],
+    temperature: params.temperature,
+    top_p: params.top_p,
   });
 
   const content = response.choices?.[0]?.message?.content || 'No errors found.';

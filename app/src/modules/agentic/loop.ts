@@ -357,6 +357,8 @@ export async function executeSequentialThinkingLoop(
         model: currentModel,
         messages: conversationHistory,
         tools: tools,
+        ...(config.temperature !== undefined && { temperature: config.temperature }),
+        ...(config.top_p !== undefined && { top_p: config.top_p }),
       });
 
       if (response.usage) {

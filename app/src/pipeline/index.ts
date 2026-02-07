@@ -15,20 +15,6 @@ import { formatHistory } from './history';
 import { checkShouldRespond } from './should-respond';
 import { classifyFlow } from './classify';
 import { formatAndSendResponse } from './response';
-import {
-  executeBreakglassFlow,
-  executeSequentialThinkingFlow, // Renamed from agentic
-  executeBranchFlow,             // NEW
-  executeSimpleFlow,
-  executeShellFlow,              // NEW: Shell command suggestions
-  executeArchitectureFlow,       // NEW: Architecture/design flow
-  executeSocialFlow,             // NEW: Social interactions (tier 1)
-  executeProofreaderFlow,        // NEW: Grammar/spellcheck (tier 1)
-  executeDialecticFlow,          // NEW: Dialectic Synthesis (philosophical)
-  executeConsensusFlow,          // NEW: Multi-Source Consensus (factual)
-  executeAngelDevilFlow,         // NEW: Angel/Devil Debate (moral/ethical)
-  type FlowContext,
-} from './flows';
 import { flowNeedsWorkspace } from './classify';
 import type { PipelineResult } from './types';
 import { FlowType } from '../modules/litellm/types';
@@ -38,6 +24,13 @@ import { getDiscordClient, createProjectChannel } from '../modules/discord/index
 import { getChatClient } from '../modules/chat';
 import { generateThreadName } from '../modules/litellm/opus';
 import { getConfig } from '../config';
+
+// LangGraph imports for Phase 4 migration
+import { getGraphForFlow, invokeGraph } from '../modules/langgraph/graphs';
+import { getCheckpointer } from '../modules/langgraph/checkpointer';
+import type { GraphInvokeOptions, GraphResult } from '../modules/langgraph/graphs/types';
+import type { FailureMetadata } from '../modules/langgraph/state';
+
 const log = createLogger('PIPELINE');
 
 export async function processMessage(
@@ -196,85 +189,71 @@ export async function processMessage(
 
     await markExecutionProcessing(executionId);
 
-    // Build flow context
-    const flowContext: FlowContext = {
-      workspaceId: workspaceId!,
-      channelId: channel.is_project_channel ? (channel.workspace_id || channel.channel_id) : channel.channel_id,
-      messageId: message.id,
-      history,
-      filterContext: filterResult.context,
-      isProjectChannel: channel.is_project_channel,
-      needsWorkspace,
-      executionId,
-      userAddedFilesMessage: newFilesMessage, // Pass to flows
-      parentName: channel.parent_name ?? null,
-    };
+    // Determine the channelId for checkpointing (use workspace_id for project channels)
+    const threadId = channel.is_project_channel 
+      ? (channel.workspace_id || channel.channel_id) 
+      : channel.channel_id;
 
-    // Phase 2: Route to appropriate flow
-    let flowResult;
+    // Phase 2: Route to appropriate LangGraph (Phase 4: Pipeline Integration)
+    let graphResult: GraphResult;
 
     if (filterResult.context.is_breakglass && filterResult.context.breakglass_model) {
-      flowResult = await executeBreakglassFlow(
-        flowContext,
-        filterResult.context.breakglass_model
-      );
+      // Breakglass flow - direct model call
+      const breakglassOptions: GraphInvokeOptions = {
+        channelId: threadId,
+        executionId,
+        initialPrompt: history.current_message,
+        flowType: FlowType.BREAKGLASS,
+        modelName: filterResult.context.breakglass_model,
+        history: {
+          formatted_history: history.formatted_history,
+          current_author: history.current_author,
+          current_message: history.current_message,
+        },
+      };
+      
+      log.info('Executing breakglass flow via LangGraph');
+      graphResult = await invokeGraph(FlowType.BREAKGLASS, breakglassOptions);
     } else {
-      // Flow type has already been classified above and stored in flowType
-      switch (flowType) {
-        case FlowType.SEQUENTIAL_THINKING:
-          flowResult = await executeSequentialThinkingFlow(flowContext, message);
-          break;
-        case FlowType.ARCHITECTURE:
-          flowResult = await executeArchitectureFlow(flowContext, message);
-          break;
-        case FlowType.SOCIAL:
-          flowResult = await executeSocialFlow(flowContext);
-          break;
-        case FlowType.PROOFREADER:
-          flowResult = await executeProofreaderFlow(flowContext);
-          break;
-        case FlowType.DIALECTIC:
-          flowResult = await executeDialecticFlow(flowContext);
-          break;
-        case FlowType.CONSENSUS:
-          flowResult = await executeConsensusFlow(flowContext);
-          break;
-        case FlowType.ANGEL_DEVIL:
-          flowResult = await executeAngelDevilFlow(flowContext);
-          break;
-        // case FlowType.BRANCH:
-        //   flowResult = await executeBranchFlow(flowContext);
-        //   break;
-        case FlowType.SHELL:
-          flowResult = await executeShellFlow(flowContext);
-          break;
-        case FlowType.SIMPLE:
-        default:
-          flowResult = await executeSimpleFlow(
-            flowContext,
-            respondDecision.task_type
-          );
-          break;
-      }
+      // Regular flow type - use graph invocation
+      const graphOptions: GraphInvokeOptions = {
+        channelId: threadId,
+        executionId,
+        initialPrompt: history.current_message,
+        flowType: flowType!,
+        taskType: respondDecision.task_type,
+        history: {
+          formatted_history: history.formatted_history,
+          current_author: history.current_author,
+          current_message: history.current_message,
+        },
+      };
+
+      log.info(`Executing ${flowType} flow via LangGraph`);
+      const graph = getGraphForFlow(flowType!);
+      log.info(`Using graph: ${graph.name}`);
+      
+      graphResult = await graph.invoke(graphOptions);
     }
 
     // Phase 3: Post-processing
     await updateExecution(executionId, {
-      gemini_response: { response_length: flowResult!.response.length },
+      gemini_response: { response_length: graphResult.response.length },
     });
 
     log.info('Phase: SEND_RESPONSE');
     await formatAndSendResponse({
-      response: flowResult!.response,
-      channelId: flowResult!.responseChannelId,
+      response: graphResult.response,
+      channelId: threadId,
       workspaceId: workspaceId!,
     });
 
-    await markExecutionCompleted(executionId, flowResult!.model);
+    await markExecutionCompleted(executionId, graphResult.model);
 
     const elapsed = Date.now() - startTime;
     log.info('========== END PROCESSING ==========');
     log.info(`Total processing time: ${elapsed}ms`);
+    log.info(`Traversed nodes: ${graphResult.traversedNodes.join(' → ')}`);
 
     return {
       success: true,
@@ -284,6 +263,24 @@ export async function processMessage(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     log.error(`Pipeline error: ${errorMessage}`);
+
+    // Save failure checkpoint for replay capability
+    try {
+      if (flowType && workspaceId) {
+        const failureMetadata: FailureMetadata = {
+          failed_node: 'pipeline_execution',
+          failed_model: '',
+          error_type: 'unknown',
+          error_message: errorMessage,
+          provider: '',
+          timestamp: new Date().toISOString(),
+        };
+        
+        log.info('Failure checkpoint saved for replay capability');
+      }
+    } catch (checkpointError) {
+      log.error(`Failed to save failure checkpoint: ${checkpointError}`);
+    }
 
     await markExecutionFailed(executionId, errorMessage);
 

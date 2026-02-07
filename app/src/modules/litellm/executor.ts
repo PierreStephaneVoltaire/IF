@@ -2,12 +2,14 @@ import { chatCompletion, extractContent, getTools } from './index';
 import { loadPrompt } from '../../templates/loader';
 import { createLogger } from '../../utils/logger';
 import type { Tool, ExecuteContext } from './types';
+import type { ModelParams } from '../langgraph/temperature';
 
 const log = createLogger('LITELLM:EXECUTOR');
 
 export async function executeTask(
   context: ExecuteContext,
-  channelid: string
+  channelid: string,
+  modelParams?: ModelParams
 ): Promise<string> {
   log.info(`executeTask for thread ${channelid}`);
   log.info(`Branch: ${context.branchName}`);
@@ -41,6 +43,7 @@ Use the provided tools to:
     ],
     tools: tools,
     tool_choice: 'auto',
+    ...(modelParams && { temperature: modelParams.temperature, top_p: modelParams.top_p }),
   });
   const elapsedMs = Date.now() - startTime;
   log.info(`⏱️ executeTask completed in ${elapsedMs}ms`);
@@ -59,7 +62,8 @@ export async function executeSimpleTask(
   history: string,
   channelid: string,
   model?: string,
-  enableTools: boolean = false
+  enableTools: boolean = false,
+  modelParams?: ModelParams
 ): Promise<string> {
   log.info(`executeSimpleTask for thread ${channelid}, prompt: ${promptCategory}, model: ${model || 'general'}, tools: ${enableTools}`);
 
@@ -86,6 +90,7 @@ export async function executeSimpleTask(
     ],
     tools: enableTools && tools.length > 0 ? tools : undefined,
     tool_choice: enableTools && tools.length > 0 ? 'auto' : undefined,
+    ...(modelParams && { temperature: modelParams.temperature, top_p: modelParams.top_p }),
   });
   const elapsedMs = Date.now() - startTime;
   log.info(`⏱️ executeSimpleTask completed in ${elapsedMs}ms`);

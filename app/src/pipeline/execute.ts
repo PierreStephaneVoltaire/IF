@@ -7,6 +7,7 @@ import { getTemplateForAgent, getPromptForTaskType, getModelForTaskType, getMode
 import { createLogger } from '../utils/logger';
 import type { PlanningResult, TaskType } from '../modules/litellm/types';
 import type { FormattedHistory, ProcessedAttachment } from './types';
+import type { ModelParams } from '../modules/langgraph/temperature';
 
 const log = createLogger('EXECUTE');
 
@@ -23,6 +24,7 @@ export interface SimpleExecuteInput {
   history: FormattedHistory;
   isTechnical: boolean;
   taskType: TaskType;
+  modelParams?: ModelParams;
 }
 
 export async function executeTechnicalTask(
@@ -109,7 +111,8 @@ export async function executeSimple(
     fullHistory,
     input.channelId,
     model,
-    false // Simple flow never needs tools
+    false, // Simple flow never needs tools
+    input.modelParams
   );
 
   log.info(`Simple execution complete, response length: ${response.length}`);
@@ -134,6 +137,7 @@ export interface BreakglassExecuteInput {
   channelId: string;
   modelName: string;
   history: FormattedHistory;
+  modelParams?: ModelParams;
 }
 
 export async function executeBreakglass(
@@ -172,7 +176,8 @@ export async function executeBreakglass(
     userPrompt,
     input.channelId,
     actualModel,
-    false // No tools for breakglass
+    false, // No tools for breakglass
+    input.modelParams
   );
 
   log.info(`Breakglass execution complete, response length: ${response.length}`);

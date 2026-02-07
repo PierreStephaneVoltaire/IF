@@ -2,6 +2,8 @@ import { createLogger } from '../../utils/logger';
 import { MODEL_TIERS } from '../../modules/agentic/escalation';
 import { chatCompletion, extractContent } from '../../modules/litellm/index';
 import { streamProgressToDiscord } from '../../modules/agentic/progress';
+import { getModelParams } from '../../modules/langgraph/temperature';
+import { FlowType } from '../../modules/litellm/types';
 import type { FlowContext, FlowResult } from './types';
 
 const log = createLogger('FLOW:DIALECTIC');
@@ -54,9 +56,11 @@ export async function executeDialecticFlow(
     // 2. Select 1 random tier4 synthesizer
     const synthesizerModel = getRandomModelFromTier('tier4');
 
+    const params = getModelParams(FlowType.DIALECTIC);
     log.info(`Using thesis model: ${thesisModel}`);
     log.info(`Using antithesis model: ${antithesisModelActual}`);
     log.info(`Using synthesizer model: ${synthesizerModel}`);
+    log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
     // 3. Generate Thesis
     log.info('Generating thesis...');
@@ -91,6 +95,8 @@ Be thorough and persuasive. This is the opening move in a dialectical exploratio
     const thesisResponse = await chatCompletion({
         model: thesisModel,
         messages: [{ role: 'user', content: thesisPrompt }],
+        temperature: params.temperature,
+        top_p: params.top_p,
     });
     const thesis = extractContent(thesisResponse);
     log.info(`Thesis generated, length: ${thesis.length}`);
@@ -132,6 +138,8 @@ Be thorough and compelling. This antithesis should create genuine philosophical 
     const antithesisResponse = await chatCompletion({
         model: antithesisModelActual,
         messages: [{ role: 'user', content: antithesisPrompt }],
+        temperature: params.temperature,
+        top_p: params.top_p,
     });
     const antithesis = extractContent(antithesisResponse);
     log.info(`Antithesis generated, length: ${antithesis.length}`);
@@ -182,6 +190,8 @@ This synthesis should give the user a layered, sophisticated understanding of th
     const synthesisResponse = await chatCompletion({
         model: synthesizerModel,
         messages: [{ role: 'user', content: synthesisPrompt }],
+        temperature: params.temperature,
+        top_p: params.top_p,
     });
     const synthesis = extractContent(synthesisResponse);
     log.info(`Synthesis generated, length: ${synthesis.length}`);

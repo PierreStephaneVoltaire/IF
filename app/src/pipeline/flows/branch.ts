@@ -8,6 +8,8 @@ import { getDiscordClient } from '../../modules/discord/index';
 import { getChatClient } from '../../modules/chat';
 import { createPoll, waitForPollVote, PollOption, type PollResult } from '../../modules/discord/api';
 import { updateSession, updateSessionConfidence, getSession } from '../../modules/dynamodb/sessions';
+import { getModelParams } from '../../modules/langgraph/temperature';
+import { FlowType } from '../../modules/litellm/types';
 import type { FlowContext, FlowResult } from './types';
 import type { PollHistoryEntry } from '../../modules/dynamodb/types';
 
@@ -142,18 +144,27 @@ Keep each approach concise but thorough. Focus on the "what" and "why", not the 
         }),
     ]);
 
+    const params = getModelParams(FlowType.BRANCH);
+    log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
+
     const [response1, response2, response3] = await Promise.all([
         chatCompletion({
             model: branchModels[0],
             messages: [{ role: 'user', content: brainstormingPrompt }],
+            temperature: params.temperature,
+            top_p: params.top_p,
         }),
         chatCompletion({
             model: branchModels[1],
             messages: [{ role: 'user', content: brainstormingPrompt }],
+            temperature: params.temperature,
+            top_p: params.top_p,
         }),
         chatCompletion({
             model: branchModels[2],
             messages: [{ role: 'user', content: brainstormingPrompt }],
+            temperature: params.temperature,
+            top_p: params.top_p,
         }),
     ]);
 
@@ -199,6 +210,8 @@ Analyze these 9 approaches and produce your JSON output now.`;
     const aggregatorResponse = await chatCompletion({
         model: aggregatorModel,
         messages: [{ role: 'user', content: aggregatorPrompt }],
+        temperature: params.temperature,
+        top_p: params.top_p,
     });
 
     const aggregatorContent = extractContent(aggregatorResponse);

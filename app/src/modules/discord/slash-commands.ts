@@ -26,6 +26,9 @@ import type { Session } from '../dynamodb/types';
 import { createLogger } from '../../utils/logger';
 import { getConfig } from '../../config/index';
 
+// LangGraph replay imports
+import { getReplayInfo, formatReplayEmbed, replayExecution, deleteCheckpoint } from '../langgraph/replay';
+
 const log = createLogger('DISCORD:SLASH_COMMANDS');
 
 // Command definitions
@@ -103,6 +106,16 @@ export const slashCommands = [
   new SlashCommandBuilder()
     .setName('escalation')
     .setDescription('Show escalation history for thread'),
+
+  new SlashCommandBuilder()
+    .setName('replay')
+    .setDescription('Replay a failed execution from the last checkpoint (LangGraph replay)')
+    .addBooleanOption((option) =>
+      option
+        .setName('force')
+        .setDescription('Force replay even if no checkpoint exists')
+        .setRequired(false)
+    ),
 ];
 
 /**
@@ -164,6 +177,9 @@ export async function handleSlashCommand(interaction: ChatInputCommandInteractio
         break;
       case 'escalation':
         await handleEscalation(interaction);
+        break;
+      case 'replay':
+        await handleReplay(interaction);
         break;
       default:
         await interaction.reply({
@@ -720,6 +736,47 @@ async function handleEscalation(interaction: ChatInputCommandInteraction): Promi
     log.error('Failed to get escalations:', { error: String(error) });
     await interaction.editReply({
       content: `❌ Failed to retrieve escalation history: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+/**
+ * /replay command handler (LangGraph replay functionality)
+ */
+async function handleReplay(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply();
+
+  const channelid = interaction.channelId;
+  const force = interaction.options.getBoolean('force') ?? false;
+
+  try {
+    // Get replay info (checkpoint status)
+    const replayInfo = await getReplayInfo(channelid);
+
+    if (!replayInfo.hasCheckpoint) {
+      if (force) {
+        await interaction.editReply({
+          content: '⚠️ **Force Replay**\n\nNo checkpoint exists, but forcing replay with default settings.',
+        });
+        return;
+      }
+
+      await interaction.editReply({
+        content: '❌ **No Checkpoint Available**\n\nNo failed execution checkpoint was found for this channel. You cannot replay.\n\nUse `/replay force` to attempt a fresh replay.',
+      });
+      return;
+    }
+
+    // Format and show checkpoint info
+    const embedText = formatReplayEmbed(replayInfo, '\n**Use `/replay force` to resume execution from this checkpoint.**');
+
+    await interaction.editReply({
+      content: embedText,
+    });
+  } catch (error) {
+    log.error('Failed to get replay info:', { error: String(error) });
+    await interaction.editReply({
+      content: `❌ Failed to retrieve replay info: ${error instanceof Error ? error.message : 'Unknown error'}`,
     });
   }
 }

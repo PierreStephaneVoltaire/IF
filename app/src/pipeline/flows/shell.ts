@@ -1,8 +1,9 @@
 import { createLogger } from '../../utils/logger';
 import { executeSimpleTask } from '../../modules/litellm/executor';
 import { getPromptForTaskType, getModelForTaskType } from '../../templates/registry';
+import { getModelParams } from '../../modules/langgraph/temperature';
+import { FlowType, TaskType } from '../../modules/litellm/types';
 import type { FlowContext, FlowResult } from './types';
-import { TaskType } from '../../modules/litellm/types';
 
 const log = createLogger('FLOW:SHELL');
 
@@ -29,7 +30,9 @@ export async function executeShellFlow(
   const promptCategory = getPromptForTaskType(TaskType.SHELL_COMMAND);
   const model = getModelForTaskType(TaskType.SHELL_COMMAND);
 
+  const params = getModelParams(FlowType.SHELL);
   log.info(`Using prompt category: ${promptCategory}, model: ${model}`);
+  log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
   // Format the full history with current message
   const fullHistory = context.history.formatted_history
@@ -42,7 +45,8 @@ export async function executeShellFlow(
     fullHistory,
     context.workspaceId,
     model,
-    false // No tools for shell flow - just suggestions
+    false, // No tools for shell flow - just suggestions
+    params
   );
 
   log.info(`Shell flow complete, response length: ${response.length}`);

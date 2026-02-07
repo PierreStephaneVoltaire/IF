@@ -21,6 +21,8 @@ export interface ChatCompletionRequest {
   messages: Message[];
   tools?: Tool[];
   tool_choice?: string | { type: string; function: { name: string } };
+  temperature?: number;
+  top_p?: number;
 }
 
 export interface ToolCall {
@@ -137,6 +139,8 @@ export interface AgenticExecutionConfig {
   agentRole: AgentRole;
   tools: Tool[];
   checkpointInterval: number;
+  temperature?: number;
+  top_p?: number;
 }
 
 export interface ExecutionState {

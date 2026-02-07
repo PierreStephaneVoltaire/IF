@@ -2,6 +2,8 @@ import { createLogger } from '../../utils/logger';
 import { MODEL_TIERS } from '../../modules/agentic/escalation';
 import { chatCompletion, extractContent } from '../../modules/litellm/index';
 import { streamProgressToDiscord } from '../../modules/agentic/progress';
+import { getModelParams } from '../../modules/langgraph/temperature';
+import { FlowType } from '../../modules/litellm/types';
 import type { FlowContext, FlowResult } from './types';
 
 const log = createLogger('FLOW:ANGEL_DEVIL');
@@ -50,9 +52,11 @@ export async function executeAngelDevilFlow(
     // 2. Select 1 random tier4 judge
     const judgeModel = getRandomModelFromTier('tier4');
 
+    const params = getModelParams(FlowType.ANGEL_DEVIL);
     log.info(`Using angel model: ${angelModel}`);
     log.info(`Using devil model: ${devilModelActual}`);
     log.info(`Using judge model: ${judgeModel}`);
+    log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
     // 3. Generate arguments in parallel
     log.info('Generating angel and devil arguments in parallel...');
@@ -126,10 +130,14 @@ Argue with passion and conviction. You are the devil's advocate warning against 
         chatCompletion({
             model: angelModel,
             messages: [{ role: 'user', content: angelPrompt }],
+            temperature: params.temperature,
+            top_p: params.top_p,
         }),
         chatCompletion({
             model: devilModelActual,
             messages: [{ role: 'user', content: devilPrompt }],
+            temperature: params.temperature,
+            top_p: params.top_p,
         }),
     ]);
 
@@ -203,6 +211,8 @@ Your goal is not to tell the user what to do, but to help them understand the fu
     const judgeResponse = await chatCompletion({
         model: judgeModel,
         messages: [{ role: 'user', content: judgePrompt }],
+        temperature: params.temperature,
+        top_p: params.top_p,
     });
     const synthesis = extractContent(judgeResponse);
     log.info(`Balanced synthesis generated, length: ${synthesis.length}`);

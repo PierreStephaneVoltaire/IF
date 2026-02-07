@@ -109,7 +109,7 @@ resource "kubernetes_stateful_set" "redis" {
               cpu    = "100m"
             }
             limits = {
-              memory = "4Gi"
+              memory = "1Gi"
               cpu    = "1000m"
             }
           }
@@ -177,4 +177,3 @@ resource "kubernetes_service" "redis" {
   }
 }
 
-# Network policy removed - Redis is now in the same namespace as discord-bot

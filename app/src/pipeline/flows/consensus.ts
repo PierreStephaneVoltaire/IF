@@ -2,6 +2,8 @@ import { createLogger } from '../../utils/logger';
 import { MODEL_TIERS } from '../../modules/agentic/escalation';
 import { chatCompletion, extractContent } from '../../modules/litellm/index';
 import { streamProgressToDiscord } from '../../modules/agentic/progress';
+import { getModelParams } from '../../modules/langgraph/temperature';
+import { FlowType } from '../../modules/litellm/types';
 import type { FlowContext, FlowResult } from './types';
 
 const log = createLogger('FLOW:CONSENSUS');
@@ -56,8 +58,10 @@ export async function executeConsensusFlow(
     // 2. Select 1 random tier4 judge
     const judgeModel = getRandomModelFromTier('tier4');
 
+    const params = getModelParams(FlowType.CONSENSUS);
     log.info(`Using independent models: ${independentModels.join(', ')}`);
     log.info(`Using judge model: ${judgeModel}`);
+    log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
     // 3. Generate independent answers in parallel
     log.info('Generating independent answers in parallel...');
@@ -108,14 +112,20 @@ Provide your best independent answer.`;
         chatCompletion({
             model: independentModels[0],
             messages: [{ role: 'user', content: independentPrompt }],
+            temperature: params.temperature,
+            top_p: params.top_p,
         }),
         chatCompletion({
             model: independentModels[1],
             messages: [{ role: 'user', content: independentPrompt }],
+            temperature: params.temperature,
+            top_p: params.top_p,
         }),
         chatCompletion({
             model: independentModels[2],
             messages: [{ role: 'user', content: independentPrompt }],
+            temperature: params.temperature,
+            top_p: params.top_p,
         }),
     ]);
 
@@ -192,6 +202,8 @@ Your response should help the user understand both what is reliably known and wh
     const judgeResponse = await chatCompletion({
         model: judgeModel,
         messages: [{ role: 'user', content: judgePrompt }],
+        temperature: params.temperature,
+        top_p: params.top_p,
     });
     const synthesis = extractContent(judgeResponse);
     log.info(`Consensus synthesis generated, length: ${synthesis.length}`);

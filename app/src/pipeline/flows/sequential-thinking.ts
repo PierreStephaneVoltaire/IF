@@ -8,6 +8,8 @@ import { trajectoryEvaluator } from '../../modules/reflexion/evaluator';
 import { streamProgressToDiscord } from '../../modules/agentic/progress';
 import { addReflectionToHistory, addKeyInsight } from '../../modules/reflexion/memory';
 import { updateSession } from '../../modules/dynamodb/sessions';
+import { getModelParams } from '../../modules/langgraph/temperature';
+import { FlowType } from '../../modules/litellm/types';
 import type { Reflection } from '../../modules/dynamodb/types';
 import type { FlowContext, FlowResult } from './types';
 import type { DiscordMessagePayload } from '../../modules/discord/types';
@@ -59,6 +61,9 @@ export async function executeSequentialThinkingFlow(
         planning.estimated_turns
     );
 
+    const params = getModelParams(FlowType.SEQUENTIAL_THINKING);
+    log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
+
     const loopResult = await executeSequentialThinkingLoop(
         {
             maxTurns,
@@ -67,6 +72,8 @@ export async function executeSequentialThinkingFlow(
             agentRole: planning.agent_role,
             tools: [], // Tools loaded inside loop
             checkpointInterval: getCheckpointInterval(planning.complexity),
+            temperature: params.temperature,
+            top_p: params.top_p,
         },
         planning.reformulated_prompt,
         finalChannelId,
