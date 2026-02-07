@@ -17,6 +17,7 @@ import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { createExecutionLogger } from '../logger';
+import { loadPrompt, renderTemplate } from '../../../templates/loader';
 import { getMermaidGenerator } from '../mermaid';
 import type { GraphResult, GraphInvokeOptions } from './types';
 
@@ -90,32 +91,9 @@ async function branchNodes(state: BranchGraphState): Promise<BranchGraphState> {
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
     // Brainstorming prompt
-    const brainstormingPrompt = `
-You are an expert architect and technical strategist exploring multiple solutions to a problem.
-
-## Objective
-${state.userQuestion}
-
-## Your Task
-Suggest **3 distinct architectural approaches** to achieve this goal.
-
-## CRITICAL RULES
-- **NO CODE**: Do not write any code, code blocks, or implementation snippets.
-- **THEORY ONLY**: Focus exclusively on theory, architecture, strategy, and high-level design.
-- **Think Step-by-Step**: Explain your reasoning for why each approach works.
-- **Be Distinct**: Each approach should be fundamentally different from the others.
-
-## Format for Each Approach
-1. **Title**: Clear name for the approach
-2. **Overview**: 2-3 sentence description
-3. **Rationale**: Why this approach makes sense (step-by-step reasoning)
-4. **Architecture**: High-level components and how they interact (describe, don't diagram)
-5. **Pros**: 3-5 bullet points
-6. **Cons**: 3-5 bullet points
-7. **Best For**: When this approach is the right choice
-
-Keep each approach concise but thorough. Focus on the "what" and "why", not the "how to code it".
-    `.trim();
+    const brainstormingPrompt = renderTemplate(loadPrompt('branch-brainstorm'), {
+      user_question: state.userQuestion,
+    });
 
     // Record branch nodes
     logger.recordNode('branch_1');
@@ -154,36 +132,15 @@ Keep each approach concise but thorough. Focus on the "what" and "why", not the 
     logger.recordNode('aggregate');
 
     // Aggregator prompt
-    const aggregatorPrompt = `
-You are consolidating multiple architectural approaches into a poll.
-
-## User's Original Question
-"${state.userQuestion}"
-
-## Input Approaches
-
-### Model 1 (${branchModels[0]}) Approaches:
-${content1}
-
-### Model 2 (${branchModels[1]}) Approaches:
-${content2}
-
-### Model 3 (${branchModels[2]}) Approaches:
-${content3}
-
-## Your Task
-Analyze these approaches and create a poll with 3 distinct options.
-
-## Output Format (JSON)
-{
-  "question": "Which architectural approach best addresses your needs?",
-  "options": [
-    {"id": "A", "label": "Approach Name", "description": "Brief description of this approach"}
-  ]
-}
-
-Provide exactly 3 options representing the best approaches from all models.
-    `.trim();
+    const aggregatorPrompt = renderTemplate(loadPrompt('branch-aggregator'), {
+      user_question: state.userQuestion,
+      model_1: branchModels[0],
+      model_2: branchModels[1],
+      model_3: branchModels[2],
+      content_1: content1,
+      content_2: content2,
+      content_3: content3,
+    });
 
     // Execute aggregator
     const aggregatorResponse = await chatCompletion({

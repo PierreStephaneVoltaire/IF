@@ -17,6 +17,7 @@ import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { createExecutionLogger } from '../logger';
+import { loadPrompt, renderTemplate } from '../../../templates/loader';
 import { getMermaidGenerator } from '../mermaid';
 import type { GraphResult, GraphInvokeOptions } from './types';
 
@@ -78,25 +79,9 @@ async function thesisNode(state: DialecticGraphState): Promise<DialecticGraphSta
 
   const params = getModelParams(state.flowType);
 
-  const thesisPrompt = `You are a philosopher presenting the strongest possible THESIS on the following question.
-
-## User's Question
-"${state.userQuestion}"
-
-## Your Task
-Present the strongest, most compelling THESIS (one philosophical position) on this question.
-
-## Guidelines
-- Present the strongest case for ONE coherent philosophical position
-- Use rigorous reasoning and clear argumentation
-- Acknowledge complexities but defend your position firmly
-- This is the "thesis" that will be countered by an antithesis
-
-## Format
-1. **Position Statement**: Clear statement of your philosophical position (2-3 sentences)
-2. **Core Arguments**: 3-5 key arguments supporting this position
-3. **Underlying Assumptions**: What assumptions does this position rest on?
-4. **Philosophical Tradition**: What school of thought does this represent?`;
+  const thesisPrompt = renderTemplate(loadPrompt('dialectic-thesis'), {
+    user_question: state.userQuestion,
+  });
 
   const response = await chatCompletion({
     model: state.thesisModel,
@@ -123,27 +108,10 @@ async function antithesisNode(state: DialecticGraphState): Promise<DialecticGrap
 
   const params = getModelParams(state.flowType);
 
-  const antithesisPrompt = `You are a philosopher presenting the strongest possible ANTITHESIS to the following thesis.
-
-## User's Original Question
-"${state.userQuestion}"
-
-## The Thesis You Must Counter
-${state.thesis}
-
-## Your Task
-Present the strongest, most compelling ANTITHESIS (opposing philosophical position) to the thesis above.
-
-## Guidelines
-- This must be a genuine philosophical counter-position, not just nitpicking
-- Attack the core assumptions and reasoning of the thesis
-- Present an alternative framework that leads to different conclusions
-- Be rigorous and persuasive
-
-## Format
-1. **Counter-Position Statement**: Clear statement of your opposing position (2-3 sentences)
-2. **Critique of Thesis**: What are the fundamental flaws in the thesis?
-3. **Alternative Arguments**: 3-5 key arguments for your counter-position`;
+  const antithesisPrompt = renderTemplate(loadPrompt('dialectic-antithesis'), {
+    user_question: state.userQuestion,
+    thesis: state.thesis,
+  });
 
   const response = await chatCompletion({
     model: state.antithesisModel,
@@ -170,30 +138,11 @@ async function synthesizeNode(state: DialecticGraphState): Promise<DialecticGrap
 
   const params = getModelParams(state.flowType);
 
-  const synthesisPrompt = `You are a master philosopher tasked with synthesizing a thesis and antithesis into a higher-order understanding.
-
-## User's Original Question
-"${state.userQuestion}"
-
-## The Thesis
-${state.thesis}
-
-## The Antithesis
-${state.antithesis}
-
-## Your Task
-Create a SYNTHESIS that transcends both the thesis and antithesis.
-
-## Guidelines
-- Do not simply compromise or average the two positions
-- Find a higher-order framework that incorporates the valid insights from both
-- Show how the apparent contradiction can be resolved or reframed
-
-## Format
-1. **Summary of Positions**: Brief summary of both positions
-2. **Key Tension**: What is the fundamental tension between these positions?
-3. **The Synthesis**: Your higher-order resolution (3-5 paragraphs)
-4. **Remaining Questions**: What aspects remain unresolved?`;
+  const synthesisPrompt = renderTemplate(loadPrompt('dialectic-synthesis'), {
+    user_question: state.userQuestion,
+    thesis: state.thesis,
+    antithesis: state.antithesis,
+  });
 
   const response = await chatCompletion({
     model: state.synthesizerModel,

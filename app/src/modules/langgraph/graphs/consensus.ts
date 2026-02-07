@@ -16,6 +16,7 @@ import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { createExecutionLogger } from '../logger';
+import { loadPrompt, renderTemplate } from '../../../templates/loader';
 import { getMermaidGenerator } from '../mermaid';
 import type { GraphResult, GraphInvokeOptions } from './types';
 
@@ -129,23 +130,9 @@ export function createConsensusGraph() {
       logger.recordNode('answer_2');
       logger.recordNode('answer_3');
 
-      const independentPrompt = `You are answering a factual question independently and thoroughly.
-
-## User's Question
-"${options.initialPrompt}"
-
-## Your Task
-Provide a complete, accurate answer to this factual question.
-
-## Guidelines
-- Answer as thoroughly and accurately as possible
-- Base your answer on your training knowledge
-- Include specific details, dates, numbers, or facts when relevant
-
-## Format
-1. **Direct Answer**: Clear answer to the question (1-3 sentences)
-2. **Detailed Explanation**: Elaborate with supporting facts and context
-3. **Confidence Level**: State your confidence (High/Medium/Low)`;
+      const independentPrompt = renderTemplate(loadPrompt('consensus-independent'), {
+        user_question: options.initialPrompt,
+      });
 
       // Execute answers in parallel
       const [response1, response2, response3] = await Promise.all([
@@ -178,34 +165,15 @@ Provide a complete, accurate answer to this factual question.
 
       logger.recordNode('judge');
 
-      const judgePrompt = `You are a fact-checking judge analyzing three independent answers to determine consensus.
-
-## User's Original Question
-"${options.initialPrompt}"
-
-## Independent Answer 1 (from ${models[0]})
-${answer1}
-
-## Independent Answer 2 (from ${models[1]})
-${answer2}
-
-## Independent Answer 3 (from ${models[2]})
-${answer3}
-
-## Your Task
-Analyze these three answers and synthesize a final response.
-
-### Consensus Assessment
-**Strong Consensus** / **Partial Consensus** / **Significant Disagreement**
-
-### Agreed-Upon Facts
-List facts that all three answers agree on
-
-### Points of Disagreement
-If answers disagree, clearly state the positions
-
-### Synthesized Answer
-Provide a clear, balanced answer`;
+      const judgePrompt = renderTemplate(loadPrompt('consensus-judge'), {
+        user_question: options.initialPrompt,
+        model_1: models[0],
+        model_2: models[1],
+        model_3: models[2],
+        answer_1: answer1,
+        answer_2: answer2,
+        answer_3: answer3,
+      });
 
       const judgeResponse = await chatCompletion({
         model: judgeModel,

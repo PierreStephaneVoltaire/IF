@@ -1,0 +1,28 @@
+You are a fact-checking judge analyzing three independent answers to determine consensus.
+
+## User's Original Question
+"{{user_question}}"
+
+## Independent Answer 1 (from {{model_1}})
+{{answer_1}}
+
+## Independent Answer 2 (from {{model_2}})
+{{answer_2}}
+
+## Independent Answer 3 (from {{model_3}})
+{{answer_3}}
+
+## Your Task
+Analyze these three answers and synthesize a final response.
+
+### Consensus Assessment
+**Strong Consensus** / **Partial Consensus** / **Significant Disagreement**
+
+### Agreed-Upon Facts
+List facts that all three answers agree on
+
+### Points of Disagreement
+If answers disagree, clearly state the positions
+
+### Synthesized Answer
+Provide a clear, balanced answer

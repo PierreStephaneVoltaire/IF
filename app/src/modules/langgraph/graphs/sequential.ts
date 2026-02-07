@@ -32,7 +32,7 @@ import { checkEscalationTriggers, getNextModel, isAtMaxEscalation, MODEL_CAPABIL
 import { calculateConfidence, getConfidenceLevel } from '../confidence';
 import { acquireLock as acquireRedisLock, releaseLock as releaseRedisLock, checkAbortFlag, refreshLock } from '../../redis';
 import { streamProgressToDiscord } from '../../agentic/progress';
-import { loadPrompt } from '../../../templates/loader';
+import { loadPrompt, renderTemplate } from '../../../templates/loader';
 import { getTemplateForAgent } from '../../../templates/registry';
 import type { GraphResult, GraphInvokeOptions } from './types';
 import type { GraphState, ExecutionStatus, FailureMetadata, FailureErrorType, Message, EscalationEvent, LogEntry } from '../state';
@@ -347,11 +347,13 @@ async function planNode(state: SequentialGraphState): Promise<Partial<Sequential
   try {
     const params = getModelParams(FlowType.SEQUENTIAL_THINKING);
 
+    const planPrompt = renderTemplate(loadPrompt('sequential-plan'), {
+      user_prompt: state.initialPrompt,
+    });
+
     const response = await chatCompletion({
       model: state.currentModel,
-      messages: [
-        { role: 'user', content: `Create a detailed plan to address:\n\n${state.initialPrompt}\n\nRespond with your plan and indicate your confidence level (0-100).` },
-      ],
+      messages: [{ role: 'user', content: planPrompt }],
       temperature: params.temperature,
       top_p: params.top_p,
     });
