@@ -11,7 +11,7 @@ An autonomous multi-agent Discord bot that can execute complex multi-turn tasks,
 - 🔄 **Self-reflection** and persistent learning from past attempts
 - 🛑 Human-in-the-loop controls (stop, approve, reject via reactions)
 - 👍👎 User feedback directly influences confidence scores
-- 📊 Full observability (DynamoDB logs, SQS events, Discord progress)
+- 📊 Full observability (S3 execution logs, DynamoDB sessions, Discord progress)
 - 🔒 Thread-safe execution with abort flags
 - ⚡ Intelligent task classification and routing
 - 🏗️ **Architecture Flow** - Design/planning mode without code generation
@@ -623,12 +623,9 @@ app/
 terraform/
 ├── dynamodb.tf               # Sessions + Executions tables
 ├── s3.tf                     # Artifact storage bucket
-├── sqs.tf                    # Message queues
-├── kubernetes.tf             # K8s deployments
+├── kubernetes.tf             # K8s deployments (Discord bot, Redis, Sandbox)
 ├── main.tf                   # Provider config
 └── README.md                 # Infrastructure docs
-```
-└── ADDING-MODELS.md         # Guide for adding new models
 ```
 
 ## Quick Start
@@ -638,7 +635,7 @@ terraform/
 - Node.js 20+
 - Discord bot token
 - LiteLLM proxy running
-- AWS account (for DynamoDB + SQS)
+- AWS account (for DynamoDB + S3)
 - Kubernetes cluster (optional, for deployment)
 
 ### Local Development
@@ -662,7 +659,6 @@ LITELLM_BASE_URL=http://localhost:4000
 AWS_REGION=ca-central-1
 DYNAMODB_SESSIONS_TABLE=discord_sessions
 DYNAMODB_EXECUTIONS_TABLE=discord_executions
-AGNETIC_EVENTS_QUEUE_URL=https://sqs.region.amazonaws.com/account/queue
 S3_ARTIFACT_BUCKET=discord-bot-artifacts  # Per-thread artifact storage
 PLANNER_MODEL_ID=kimi-k2.5                # Model for planning phase
 ```
@@ -680,13 +676,11 @@ cd terraform
 terraform init
 terraform apply -target=aws_dynamodb_table.discord_sessions
 terraform apply -target=aws_dynamodb_table.discord_executions
-terraform apply -target=aws_dynamodb_table.discord_messages
 ```
 
-2. **Create SQS queues:**
+2. **Create S3 bucket:**
 ```bash
-terraform apply -target=aws_sqs_queue.agentic_events
-terraform apply -target=aws_sqs_queue.discord_messages
+terraform apply -target=aws_s3_bucket.artifacts
 ```
 
 3. **Deploy to Kubernetes:**
@@ -743,10 +737,17 @@ Bot: ⏹️ Execution stop requested. Will halt at next turn.
 
 ### View Execution Logs
 
-**DynamoDB:**
+Execution logs are stored in S3 as JSON lines:
+```bash
+# Download execution logs from S3
+aws s3 ls s3://discord-bot-artifacts/executions/<channel-id>/<execution-id>/
+aws s3 cp s3://discord-bot-artifacts/executions/<channel-id>/<execution-id>/execution.log .
+```
+
+**Sessions and executions are stored in DynamoDB:**
 ```bash
 aws dynamodb query \
-  --table-name discord-messages \
+  --table-name discord_sessions \
   --key-condition-expression "pk = :channelid" \
   --expression-attribute-values '{":channelid":{"S":"1234567890"}}'
 ```
@@ -756,21 +757,13 @@ aws dynamodb query \
 kubectl logs -f deployment/discord-bot -n discord-bot
 ```
 
-### Consume Events
-
-```bash
-aws sqs receive-message \
-  --queue-url $(terraform output -raw agentic_events_queue_url) \
-  --max-number-of-messages 10
-```
-
 ### Check Execution State
 
 ```typescript
-import { getLock } from './modules/agentic/lock';
+import { getThreadState } from './modules/redis/state';
 
-const lock = getLock(channelid);
-console.log(lock);
+const state = await getThreadState(channelId);
+console.log(state);
 ```
 
 ### Monitor Progress
@@ -846,7 +839,7 @@ Example LiteLLM model configuration:
 6. **Error tracking** - Detects repeated failures (3x same error)
 7. **User clarification** - Asks for help when truly stuck
 8. **Thread isolation** - Each thread has independent lock
-9. **Event logging** - Full audit trail in DynamoDB
+9. **Event logging** - Full audit trail in S3
 10. **Progress streaming** - Real-time visibility in Discord
 
 ## Module Documentation
