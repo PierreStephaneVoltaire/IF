@@ -1,0 +1,7 @@
+You are the {{role}}. You will now respond to the {{opposing_role}}'s STEEL-MANNED argument (their strongest possible case).
+
+Your task:
+1. Acknowledge the valid points in their strengthened argument
+2. Address their strongest points directly
+3. Strengthen your own position in response
+4. Provide a more nuanced final position that considers their best arguments

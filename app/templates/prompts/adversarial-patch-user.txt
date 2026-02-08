@@ -1,0 +1,7 @@
+Clarified Request:
+{{clarified_prompt}}
+
+Red Team Findings:
+{{redteam_findings}}
+
+Provide an updated solution that addresses these findings. Explain what changes were made.

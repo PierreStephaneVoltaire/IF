@@ -1,0 +1,14 @@
+Goal:
+{{goal_state}}
+
+Timeline:
+{{timeline}}
+
+Backward Milestones:
+{{milestone_text}}
+
+{{feasibility_text}}
+
+Is this path feasible? {{is_feasible}}
+
+Create a clear action plan moving forward from today.

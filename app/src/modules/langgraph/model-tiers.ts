@@ -55,6 +55,25 @@ export function escalateTier(tags: string[]): string[] | null {
 }
 
 /**
+ * De-escalate tier (one level down) while preserving capability tags
+ * Returns null if already at tier1
+ */
+export function deescalateTier(tags: string[]): string[] | null {
+  const currentTier = tags.find(t => t.startsWith('tier'));
+  if (!currentTier) {
+    return null;
+  }
+
+  const tierIndex = TIER_ORDER.indexOf(currentTier as Tier);
+  if (tierIndex <= 0) {
+    return null; // Already at tier1
+  }
+
+  const prevTier = TIER_ORDER[tierIndex - 1];
+  return tags.map(t => t.startsWith('tier') ? prevTier : t);
+}
+
+/**
  * Build tags for a flow type
  */
 export function buildTags(
@@ -82,6 +101,14 @@ export function buildTags(
       return ['tier2', 'general'];
     case 'angel-devil':
       return ['tier2', 'general'];
+    case 'adversarial-validation':
+      return ['tier2', 'general']; // Generator starts at tier2, red-team at tier3, judge at tier3
+    case 'chain-of-verification':
+      return ['tier2', 'general']; // Baseline/verifier at tier2, reviser at tier3
+    case 'backcasting':
+      return ['tier2', 'general']; // Goal definition at tier2, milestones/feasibility at tier3
+    case 'delphi-method':
+      return ['tier2', 'general']; // Experts at tier2, judge at tier3
     case 'branch':
       return ['tier3', 'thinking'];
     case 'architecture':

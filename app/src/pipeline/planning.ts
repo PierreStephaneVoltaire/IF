@@ -5,6 +5,7 @@ import type { Session } from '../modules/dynamodb/types';
 import type { PlanningResult } from '../modules/litellm/types';
 import type { FormattedHistory, ProcessedAttachment } from './types';
 import type { TrajectoryEvaluation } from '../modules/reflexion/types';
+import { savePlanToS3 } from '../modules/workspace/s3-helpers';
 import {
   formatReflectionsForPrompt,
   formatKeyInsightsForPrompt,
@@ -83,6 +84,17 @@ export async function createPlan(input: PlanningInput): Promise<PlanningResult> 
     log.info(`  reflection_key_insight: ${result.reflection.key_insight}`);
   }
   log.info(`Reformulated prompt length: ${result.reformulated_prompt.length}`);
+
+  // Save plan to S3 for iterative execution (Sequential Thinking phases)
+  if (result.phases && result.phases.length > 0) {
+    log.info(`Saving plan with ${result.phases.length} phases to S3`);
+    try {
+      await savePlanToS3(input.channelId, result.topic_slug, result);
+      log.info(`Plan saved to S3: channels/${input.channelId}/plans/${result.topic_slug}.json`);
+    } catch (error) {
+      log.warn(`Failed to save plan to S3: ${error}, continuing without persistence`);
+    }
+  }
 
   return result;
 }

@@ -25,6 +25,10 @@ export { branchGraph, createBranchGraph } from './branch';
 export { dialecticGraph, createDialecticGraph } from './dialectic';
 export { consensusGraph, createConsensusGraph } from './consensus';
 export { angelDevilGraph, createAngelDevilGraph } from './angel-devil';
+export { adversarialGraph, createAdversarialGraph } from './adversarial';
+export { coveGraph, createChainOfVerificationGraph } from './cove';
+export { backcastingGraph, createBackcastingGraph } from './backcasting';
+export { delphiGraph, createDelphiGraph } from './delphi';
 
 // ============================================================================
 // Multi-Node Graphs
@@ -54,6 +58,10 @@ import { branchGraph } from './branch';
 import { dialecticGraph } from './dialectic';
 import { consensusGraph } from './consensus';
 import { angelDevilGraph } from './angel-devil';
+import { adversarialGraph } from './adversarial';
+import { coveGraph } from './cove';
+import { backcastingGraph } from './backcasting';
+import { delphiGraph } from './delphi';
 import { architectureGraph } from './architecture';
 import { sequentialGraph } from './sequential';
 
@@ -83,6 +91,14 @@ export function getGraphForFlow(flowType: FlowType): {
       return consensusGraph;
     case FlowType.ANGEL_DEVIL:
       return angelDevilGraph;
+    case FlowType.ADVERSARIAL_VALIDATION:
+      return adversarialGraph;
+    case FlowType.CHAIN_OF_VERIFICATION:
+      return coveGraph;
+    case FlowType.BACKCASTING:
+      return backcastingGraph;
+    case FlowType.DELPHI_METHOD:
+      return delphiGraph;
     case FlowType.ARCHITECTURE:
       return architectureGraph;
     case FlowType.SEQUENTIAL_THINKING:
@@ -117,6 +133,10 @@ export function getAvailableGraphs(): string[] {
     'DialecticGraph',
     'ConsensusGraph',
     'AngelDevilGraph',
+    'AdversarialValidationGraph',
+    'ChainOfVerificationGraph',
+    'BackcastingGraph',
+    'DelphiMethodGraph',
     'ArchitectureGraph',
     'SequentialThinkingGraph',
   ];

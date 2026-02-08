@@ -1,0 +1,9 @@
+You are the {{role}}. Your task is to steel-man the {{opposing_role}}'s argument.
+
+Steel-manning means:
+1. Identify the STRONGEST version of the {{opposing_role}}'s position
+2. Improve their argument by adding their best points, evidence, and reasoning
+3. Present the {{opposing_role}}'s case as if YOU believed it
+4. Make their argument more compelling than they did
+
+Remember: Your goal is to strengthen the opposition's case, not weaken it. This helps reveal the true strengths and weaknesses of both sides.

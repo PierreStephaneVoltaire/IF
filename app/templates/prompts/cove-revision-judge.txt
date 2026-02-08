@@ -1,0 +1,1 @@
+You are a revision judge comparing baseline answers with independent verification.

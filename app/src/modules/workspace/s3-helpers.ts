@@ -1,6 +1,7 @@
-import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectsCommand, ListObjectsV2Output, _Object } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectsCommand, ListObjectsV2Output, _Object } from '@aws-sdk/client-s3';
 import { getConfig } from '../../config/index';
 import { createLogger } from '../../utils/logger';
+import type { PlanningResult } from '../litellm/types';
 
 const log = createLogger('WORKSPACE:S3_HELPERS');
 
@@ -233,6 +234,84 @@ export function formatFileTree(files: S3FileInfo[]): string {
 
   formatNode(tree);
   return lines.join('\n');
+}
+
+/**
+ * Save a plan to S3 for a channel/topic
+ */
+export async function savePlanToS3(
+  channelId: string,
+  topicSlug: string,
+  plan: PlanningResult
+): Promise<string> {
+  const s3 = getS3Client();
+  const bucket = getBucketName();
+  const key = `channels/${channelId}/plans/${topicSlug}.json`;
+
+  log.info(`Saving plan to S3: ${bucket}/${key}`);
+
+  try {
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: JSON.stringify(plan, null, 2),
+      ContentType: 'application/json',
+    });
+
+    await s3.send(command);
+    log.info(`Plan saved to S3: ${key}`);
+    return key;
+  } catch (error) {
+    log.error(`Failed to save plan to S3: ${key}`, { error: String(error) });
+    throw error;
+  }
+}
+
+/**
+ * Load a plan from S3 for a channel/topic
+ */
+export async function loadPlanFromS3(
+  channelId: string,
+  topicSlug: string
+): Promise<PlanningResult | null> {
+  const s3 = getS3Client();
+  const bucket = getBucketName();
+  const key = `channels/${channelId}/plans/${topicSlug}.json`;
+
+  log.info(`Loading plan from S3: ${bucket}/${key}`);
+
+  try {
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+
+    const response = await s3.send(command);
+
+    if (!response.Body) {
+      log.warn(`Plan not found in S3: ${key}`);
+      return null;
+    }
+
+    const chunks: Uint8Array[] = [];
+    const stream = response.Body as NodeJS.ReadableStream;
+
+    for await (const chunk of stream) {
+      chunks.push(chunk as Uint8Array);
+    }
+
+    const buffer = Buffer.concat(chunks);
+    const plan = JSON.parse(buffer.toString()) as PlanningResult;
+    log.info(`Plan loaded from S3: ${key}`);
+    return plan;
+  } catch (error) {
+    if (String(error).includes('NoSuchKey') || String(error).includes('404')) {
+      log.warn(`Plan not found in S3: ${key}`);
+      return null;
+    }
+    log.error(`Failed to load plan from S3: ${key}`, { error: String(error) });
+    throw error;
+  }
 }
 
 function formatFileSize(bytes: number): string {

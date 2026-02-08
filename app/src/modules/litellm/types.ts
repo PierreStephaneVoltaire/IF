@@ -119,6 +119,10 @@ export enum FlowType {
   DIALECTIC = 'dialectic', // NEW: Thesis → Antithesis → Synthesis (philosophical)
   CONSENSUS = 'consensus', // NEW: Multi-source factual consensus
   ANGEL_DEVIL = 'angel-devil', // NEW: Angel/Devil debate (moral/ethical)
+  ADVERSARIAL_VALIDATION = 'adversarial-validation', // NEW: Generator/Red-team/Judge adversarial flow
+  CHAIN_OF_VERIFICATION = 'chain-of-verification', // NEW: Verification-focused flow for factual accuracy
+  BACKCASTING = 'backcasting', // NEW: Backward planning from goal to present
+  DELPHI_METHOD = 'delphi-method', // NEW: Iterative expert estimation
 }
 
 export enum TaskComplexity {
@@ -133,6 +137,18 @@ export interface EscalationEvent {
   toModel: string;
   reason: string;
   timestamp: string;
+}
+
+/**
+ * Plan phase for iterative execution in Sequential Thinking
+ */
+export interface PlanPhase {
+  id: number;
+  name: string;
+  description: string;
+  acceptance_criteria: string[];
+  estimated_turns: number;
+  dependencies: number[]; // phase IDs this depends on
 }
 
 // Agentic execution types
@@ -205,6 +221,7 @@ export interface PlanningResult {
   estimated_turns: number;
   skip_planning: boolean;
   use_agentic_loop: boolean;
+  phases?: PlanPhase[]; // NEW: ordered list of subtasks/phases for iterative execution
   confidence_assessment: {
     has_progress: boolean;
     score: number;

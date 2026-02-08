@@ -11,8 +11,8 @@ export function calculateConfidence(state: ExecutionState, turn: ExecutionTurn):
 }
 
 export function getConfidenceLevel(score: number): 'critical' | 'low' | 'moderate' | 'high' {
-  if (score < 30) return 'critical';
-  if (score < 50) return 'low';
-  if (score < 70) return 'moderate';
+  if (score < 50) return 'critical';  // was 30
+  if (score < 65) return 'low';       // was 50
+  if (score < 80) return 'moderate';  // was 70
   return 'high';
 }

@@ -30,6 +30,7 @@ For CODE GENERATION tasks:
 - Identify files to read, modify, create
 - Outline implementation steps
 - Consider error handling and edge cases
+- **BREAK DOWN INTO PHASES**: For complex tasks, divide into logical phases with acceptance criteria
 
 For PLANNING ONLY tasks (architecture/design):
 - Identify key design decisions needed
@@ -57,6 +58,29 @@ For PLANNING ONLY tasks (architecture/design):
 5. **Create** a clear, actionable prompt for the execution model.
 6. **Self-Reflect**: Review previous execution results and generate insights for improvement.
 7. **Monitor** progress via confidence scores and reflection history.
+
+## Phase-Based Planning (CRITICAL for Sequential Thinking)
+
+For CODE GENERATION tasks, you MUST break down the plan into phases. Each phase should be:
+
+- **Independent enough** to execute in isolation
+- **Have clear acceptance criteria** for completion
+- **Have estimated turn count** for the executor
+- **Have dependencies** on other phases (if any)
+
+Example phase structure:
+```json
+{
+  "id": 1,
+  "name": "Setup project structure",
+  "description": "Create directory layout and config files",
+  "acceptance_criteria": ["package.json exists", "tsconfig.json configured"],
+  "estimated_turns": 3,
+  "dependencies": []
+}
+```
+
+The executor will iterate through phases one by one, evaluating phase completion and checkpointing results.
 
 ## Chain-of-Thought Prompting (for CODE GENERATION tasks)
 
@@ -151,30 +175,40 @@ You have access to previous execution results and reflections:
 - If the user has added new files ({{user_added_files}}), incorporate them into the context.
 
 ## Output JSON only:
-{
-  "reformulated_prompt": "Clear task for execution model. MUST include Chain-of-Thought instruction for code tasks. For architecture tasks, focus on design clarity.",
-  "topic_slug": "kebab-case-name",
-  "is_new_topic": true/false,
-  "plan_content": "Full markdown for plans/{slug}.md",
-  "instruction_content": "Full markdown for instructions/{slug}.md",
-  "task_type": "task-type-from-list",
-  "agent_role": "agent-role-from-list",
-  "complexity": "simple/medium/complex",
-  "estimated_turns": 15,
-  "skip_planning": false,
-  "confidence_assessment": {
-    "has_progress": true/false,
-    "score": 0-100,
-    "reasoning": "Why"
-  },
-  "reflection": {
-    "what_worked": "What succeeded in the previous attempt (or N/A if first attempt)",
-    "what_failed": "What failed or performed poorly (or N/A if first attempt)",
-    "root_cause": "Why failures occurred - be specific (or N/A if first attempt)",
-    "strategy_change": "How to approach differently this time (or 'Proceed as planned' if first attempt)",
-    "key_insight": "One concise learning to remember for future tasks (or N/A if first attempt)"
-  }
-}
+ {
+   "reformulated_prompt": "Clear task for execution model. MUST include Chain-of-Thought instruction for code tasks. For architecture tasks, focus on design clarity.",
+   "topic_slug": "kebab-case-name",
+   "is_new_topic": true/false,
+   "plan_content": "Full markdown for plans/{slug}.md",
+   "instruction_content": "Full markdown for instructions/{slug}.md",
+   "task_type": "task-type-from-list",
+   "agent_role": "agent-role-from-list",
+   "complexity": "simple/medium/complex",
+   "estimated_turns": 15,
+   "skip_planning": false,
+   "phases": [
+     {
+       "id": 1,
+       "name": "Phase name",
+       "description": "What this phase accomplishes",
+       "acceptance_criteria": ["Criterion 1", "Criterion 2"],
+       "estimated_turns": 5,
+       "dependencies": []
+     }
+   ],
+   "confidence_assessment": {
+     "has_progress": true/false,
+     "score": 0-100,
+     "reasoning": "Why"
+   },
+   "reflection": {
+     "what_worked": "What succeeded in the previous attempt (or N/A if first attempt)",
+     "what_failed": "What failed or performed poorly (or N/A if first attempt)",
+     "root_cause": "Why failures occurred - be specific (or N/A if first attempt)",
+     "strategy_change": "How to approach differently this time (or 'Proceed as planned' if first attempt)",
+     "key_insight": "One concise learning to remember for future tasks (or N/A if first attempt)"
+   }
+ }
 
 ## Thread ID: {{channel_id}}
 ## Workspace: {{workspace_path}}

@@ -1,0 +1,10 @@
+Original Request:
+{{original_prompt}}
+
+Improved Prompt:
+{{improved_prompt}}
+
+Adversarial History:
+{{adversarial_history}}
+
+Evaluate: Is the final solution robust and production-ready? What remaining risks exist? Provide a final verdict.

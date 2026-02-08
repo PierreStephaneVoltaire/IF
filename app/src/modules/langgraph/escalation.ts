@@ -1,5 +1,5 @@
 import type { ExecutionState, ExecutionTurn } from '../litellm/types';
-import { escalateTier, getNextTier, isAtMaxTier, type Tier } from './model-tiers';
+import { escalateTier, deescalateTier, getNextTier, isAtMaxTier, type Tier } from './model-tiers';
 
 export interface EscalationDecision {
   shouldEscalate: boolean;
@@ -24,7 +24,7 @@ export function checkEscalationTriggers(
     return { shouldEscalate: false, reason: 'Already at max tier' };
   }
 
-  if (consecutiveLowConfidenceTurns >= 2) {
+  if (consecutiveLowConfidenceTurns >= 3) {
     return { shouldEscalate: true, suggestedTags: nextTags, reason: 'Low confidence - tier escalation needed' };
   }
 
@@ -41,6 +41,33 @@ export function checkEscalationTriggers(
   }
 
   return { shouldEscalate: false, reason: 'No escalation triggers hit' };
+}
+
+/**
+ * Check if de-escalation should occur based on high confidence
+ * Returns suggested tags for lower tier, or null if at tier1
+ */
+export function checkDeescalationTriggers(
+  confidenceScore: number,
+  currentTags: string[]
+): EscalationDecision {
+  // Only de-escalate if confidence is very high (85+)
+  if (confidenceScore < 85) {
+    return { shouldEscalate: false, reason: 'Confidence below de-escalation threshold' };
+  }
+
+  // Try to de-escalate tier while preserving capability tags
+  const lowerTags = deescalateTier(currentTags);
+
+  if (!lowerTags) {
+    return { shouldEscalate: false, reason: 'Already at tier1' };
+  }
+
+  return {
+    shouldEscalate: true,
+    suggestedTags: lowerTags,
+    reason: 'High confidence - tier de-escalation safe',
+  };
 }
 
 /**

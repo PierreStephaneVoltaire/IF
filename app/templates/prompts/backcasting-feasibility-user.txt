@@ -1,0 +1,7 @@
+Goal State:
+{{goal_state}}
+
+Backward Milestones:
+{{milestone_text}}
+
+Review this plan for feasibility issues. Identify any contradictions, gaps, or unrealistic assumptions.
