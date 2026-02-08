@@ -3,7 +3,7 @@ import {
   executeSimpleTask,
 } from '../modules/litellm/executor';
 import { loadPrompt } from '../templates/loader';
-import { getTemplateForAgent, getPromptForTaskType, getModelForTaskType, getModelForAgent } from '../templates/registry';
+import { getTemplateForAgent, getPromptForTaskType, getModelForTaskType, getModelForAgent, getAgentRoleTags } from '../templates/registry';
 import { createLogger } from '../utils/logger';
 import type { PlanningResult, TaskType } from '../modules/litellm/types';
 import type { FormattedHistory, ProcessedAttachment } from './types';
@@ -46,9 +46,11 @@ export async function executeTechnicalTask(
     systemPrompt = loadPrompt('coding');
   }
 
-  // Get actual model name from agent role
+  // Use tag-based routing for agent role
   const modelName = getModelForAgent(input.planning.agent_role);
+  const tags = getAgentRoleTags(input.planning.agent_role);
   log.info(`Using model: ${modelName} for agent role: ${input.planning.agent_role}`);
+  log.info(`Using tags: ${tags.join(', ')}`);
 
   const planContext = `
 ## Current Plan (plans/${input.planning.topic_slug}.md)
@@ -77,6 +79,7 @@ ${input.planning.instruction_content}
       userPrompt,
       branchName: input.branchName,
       model: modelName,
+      tags,
     },
     input.channelId
   );
@@ -112,7 +115,8 @@ export async function executeSimple(
     input.channelId,
     model,
     false, // Simple flow never needs tools
-    input.modelParams
+    input.modelParams,
+    input.isTechnical ? ['tier2', 'general'] : undefined
   );
 
   log.info(`Simple execution complete, response length: ${response.length}`);
@@ -177,7 +181,8 @@ export async function executeBreakglass(
     input.channelId,
     actualModel,
     false, // No tools for breakglass
-    input.modelParams
+    input.modelParams,
+    ['tier4', 'tools']
   );
 
   log.info(`Breakglass execution complete, response length: ${response.length}`);

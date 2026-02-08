@@ -36,13 +36,14 @@ Use the provided tools to:
 
   const startTime = Date.now();
   const response = await chatCompletion({
-    model: context.model || 'gemini-3-pro',
+    model: context.model || 'auto',
     messages: [
       { role: 'system', content: fullSystemPrompt },
       { role: 'user', content: context.userPrompt },
     ],
     tools: tools,
     tool_choice: 'auto',
+    ...(context.tags ? { metadata: { tags: context.tags } } : {}),
     ...(modelParams && { temperature: modelParams.temperature, top_p: modelParams.top_p }),
   });
   const elapsedMs = Date.now() - startTime;
@@ -63,7 +64,8 @@ export async function executeSimpleTask(
   channelid: string,
   model?: string,
   enableTools: boolean = false,
-  modelParams?: ModelParams
+  modelParams?: ModelParams,
+  tags?: string[]
 ): Promise<string> {
   log.info(`executeSimpleTask for thread ${channelid}, prompt: ${promptCategory}, model: ${model || 'general'}, tools: ${enableTools}`);
 
@@ -83,13 +85,14 @@ export async function executeSimpleTask(
 
   const startTime = Date.now();
   const response = await chatCompletion({
-    model: model || 'gemini-3-pro',
+    model: model || 'auto',
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: history },
     ],
     tools: enableTools && tools.length > 0 ? tools : undefined,
     tool_choice: enableTools && tools.length > 0 ? 'auto' : undefined,
+    ...(tags ? { metadata: { tags } } : {}),
     ...(modelParams && { temperature: modelParams.temperature, top_p: modelParams.top_p }),
   });
   const elapsedMs = Date.now() - startTime;

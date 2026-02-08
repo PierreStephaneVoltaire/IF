@@ -74,6 +74,7 @@ export interface SimpleLLMInput {
   userMessage: string;
   model: string;
   flowType: FlowType;
+  tags?: string[];
 }
 
 export async function simpleLLMCall(input: SimpleLLMInput): Promise<{ response: string; model: string }> {
@@ -88,6 +89,7 @@ export async function simpleLLMCall(input: SimpleLLMInput): Promise<{ response: 
     ],
     temperature: params.temperature,
     top_p: params.top_p,
+    ...(input.tags ? { metadata: { tags: input.tags } } : {}),
   });
 
   const content = extractContent(response);

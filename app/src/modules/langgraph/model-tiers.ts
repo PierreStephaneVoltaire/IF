@@ -77,9 +77,7 @@ export function buildTags(
     case 'shell':
       return ['tier2', 'general'];
     case 'dialectic':
-      return options?.websearch
-        ? ['tier2', 'websearch']
-        : ['tier2', 'general'];
+      return ['tier2', 'websearch'];
     case 'consensus':
       return ['tier2', 'general'];
     case 'angel-devil':

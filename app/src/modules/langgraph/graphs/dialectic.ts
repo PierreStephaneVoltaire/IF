@@ -212,10 +212,9 @@ export function createDialecticGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking DialecticGraph for channel ${options.channelId}`);
 
-      // Use websearch tags if websearch is enabled
-      const useWebsearch = options.websearch || false;
-      const thesisTags = useWebsearch ? ['tier2', 'websearch'] : ['tier2', 'general'];
-      const antithesisTags = useWebsearch ? ['tier2', 'websearch'] : ['tier2', 'general'];
+      // Thesis/antithesis always require websearch
+      const thesisTags = ['tier2', 'websearch'];
+      const antithesisTags = ['tier2', 'websearch'];
       const synthesizerTags = ['tier3', 'thinking'];
 
       let state: DialecticGraphState = {

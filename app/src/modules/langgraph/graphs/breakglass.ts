@@ -106,7 +106,8 @@ async function respondNode(state: BreakglassGraphState): Promise<BreakglassGraph
       state.channelId,
       actualModel,
       false, // No tools for breakglass
-      params
+      params,
+      state.tags
     );
 
     log.info(`Breakglass execution complete, response length: ${response.length}`);

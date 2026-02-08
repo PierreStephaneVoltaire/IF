@@ -77,11 +77,11 @@ export function getPromptForTaskType(taskType: TaskType): string {
   return TASK_TYPE_TO_PROMPT[taskType] || 'general';
 }
 
-export function getModelForAgent(): string {
+export function getModelForAgent(_role?: AgentRole): string {
   return 'auto';
 }
 
-export function getModelForTaskType(): string {
+export function getModelForTaskType(_taskType?: TaskType): string {
   return 'auto';
 }
 

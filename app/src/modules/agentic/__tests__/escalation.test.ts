@@ -1,4 +1,4 @@
-import { checkEscalationTriggers, getNextModel, isAtMaxEscalation } from '../escalation';
+import { checkEscalationTriggers, getNextModel, isAtMaxEscalation } from '../../langgraph/escalation';
 import { ExecutionState, ExecutionTurn } from '../../litellm/types';
 
 describe('Escalation Logic', () => {
@@ -13,6 +13,7 @@ describe('Escalation Logic', () => {
     userInterrupts: [],
     userCorrectionCount: 0,
     noProgressTurns: 0,
+    escalations: [],
     ...overrides,
   });
 
@@ -32,18 +33,18 @@ describe('Escalation Logic', () => {
     const state = createMockState({ confidenceScore: 25 });
     const turn = createMockTurn({ confidence: 25 });
     
-    const result = checkEscalationTriggers(state, turn, 'gemini-3-pro', 2);
+    const result = checkEscalationTriggers(state, turn, ['tier2', 'tools', 'programming'], 2);
     
     expect(result.shouldEscalate).toBe(true);
     expect(result.reason).toContain('Low confidence');
-    expect(result.suggestedModel).toBe('claude-sonnet-4.5');
+    expect(result.suggestedTags).toEqual(['tier3', 'tools', 'programming']);
   });
 
   test('should escalate on same error repeated 3 times', () => {
     const state = createMockState({ sameErrorCount: 3 });
     const turn = createMockTurn();
     
-    const result = checkEscalationTriggers(state, turn, 'gemini-3-pro', 0);
+    const result = checkEscalationTriggers(state, turn, ['tier2', 'tools', 'programming'], 0);
     
     expect(result.shouldEscalate).toBe(true);
     expect(result.reason).toContain('Same error repeated');
@@ -53,7 +54,7 @@ describe('Escalation Logic', () => {
     const state = createMockState({ noProgressTurns: 5 });
     const turn = createMockTurn();
     
-    const result = checkEscalationTriggers(state, turn, 'gemini-3-pro', 0);
+    const result = checkEscalationTriggers(state, turn, ['tier2', 'tools', 'programming'], 0);
     
     expect(result.shouldEscalate).toBe(true);
     expect(result.reason).toContain('No progress');
@@ -63,7 +64,7 @@ describe('Escalation Logic', () => {
     const state = createMockState();
     const turn = createMockTurn({ status: 'stuck' });
     
-    const result = checkEscalationTriggers(state, turn, 'gemini-3-pro', 0);
+    const result = checkEscalationTriggers(state, turn, ['tier2', 'tools', 'programming'], 0);
     
     expect(result.shouldEscalate).toBe(true);
     expect(result.reason).toContain('stuck');
@@ -73,21 +74,21 @@ describe('Escalation Logic', () => {
     const state = createMockState({ confidenceScore: 75 });
     const turn = createMockTurn({ confidence: 75 });
     
-    const result = checkEscalationTriggers(state, turn, 'gemini-3-pro', 0);
+    const result = checkEscalationTriggers(state, turn, ['tier2', 'tools', 'programming'], 0);
     
     expect(result.shouldEscalate).toBe(false);
   });
 
   test('should follow escalation ladder correctly', () => {
-    expect(getNextModel('gemini-2.5-flash-lite')).toBe('gemini-3-pro');
-    expect(getNextModel('gemini-3-pro')).toBe('claude-sonnet-4.5');
-    expect(getNextModel('claude-sonnet-4.5')).toBe('claude-opus-4.5');
-    expect(getNextModel('claude-opus-4.5')).toBe('claude-opus-4.5'); // Already at max
+    expect(getNextModel('tier1')).toBe('tier2');
+    expect(getNextModel('tier2')).toBe('tier3');
+    expect(getNextModel('tier3')).toBe('tier4');
+    expect(getNextModel('tier4')).toBeNull();
   });
 
   test('should detect max escalation', () => {
-    expect(isAtMaxEscalation('claude-opus-4.5')).toBe(true);
-    expect(isAtMaxEscalation('claude-sonnet-4.5')).toBe(false);
-    expect(isAtMaxEscalation('gemini-3-pro')).toBe(false);
+    expect(isAtMaxEscalation('tier4')).toBe(true);
+    expect(isAtMaxEscalation('tier3')).toBe(false);
+    expect(isAtMaxEscalation('tier2')).toBe(false);
   });
 });

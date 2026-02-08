@@ -62,7 +62,7 @@ export async function shouldRespond(
   });
 
   const response = await chatCompletion({
-    model: 'o4-mini',
+    model: 'auto',
     messages: [
       { role: 'system', content: systemPrompt },
       {
@@ -70,6 +70,9 @@ export async function shouldRespond(
         content: `Analyze the message and respond with JSON only.`,
       },
     ],
+    metadata: {
+      tags: ['tier2', 'general'],
+    },
   });
 
   const content = extractContent(response);
@@ -108,7 +111,7 @@ export async function classifyRequest(
   });
 
   const response = await chatCompletion({
-    model: 'o4-mini',
+    model: 'auto',
     messages: [
       { role: 'system', content: systemPrompt },
       {
@@ -116,6 +119,9 @@ export async function classifyRequest(
         content: `Classify this request and respond with JSON only.`,
       },
     ],
+    metadata: {
+      tags: ['tier2', 'classifier'],
+    },
   });
 
   const content = extractContent(response);

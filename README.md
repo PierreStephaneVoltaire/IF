@@ -141,33 +141,41 @@ The sequential-thinking flow implements the **Reflexion** pattern for continuous
 | No progress | No file changes for 5 turns | Escalate model |
 | Max escalation | Already at Opus, still stuck | Ask user for clarification |
 
-### Model Tiers
+### Model Tiers (Tag-Based Routing)
 
-| Tier | Models | Tool Support | Use Case | Cost |
-|------|--------|--------------|----------|------|
-| 1 | mistral-nemo, gpt-oss-120b:exacto, general, gemini-2.5-flash-lite | ❌ No | Social, writing | $ (0.02-0.10) |
-| 2 | minimax-m2.1, gpt-5.1-codex-mini, gemini-3-flash, glm-4.7 | ✅ Yes | Coding, Q&A | $$ (0.25-0.54) |
-| 3 | qwen3-coder-plus, gpt-5.1-codex-max, gemini-3-pro, claude-sonnet-4.5 | ✅ Yes | Complex code, reviews | $$$ (1.00-3.00) |
-| 4 | qwen3-max, gpt-5.2-codex, claude-sonnet-4.5, claude-opus-4.5 | ✅ Yes | Critical decisions | $$$$ (1.20-5.00) |
+Models are selected dynamically via LiteLLM tags instead of hardcoded lists. Each request uses `model: "auto"` with `metadata.tags`, and the router selects a random model that matches **all** tags.
+
+| Tag | Purpose | Notes |
+|-----|---------|-------|
+| tier1 | Cheapest/fastest | Social, proofreading, lightweight chat |
+| tier2 | Standard technical | Q&A, basic coding, shell help |
+| tier3 | Complex reasoning | Multi-file changes, reviews |
+| tier4 | Critical decisions | Architecture, highest quality |
+| general | General-purpose | Default for non-specialized tasks |
+| tools | MCP/tool calling | Required for file/command execution |
+| programming | Code-focused | Higher code quality |
+| thinking | Deep reasoning | Synthesis/reflection steps |
+| websearch | Real-time info | Current events, time-sensitive data |
+| classifier | Flow/tier selector | Used for request classification |
 
 **Escalation Path:**
 ```
-mistral-nemo → minimax-m2.1 → qwen3-coder-plus → claude-sonnet-4.5 → claude-opus-4.5
+tier1 → tier2 → tier3 → tier4
 ```
 
-### Agent Roles
+### Agent Roles (Tag Routing)
 
-| Role | Tier | Template | Model | Use Case |
-|------|------|----------|-------|----------|
-| Command Executor | 2 | command-executor | [2] gemini-3-flash | Fast bash/kubectl commands |
-| Python Coder | 2 | python-coder | [1] gpt-5.1-codex-mini | Python development |
-| JS/TS Coder | 2 | js-ts-coder | [0] minimax-m2.1 | JavaScript/TypeScript |
-| DevOps Engineer | 3 | devops-engineer | [3] claude-sonnet-4.5 | Infrastructure, K8s |
-| Architect | 4 | architect | [3] claude-opus-4.5 | System design |
-| Code Reviewer | 3 | code-reviewer | [3] claude-sonnet-4.5 | Code quality (w/ Random Peer) |
-| Documentation Writer | 3 | documentation-writer | [0] qwen3-coder-plus | Docs, README |
-| DBA | 3 | dba | [2] gemini-3-pro | Database operations |
-| Researcher | 2 | researcher | [1] gpt-5.1-codex-mini | Code search |
+| Role | Tags | Template | Use Case |
+|------|------|----------|----------|
+| Command Executor | tier2 + tools + general | command-executor | Fast commands |
+| Python Coder | tier2 + tools + programming | python-coder | Python development |
+| JS/TS Coder | tier2 + tools + programming | js-ts-coder | TypeScript/JavaScript |
+| DevOps Engineer | tier3 + tools + general | devops-engineer | Infrastructure, K8s |
+| Architect | tier4 + tools + thinking | architect | System design |
+| Code Reviewer | tier3 + tools + programming | code-reviewer | Code quality |
+| Documentation Writer | tier3 + tools + general | documentation-writer | Docs, README |
+| DBA | tier3 + tools + general | dba | Database operations |
+| Researcher | tier2 + tools + general | researcher | Code search |
 
 ## Advanced Features
 
