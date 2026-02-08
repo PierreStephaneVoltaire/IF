@@ -7,7 +7,7 @@ An autonomous multi-agent Discord bot that can execute complex multi-turn tasks,
 - 🧠 **Sequential Thinking** - Planning model thinks step-by-step before generating plans
 - 🗂️ Per-thread S3 artifact storage with automatic file sync
 - 🎯 Specialized agent roles (Python coder, DevOps engineer, Architect, etc.)
-- 📈 Automatic model escalation (Gemini → Sonnet → Opus)
+- 📈 Automatic model escalation via tier-based routing
 - 🔄 **Self-reflection** and persistent learning from past attempts
 - 🛑 Human-in-the-loop controls (stop, approve, reject via reactions)
 - 👍👎 User feedback directly influences confidence scores
@@ -23,17 +23,26 @@ An autonomous multi-agent Discord bot that can execute complex multi-turn tasks,
 
 ### Execution Flows
 
-The bot supports 8 execution flows based on task classification:
+The bot supports 11 execution flows based on task classification:
 
 ```
 User Message
     ↓
-[Opus] Should respond? → YES/NO
+[Planning Model] Should respond? → YES/NO
     ↓
-[Opus] Classify task → TaskType + AgentRole + Complexity
+[Planning Model] Classify task → TaskType + AgentRole + Complexity
     ↓
-    ├─→ SIMPLE (social, general chat)
-    │   └─→ Single turn, no tools, no planning
+    ├─→ SIMPLE (quick Q&A, no tools)
+    │   └─→ Single turn, tier1/tier2, no tools
+    │
+    ├─→ SOCIAL (casual chat)
+    │   └─→ Single turn, tier1 + social, no tools
+    │
+    ├─→ PROOFREADER (grammar check)
+    │   └─→ Single turn, tier1, no tools
+    │
+    ├─→ SHELL (command suggestions)
+    │   └─→ Single turn, tier2, no scripts
     │
     ├─→ ARCHITECTURE (design/planning WITHOUT code)
     │   └─→ Generates clear, succinct architectural plans
@@ -42,25 +51,22 @@ User Message
     │   └─→ Can transition to SEQUENTIAL-THINKING on "implement this"
     │
     ├─→ BRANCH (multi-solution brainstorming)
-    │   └─→ Multiple models explore different architectural approaches
+    │   └─→ 3 models explore different approaches in parallel
+    │   └─→ Tier4 aggregator consolidates options
     │   └─→ Theoretical only, no code generation
     │
     ├─→ SEQUENTIAL-THINKING (complex multi-turn with code generation)
     │   └─→ Chain-of-Thought execution with self-reflection
     │   └─→ CODE GENERATION with MCP tools
     │   └─→ Per-thread artifact storage in S3
-    │   └─→ Evaluator scores trajectory → Opus reflects
-    │
-    ├─→ SHELL (command suggestions)
-    │   └─→ Suggests ready-to-run shell commands
-    │   └─→ NO scripts - one-liners only
+    │   └─→ Evaluator scores trajectory → Model reflects
     │
     ├─→ DIALECTIC (philosophical synthesis)
     │   └─→ Thesis → Antithesis → Synthesis
     │   └─→ For abstract "what is the meaning of..." questions
     │
     ├─→ CONSENSUS (multi-source factual verification)
-    │   └─→ 3 models answer independently → Judge synthesizes
+    │   └─→ 3 models answer independently → Tier3 Judge synthesizes
     │   └─→ For "is it true that..." factual questions
     │
     ├─→ ANGEL_DEVIL (moral/ethical debate)
@@ -68,22 +74,24 @@ User Message
     │   └─→ For "should I..." ethical dilemmas
     │
     └─→ BREAKGLASS (emergency override)
-        └─→ Direct Opus access, bypasses all checks
+        └─→ Direct model access, bypasses all checks
 ```
 
 ### Flow Selection Guide
 
 | Flow | Use Case | Code? | Tools? | Example Triggers |
 |------|----------|-------|--------|------------------|
-| **SIMPLE** | Quick Q&A, social | ❌ No | ❌ No | "What is...", "How do I..." |
-| **ARCHITECTURE** | Design, planning | ❌ No | ❌ No | "Design a system...", "What's the best approach..." |
-| **BRANCH** | Explore alternatives | ❌ No | ❌ No | "Compare approaches...", "Pros and cons..." |
-| **SEQUENTIAL** | Implementation | ✅ Yes | ✅ Yes | "Implement...", "Refactor...", "Create..." |
-| **SHELL** | Command help | ❌ No | ❌ No | "How to grep...", "kubectl command..." |
-| **DIALECTIC** | Philosophical synthesis | ❌ No | ❌ No | "What is the meaning of...", "Philosophically speaking..." |
-| **CONSENSUS** | Factual verification | ❌ No | ❌ No | "Is it true that...", "Fact check...", "Verify..." |
-| **ANGEL_DEVIL** | Moral/ethical debate | ❌ No | ❌ No | "Should I...", "Is it ethical...", "Moral dilemma" |
-| **BREAKGLASS** | Emergency | ✅ Yes | ✅ Yes | `!breakglass` prefix |
+| **1. SIMPLE** | Quick Q&A, social | ❌ No | ❌ No | "What is...", "How do I..." |
+| **2. SOCIAL** | Casual chat | ❌ No | ❌ No | "Hello", "What's up?" |
+| **3. PROOFREADER** | Grammar check | ❌ No | ❌ No | "Proofread this..." |
+| **4. SHELL** | Command help | ❌ No | ❌ No | "How to grep...", "kubectl command..." |
+| **5. ARCHITECTURE** | Design, planning | ❌ No | ❌ No | "Design a system...", "What's the best approach..." |
+| **6. BRANCH** | Explore alternatives | ❌ No | ❌ No | "Compare approaches...", "Pros and cons..." |
+| **7. SEQUENTIAL** | Implementation | ✅ Yes | ✅ Yes | "Implement...", "Refactor...", "Create..." |
+| **8. DIALECTIC** | Philosophical synthesis | ❌ No | ❌ No | "What is the meaning of...", "Philosophically speaking..." |
+| **9. CONSENSUS** | Factual verification | ❌ No | ❌ No | "Is it true that...", "Fact check...", "Verify..." |
+| **10. ANGEL_DEVIL** | Moral/ethical debate | ❌ No | ❌ No | "Should I...", "Is it ethical...", "Moral dilemma" |
+| **11. BREAKGLASS** | Emergency | ✅ Yes | ✅ Yes | `!breakglass` prefix |
 
 ### Reflexion Learning Pattern
 
@@ -92,13 +100,13 @@ The sequential-thinking flow implements the **Reflexion** pattern for continuous
 ```
 1. Load Session (reflections + key insights from DynamoDB)
    ↓
-2. Opus Plans (informed by previous trajectory + evaluation)
+2. Planning Model generates plan (informed by previous trajectory + evaluation)
    ↓
 3. Actor Executes (Chain-of-Thought prompting)
    ↓
 4. Evaluator Scores Trajectory (task completion, code quality, efficiency)
    ↓
-5. Opus Self-Reflects (what worked, what failed, strategy change)
+5. Model Self-Reflects (what worked, what failed, strategy change)
    ↓
 6. Save to Memory (sliding window: last 5 reflections, top 20 insights)
    ↓
@@ -139,7 +147,7 @@ The sequential-thinking flow implements the **Reflexion** pattern for continuous
 | Low confidence | Confidence < 30% for 2 turns | Escalate model |
 | Repeated errors | Same error 3 times | Escalate model |
 | No progress | No file changes for 5 turns | Escalate model |
-| Max escalation | Already at Opus, still stuck | Ask user for clarification |
+| Max escalation | Already at highest tier, still stuck | Ask user for clarification |
 
 ### Model Tiers (Tag-Based Routing)
 
@@ -186,14 +194,14 @@ The bot implements the **Reflexion** pattern, enabling it to learn from past att
 **Components:**
 - **Actor**: Execution model with Chain-of-Thought prompting
 - **Evaluator**: Heuristic-based trajectory scoring (task completion, code quality, efficiency)
-- **Self-Reflection**: Opus analyzes what worked/failed and generates strategy changes
+- **Self-Reflection**: Model analyzes what worked/failed and generates strategy changes
 - **Memory**: DynamoDB stores reflections, key insights, and trajectory summaries
 
 **How It Works:**
-1. Before execution, Opus reviews previous reflections and evaluation scores
+1. Before execution, the planning model reviews previous reflections and evaluation scores
 2. During execution, the Actor implements with step-by-step reasoning
 3. After execution, the Evaluator scores the trajectory (0-100)
-4. Opus generates a reflection: what worked, what failed, root cause, strategy change, key insight
+4. Model generates a reflection: what worked, what failed, root cause, strategy change, key insight
 5. Reflection is saved with sliding window (last 5) and key insights (top 20)
 6. Next execution benefits from these learnings
 
@@ -241,15 +249,50 @@ Users directly influence the bot's confidence through reactions:
 
 This creates a feedback loop where user satisfaction directly impacts the bot's decision-making.
 
-### 5. Architecture Flow (Design & Planning)
+### 5. Simple Flow (Quick Q&A)
+
+For basic questions that don't require tools or complex processing.
+
+**Process:**
+1. User message classified as SIMPLE task type
+2. Single model response using tier-based tags
+3. No tools, no planning, single turn only
+
+```mermaid
+flowchart TD
+    A[User Message] --> B[Classify: SIMPLE]
+    B --> C[Tier1/Tier2 + General Tags]
+    C --> D[Respond Node]
+    D --> E[Single Turn Response]
+```
+
+**Best for:** Quick Q&A, social chat, simple explanations
+
+**Triggers:**
+- "What is...", "How do I..."
+- Greetings, casual conversation
+- Simple factual questions
+
+### 6. Architecture Flow (Design & Planning)
 
 For theoretical/design tasks that require planning WITHOUT code generation.
 
 **Process:**
-1. Opus analyzes the request using Sequential Thinking
-2. Generates a clear, succinct architectural plan
-3. NO code is generated - only design and recommendations
-4. Confidence based on: completeness, conflicting info, facts captured, holes identified
+1. Setup session and branch
+2. Create architectural plan using Sequential Thinking
+3. Evaluate plan for completeness and design quality
+4. Return design recommendations (NO code generation)
+
+```mermaid
+flowchart TD
+    A[User Request] --> B[Setup Session]
+    B --> C[Plan Node: Sequential Thinking]
+    C --> D[Evaluate Architecture]
+    D --> E{Complete?}
+    E -->|Yes| F[Finalize]
+    E -->|No| G[Ask for Clarification]
+    F --> H[Design Plan Only]
+```
 
 **Key Differences from Sequential-Thinking:**
 | Aspect | Architecture Flow | Sequential-Thinking Flow |
@@ -268,35 +311,192 @@ For theoretical/design tasks that require planning WITHOUT code generation.
 **Flow Transition:**
 When user says "implement this" or "execute the plan", the bot switches to SEQUENTIAL-THINKING flow for actual code generation.
 
-### 6. Branch Flow (Multi-Solution Brainstorming)
+### 7. Branch Flow (Multi-Solution Brainstorming)
 
-Trigger with phrases like "different approaches", "pros and cons", "explore options":
+For exploring multiple architectural approaches in parallel.
 
 **Process:**
-1. Two models brainstorm in parallel
-2. Consolidator merges unique approaches
-3. Presents 2-3 architectural options with pros/cons
-4. **No code generation** - purely theoretical/architectural
+1. Three models brainstorm in parallel (tier3 + thinking)
+2. Each explores a different approach
+3. Tier4 aggregator merges unique approaches
+4. Presents 2-3 architectural options with pros/cons
+5. **No code generation** - purely theoretical/architectural
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Branch 1: Model A]
+    A --> C[Branch 2: Model B]
+    A --> D[Branch 3: Model C]
+    B --> E[Aggregator: Tier4 + Thinking]
+    C --> E
+    D --> E
+    E --> F[Consolidated Options with Pros/Cons]
+```
+
+**Best for:** "Compare approaches...", "Pros and cons...", "Explore options"
 
 **Triggers:**
 - "multiple solutions", "brainstorm", "different ways"
 - "compare approaches", "tradeoffs", "which approach"
 
-### 7. Dialectic Synthesis Flow (Philosophical)
+### 8. Sequential-Thinking Flow (Code Implementation)
+
+For complex multi-turn tasks requiring code generation and tool execution. This is the **primary agentic flow** with full Reflexion learning.
+
+**Process:**
+1. Setup: Acquire lock, create session/branch
+2. Execute turns (up to maxTurns) with Chain-of-Thought prompting
+3. Each turn: LLM + MCP tools execute tasks
+4. Evaluate confidence and trajectory after each turn
+5. Self-reflect on progress, generate key insights
+6. On completion: checkpoint, commit, ask for user feedback
+
+```mermaid
+flowchart TD
+    A[User Request] --> B[Setup: Lock + Session]
+    B --> C{Execute Turns}
+    C -->|Turn 1| D[Execute: LLM + MCP Tools]
+    D --> E[Evaluate: Confidence + Trajectory]
+    E --> F{Complete?}
+    F -->|No| G[Confidence < 30%?]
+    G -->|Yes| H[Escalate Model Tier]
+    G -->|No| I[Check Abort Flag]
+    I -->|No Abort| J[Next Turn]
+    J --> C
+    F -->|Yes| K[Self-Reflect: What Worked/Failed]
+    K --> L[Save: Reflection + Insights]
+    L --> M[Checkpoint + Commit]
+    H --> C
+    M --> N[User Feedback: 👍/👎]
+```
+
+**Memory Components:**
+- **Reflections**: Last 5 execution reflections (sliding window in DynamoDB)
+- **Key Insights**: Top 20 persistent learnings across all executions
+- **Trajectory Summary**: Compressed history of previous attempts
+- **Evaluation Scores**: Task completion, code quality, efficiency metrics
+
+**Control Mechanisms:**
+| Mechanism | Trigger | Action |
+|-----------|---------|--------|
+| 🛑 Reaction | On "Starting work..." | Set abort flag, halt at next turn |
+| 👍 Reaction | On commit message | Merge branch to main |
+| 👎 Reaction | On commit message | Delete branch, reject changes |
+| Low confidence | Confidence < 30% for 2 turns | Escalate model |
+| Repeated errors | Same error 3 times | Escalate model |
+| No progress | No file changes for 5 turns | Escalate model |
+| Max escalation | Already at Opus, still stuck | Ask user for clarification |
+
+### 9. Shell Flow (Command Suggestions)
+
+For suggesting ready-to-run shell commands without code generation.
+
+**Process:**
+1. User asks how to run a command
+2. Single model suggests one-liner command
+3. NO scripts - only direct commands
+
+```mermaid
+flowchart TD
+    A[User: "How to grep..."] --> B[Classify: SHELL]
+    B --> C[Tier2 + General Tags]
+    C --> D[Suggest Node]
+    D --> E[One-Liner Command Only]
+```
+
+**Best for:** "How to grep...", "kubectl command...", "docker run..."
+
+**Triggers:**
+- "How to run...", "command for...", "kubectl..."
+- "docker...", "bash...", "shell..."
+
+### 10. Breakglass Flow (Emergency Override)
+
+For direct model access bypassing all checks and routing. Triggered with `!breakglass` or `@modelname` prefix.
+
+**Process:**
+1. Parse breakglass model (opus, sonnet, gemini, etc.)
+2. Call model directly with breakglass template
+3. Bypasses: tool routing, confidence checks, escalation
+4. Returns raw model response
+
+```mermaid
+flowchart TD
+    A[@{modelname} Message] --> B[Parse Model Name]
+    B --> C{Valid Model?}
+    C -->|Yes| D[Load Breakglass Template]
+    C -->|No| E[Error: Invalid Model]
+    D --> F[Tier4 + Tools Tags]
+    F --> G[Direct Model Call]
+    G --> H[Raw Response]
+```
+
+**Available Models:**
+| Prefix | Model |
+|--------|-------|
+| @opus | claude-opus-4 |
+| @sonnet | claude-sonnet-4 |
+| @gemini | gemini-3-pro |
+| @qwen | qwen3-max |
+| @gpt | gpt-5.2-codex |
+| @default | gemini-2.5-flash-lite |
+
+**Use Cases:**
+- When normal routing isn't working
+- Need specific model capabilities
+- Debugging or testing
+
+### 11. Social Flow (Casual Chat)
+
+For greetings and casual conversation using lightweight tier1 models.
+
+**Process:**
+1. User sends greeting or social message
+2. Tier1 + social tags for fast, lightweight response
+3. Single turn, no tools
+
+```mermaid
+flowchart TD
+    A[Greeting/Social Message] --> B[Classify: SOCIAL]
+    B --> C[Tier1 + Social Tags]
+    C --> D[Respond Node]
+    D --> E[Casual Response]
+```
+
+**Best for:** "Hello", "How are you?", "What's up?"
+
+### 12. Proofreader Flow (Grammar & Spelling)
+
+For grammar and spellcheck using lightweight tier1 models.
+
+**Process:**
+1. User sends text for proofreading
+2. Tier1 + general tags for fast checking
+3. Returns corrected text with annotations
+
+```mermaid
+flowchart TD
+    A[Text for Proofreading] --> B[Classify: PROOFREADER]
+    B --> C[Tier1 + General Tags]
+    C --> D[Proofread Node]
+    D --> E[Grammar/Spellcheck + Corrections]
+```
+
+**Best for:** "Proofread this...", "Check my spelling...", "Grammar review..."
 
 For abstract philosophical questions seeking understanding through dialectical exploration.
 
 **Process:**
-1. Random Tier 2 Model A generates a **Thesis** (strongest position)
-2. Random Tier 2 Model B generates an **Antithesis** (counter-position, aware of thesis)
-3. Random Tier 4 Synthesizer creates a **Synthesis** (higher-order resolution)
+1. Model A generates a **Thesis** (strongest position)
+2. Model B generates an **Antithesis** (counter-position, aware of thesis)
+3. Tier3 Synthesizer creates a **Synthesis** (higher-order resolution)
 
 ```mermaid
 flowchart TD
-    A[User Question] --> B[Model A: Thesis]
-    B --> C[Model B: Antithesis]
-    C --> D[Model C: Synthesis]
-    D --> E[User gets layered philosophical exploration]
+    A[User Question] --> B[Tier2 + Websearch: Thesis]
+    B --> C[Tier2 + Websearch: Antithesis]
+    C --> D[Tier3 + Thinking: Synthesis]
+    D --> E[Layered Philosophical Exploration]
 ```
 
 **Best for:** "What is the meaning of life?", "What is consciousness?", "What is justice?"
@@ -305,24 +505,24 @@ flowchart TD
 - "meaning of", "nature of", "philosophically", "existential"
 - "what is the purpose", "what is reality", "what is truth"
 
-### 8. Multi-Source Consensus Flow (Factual)
+### 13. Multi-Source Consensus Flow (Factual)
 
 For factual questions requiring verification across multiple independent sources.
 
 **Process:**
-1. Three random Tier 2 models answer the question **independently**
-2. Random Tier 4 Judge compares answers, identifies consensus/disagreement
+1. Three models answer the question **independently**
+2. Tier3 Judge compares answers, identifies consensus/disagreement
 3. Returns synthesis with confidence indicator
 
 ```mermaid
 flowchart TD
-    A[User Question] --> B[Model A: Independent Answer]
-    A --> C[Model B: Independent Answer]
-    A --> D[Model C: Independent Answer]
-    B --> E[Judge: Compare & Synthesize]
+    A[User Question] --> B[Tier2: Answer 1]
+    A --> C[Tier2: Answer 2]
+    A --> D[Tier2: Answer 3]
+    B --> E[Tier3 + Thinking: Judge]
     C --> E
     D --> E
-    E --> F[Consensus or Disagreement Report]
+    E --> F[Consensus/Disagreement Report]
 ```
 
 **Best for:** "Is it true that...", "How many...", "When did...", "Fact check..."
@@ -331,22 +531,22 @@ flowchart TD
 - "is it true that", "fact check", "verify", "actually true"
 - "how many", "when did", "where is", "who was"
 
-### 9. Angel/Devil Debate Flow (Moral/Ethical)
+### 14. Angel/Devil Debate Flow (Moral/Ethical)
 
 For moral dilemmas and ethical questions requiring balanced consideration of both sides.
 
 **Process:**
-1. Random Tier 2 Model A (Angel) argues **FOR** the position
-2. Random Tier 2 Model B (Devil) argues **AGAINST** the position
-3. Random Tier 4 Judge synthesizes a **balanced, nuanced response**
+1. Model A (Angel) argues **FOR** the position
+2. Model B (Devil) argues **AGAINST** the position
+3. Tier3 Judge synthesizes a **balanced, nuanced response**
 
 ```mermaid
 flowchart TD
-    A[User Question] --> B[Angel: Argue FOR]
-    A --> C[Devil: Argue AGAINST]
-    B --> D[Judge: Balanced Synthesis]
+    A[User Question] --> B[Tier2: Angel - Argue FOR]
+    A --> C[Tier2: Devil - Argue AGAINST]
+    B --> D[Tier3 + Thinking: Judge]
     C --> D
-    D --> E[Nuanced answer with both sides]
+    D --> E[Balanced Nuanced Response]
 ```
 
 **Best for:** "Should I...", "Is it ethical...", "Moral dilemma", "Right or wrong"
@@ -361,63 +561,73 @@ flowchart TD
 app/
 ├── src/
 │   ├── modules/
-│   │   ├── agentic/          # Multi-turn execution system
-│   │   │   ├── loop.ts       # Main execution loop with CoT
-│   │   │   ├── lock.ts       # Thread-safe locks
-│   │   │   ├── escalation.ts # Model escalation
-│   │   │   ├── progress.ts   # Discord progress streaming
-│   │   │   ├── commits.ts    # Git operations
-│   │   │   ├── logging.ts    # DynamoDB logging
-│   │   │   ├── events.ts     # SQS event emission
-│   │   │   └── README.md     # Module documentation
+│   │   ├── langgraph/         # LangGraph-based execution flows
+│   │   │   ├── graphs/        # Flow implementations
+│   │   │   │   ├── sequential-thinking.ts  # Agentic code generation
+│   │   │   │   ├── architecture.ts         # Design/planning flow
+│   │   │   │   ├── branch.ts               # Multi-solution brainstorming
+│   │   │   │   ├── dialectic.ts            # Thesis → Antithesis → Synthesis
+│   │   │   │   ├── consensus.ts            # Multi-source verification
+│   │   │   │   ├── angel-devil.ts          # Moral debate
+│   │   │   │   ├── simple.ts               # Quick responses
+│   │   │   │   ├── shell.ts                # Command suggestions
+│   │   │   │   ├── breakglass.ts          # Emergency override
+│   │   │   │   ├── social.ts              # Casual chat
+│   │   │   │   └── proofreader.ts         # Grammar check
+│   │   │   ├── checkpointer.ts   # State persistence
+│   │   │   ├── confidence.ts     # Confidence scoring
+│   │   │   ├── escalation.ts     # Model tier escalation
+│   │   │   ├── logger.ts         # Execution logging
+│   │   │   ├── mermaid.ts        # Diagram generation
+│   │   │   ├── model-tiers.ts    # Tag-based routing
+│   │   │   ├── state.ts          # Graph state types
+│   │   │   └── temperature.ts   # Temperature settings
 │   │   ├── reflexion/        # Reflexion learning pattern
-│   │   │   ├── evaluator.ts  # Trajectory evaluation (code + architecture)
-│   │   │   ├── memory.ts     # Reflection management
-│   │   │   └── types.ts      # Reflexion interfaces
+│   │   │   ├── evaluator.ts   # Trajectory evaluation
+│   │   │   ├── memory.ts      # Reflection management
+│   │   │   └── types.ts       # Reflexion interfaces
 │   │   ├── workspace/        # Per-thread S3 artifact storage
 │   │   │   ├── manager.ts    # Workspace operations
 │   │   │   ├── s3-sync.ts    # S3 synchronization
 │   │   │   └── file-sync.ts  # Discord attachment sync
 │   │   ├── discord/          # Discord client with partials
 │   │   ├── litellm/          # LLM integration
-│   │   └── dynamodb/         # Database operations
+│   │   ├── dynamodb/         # Database operations
+│   │   ├── redis/            # State & locks
+│   │   └── agentic/         # Progress streaming
+│   │       └── progress.ts   # Discord progress streaming
 │   ├── handlers/
 │   │   ├── reactions.ts      # Emoji reaction handler
-│   │   ├── feedback.ts       # User feedback (👍👎)
 │   │   ├── debounce.ts       # Message debouncing
 │   │   └── README.md         # Handler documentation
 │   ├── pipeline/             # Message processing pipeline
-│   │   └── flows/
-│   │       ├── sequential-thinking.ts  # Code generation flow
-│   │       ├── architecture.ts         # Design/planning flow
-│   │       ├── branch.ts               # Multi-solution brainstorming
-│   │       ├── dialectic.ts            # Thesis → Antithesis → Synthesis
-│   │       ├── consensus.ts            # Multi-source factual verification
-│   │       ├── angel-devil.ts          # Moral debate (FOR vs AGAINST)
-│   │       ├── simple.ts               # Quick responses
-│   │       ├── shell.ts                # Command suggestions
-│   │       └── breakglass.ts           # Emergency override
-│   │       └── social.ts               # Social interactions (tier 1)
-│   │       └── proofreader.ts          # Grammar/spellcheck (tier 1)
-│   ├── templates/            # Prompt templates with Sequential Thinking
-│   │   ├── planning.txt      # Opus planning with step-by-step reasoning
+│   │   ├── session.ts        # Session setup
+│   │   ├── planning.ts       # Sequential thinking planner
+│   │   ├── classify.ts       # Task classification
+│   │   ├── should-respond.ts  # Response gating
+│   │   └── types.ts          # Pipeline types
+│   ├── templates/            # Prompt templates
+│   │   ├── registry.ts       # Template mapping
+│   │   ├── loader.ts         # Template loading
 │   │   └── prompts/
-│   │       ├── coding.txt    # CoT for implementation
+│   │       ├── coding.txt    # Code implementation
 │   │       ├── devops.txt
 │   │       ├── architect.txt
+│   │       ├── dialectic-thesis.txt
+│   │       ├── dialectic-antithesis.txt
+│   │       ├── dialectic-synthesis.txt
 │   │       └── ...
 │   └── index.ts              # Application entry point
 └── package.json
 
 terraform/
-├── dynamodb.tf               # Sessions + Executions tables (with Reflexion fields)
+├── dynamodb.tf               # Sessions + Executions tables
 ├── s3.tf                     # Artifact storage bucket
-├── sqs.tf                    # Message + Event queues
+├── sqs.tf                    # Message queues
 ├── kubernetes.tf             # K8s deployments
 ├── main.tf                   # Provider config
 └── README.md                 # Infrastructure docs
-
-docs/
+```
 └── ADDING-MODELS.md         # Guide for adding new models
 ```
 
@@ -500,7 +710,7 @@ User: @bot run kubectl get pods
 Bot: [Executes command, shows output]
 ```
 
-### Code Implementation (Agentic)
+### Code Implementation (Sequential-Thinking)
 
 ```
 User: @bot refactor the authentication module to use JWT
@@ -574,35 +784,22 @@ All progress updates are streamed to Discord in real-time:
 
 ## Configuration
 
-### Model Selection
+### Tag-Based Model Routing
 
-**By Agent Role:**
-```typescript
-// app/src/templates/registry.ts
-export const AGENT_MODEL_TIER_MAP = {
-  [AgentRole.PYTHON_CODER]: 'tier2',
-};
+Models are selected via LiteLLM's tag-based routing. The registry only defines **tags**, and LiteLLM selects models that match all specified tags.
 
-export const AGENT_MODEL_INDEX_MAP = {
-  [AgentRole.PYTHON_CODER]: 1,  // Use 2nd model in tier2
-};
-```
-
-**By Task Type:**
-```typescript
-export const TASK_TYPE_TO_TIER_INDEX = {
-  [TaskType.SOCIAL]: { tier: 'tier1', index: 0 },
-  [TaskType.WRITING]: { tier: 'tier3', index: 1 },
-};
-```
-
-### Escalation Thresholds
-
-Triggers in `app/src/modules/agentic/escalation.ts`:
-- Confidence < 30% for 2 consecutive turns
-- Same error repeats 3 times
-- No file changes for 5 turns
-- Model reports 'stuck' status
+**Agent Role Tag Mapping:**
+| Role | Tags | Use Case |
+|------|------|----------|
+| Command Executor | tier2 + tools + general | Fast commands |
+| Python Coder | tier2 + tools + programming | Python development |
+| JS/TS Coder | tier2 + tools + programming | TypeScript/JavaScript |
+| DevOps Engineer | tier3 + tools + general | Infrastructure, K8s |
+| Architect | tier4 + tools + thinking | System design |
+| Code Reviewer | tier3 + tools + programming | Code quality |
+| Documentation Writer | tier3 + tools + general | Docs, README |
+| DBA | tier3 + tools + general | Database operations |
+| Researcher | tier2 + tools + general | Code search |
 
 ### Max Turns
 
@@ -617,19 +814,26 @@ export const MAX_TURNS_BY_COMPLEXITY = {
 
 ## Adding New Models
 
-See [docs/ADDING-MODELS.md](docs/ADDING-MODELS.md) for detailed guide.
+Models are configured on the **LiteLLM proxy** side, not in this bot. The bot only specifies **tags** (e.g., `tier2`, `tools`, `programming`) and LiteLLM selects the appropriate model.
 
-**Quick example:**
-```typescript
-// 1. Add to tier
-export const MODEL_TIERS = {
-  tier2: ['gemini-3-pro', 'gpt-4o-mini', 'claude-haiku'],
-};
+To add or modify models:
+1. Update your LiteLLM config file (model_list.yaml or equivalent)
+2. Add tags to each model as needed
+3. The bot will automatically route requests based on tag matching
 
-// 2. Assign to agent (optional)
-export const AGENT_MODEL_INDEX_MAP = {
-  [AgentRole.RESEARCHER]: 2,  // Use claude-haiku
-};
+Example LiteLLM model configuration:
+```yaml
+- model_name: gpt-4o-mini
+  litellm_params:
+    model: openai/gpt-4o-mini
+  model_info:
+    tags: ["tier2", "tools", "general"]
+
+- model_name: claude-haiku
+  litellm_params:
+    model: anthropic/claude-haiku-3-5-2025-03-20
+  model_info:
+    tags: ["tier2", "tools", "programming"]
 ```
 
 ## Safety Features
@@ -647,11 +851,10 @@ export const AGENT_MODEL_INDEX_MAP = {
 
 ## Module Documentation
 
-- [Agentic Module](app/src/modules/agentic/README.md) - Multi-turn execution
-- [Handlers Module](app/src/handlers/README.md) - Reaction & debounce handlers
 - [Reflexion Module](app/src/modules/reflexion/README.md) - Learning from past attempts
+- [Workspace Module](app/src/modules/workspace/README.md) - S3 artifact storage
+- [Handlers Module](app/src/handlers/README.md) - Reaction & debounce handlers
 - [Infrastructure](terraform/README.md) - Terraform configuration
-- [Adding Models Guide](docs/ADDING-MODELS.md) - How to add new LLM models
 
 ## Changelog
 
@@ -665,7 +868,7 @@ export const AGENT_MODEL_INDEX_MAP = {
 
 #### Planning Prompt Improvements
 - Added **Sequential Thinking Process** to planning prompt
-- Planning model (Opus) now thinks step-by-step before generating output
+- Planning model thinks step-by-step before generating output
 - Steps: Analyze → Identify Domain → Assess Complexity → Determine Continuity → Plan → Draft → Review
 
 #### Architecture-Specific Evaluation
