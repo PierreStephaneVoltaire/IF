@@ -7,7 +7,7 @@ An autonomous multi-agent Discord bot that can execute complex multi-turn tasks,
 - 🧠 **Sequential Thinking** - Planning model thinks step-by-step before generating plans
 - 🗂️ Per-thread S3 artifact storage with automatic file sync
 - 🎯 Specialized agent roles (Python coder, DevOps engineer, Architect, etc.)
-- 📈 Automatic model escalation via tier-based routing
+- 📈 Automatic tier escalation for complex tasks
 - 🔄 **Self-reflection** and persistent learning from past attempts
 - 🛑 Human-in-the-loop controls (stop, approve, reject via reactions)
 - 👍👎 User feedback directly influences confidence scores
@@ -153,25 +153,96 @@ The sequential-thinking flow implements the **Reflexion** pattern for continuous
 
 Models are selected dynamically via LiteLLM tags instead of hardcoded lists. Each request uses `model: "auto"` with `metadata.tags`, and the router selects a random model that matches **all** tags.
 
-| Tag | Purpose | Notes |
-|-----|---------|-------|
-| tier1 | Cheapest/fastest | Social, proofreading, lightweight chat |
-| tier2 | Standard technical | Q&A, basic coding, shell help |
-| tier3 | Complex reasoning | Multi-file changes, reviews |
-| tier4 | Critical decisions | Architecture, highest quality |
-| general | General-purpose | Default for non-specialized tasks |
-| tools | MCP/tool calling | Required for file/command execution |
-| programming | Code-focused | Higher code quality |
-| thinking | Deep reasoning | Synthesis/reflection steps |
-| websearch | Real-time info | Current events, time-sensitive data |
-| classifier | Flow/tier selector | Used for request classification |
+#### Tier Overview
+
+| Tier | Quality | Price Range | Trust Level |
+|------|---------|-------------|-------------|
+| **tier1** | Fast, casual responses | Free - $2.50 | Basic - quick Q&A, social |
+| **tier2** | Standard quality | $0.08 - $1.10 | Moderate - general tasks |
+| **tier3** | High quality | $0.45 - $3.00 | High - complex work |
+| **tier4** | Premium quality | $2.00 - $5.00 | Maximum - critical decisions |
+
+#### Available Models by Tier
+
+**Classifier (Special)**
+| Model | Context | Price |
+|-------|---------|-------|
+| gpt-oss-120b:exacto | 131K | Free |
+
+**Tier 1 — Casual, Fast Responses**
+| Model | Context | Price | Tags |
+|-------|---------|-------|------|
+| deepseek-r1t2-chimera-free | 128K | Free | tier1, general, thinking |
+| deepseek-r1-0528-free | 128K | Free | tier1, general, thinking |
+| mistral-nemo | 128K | $0.02/$0.04 | tier1, general, social, tools |
+| mistral-tiny | 32K | $0.25/$0.25 | tier1, general, social, tools |
+| gpt-oss-120b | 131K | $0.04/$0.19 | tier1, general, thinking, tools |
+| gpt-5-nano | 131K | $0.05/$0.40 | tier1, general, thinking, tools |
+| gemini-2.5-flash-lite | 65K | $0.10/$0.40 | tier1, general, thinking, tools |
+| general (fallback) | 65K | $0.10/$0.40 | tier1, general, thinking, tools |
+| mistral-small-creative | 32K | $0.10/$0.30 | tier1, creative, social, tools |
+| claude-3-haiku | 64K | $0.25/$1.25 | tier1, general, social, tools |
+| llama-3.1-70b-instruct | 131K | $0.40/$0.40 | tier1, general, social, tools |
+| hermes-3-llama-405b | 131K | $1.00/$1.00 | tier1, general, creative |
+
+**Tier 2 — Standard Quality**
+| Model | Context | Price | Tags |
+|-------|---------|-------|------|
+| bytedance-seed-1.6-flash | 131K | $0.08/$0.30 | tier2, tools, thinking, general |
+| xiaomi-mimo-v2-flash | 131K | $0.09/$0.29 | tier2, tools, thinking, general |
+| hermes-4-70b | 131K | $0.11/$0.38 | tier2, tools, thinking, general |
+| qwen3-235b-a22b-thinking | 131K | $0.11/$0.60 | tier2, tools, thinking, general |
+| qwen3-coder | 131K | $0.22/$1.00 | tier2, tools, thinking, programming |
+| deepseek-v3.2 | 131K | $0.25/$0.38 | tier2, tools, thinking, general |
+| gpt-5-mini | 131K | $0.25/$2.00 | tier2, tools, thinking, general |
+| minimax-m2.1 | 196K | $0.27/$0.95 | tier2, tools, thinking, general |
+| gemini-2.5-flash | 65K | $0.30/$2.50 | tier2, tools, thinking, general |
+| amazon-nova-2-lite | 131K | $0.30/$2.50 | tier2, tools, thinking, general |
+| mistral-medium-3 | 131K | $0.40/$2.00 | tier2, tools, general |
+| devstral-medium | 131K | $0.40/$2.00 | tier2, tools, programming |
+| deepseek-r1-0528 | 128K | $0.40/$1.75 | tier2, tools, thinking, general |
+| kimi-k2-thinking | 128K | $0.40/$1.75 | tier2, tools, thinking, general |
+| claude-haiku-4.5 | 64K | $1.00/$5.00 | tier2, tools, thinking, general |
+| o4-mini | 65K | $1.10/$4.40 | tier2, tools, thinking, general |
+
+**Tier 3 — High Quality**
+| Model | Context | Price | Tags |
+|-------|---------|-------|------|
+| kimi-k2.5 | 128K | $0.45/$2.25 | tier2, tier3, tier4, tools, thinking, programming |
+| qwen3-coder-plus | 32K | $1.00/$5.00 | tier3, tools, thinking, programming |
+| qwen3-max | 32K | $1.20/$6.00 | tier3, tools, general |
+| gpt-5.1-codex-max | 128K | $1.25/$10.00 | tier3, tools, thinking, programming |
+| gpt-5.2-codex | 128K | $1.75/$14.00 | tier3, tier4, tools, thinking, programming |
+| mistral-large | 128K | $2.00/$6.00 | tier3, tools, general |
+| gemini-3-pro | 65K | $2.00/$12.00 | tier3, tools, thinking, programming |
+
+**Tier 4 — Premium Quality**
+| Model | Context | Price | Tags |
+|-------|---------|-------|------|
+| o3 | 128K | $2.00/$8.00 | tier4, tools, thinking, general |
+| claude-sonnet-4.5 | 64K | $3.00/$15.00 | tier4, tools, thinking, programming |
+| claude-opus-4.6 | 64K | $5.00/$25.00 | tier4, tools, thinking, programming |
+| claude-opus-4.5 | 16K | $5.00/$25.00 | tier4, tools, thinking, programming |
+
+**Websearch Models (Cross-Tier)**
+| Model | Tier | Price | Use Case |
+|-------|------|-------|---------|
+| gpt-4o-mini-search | tier2 | $0.15/$0.60 | Fast web search |
+| sonar | tier2 | $1.00/$1.00 | Perplexity search |
+| sonar-reasoning-pro | tier3 | $2.00/$8.00 | Deep reasoning search |
+| sonar-deep-research | tier3 | $2.00/$8.00 | Comprehensive research |
+| gpt-4o-search | tier3 | $2.50/$10.00 | GPT-4 web search |
+| sonar-pro | tier3 | $3.00/$15.00 | Pro Perplexity search |
+| sonar-pro-search | tier4 | $3.00/$15.00 | Premium research |
 
 **Escalation Path:**
 ```
 tier1 → tier2 → tier3 → tier4
 ```
 
-### Agent Roles (Tag Routing)
+### Agent Role Templates
+
+The bot uses role-specific prompt templates for different task types:
 
 | Role | Tags | Template | Use Case |
 |------|------|----------|----------|
