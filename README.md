@@ -699,66 +699,6 @@ terraform/
 └── README.md                 # Infrastructure docs
 ```
 
-## Quick Start
-
-### Prerequisites
-
-- Node.js 20+
-- Discord bot token
-- LiteLLM proxy running
-- AWS account (for DynamoDB + S3)
-- Kubernetes cluster (optional, for deployment)
-
-### Local Development
-
-1. **Install dependencies:**
-```bash
-cd app
-npm install
-```
-
-2. **Configure environment:**
-```bash
-cp .env.example .env
-```
-
-Required environment variables:
-```bash
-DISCORD_TOKEN=your_discord_bot_token
-LITELLM_API_KEY=your_litellm_key
-LITELLM_BASE_URL=http://localhost:4000
-AWS_REGION=ca-central-1
-DYNAMODB_SESSIONS_TABLE=discord_sessions
-DYNAMODB_EXECUTIONS_TABLE=discord_executions
-S3_ARTIFACT_BUCKET=discord-bot-artifacts  # Per-channel artifact storage
-PLANNER_MODEL_ID=kimi-k2.5                # Model for planning phase
-```
-
-3. **Run locally:**
-```bash
-npm run dev
-```
-
-### Deploy Infrastructure
-
-1. **Create DynamoDB tables:**
-```bash
-cd terraform
-terraform init
-terraform apply -target=aws_dynamodb_table.discord_sessions
-terraform apply -target=aws_dynamodb_table.discord_executions
-```
-
-2. **Create S3 bucket:**
-```bash
-terraform apply -target=aws_s3_bucket.artifacts
-```
-
-3. **Deploy to Kubernetes:**
-```bash
-terraform apply
-```
-
 ## Configuration
 
 ### Tag-Based Model Routing
@@ -789,29 +729,6 @@ export const MAX_TURNS_BY_COMPLEXITY = {
 };
 ```
 
-## Adding New Models
-
-Models are configured on the **LiteLLM proxy** side, not in this bot. The bot only specifies **tags** (e.g., `tier2`, `tools`, `programming`) and LiteLLM selects the appropriate model.
-
-To add or modify models:
-1. Update your LiteLLM config file (model_list.yaml or equivalent)
-2. Add tags to each model as needed
-3. The bot will automatically route requests based on tag matching
-
-Example LiteLLM model configuration:
-```yaml
-- model_name: gpt-4o-mini
-  litellm_params:
-    model: openai/gpt-4o-mini
-  model_info:
-    tags: ["tier2", "tools", "general"]
-
-- model_name: claude-haiku
-  litellm_params:
-    model: anthropic/claude-haiku-3-5-2025-03-20
-  model_info:
-    tags: ["tier2", "tools", "programming"]
-```
 
 ## Safety Features
 
@@ -832,7 +749,10 @@ Example LiteLLM model configuration:
 - [Workspace Module](app/src/modules/workspace/README.md) - S3 artifact storage
 - [Handlers Module](app/src/handlers/README.md) - Reaction & debounce handlers
 - [Infrastructure](terraform/README.md) - Terraform configuration
+## Q & A
 
+- **Why?**
+  - I was lonely
 ## Contributing
 
 1. Fork the repository
