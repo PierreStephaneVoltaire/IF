@@ -2,17 +2,14 @@
  * AngelDevilGraph - Parallel Flow
  *
  * A parallel graph for moral/ethical debate.
- * - Angel argues FOR, Devil argues AGAINST
- * - 2 tier2 models for adversarial debate
- * - 1 tier4 judge synthesizes balanced response
+ * Uses tag-based routing:
+ * - Angel/Devil: tier2 + general
+ * - Judge: tier3 + thinking
  *
  * Flow: start → angel → devil → judge → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
-import { MODEL_TIERS } from '../model-tiers';
 import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
@@ -24,25 +21,6 @@ import type { GraphResult, GraphInvokeOptions } from './types';
 const log = createLogger('GRAPH:ANGEL_DEVIL');
 
 // ============================================================================
-// Helper Functions
-// ============================================================================
-
-function getRandomModelsFromTier(tier: keyof typeof MODEL_TIERS, count: number): string[] {
-  const tierModels = [...MODEL_TIERS[tier]];
-  for (let i = tierModels.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [tierModels[i], tierModels[j]] = [tierModels[j], tierModels[i]];
-  }
-  return tierModels.slice(0, Math.min(count, tierModels.length));
-}
-
-function getRandomModelFromTier(tier: keyof typeof MODEL_TIERS): string {
-  const tierModels = MODEL_TIERS[tier];
-  const randomIndex = Math.floor(Math.random() * tierModels.length);
-  return tierModels[randomIndex];
-}
-
-// ============================================================================
 // Graph State
 // ============================================================================
 
@@ -51,6 +29,8 @@ interface AngelDevilGraphState {
   executionId: string;
   flowType: FlowType;
   userQuestion: string;
+  debateTags: string[];
+  judgeTags: string[];
   angelModel: string;
   devilModel: string;
   judgeModel: string;
@@ -71,13 +51,9 @@ export function createAngelDevilGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking AngelDevilGraph for channel ${options.channelId}`);
 
-      // Select models
-      const [angelModel, devilModel] = getRandomModelsFromTier('tier2', 2);
-      const judgeModel = getRandomModelFromTier('tier4');
-
-      log.info(`Using angel model: ${angelModel}`);
-      log.info(`Using devil model: ${devilModel}`);
-      log.info(`Using judge model: ${judgeModel}`);
+      // Use tier2 for angel/devil, tier3 + thinking for judge
+      const debateTags = ['tier2', 'general'];
+      const judgeTags = ['tier3', 'thinking'];
 
       const params = getModelParams(FlowType.ANGEL_DEVIL);
       const logger = createExecutionLogger({
@@ -97,27 +73,31 @@ export function createAngelDevilGraph() {
         user_question: options.initialPrompt,
       });
 
-      // Execute angel and devil in parallel
+      // Execute angel and devil in parallel with tag-based routing
       const [angelResponse, devilResponse] = await Promise.all([
         chatCompletion({
-          model: angelModel,
+          model: 'auto',
           messages: [{ role: 'user', content: angelPrompt }],
           temperature: params.temperature,
           top_p: params.top_p,
+          metadata: { tags: debateTags },
         }),
         chatCompletion({
-          model: devilModel,
+          model: 'auto',
           messages: [{ role: 'user', content: devilPrompt }],
           temperature: params.temperature,
           top_p: params.top_p,
+          metadata: { tags: debateTags },
         }),
       ]);
 
       const angelArgument = extractContent(angelResponse);
       const devilArgument = extractContent(devilResponse);
+      const angelModel = angelResponse.model;
+      const devilModel = devilResponse.model;
 
-      log.info(`Angel argument: ${angelArgument.length} chars`);
-      log.info(`Devil argument: ${devilArgument.length} chars`);
+      log.info(`Angel argument: ${angelArgument.length} chars, model: ${angelModel}`);
+      log.info(`Devil argument: ${devilArgument.length} chars, model: ${devilModel}`);
 
       logger.recordNode('judge');
 
@@ -128,14 +108,16 @@ export function createAngelDevilGraph() {
       });
 
       const judgeResponse = await chatCompletion({
-        model: judgeModel,
+        model: 'auto',
         messages: [{ role: 'user', content: judgePrompt }],
         temperature: params.temperature,
         top_p: params.top_p,
+        metadata: { tags: judgeTags },
       });
 
       const synthesis = extractContent(judgeResponse);
-      log.info(`Balanced synthesis generated: ${synthesis.length} chars`);
+      const judgeModel = judgeResponse.model;
+      log.info(`Balanced synthesis generated: ${synthesis.length} chars, judge model: ${judgeModel}`);
 
       logger.recordNode('finalize');
 
@@ -160,6 +142,7 @@ export function createAngelDevilGraph() {
         angelModel,
         devilModel,
         judgeModel,
+        tags: judgeTags,
         timestamp: new Date().toISOString(),
       };
 

@@ -2,22 +2,16 @@
  * ShellGraph - Single Node Flow
  *
  * A simple graph for shell command suggestions.
- * - Suggests 1-3 ready-to-execute one-liner commands
- * - No multi-line scripts (if user wants scripts, they should use coding flow)
- * - If OS not specified, provides both Linux and Windows versions
- * - Commands are complete with no placeholders
- * - Uses a random tier 2 model (no tools needed)
+ * Uses tag-based routing: tier2 + general
  *
  * Flow: start → suggest → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
-import { executeSimpleTask } from '../../litellm/executor';
+import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
-import { FlowType, TaskType } from '../../litellm/types';
-import { getPromptForTaskType, getModelForTaskType } from '../../../templates/registry';
+import { FlowType } from '../../litellm/types';
+import { loadPrompt } from '../../../templates/loader';
 import { createExecutionLogger } from '../logger';
 import { getMermaidGenerator } from '../mermaid';
 import type { GraphResult, GraphInvokeOptions, MessageHistory } from './types';
@@ -35,6 +29,7 @@ interface ShellGraphState {
   message: string;
   history?: MessageHistory;
   workspaceId: string;
+  tags: string[];
   model: string;
   response: string;
   status: 'running' | 'complete' | 'error';
@@ -46,7 +41,7 @@ interface ShellGraphState {
 // ============================================================================
 
 /**
- * Suggest node - generates shell command suggestions
+ * Suggest node - generates shell command suggestions using tier2 + general tags
  */
 async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
   const logger = createExecutionLogger({
@@ -58,34 +53,38 @@ async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
   logger.recordNode('suggest');
 
   log.info(`ShellGraph: Starting execution for channel ${state.channelId}`);
-  log.info(`Workspace: ${state.workspaceId}`);
+  log.info(`Tags: ${state.tags.join(', ')}`);
 
   try {
-    // Get prompt category and model for shell commands
-    const promptCategory = getPromptForTaskType(TaskType.SHELL_COMMAND);
-    const model = getModelForTaskType(TaskType.SHELL_COMMAND);
-
-    // Get temperature params
-    const params = getModelParams(state.flowType);
-    log.info(`Using prompt category: ${promptCategory}, model: ${model}`);
-    log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
+    // Load prompt from template
+    const systemPrompt = loadPrompt('shell-command');
 
     // Format the full history with current message
     const fullHistory = state.history?.formatted_history
       ? `${state.history.formatted_history}\n\n${state.history.current_author}: ${state.history.current_message}`
       : `${state.message}`;
 
-    // Execute the task without tools (shell flow is suggestion-only)
-    const response = await executeSimpleTask(
-      promptCategory,
-      fullHistory,
-      state.workspaceId,
-      model,
-      false, // No tools for shell flow - just suggestions
-      params
-    );
+    // Get temperature params
+    const params = getModelParams(state.flowType);
+    log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
-    log.info(`Shell flow complete, response length: ${response.length}`);
+    // Generate response using tag-based routing
+    const response = await chatCompletion({
+      model: 'auto',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: fullHistory },
+      ],
+      temperature: params.temperature,
+      top_p: params.top_p,
+      metadata: {
+        tags: state.tags,
+      },
+    });
+
+    const content = extractContent(response);
+    const modelUsed = response.model;
+    log.info(`Shell flow complete, response length: ${content.length}, model: ${modelUsed}`);
 
     // Generate Mermaid diagram
     const generator = getMermaidGenerator();
@@ -107,7 +106,8 @@ async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
       executionId: state.executionId,
       status: 'complete',
       nodeCount: 2,
-      model,
+      model: modelUsed,
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -118,8 +118,8 @@ async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
 
     return {
       ...state,
-      model,
-      response,
+      model: modelUsed,
+      response: content,
       status: 'complete',
       traversedNodes: ['start', 'suggest'],
     };
@@ -132,6 +132,7 @@ async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
       executionId: state.executionId,
       status: 'error',
       error: String(error),
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -156,6 +157,9 @@ export function createShellGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking ShellGraph for channel ${options.channelId}`);
 
+      // Use tier2 + general tags (from options or default)
+      const tags = options.tags || ['tier2', 'general'];
+
       const initialState: ShellGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
@@ -163,6 +167,7 @@ export function createShellGraph() {
         message: options.initialPrompt,
         history: options.history,
         workspaceId: options.workspacePath || options.channelId,
+        tags,
         model: '',
         response: '',
         status: 'running',

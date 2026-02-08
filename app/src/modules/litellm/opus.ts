@@ -8,18 +8,24 @@ import type {
   ShouldRespondResult,
   PlanningContext,
   PlanningResult,
+  ClassifyRequestResult,
   TaskType,
   AgentRole,
   TaskComplexity,
 } from './types';
+import { FlowType } from './types';
 
 const log = createLogger('LITELLM:OPUS');
 
 const DEFAULT_SHOULD_RESPOND: ShouldRespondResult = {
   should_respond: false,
   reason: 'Could not parse response',
-  is_technical: false,
-  task_type: 'general-convo' as TaskType,
+};
+
+const DEFAULT_CLASSIFY_REQUEST: ClassifyRequestResult = {
+  flow_type: FlowType.SIMPLE,
+  starting_tier: 'tier2',
+  websearch: false,
 };
 
 const DEFAULT_PLANNING: PlanningResult = {
@@ -79,15 +85,74 @@ export async function shouldRespond(
   const result: ShouldRespondResult = {
     should_respond: parsed.should_respond === true,
     reason: parsed.reason || 'No reason given',
-    is_technical: parsed.is_technical === true,
-    task_type: parsed.task_type || ('general-convo' as TaskType),
-    agent_role: parsed.agent_role,
-    complexity: parsed.complexity,
   };
 
-  log.info(`shouldRespond result: should_respond=${result.should_respond}, is_technical=${result.is_technical}`);
-  log.info(`shouldRespond task_type=${result.task_type}, agent_role=${result.agent_role || 'undefined'}, complexity=${result.complexity || 'undefined'}`);
+  log.info(`shouldRespond result: should_respond=${result.should_respond}`);
   log.info(`shouldRespond reason: ${result.reason}`);
+
+  return result;
+}
+
+export async function classifyRequest(
+  context: ShouldRespondContext,
+  messageId: string
+): Promise<ClassifyRequestResult> {
+  log.info(`classifyRequest call for message ${messageId}`);
+
+  const template = loadTemplate('classify_request');
+  const systemPrompt = renderTemplate(template, {
+    author: context.author,
+    force_respond: String(context.force_respond),
+    history: context.history,
+    message: context.message,
+  });
+
+  const response = await chatCompletion({
+    model: 'o4-mini',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `Classify this request and respond with JSON only.`,
+      },
+    ],
+  });
+
+  const content = extractContent(response);
+  log.info(`classifyRequest raw response length: ${content.length}`);
+
+  const parsed = extractJsonFromContent<ClassifyRequestResult>(content);
+
+  if (!parsed) {
+    log.warn('Could not parse classifyRequest response, using defaults');
+    return DEFAULT_CLASSIFY_REQUEST;
+  }
+
+  // Validate flow_type
+  const validFlowTypes = Object.values(FlowType);
+  if (!validFlowTypes.includes(parsed.flow_type)) {
+    log.warn(`Invalid flow_type: ${parsed.flow_type}, defaulting to SIMPLE`);
+    parsed.flow_type = FlowType.SIMPLE;
+  }
+
+  // Validate starting_tier
+  const validTiers = ['tier1', 'tier2', 'tier3', 'tier4'];
+  if (!validTiers.includes(parsed.starting_tier)) {
+    log.warn(`Invalid starting_tier: ${parsed.starting_tier}, defaulting to tier2`);
+    parsed.starting_tier = 'tier2';
+  }
+
+  const result: ClassifyRequestResult = {
+    flow_type: parsed.flow_type,
+    starting_tier: parsed.starting_tier,
+    websearch: parsed.websearch === true,
+    agent_role: parsed.agent_role,
+  };
+
+  log.info(`classifyRequest result: flow_type=${result.flow_type}, starting_tier=${result.starting_tier}, websearch=${result.websearch}`);
+  if (result.agent_role) {
+    log.info(`classifyRequest agent_role: ${result.agent_role}`);
+  }
 
   return result;
 }

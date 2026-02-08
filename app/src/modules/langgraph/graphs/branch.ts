@@ -2,17 +2,14 @@
  * BranchGraph - Parallel Flow
  *
  * A parallel graph for exploring multiple architectural approaches.
- * - 3 random tier3 models for brainstorming
- * - 1 tier4 aggregator model for poll creation
- * - Creates Discord poll for user selection
+ * Uses tag-based routing:
+ * - Branch nodes: tier3 + thinking
+ * - Aggregator: tier4 + thinking
  *
  * Flow: start → branch_1 → branch_2 → branch_3 → aggregate → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
-import { MODEL_TIERS } from '../model-tiers';
 import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
@@ -24,27 +21,6 @@ import type { GraphResult, GraphInvokeOptions } from './types';
 const log = createLogger('GRAPH:BRANCH');
 
 // ============================================================================
-// Helper Functions
-// ============================================================================
-
-function getRandomTier3Models(): string[] {
-  const tier3Models = [...MODEL_TIERS.tier3];
-  // Shuffle array
-  for (let i = tier3Models.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [tier3Models[i], tier3Models[j]] = [tier3Models[j], tier3Models[i]];
-  }
-  // Return first 3 (or all if less than 3)
-  return tier3Models.slice(0, 3);
-}
-
-function getRandomTier4Model(): string {
-  const tier4Models = MODEL_TIERS.tier4;
-  const randomIndex = Math.floor(Math.random() * tier4Models.length);
-  return tier4Models[randomIndex];
-}
-
-// ============================================================================
 // Graph State
 // ============================================================================
 
@@ -53,6 +29,8 @@ interface BranchGraphState {
   executionId: string;
   flowType: FlowType;
   userQuestion: string;
+  branchTags: string[];
+  aggregatorTags: string[];
   branchModels: string[];
   aggregatorModel: string;
   responses: string[];
@@ -77,15 +55,10 @@ async function branchNodes(state: BranchGraphState): Promise<BranchGraphState> {
   logger.recordNode('start');
 
   log.info(`BranchGraph: Starting execution for channel ${state.channelId}`);
+  log.info(`Branch tags: ${state.branchTags.join(', ')}`);
+  log.info(`Aggregator tags: ${state.aggregatorTags.join(', ')}`);
 
   try {
-    // Select models
-    const branchModels = getRandomTier3Models();
-    const aggregatorModel = getRandomTier4Model();
-
-    log.info(`Using tier3 models: ${branchModels.join(', ')}`);
-    log.info(`Using tier4 aggregator: ${aggregatorModel}`);
-
     // Get temperature params
     const params = getModelParams(state.flowType);
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
@@ -100,33 +73,38 @@ async function branchNodes(state: BranchGraphState): Promise<BranchGraphState> {
     logger.recordNode('branch_2');
     logger.recordNode('branch_3');
 
-    // Execute branches in parallel
+    // Execute branches in parallel with tag-based routing
     const [response1, response2, response3] = await Promise.all([
       chatCompletion({
-        model: branchModels[0],
+        model: 'auto',
         messages: [{ role: 'user', content: brainstormingPrompt }],
         temperature: params.temperature,
         top_p: params.top_p,
+        metadata: { tags: state.branchTags },
       }),
       chatCompletion({
-        model: branchModels[1],
+        model: 'auto',
         messages: [{ role: 'user', content: brainstormingPrompt }],
         temperature: params.temperature,
         top_p: params.top_p,
+        metadata: { tags: state.branchTags },
       }),
       chatCompletion({
-        model: branchModels[2],
+        model: 'auto',
         messages: [{ role: 'user', content: brainstormingPrompt }],
         temperature: params.temperature,
         top_p: params.top_p,
+        metadata: { tags: state.branchTags },
       }),
     ]);
 
     const content1 = extractContent(response1);
     const content2 = extractContent(response2);
     const content3 = extractContent(response3);
+    const branchModels = [response1.model, response2.model, response3.model];
 
     log.info(`Branch responses generated: ${content1.length}, ${content2.length}, ${content3.length} chars`);
+    log.info(`Branch models: ${branchModels.join(', ')}`);
 
     // Record aggregate node
     logger.recordNode('aggregate');
@@ -142,16 +120,18 @@ async function branchNodes(state: BranchGraphState): Promise<BranchGraphState> {
       content_3: content3,
     });
 
-    // Execute aggregator
+    // Execute aggregator with tag-based routing
     const aggregatorResponse = await chatCompletion({
-      model: aggregatorModel,
+      model: 'auto',
       messages: [{ role: 'user', content: aggregatorPrompt }],
       temperature: params.temperature,
       top_p: params.top_p,
+      metadata: { tags: state.aggregatorTags },
     });
 
     const aggregatorContent = extractContent(aggregatorResponse);
-    log.info(`Aggregator response generated: ${aggregatorContent.length} chars`);
+    const aggregatorModel = aggregatorResponse.model;
+    log.info(`Aggregator response generated: ${aggregatorContent.length} chars, model: ${aggregatorModel}`);
 
     // Generate Mermaid diagram
     const generator = getMermaidGenerator();
@@ -175,6 +155,7 @@ async function branchNodes(state: BranchGraphState): Promise<BranchGraphState> {
       nodeCount: 5,
       branchModels,
       aggregatorModel,
+      tags: state.aggregatorTags,
       timestamp: new Date().toISOString(),
     };
 
@@ -201,6 +182,7 @@ async function branchNodes(state: BranchGraphState): Promise<BranchGraphState> {
       executionId: state.executionId,
       status: 'error',
       error: String(error),
+      tags: state.branchTags,
       timestamp: new Date().toISOString(),
     };
 
@@ -225,11 +207,17 @@ export function createBranchGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking BranchGraph for channel ${options.channelId}`);
 
+      // Use tier3 + thinking for branches, tier4 + thinking for aggregator
+      const branchTags = ['tier3', 'thinking'];
+      const aggregatorTags = ['tier4', 'thinking'];
+
       const initialState: BranchGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.BRANCH,
         userQuestion: options.initialPrompt,
+        branchTags,
+        aggregatorTags,
         branchModels: [],
         aggregatorModel: '',
         responses: [],

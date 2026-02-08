@@ -31,7 +31,7 @@ export { angelDevilGraph, createAngelDevilGraph } from './angel-devil';
 // ============================================================================
 
 export { architectureGraph, createArchitectureGraph } from './architecture';
-export { sequentialThinkingGraph, createSequentialThinkingGraph } from './sequential';
+export { sequentialGraph, createSequentialGraph } from './sequential';
 
 // ============================================================================
 // Types
@@ -55,7 +55,7 @@ import { dialecticGraph } from './dialectic';
 import { consensusGraph } from './consensus';
 import { angelDevilGraph } from './angel-devil';
 import { architectureGraph } from './architecture';
-import { sequentialThinkingGraph } from './sequential';
+import { sequentialGraph } from './sequential';
 
 /**
  * Get the appropriate graph for a given flow type.
@@ -86,7 +86,7 @@ export function getGraphForFlow(flowType: FlowType): {
     case FlowType.ARCHITECTURE:
       return architectureGraph;
     case FlowType.SEQUENTIAL_THINKING:
-      return sequentialThinkingGraph;
+      return sequentialGraph;
     default:
       return simpleGraph;
   }

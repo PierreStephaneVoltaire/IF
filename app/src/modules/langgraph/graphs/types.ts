@@ -32,6 +32,10 @@ export interface GraphInvokeOptions {
   modelName?: string; // For breakglass
   workspacePath?: string;
   history?: MessageHistory;
+  // New properties for dynamic model selection
+  startingTier?: 'tier1' | 'tier2' | 'tier3' | 'tier4';
+  tags?: string[];
+  websearch?: boolean;
 }
 
 export interface MessageHistory {

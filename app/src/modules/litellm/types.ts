@@ -23,6 +23,10 @@ export interface ChatCompletionRequest {
   tool_choice?: string | { type: string; function: { name: string } };
   temperature?: number;
   top_p?: number;
+  metadata?: {
+    tags?: string[];
+    [key: string]: unknown;
+  };
 }
 
 export interface ToolCall {
@@ -180,10 +184,13 @@ export interface InterruptCommand {
 export interface ShouldRespondResult {
   should_respond: boolean;
   reason: string;
-  is_technical: boolean;
-  task_type: TaskType;
+}
+
+export interface ClassifyRequestResult {
+  flow_type: FlowType;
+  starting_tier: 'tier1' | 'tier2' | 'tier3' | 'tier4';
+  websearch: boolean;
   agent_role?: AgentRole;
-  complexity?: TaskComplexity;
 }
 
 export interface PlanningResult {
@@ -253,4 +260,5 @@ export interface ExecuteContext {
   userPrompt: string;
   branchName: string;
   model?: string;
+  tags?: string[];
 }

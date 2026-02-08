@@ -1,25 +1,176 @@
 import { createLogger } from '../utils/logger';
-import { TaskType, FlowType } from '../modules/litellm/types';
+import { classifyRequest as opusClassifyRequest } from '../modules/litellm/opus';
+import { buildTags } from '../modules/langgraph/model-tiers';
+import { FlowType, type AgentRole } from '../modules/litellm/types';
 import type { FilterContext } from './types';
 
 const log = createLogger('CLASSIFY');
 
-function inferTaskType(isTechnical: boolean): TaskType {
-  return isTechnical ? TaskType.CODING_IMPLEMENTATION : TaskType.GENERAL_CONVO;
+export interface ClassifyInput {
+  filter: FilterContext;
+  history: {
+    formatted_history: string;
+    current_author: string;
+    current_message: string;
+  };
+  messageId: string;
 }
 
-function shouldSkipPlanning(taskType: TaskType): boolean {
-  const skipPlanningTasks = new Set([
-    TaskType.TECHNICAL_QA,
-    TaskType.DOC_SEARCH,
-    TaskType.EXPLANATION,
-    TaskType.SOCIAL,
-    TaskType.GENERAL_CONVO,
-    TaskType.SHELL_COMMAND,  // Shell commands don't need planning
-  ]);
-
-  return skipPlanningTasks.has(taskType);
+export interface ClassifyOutput {
+  flow_type: FlowType;
+  starting_tier: 'tier1' | 'tier2' | 'tier3' | 'tier4';
+  websearch: boolean;
+  tags: string[];
+  agent_role?: AgentRole;
 }
+
+export interface ClassifyRequestContext {
+  author: string;
+  force_respond: boolean;
+  history: string;
+  message: string;
+}
+
+/**
+ * Determine if a flow needs workspace access
+ */
+export function flowNeedsWorkspace(flowType: FlowType): boolean {
+  switch (flowType) {
+    case FlowType.SEQUENTIAL_THINKING:
+      return true;
+    case FlowType.SOCIAL:
+    case FlowType.PROOFREADER:
+    case FlowType.SHELL:
+    case FlowType.SIMPLE:
+    case FlowType.BREAKGLASS:
+    case FlowType.ARCHITECTURE:
+    case FlowType.BRANCH:
+    case FlowType.DIALECTIC:
+    case FlowType.CONSENSUS:
+    case FlowType.ANGEL_DEVIL:
+    default:
+      return false;
+  }
+}
+
+/**
+ * Classify the request using LLM (Phase 2 of the new flow)
+ */
+export async function classifyRequest(input: ClassifyInput): Promise<ClassifyOutput> {
+  log.info(`Classifying request for message ${input.messageId}`);
+
+  // Bypass for breakglass flow
+  if (input.filter.is_breakglass) {
+    log.info(`Breakglass flow detected, bypassing classification`);
+    const tags = ['tier4', 'tools'];
+    return {
+      flow_type: FlowType.BREAKGLASS,
+      starting_tier: 'tier4',
+      websearch: false,
+      tags,
+    };
+  }
+
+  // Call the LLM classifier
+  const context: ClassifyRequestContext = {
+    author: input.history.current_author,
+    force_respond: input.filter.force_respond,
+    history: input.history.formatted_history,
+    message: input.history.current_message,
+  };
+
+  const classifyResult = await opusClassifyRequest(context, input.messageId);
+
+  // Build tags from the classification result
+  const tags = buildTags(classifyResult.flow_type, classifyResult.starting_tier, {
+    websearch: classifyResult.websearch,
+    agentRole: classifyResult.agent_role,
+  });
+
+  log.info(`Classification result: flow=${classifyResult.flow_type}, tier=${classifyResult.starting_tier}, websearch=${classifyResult.websearch}`);
+  log.info(`Built tags: ${tags.join(', ')}`);
+
+  return {
+    flow_type: classifyResult.flow_type,
+    starting_tier: classifyResult.starting_tier,
+    websearch: classifyResult.websearch,
+    tags,
+    agent_role: classifyResult.agent_role,
+  };
+}
+
+/**
+ * Legacy function - kept for backward compatibility
+ * Maps task type to flow type using deterministic switch
+ * @deprecated Use classifyRequest() instead for new flows
+ */
+export function classifyFlow(
+  isTechnical: boolean,
+  taskType?: string,
+  useAgenticLoop?: boolean,
+  filterContext?: FilterContext,
+  message?: string,
+  confidenceScore?: number
+): FlowType {
+  log.info(`Legacy classification: is_technical=${isTechnical}, task_type=${taskType || 'undefined'}`);
+
+  // 1. Check for breakglass flow
+  if (filterContext?.is_breakglass) {
+    log.info(`Routing to: BREAKGLASS flow`);
+    return FlowType.BREAKGLASS;
+  }
+
+  // 2. Check for branch flow (multi-solution brainstorming or low confidence)
+  if (message && isBranchRequest(message, confidenceScore, isTechnical)) {
+    log.info(`Routing to: BRANCH flow (detected multi-solution request or low confidence)`);
+    return FlowType.BRANCH;
+  }
+
+  // 3. Check for thinking flows (Angel/Devil, Dialectic, Consensus)
+  if (message && isAngelDevilRequest(message)) {
+    log.info(`Routing to: ANGEL_DEVIL flow (detected moral/ethical dilemma)`);
+    return FlowType.ANGEL_DEVIL;
+  }
+
+  if (message && isDialecticRequest(message)) {
+    log.info(`Routing to: DIALECTIC flow (detected philosophical/abstract question)`);
+    return FlowType.DIALECTIC;
+  }
+
+  if (message && isConsensusRequest(message)) {
+    log.info(`Routing to: CONSENSUS flow (detected factual/trivia question)`);
+    return FlowType.CONSENSUS;
+  }
+
+  // Default flow mapping based on task type
+  const effectiveTaskType = taskType || (isTechnical ? 'coding-implementation' : 'general-convo');
+
+  switch (effectiveTaskType) {
+    case 'social':
+      return FlowType.SOCIAL;
+    case 'proofreader':
+      return FlowType.PROOFREADER;
+    case 'shell-command':
+      return FlowType.SHELL;
+    case 'architecture-analysis':
+      return FlowType.ARCHITECTURE;
+    case 'coding-implementation':
+    case 'devops-implementation':
+    case 'database-design':
+    case 'code-review':
+    case 'documentation-writer':
+    case 'tool-execution':
+    case 'command-runner':
+    case 'test-runner':
+      return FlowType.SEQUENTIAL_THINKING;
+    default:
+      return FlowType.SIMPLE;
+  }
+}
+
+// ============================================================================
+// Helper Functions (kept for legacy compatibility)
+// ============================================================================
 
 function isBranchRequest(
   message: string,
@@ -28,7 +179,6 @@ function isBranchRequest(
 ): boolean {
   const lower = message.toLowerCase();
 
-  // Branch flow triggers: Architectural exploration, multiple approaches, theoretical discussion
   const branchTriggers = [
     'multiple solutions',
     'explore options',
@@ -50,7 +200,6 @@ function isBranchRequest(
 
   const hasTrigger = branchTriggers.some(trigger => lower.includes(trigger));
 
-  // Also trigger branch flow if confidence is below 60 (only for technical flows)
   const normalizedConfidence = confidenceScore !== undefined && confidenceScore <= 1
     ? confidenceScore * 100
     : confidenceScore;
@@ -66,9 +215,6 @@ function isBranchRequest(
   return hasTrigger || lowConfidence;
 }
 
-/**
- * Check if message is a moral/ethical dilemma (Angel/Devil flow)
- */
 function isAngelDevilRequest(message: string): boolean {
   const lower = message.toLowerCase();
 
@@ -92,9 +238,6 @@ function isAngelDevilRequest(message: string): boolean {
   return angelDevilTriggers.some(trigger => lower.includes(trigger));
 }
 
-/**
- * Check if message is a philosophical/abstract question (Dialectic flow)
- */
 function isDialecticRequest(message: string): boolean {
   const lower = message.toLowerCase();
 
@@ -128,9 +271,6 @@ function isDialecticRequest(message: string): boolean {
   return dialecticTriggers.some(trigger => lower.includes(trigger));
 }
 
-/**
- * Check if message is a factual/trivia question (Consensus flow)
- */
 function isConsensusRequest(message: string): boolean {
   const lower = message.toLowerCase();
 
@@ -162,100 +302,4 @@ function isConsensusRequest(message: string): boolean {
   ];
 
   return consensusTriggers.some(trigger => lower.includes(trigger));
-}
-// Determine if a flow needs workspace access
-export function flowNeedsWorkspace(flowType: FlowType): boolean {
-  switch (flowType) {
-    case FlowType.SEQUENTIAL_THINKING:
-      return true;
-    case FlowType.SOCIAL:
-    case FlowType.PROOFREADER:
-    case FlowType.SHELL:
-    case FlowType.SIMPLE:
-    case FlowType.BREAKGLASS:
-    case FlowType.ARCHITECTURE:
-    case FlowType.BRANCH:
-    case FlowType.DIALECTIC:
-    case FlowType.CONSENSUS:
-    case FlowType.ANGEL_DEVIL:
-    default:
-      return false;
-  }
-}
-
-export function classifyFlow(
-  isTechnical: boolean,
-  taskType?: TaskType,
-  useAgenticLoop?: boolean,
-  filterContext?: FilterContext,
-  message?: string,
-  confidenceScore?: number
-): FlowType {
-  log.info(`Classification: is_technical=${isTechnical}, task_type=${taskType || 'undefined'}, use_agentic_loop=${useAgenticLoop || false}`);
-
-  // 1. Check for breakglass flow
-  if (filterContext?.is_breakglass) {
-    log.info(`Routing to: BREAKGLASS flow`);
-    return FlowType.BREAKGLASS;
-  }
-
-  // 2. Check for branch flow (multi-solution brainstorming or low confidence)
-  if (message && isBranchRequest(message, confidenceScore, isTechnical)) {
-    log.info(`Routing to: BRANCH flow (detected multi-solution request or low confidence)`);
-    return FlowType.BRANCH;
-  }
-
-  // 3. Check for thinking flows (Angel/Devil, Dialectic, Consensus)
-  // Priority: Angel/Devil (moral) > Dialectic (philosophical) > Consensus (factual)
-
-  if (message && isAngelDevilRequest(message)) {
-    log.info(`Routing to: ANGEL_DEVIL flow (detected moral/ethical dilemma)`);
-    return FlowType.ANGEL_DEVIL;
-  }
-
-  if (message && isDialecticRequest(message)) {
-    log.info(`Routing to: DIALECTIC flow (detected philosophical/abstract question)`);
-    return FlowType.DIALECTIC;
-  }
-
-  if (message && isConsensusRequest(message)) {
-    log.info(`Routing to: CONSENSUS flow (detected factual/trivia question)`);
-    return FlowType.CONSENSUS;
-  }
-
-  const effectiveTaskType = taskType || inferTaskType(isTechnical);
-
-  // Map task type to flow type using clean switch statement
-  switch (effectiveTaskType) {
-    case TaskType.SOCIAL:
-      log.info(`Routing to: SOCIAL flow for ${effectiveTaskType}`);
-      return FlowType.SOCIAL;
-    case TaskType.PROOFREADER:
-      log.info(`Routing to: PROOFREADER flow for ${effectiveTaskType}`);
-      return FlowType.PROOFREADER;
-    case TaskType.SHELL_COMMAND:
-      log.info(`Routing to: SHELL flow for shell command suggestions`);
-      return FlowType.SHELL;
-    case TaskType.ARCHITECTURE_ANALYSIS:
-      log.info(`Routing to: ARCHITECTURE flow for ${effectiveTaskType}`);
-      return FlowType.ARCHITECTURE;
-    case TaskType.CODING_IMPLEMENTATION:
-    case TaskType.DEVOPS_IMPLEMENTATION:
-    case TaskType.DATABASE_DESIGN:
-    case TaskType.CODE_REVIEW:
-    case TaskType.DOCUMENTATION_WRITER:
-    case TaskType.TOOL_EXECUTION:
-    case TaskType.COMMAND_RUNNER:
-    case TaskType.TEST_RUNNER:
-      log.info(`Routing to: SEQUENTIAL_THINKING flow for ${effectiveTaskType}`);
-      return FlowType.SEQUENTIAL_THINKING;
-    case TaskType.GENERAL_CONVO:
-    case TaskType.TECHNICAL_QA:
-    case TaskType.DOC_SEARCH:
-    case TaskType.EXPLANATION:
-    case TaskType.WRITING:
-    default:
-      log.info(`Routing to: SIMPLE flow for ${effectiveTaskType}`);
-      return FlowType.SIMPLE;
-  }
 }

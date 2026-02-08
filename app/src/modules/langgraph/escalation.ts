@@ -1,39 +1,61 @@
 import type { ExecutionState, ExecutionTurn } from '../litellm/types';
-import { MODEL_CAPABILITY_ORDER, getNextModel, isAtMaxEscalation } from './model-tiers';
+import { escalateTier, getNextTier, isAtMaxTier, type Tier } from './model-tiers';
 
 export interface EscalationDecision {
   shouldEscalate: boolean;
-  suggestedModel?: string;
+  suggestedTags?: string[];
   reason: string;
 }
 
+/**
+ * Check if escalation should occur based on current tags (tier-based)
+ * Returns suggested tags for the next tier, or null if already at max
+ */
 export function checkEscalationTriggers(
   state: ExecutionState,
   turn: ExecutionTurn,
-  currentModel: string,
+  currentTags: string[],
   consecutiveLowConfidenceTurns: number
 ): EscalationDecision {
-  if (isAtMaxEscalation(currentModel)) {
-    return { shouldEscalate: false, reason: 'Already at max model tier' };
+  // Try to escalate tier while preserving capability tags
+  const nextTags = escalateTier(currentTags);
+  
+  if (!nextTags) {
+    return { shouldEscalate: false, reason: 'Already at max tier' };
   }
 
   if (consecutiveLowConfidenceTurns >= 2) {
-    return { shouldEscalate: true, suggestedModel: getNextModel(currentModel) || undefined, reason: 'Low confidence' };
+    return { shouldEscalate: true, suggestedTags: nextTags, reason: 'Low confidence - tier escalation needed' };
   }
 
   if (state.sameErrorCount >= 3) {
-    return { shouldEscalate: true, suggestedModel: getNextModel(currentModel) || undefined, reason: 'Repeated errors' };
+    return { shouldEscalate: true, suggestedTags: nextTags, reason: 'Repeated errors - tier escalation needed' };
   }
 
   if (state.noProgressTurns >= 5) {
-    return { shouldEscalate: true, suggestedModel: getNextModel(currentModel) || undefined, reason: 'No progress' };
+    return { shouldEscalate: true, suggestedTags: nextTags, reason: 'No progress - tier escalation needed' };
   }
 
   if (turn.status === 'stuck') {
-    return { shouldEscalate: true, suggestedModel: getNextModel(currentModel) || undefined, reason: 'Model reported stuck' };
+    return { shouldEscalate: true, suggestedTags: nextTags, reason: 'Model reported stuck - tier escalation needed' };
   }
 
   return { shouldEscalate: false, reason: 'No escalation triggers hit' };
 }
 
-export { MODEL_CAPABILITY_ORDER, getNextModel, isAtMaxEscalation };
+/**
+ * Get the next tier up (for sequential thinking flow)
+ */
+export function getNextTierUp(currentTier: Tier): Tier | null {
+  return getNextTier(currentTier);
+}
+
+/**
+ * Check if we're at maximum tier
+ */
+export function isAtMaximumTier(tier: Tier): boolean {
+  return isAtMaxTier(tier);
+}
+
+// Re-export tier helpers for backward compatibility
+export { getNextTierUp as getNextModel, isAtMaximumTier as isAtMaxEscalation };

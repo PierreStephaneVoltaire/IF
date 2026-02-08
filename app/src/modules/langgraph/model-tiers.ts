@@ -1,39 +1,136 @@
 import type { AgentRole } from '../litellm/types';
 
-// Centralized model tiers for LangGraph flows (migrated from agentic/escalation).
-export const MODEL_TIERS: Record<string, string[]> = {
-  tier1: ['gemini-2.5-flash-lite'],
-  tier2: ['gemini-3-flash', 'gpt-4o-mini'],
-  tier3: ['claude-sonnet-4.5', 'gpt-4o'],
-  tier4: ['claude-opus-4.5', 'o1'],
-};
+// Tier order for escalation
+export const TIER_ORDER: readonly ('tier1' | 'tier2' | 'tier3' | 'tier4')[] = [
+  'tier1',
+  'tier2',
+  'tier3',
+  'tier4',
+] as const;
 
-export const MODEL_CAPABILITY_ORDER = [
-  ...MODEL_TIERS.tier1,
-  ...MODEL_TIERS.tier2,
-  ...MODEL_TIERS.tier3,
-  ...MODEL_TIERS.tier4,
-];
+export type Tier = typeof TIER_ORDER[number];
 
-export function isAtMaxEscalation(model: string): boolean {
-  return MODEL_CAPABILITY_ORDER.indexOf(model) >= MODEL_CAPABILITY_ORDER.length - 1;
+/**
+ * Check if we're at the maximum tier
+ */
+export function isAtMaxTier(tier: Tier): boolean {
+  return tier === 'tier4';
 }
 
-export function getNextModel(currentModel: string): string | null {
-  const idx = MODEL_CAPABILITY_ORDER.indexOf(currentModel);
-  if (idx < 0) return MODEL_CAPABILITY_ORDER[0] || null;
-  return MODEL_CAPABILITY_ORDER[idx + 1] || null;
-}
-
-export function getModelFromTier(tier: keyof typeof MODEL_TIERS, index: number): string {
-  const models = MODEL_TIERS[tier];
-  if (!models || models.length === 0) {
-    throw new Error(`No models available for tier ${tier}`);
+/**
+ * Get the next tier up, or null if already at max
+ */
+export function getNextTier(tier: Tier): Tier | null {
+  const currentIdx = TIER_ORDER.indexOf(tier);
+  if (currentIdx >= TIER_ORDER.length - 1) {
+    return null;
   }
-  return models[Math.max(0, Math.min(index, models.length - 1))];
+  return TIER_ORDER[currentIdx + 1];
 }
 
-export function getModelForAgent(agentRole: AgentRole): string {
-  // Fallback for agent role-specific selection; reuse tier2 index 0 by default.
-  return getModelFromTier('tier2', 0);
+/**
+ * Get the reflection tier (one above worker tier)
+ */
+export function getReflectionTier(workerTier: Tier): Tier {
+  return getNextTier(workerTier) || workerTier;
+}
+
+/**
+ * Escalate tier while preserving capability tags
+ * Returns null if already at max tier
+ */
+export function escalateTier(tags: string[]): string[] | null {
+  const currentTier = tags.find(t => t.startsWith('tier'));
+  if (!currentTier) {
+    return null;
+  }
+
+  const tierIndex = TIER_ORDER.indexOf(currentTier as Tier);
+  if (tierIndex >= TIER_ORDER.length - 1) {
+    return null; // Already at max
+  }
+
+  const nextTier = TIER_ORDER[tierIndex + 1];
+  return tags.map(t => t.startsWith('tier') ? nextTier : t);
+}
+
+/**
+ * Build tags for a flow type
+ */
+export function buildTags(
+  flowType: string,
+  startingTier: Tier,
+  options?: {
+    websearch?: boolean;
+    agentRole?: AgentRole;
+  }
+): string[] {
+  switch (flowType) {
+    case 'social':
+      return ['tier1', 'social'];
+    case 'proofreader':
+      return ['tier1', 'general'];
+    case 'simple':
+      return options?.websearch
+        ? [startingTier, 'websearch']
+        : [startingTier, 'general'];
+    case 'shell':
+      return ['tier2', 'general'];
+    case 'dialectic':
+      return options?.websearch
+        ? ['tier2', 'websearch']
+        : ['tier2', 'general'];
+    case 'consensus':
+      return ['tier2', 'general'];
+    case 'angel-devil':
+      return ['tier2', 'general'];
+    case 'branch':
+      return ['tier3', 'thinking'];
+    case 'architecture':
+      return ['tier4', 'tools', 'programming'];
+    case 'sequential-thinking':
+      return options?.agentRole
+        ? getAgentRoleTags(options.agentRole)
+        : ['tier2', 'tools', 'programming'];
+    case 'breakglass':
+      return ['tier4', 'tools'];
+    default:
+      return [startingTier, 'general'];
+  }
+}
+
+/**
+ * Get tags for specific agent role (Sequential Thinking)
+ */
+export function getAgentRoleTags(agentRole: AgentRole): string[] {
+  switch (agentRole) {
+    case 'command-executor':
+      return ['tier2', 'tools', 'general'];
+    case 'python-coder':
+    case 'js-ts-coder':
+      return ['tier2', 'tools', 'programming'];
+    case 'devops-engineer':
+    case 'documentation-writer':
+    case 'dba':
+      return ['tier3', 'tools', 'general'];
+    case 'architect':
+      return ['tier4', 'tools', 'thinking'];
+    case 'code-reviewer':
+      return ['tier3', 'tools', 'programming'];
+    case 'researcher':
+      return ['tier2', 'tools', 'general'];
+    case 'shell-commander':
+      return ['tier2', 'general'];
+    default:
+      return ['tier2', 'tools', 'general'];
+  }
+}
+
+/**
+ * Get reflection tags (one tier above worker, add thinking)
+ */
+export function getReflectionTags(workerTags: string[]): string[] {
+  const tier = workerTags.find(t => t.startsWith('tier')) as Tier || 'tier2';
+  const reflectionTier = getReflectionTier(tier);
+  return [reflectionTier, 'thinking'];
 }

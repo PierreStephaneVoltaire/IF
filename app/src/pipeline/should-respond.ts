@@ -1,8 +1,6 @@
 import { shouldRespond as opusShouldRespond } from '../modules/litellm/opus';
 import { streamProgressToDiscord } from '../modules/agentic/progress';
-import { getConfig } from '../config/index';
 import { createLogger } from '../utils/logger';
-import { TaskType, AgentRole, TaskComplexity } from '../modules/litellm/types';
 import type { FilterContext, FormattedHistory } from './types';
 
 const log = createLogger('SHOULD_RESPOND');
@@ -16,16 +14,11 @@ export interface ShouldRespondInput {
 export interface ShouldRespondOutput {
   should_respond: boolean;
   reason: string;
-  is_technical: boolean;
-  task_type: TaskType;
-  agent_role?: AgentRole;
-  complexity?: TaskComplexity;
 }
 
 export async function checkShouldRespond(
   input: ShouldRespondInput
 ): Promise<ShouldRespondOutput> {
-  const config = getConfig();
   log.info(`Checking if bot should respond`);
   log.info(`Force respond: ${input.filter.force_respond}`);
 
@@ -35,8 +28,6 @@ export async function checkShouldRespond(
     return {
       should_respond: true,
       reason: `Breakglass invocation with @${input.filter.breakglass_model}`,
-      is_technical: false,
-      task_type: TaskType.GENERAL_CONVO,
     };
   }
 
@@ -49,8 +40,6 @@ export async function checkShouldRespond(
     return {
       should_respond: true,
       reason,
-      is_technical: true,
-      task_type: TaskType.CODING_IMPLEMENTATION,
     };
   }
 
@@ -73,21 +62,13 @@ export async function checkShouldRespond(
     input.messageId
   );
 
-  log.info(`Opus raw result: should_respond=${opusResult.should_respond}, is_technical=${opusResult.is_technical}`);
+  log.info(`Opus raw result: should_respond=${opusResult.should_respond}`);
   log.info(`Opus reason: ${opusResult.reason}`);
 
-  let finalShouldRespond = opusResult.should_respond;
-  let finalReason = opusResult.reason;
-
-
-  log.info(`Final decision: should_respond=${finalShouldRespond}, reason=${finalReason}`);
+  log.info(`Final decision: should_respond=${opusResult.should_respond}, reason=${opusResult.reason}`);
 
   return {
-    should_respond: finalShouldRespond,
-    reason: finalReason,
-    is_technical: opusResult.is_technical,
-    task_type: opusResult.task_type,
-    agent_role: opusResult.agent_role,
-    complexity: opusResult.complexity,
+    should_respond: opusResult.should_respond,
+    reason: opusResult.reason,
   };
 }

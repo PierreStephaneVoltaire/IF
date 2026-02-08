@@ -2,18 +2,15 @@
  * SimpleGraph - Single Node Flow
  *
  * A simple graph for basic responses that don't require tools or complex processing.
- * This graph has a single processing node followed by a finalize node.
+ * Uses tag-based model routing via LiteLLM.
  *
  * Flow: start → respond → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
 import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
-import { getPromptForTaskType, getModelForTaskType } from '../../../templates/registry';
 import { loadPrompt } from '../../../templates/loader';
 import { createExecutionLogger } from '../logger';
 import { getMermaidGenerator } from '../mermaid';
@@ -30,6 +27,7 @@ interface SimpleGraphState {
   executionId: string;
   flowType: FlowType;
   taskType: string;
+  tags: string[];
   model: string;
   response: string;
   status: 'running' | 'complete' | 'error';
@@ -41,7 +39,7 @@ interface SimpleGraphState {
 // ============================================================================
 
 /**
- * Respond node - generates a simple response using the task type's prompt
+ * Respond node - generates a simple response using tags for model routing
  */
 async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
   const logger = createExecutionLogger({
@@ -53,31 +51,34 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
   logger.recordNode('respond');
 
   log.info(`SimpleGraph: Starting execution for channel ${state.channelId}`);
-  log.info(`Task type: ${state.taskType}`);
+  log.info(`Tags: ${state.tags.join(', ')}`);
 
   try {
-    // Get model and prompt for task type
-    const model = getModelForTaskType(state.taskType as any);
-    const promptCategory = getPromptForTaskType(state.taskType as any);
+    // Load prompt from template
+    const promptCategory = getPromptForTaskType(state.taskType);
     const systemPrompt = loadPrompt(promptCategory);
 
     // Get temperature params
     const params = getModelParams(state.flowType);
-    log.info(`Using model: ${model}, temperature: ${params.temperature}`);
+    log.info(`Using tags: ${state.tags.join(', ')}, temperature: ${params.temperature}`);
 
-    // Generate response
+    // Generate response using tag-based routing
     const response = await chatCompletion({
-      model,
+      model: 'auto',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: state.response },
       ],
       temperature: params.temperature,
       top_p: params.top_p,
+      metadata: {
+        tags: state.tags,
+      },
     });
 
     const content = extractContent(response);
-    log.info(`Response generated: ${content.length} chars`);
+    const modelUsed = response.model;
+    log.info(`Response generated: ${content.length} chars, model: ${modelUsed}`);
 
     // Generate Mermaid diagram
     const generator = getMermaidGenerator();
@@ -99,8 +100,9 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
       executionId: state.executionId,
       status: 'complete',
       nodeCount: 2,
-      model,
+      model: modelUsed,
       taskType: state.taskType,
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -111,7 +113,7 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
 
     return {
       ...state,
-      model,
+      model: modelUsed,
       response: content,
       status: 'complete',
       traversedNodes: ['start', 'respond'],
@@ -125,6 +127,7 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
       executionId: state.executionId,
       status: 'error',
       error: String(error),
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -140,6 +143,24 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
 }
 
 // ============================================================================
+// Helper Functions
+// ============================================================================
+
+function getPromptForTaskType(taskType: string): string {
+  const promptMap: Record<string, string> = {
+    'technical-qa': 'technical-qa',
+    'architecture-analysis': 'architecture-analysis',
+    'doc-search': 'doc-search',
+    'explanation': 'explanation',
+    'social': 'social',
+    'general-convo': 'general',
+    'writing': 'general',
+    'shell-command': 'shell-command',
+  };
+  return promptMap[taskType] || 'general';
+}
+
+// ============================================================================
 // Graph Factory
 // ============================================================================
 
@@ -149,11 +170,15 @@ export function createSimpleGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking SimpleGraph for channel ${options.channelId}`);
 
+      // Get tags from options, default to tier2 + general
+      const tags = options.tags || ['tier2', 'general'];
+
       const initialState: SimpleGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.SIMPLE,
         taskType: options.taskType || 'general',
+        tags,
         model: '',
         response: options.initialPrompt,
         status: 'running',

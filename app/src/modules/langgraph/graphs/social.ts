@@ -2,20 +2,15 @@
  * SocialGraph - Single Node Flow
  *
  * A simple graph for social interactions, greetings, and casual chat.
- * - Always uses Tier 1 models (cheapest, fastest)
- * - No tools, no planning
- * - Quick responses
+ * Uses tag-based routing: tier1 + social
  *
  * Flow: start → respond → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
 import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
-import { getModelFromTier } from '../../../templates/registry';
 import { loadPrompt } from '../../../templates/loader';
 import { createExecutionLogger } from '../logger';
 import { getMermaidGenerator } from '../mermaid';
@@ -33,6 +28,7 @@ interface SocialGraphState {
   flowType: FlowType;
   message: string;
   history?: MessageHistory;
+  tags: string[];
   model: string;
   response: string;
   status: 'running' | 'complete' | 'error';
@@ -44,7 +40,7 @@ interface SocialGraphState {
 // ============================================================================
 
 /**
- * Respond node - generates a social response using tier 1 model
+ * Respond node - generates a social response using tier1 + social tags
  */
 async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
   const logger = createExecutionLogger({
@@ -56,12 +52,9 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
   logger.recordNode('respond');
 
   log.info(`SocialGraph: Starting execution for channel ${state.channelId}`);
+  log.info(`Tags: ${state.tags.join(', ')}`);
 
   try {
-    // Always use tier 1 model for social interactions
-    const model = getModelFromTier('tier1', 0);
-    log.info(`Using tier 1 model for social: ${model}`);
-
     // Load prompt from template
     const systemPrompt = loadPrompt('social');
 
@@ -72,19 +65,23 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
     const params = getModelParams(state.flowType);
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
-    // Generate response
+    // Generate response using tag-based routing
     const response = await chatCompletion({
-      model,
+      model: 'auto',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
       temperature: params.temperature,
       top_p: params.top_p,
+      metadata: {
+        tags: state.tags,
+      },
     });
 
     const content = extractContent(response) || 'Hello!';
-    log.info(`Response generated: ${content.length} chars`);
+    const modelUsed = response.model;
+    log.info(`Response generated: ${content.length} chars, model: ${modelUsed}`);
 
     // Generate Mermaid diagram
     const generator = getMermaidGenerator();
@@ -106,7 +103,8 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
       executionId: state.executionId,
       status: 'complete',
       nodeCount: 2,
-      model,
+      model: modelUsed,
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -117,7 +115,7 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
 
     return {
       ...state,
-      model,
+      model: modelUsed,
       response: content,
       status: 'complete',
       traversedNodes: ['start', 'respond'],
@@ -131,6 +129,7 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
       executionId: state.executionId,
       status: 'error',
       error: String(error),
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -155,12 +154,16 @@ export function createSocialGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking SocialGraph for channel ${options.channelId}`);
 
+      // Use tier1 + social tags (from options or default)
+      const tags = options.tags || ['tier1', 'social'];
+
       const initialState: SocialGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.SOCIAL,
         message: options.initialPrompt,
         history: options.history,
+        tags,
         model: '',
         response: '',
         status: 'running',

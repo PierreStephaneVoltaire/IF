@@ -2,16 +2,14 @@
  * ConsensusGraph - Parallel Flow
  *
  * A parallel graph for multi-source consensus on factual questions.
- * - 3 independent tier2 models answer independently
- * - 1 tier4 judge synthesizes consensus
+ * Uses tag-based routing:
+ * - Independent answers: tier2 + general
+ * - Judge: tier3 + thinking
  *
  * Flow: start → answer_1 → answer_2 → answer_3 → judge → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
-import { MODEL_TIERS } from '../model-tiers';
 import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
@@ -23,25 +21,6 @@ import type { GraphResult, GraphInvokeOptions } from './types';
 const log = createLogger('GRAPH:CONSENSUS');
 
 // ============================================================================
-// Helper Functions
-// ============================================================================
-
-function getRandomModelsFromTier(tier: keyof typeof MODEL_TIERS, count: number): string[] {
-  const tierModels = [...MODEL_TIERS[tier]];
-  for (let i = tierModels.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [tierModels[i], tierModels[j]] = [tierModels[j], tierModels[i]];
-  }
-  return tierModels.slice(0, Math.min(count, tierModels.length));
-}
-
-function getRandomModelFromTier(tier: keyof typeof MODEL_TIERS): string {
-  const tierModels = MODEL_TIERS[tier];
-  const randomIndex = Math.floor(Math.random() * tierModels.length);
-  return tierModels[randomIndex];
-}
-
-// ============================================================================
 // Graph State
 // ============================================================================
 
@@ -50,6 +29,8 @@ interface ConsensusGraphState {
   executionId: string;
   flowType: FlowType;
   userQuestion: string;
+  answerTags: string[];
+  judgeTags: string[];
   models: string[];
   judgeModel: string;
   answers: string[];
@@ -90,6 +71,7 @@ async function finalizeGraph(state: ConsensusGraphState): Promise<ConsensusGraph
     nodeCount: state.traversedNodes.length + 1,
     models: state.models,
     judgeModel: state.judgeModel,
+    tags: state.judgeTags,
     timestamp: new Date().toISOString(),
   };
 
@@ -112,12 +94,9 @@ export function createConsensusGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking ConsensusGraph for channel ${options.channelId}`);
 
-      // Select models
-      const models = getRandomModelsFromTier('tier2', 3);
-      const judgeModel = getRandomModelFromTier('tier4');
-
-      log.info(`Using independent models: ${models.join(', ')}`);
-      log.info(`Using judge model: ${judgeModel}`);
+      // Use tier2 for independent answers, tier3 + thinking for judge
+      const answerTags = ['tier2', 'general'];
+      const judgeTags = ['tier3', 'thinking'];
 
       const params = getModelParams(FlowType.CONSENSUS);
       const logger = createExecutionLogger({
@@ -134,25 +113,28 @@ export function createConsensusGraph() {
         user_question: options.initialPrompt,
       });
 
-      // Execute answers in parallel
+      // Execute answers in parallel with tag-based routing
       const [response1, response2, response3] = await Promise.all([
         chatCompletion({
-          model: models[0],
+          model: 'auto',
           messages: [{ role: 'user', content: independentPrompt }],
           temperature: params.temperature,
           top_p: params.top_p,
+          metadata: { tags: answerTags },
         }),
         chatCompletion({
-          model: models[1],
+          model: 'auto',
           messages: [{ role: 'user', content: independentPrompt }],
           temperature: params.temperature,
           top_p: params.top_p,
+          metadata: { tags: answerTags },
         }),
         chatCompletion({
-          model: models[2],
+          model: 'auto',
           messages: [{ role: 'user', content: independentPrompt }],
           temperature: params.temperature,
           top_p: params.top_p,
+          metadata: { tags: answerTags },
         }),
       ]);
 
@@ -160,8 +142,10 @@ export function createConsensusGraph() {
       const answer2 = extractContent(response2);
       const answer3 = extractContent(response3);
       const answers = [answer1, answer2, answer3];
+      const models = [response1.model, response2.model, response3.model];
 
       log.info(`Independent answers generated: ${answer1.length}, ${answer2.length}, ${answer3.length} chars`);
+      log.info(`Models used: ${models.join(', ')}`);
 
       logger.recordNode('judge');
 
@@ -176,20 +160,24 @@ export function createConsensusGraph() {
       });
 
       const judgeResponse = await chatCompletion({
-        model: judgeModel,
+        model: 'auto',
         messages: [{ role: 'user', content: judgePrompt }],
         temperature: params.temperature,
         top_p: params.top_p,
+        metadata: { tags: judgeTags },
       });
 
       const consensus = extractContent(judgeResponse);
-      log.info(`Consensus synthesized: ${consensus.length} chars`);
+      const judgeModel = judgeResponse.model;
+      log.info(`Consensus synthesized: ${consensus.length} chars, judge model: ${judgeModel}`);
 
       const state: ConsensusGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.CONSENSUS,
         userQuestion: options.initialPrompt,
+        answerTags,
+        judgeTags,
         models,
         judgeModel,
         answers,

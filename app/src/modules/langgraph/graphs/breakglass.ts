@@ -2,13 +2,9 @@
  * BreakglassGraph - Single Node Flow
  *
  * A simple graph for direct model calls bypassing normal routing.
- * - Direct model call with user-specified model
- * - No tools, no planning
- * - Uses breakglass template
+ * Uses tier4 + tools (highest quality) or user-specified model
  *
  * Flow: start → respond → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
@@ -23,7 +19,7 @@ import type { GraphResult, GraphInvokeOptions, MessageHistory } from './types';
 const log = createLogger('GRAPH:BREAKGLASS');
 
 // ============================================================================
-// Model Mapping
+// Model Mapping (kept for backward compatibility)
 // ============================================================================
 
 const BREAKGLASS_MODEL_MAP: Record<string, string> = {
@@ -47,6 +43,7 @@ interface BreakglassGraphState {
   message: string;
   modelName: string;
   history?: MessageHistory;
+  tags: string[];
   model: string;
   response: string;
   status: 'running' | 'complete' | 'error';
@@ -58,7 +55,7 @@ interface BreakglassGraphState {
 // ============================================================================
 
 /**
- * Respond node - generates response using specified breakglass model
+ * Respond node - generates response using specified breakglass model or tier4 + tools tags
  */
 async function respondNode(state: BreakglassGraphState): Promise<BreakglassGraphState> {
   const logger = createExecutionLogger({
@@ -71,6 +68,7 @@ async function respondNode(state: BreakglassGraphState): Promise<BreakglassGraph
 
   log.info(`BreakglassGraph: Starting execution for channel ${state.channelId}`);
   log.info(`Breakglass model: ${state.modelName}`);
+  log.info(`Tags: ${state.tags.join(', ')}`);
 
   try {
     // Map the model name to actual LiteLLM model string
@@ -101,7 +99,7 @@ async function respondNode(state: BreakglassGraphState): Promise<BreakglassGraph
     const params = getModelParams(state.flowType);
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
-    // Call the model directly without tools
+    // Call the model directly without tools (use tags for routing if actualModel is 'auto')
     const response = await executeSimpleTask(
       'breakglass',
       userPrompt,
@@ -135,6 +133,7 @@ async function respondNode(state: BreakglassGraphState): Promise<BreakglassGraph
       nodeCount: 2,
       model: actualModel,
       requestedModel: state.modelName,
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -159,6 +158,7 @@ async function respondNode(state: BreakglassGraphState): Promise<BreakglassGraph
       executionId: state.executionId,
       status: 'error',
       error: String(error),
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -183,6 +183,9 @@ export function createBreakglassGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking BreakglassGraph for channel ${options.channelId}`);
 
+      // Use tier4 + tools tags (highest quality) or from options
+      const tags = options.tags || ['tier4', 'tools'];
+
       const initialState: BreakglassGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
@@ -190,6 +193,7 @@ export function createBreakglassGraph() {
         message: options.initialPrompt,
         modelName: options.modelName || 'default',
         history: options.history,
+        tags,
         model: '',
         response: '',
         status: 'running',

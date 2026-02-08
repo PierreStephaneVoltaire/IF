@@ -2,17 +2,14 @@
  * DialecticGraph - Parallel Flow
  *
  * A parallel graph for philosophical exploration.
- * - Thesis → Antithesis → Synthesis
- * - 2 tier2 models for thesis/antithesis
- * - 1 tier4 synthesizer
+ * Uses tag-based routing:
+ * - thesis/antithesis: tier2 + websearch (if websearch enabled)
+ * - synthesizer: tier3 + thinking
  *
  * Flow: start → thesis → antithesis → synthesize → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
-import { MODEL_TIERS } from '../model-tiers';
 import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
@@ -24,26 +21,6 @@ import type { GraphResult, GraphInvokeOptions } from './types';
 const log = createLogger('GRAPH:DIALECTIC');
 
 // ============================================================================
-// Helper Functions
-// ============================================================================
-
-function getRandomModelsFromTier(tier: keyof typeof MODEL_TIERS, count: number): string[] {
-  const tierModels = [...MODEL_TIERS[tier]];
-  // Shuffle array
-  for (let i = tierModels.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [tierModels[i], tierModels[j]] = [tierModels[j], tierModels[i]];
-  }
-  return tierModels.slice(0, Math.min(count, tierModels.length));
-}
-
-function getRandomModelFromTier(tier: keyof typeof MODEL_TIERS): string {
-  const tierModels = MODEL_TIERS[tier];
-  const randomIndex = Math.floor(Math.random() * tierModels.length);
-  return tierModels[randomIndex];
-}
-
-// ============================================================================
 // Graph State
 // ============================================================================
 
@@ -52,6 +29,9 @@ interface DialecticGraphState {
   executionId: string;
   flowType: FlowType;
   userQuestion: string;
+  thesisTags: string[];
+  antithesisTags: string[];
+  synthesizerTags: string[];
   thesisModel: string;
   antithesisModel: string;
   synthesizerModel: string;
@@ -76,6 +56,7 @@ async function thesisNode(state: DialecticGraphState): Promise<DialecticGraphSta
   logger.recordNode('thesis');
 
   log.info(`DialecticGraph: Generating thesis for channel ${state.channelId}`);
+  log.info(`Tags: ${state.thesisTags.join(', ')}`);
 
   const params = getModelParams(state.flowType);
 
@@ -84,17 +65,22 @@ async function thesisNode(state: DialecticGraphState): Promise<DialecticGraphSta
   });
 
   const response = await chatCompletion({
-    model: state.thesisModel,
+    model: 'auto',
     messages: [{ role: 'user', content: thesisPrompt }],
     temperature: params.temperature,
     top_p: params.top_p,
+    metadata: {
+      tags: state.thesisTags,
+    },
   });
 
   const thesis = extractContent(response);
-  log.info(`Thesis generated: ${thesis.length} chars`);
+  const modelUsed = response.model;
+  log.info(`Thesis generated: ${thesis.length} chars, model: ${modelUsed}`);
 
   return {
     ...state,
+    thesisModel: modelUsed,
     thesis,
     traversedNodes: ['start', 'thesis'],
   };
@@ -105,6 +91,7 @@ async function antithesisNode(state: DialecticGraphState): Promise<DialecticGrap
   logger.recordNode('antithesis');
 
   log.info(`DialecticGraph: Generating antithesis`);
+  log.info(`Tags: ${state.antithesisTags.join(', ')}`);
 
   const params = getModelParams(state.flowType);
 
@@ -114,17 +101,22 @@ async function antithesisNode(state: DialecticGraphState): Promise<DialecticGrap
   });
 
   const response = await chatCompletion({
-    model: state.antithesisModel,
+    model: 'auto',
     messages: [{ role: 'user', content: antithesisPrompt }],
     temperature: params.temperature,
     top_p: params.top_p,
+    metadata: {
+      tags: state.antithesisTags,
+    },
   });
 
   const antithesis = extractContent(response);
-  log.info(`Antithesis generated: ${antithesis.length} chars`);
+  const modelUsed = response.model;
+  log.info(`Antithesis generated: ${antithesis.length} chars, model: ${modelUsed}`);
 
   return {
     ...state,
+    antithesisModel: modelUsed,
     antithesis,
     traversedNodes: [...state.traversedNodes, 'antithesis'],
   };
@@ -135,6 +127,7 @@ async function synthesizeNode(state: DialecticGraphState): Promise<DialecticGrap
   logger.recordNode('synthesize');
 
   log.info(`DialecticGraph: Generating synthesis`);
+  log.info(`Tags: ${state.synthesizerTags.join(', ')}`);
 
   const params = getModelParams(state.flowType);
 
@@ -145,17 +138,22 @@ async function synthesizeNode(state: DialecticGraphState): Promise<DialecticGrap
   });
 
   const response = await chatCompletion({
-    model: state.synthesizerModel,
+    model: 'auto',
     messages: [{ role: 'user', content: synthesisPrompt }],
     temperature: params.temperature,
     top_p: params.top_p,
+    metadata: {
+      tags: state.synthesizerTags,
+    },
   });
 
   const synthesis = extractContent(response);
-  log.info(`Synthesis generated: ${synthesis.length} chars`);
+  const modelUsed = response.model;
+  log.info(`Synthesis generated: ${synthesis.length} chars, model: ${modelUsed}`);
 
   return {
     ...state,
+    synthesizerModel: modelUsed,
     synthesis,
     traversedNodes: [...state.traversedNodes, 'synthesize'],
   };
@@ -191,6 +189,7 @@ async function finalizeNode(state: DialecticGraphState): Promise<DialecticGraphS
     thesisModel: state.thesisModel,
     antithesisModel: state.antithesisModel,
     synthesizerModel: state.synthesizerModel,
+    tags: state.synthesizerTags,
     timestamp: new Date().toISOString(),
   };
 
@@ -213,22 +212,23 @@ export function createDialecticGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking DialecticGraph for channel ${options.channelId}`);
 
-      // Select models
-      const [thesisModel, antithesisModel] = getRandomModelsFromTier('tier2', 2);
-      const synthesizerModel = getRandomModelFromTier('tier4');
-
-      log.info(`Using thesis model: ${thesisModel}`);
-      log.info(`Using antithesis model: ${antithesisModel}`);
-      log.info(`Using synthesizer model: ${synthesizerModel}`);
+      // Use websearch tags if websearch is enabled
+      const useWebsearch = options.websearch || false;
+      const thesisTags = useWebsearch ? ['tier2', 'websearch'] : ['tier2', 'general'];
+      const antithesisTags = useWebsearch ? ['tier2', 'websearch'] : ['tier2', 'general'];
+      const synthesizerTags = ['tier3', 'thinking'];
 
       let state: DialecticGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.DIALECTIC,
         userQuestion: options.initialPrompt,
-        thesisModel,
-        antithesisModel,
-        synthesizerModel,
+        thesisTags,
+        antithesisTags,
+        synthesizerTags,
+        thesisModel: '',
+        antithesisModel: '',
+        synthesizerModel: '',
         thesis: '',
         antithesis: '',
         synthesis: '',

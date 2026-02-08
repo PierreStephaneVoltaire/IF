@@ -12,10 +12,9 @@ import type { DiscordMessagePayload } from '../modules/discord/types';
 import { filterMessage } from './filter';
 import { detectChannel, isGeneralChannel } from './channel';
 import { formatHistory } from './history';
-import { checkShouldRespond } from './should-respond';
-import { classifyFlow } from './classify';
+import { checkShouldRespond, type ShouldRespondOutput } from './should-respond';
+import { classifyRequest, flowNeedsWorkspace, type ClassifyOutput } from './classify';
 import { formatAndSendResponse } from './response';
-import { flowNeedsWorkspace } from './classify';
 import type { PipelineResult } from './types';
 import { FlowType } from '../modules/litellm/types';
 import { s3Sync } from '../modules/workspace/s3-sync';
@@ -46,7 +45,7 @@ export async function processMessage(
   log.info(`Channel: ${message.channel_id}`);
 
   let workspaceId: string | undefined;
-  let flowType: FlowType | null = null;
+  let classifyResult: ClassifyOutput | null = null;
   let needsWorkspace: boolean = false;
 
   try {
@@ -82,7 +81,7 @@ export async function processMessage(
     const history = await formatHistory(message, channel);
 
     log.info('Phase: SHOULD_RESPOND');
-    const respondDecision = await checkShouldRespond({
+    const respondDecision: ShouldRespondOutput = await checkShouldRespond({
       filter: filterResult.context,
       history,
       messageId: message.id,
@@ -97,26 +96,18 @@ export async function processMessage(
       };
     }
 
-    log.info('Phase: CLASSIFY');
+    log.info('Phase: CLASSIFY (Phase 2)');
+    classifyResult = await classifyRequest({
+      filter: filterResult.context,
+      history: {
+        formatted_history: history.formatted_history,
+        current_author: history.current_author,
+        current_message: history.current_message,
+      },
+      messageId: message.id,
+    });
 
-    // Get session for confidence score
-    // Only if workspaceId is defined, otherwise skip session lookup
-    let confidenceScore = 0.5; // Default value
-    if (workspaceId) {
-      const session = await getSession(workspaceId);
-      confidenceScore = session?.confidence_score ?? 0.5;
-    }
-
-    flowType = classifyFlow(
-      respondDecision.is_technical,
-      respondDecision.task_type,
-      false,
-      filterResult.context,
-      message.content,
-      confidenceScore
-    );
-
-    // Determine if this flow needs workspace access
+    const flowType = classifyResult.flow_type;
     needsWorkspace = flowNeedsWorkspace(flowType);
     log.info(`Flow ${flowType} needs workspace: ${needsWorkspace}`);
 
@@ -133,7 +124,6 @@ export async function processMessage(
 
       const shouldCreateProjectChannel =
         flowType === FlowType.SEQUENTIAL_THINKING &&
-        respondDecision.is_technical &&
         !channel.is_project_channel &&
         isGeneralChannel(channel.channel_name);
 
@@ -172,8 +162,6 @@ export async function processMessage(
         await s3Sync.syncFromS3(workspaceId);
 
         // 2. Sync latest attachments from Discord to workspace
-        // CRITICAL: Only sync if we are in a project channel. NOT the main channel.
-        // Syncing main channel would download ALL history attachments.
         if (chatClient && chatClient.platform !== 'discord') {
           log.info('Skipping discord file sync for non-Discord platform');
         } else if (client) {
@@ -210,18 +198,22 @@ export async function processMessage(
           current_author: history.current_author,
           current_message: history.current_message,
         },
+        startingTier: 'tier4',
+        tags: ['tier4', 'tools'],
       };
       
       log.info('Executing breakglass flow via LangGraph');
       graphResult = await invokeGraph(FlowType.BREAKGLASS, breakglassOptions);
     } else {
-      // Regular flow type - use graph invocation
+      // Regular flow type - use graph invocation with classification results
       const graphOptions: GraphInvokeOptions = {
         channelId: threadId,
         executionId,
         initialPrompt: history.current_message,
         flowType: flowType!,
-        taskType: respondDecision.task_type,
+        startingTier: classifyResult!.starting_tier,
+        tags: classifyResult!.tags,
+        agentRole: classifyResult!.agent_role,
         history: {
           formatted_history: history.formatted_history,
           current_author: history.current_author,
@@ -229,7 +221,7 @@ export async function processMessage(
         },
       };
 
-      log.info(`Executing ${flowType} flow via LangGraph`);
+      log.info(`Executing ${flowType} flow via LangGraph with tags: ${classifyResult!.tags.join(', ')}`);
       const graph = getGraphForFlow(flowType!);
       log.info(`Using graph: ${graph.name}`);
       
@@ -266,7 +258,7 @@ export async function processMessage(
 
     // Save failure checkpoint for replay capability
     try {
-      if (flowType && workspaceId) {
+      if (classifyResult?.flow_type && workspaceId) {
         const failureMetadata: FailureMetadata = {
           failed_node: 'pipeline_execution',
           failed_model: '',
@@ -296,7 +288,6 @@ export async function processMessage(
     };
   } finally {
     // Phase: S3_SYNC (Outbound) - Only runs if flow needs workspace access
-    // This prevents unnecessary S3 syncs for social, proofreader flows that don't need persistence
     if (workspaceId && needsWorkspace) {
       log.info('Phase: S3_SYNC');
       try {
@@ -305,7 +296,7 @@ export async function processMessage(
         log.error(`Failed to sync to S3 in finally block: ${syncError}`);
       }
     } else if (workspaceId && !needsWorkspace) {
-      log.info(`Skipping S3 sync (flow ${flowType} doesn't require workspace access)`);
+      log.info(`Skipping S3 sync (flow doesn't require workspace access)`);
     }
   }
 }

@@ -2,13 +2,9 @@
  * ArchitectureGraph - Multi-Node Flow
  *
  * A multi-node graph for theoretical/design tasks.
- * - Generates clear, succinct architectural plans
- * - Uses planning for the planning process itself
- * - Confidence based on completeness, facts captured, holes identified
+ * Uses tag-based routing: tier4 + tools + programming
  *
  * Flow: start → plan → evaluate → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
@@ -35,6 +31,9 @@ export function createArchitectureGraph() {
     name: 'ArchitectureGraph',
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking ArchitectureGraph for channel ${options.channelId}`);
+
+      // Use tier4 + tools + programming tags
+      const tags = options.tags || ['tier4', 'tools', 'programming'];
 
       const workspacePath = options.workspacePath || options.channelId;
       const logger = createExecutionLogger({
@@ -145,9 +144,6 @@ export function createArchitectureGraph() {
           `---\n\n` +
           `*To implement this plan, say "implement this" or ask me to execute a specific part.*`;
 
-        // Get model
-        const model = planning.agent_role;
-
         logger.recordNode('finalize');
 
         // Generate Mermaid diagram
@@ -170,7 +166,8 @@ export function createArchitectureGraph() {
           executionId: options.executionId,
           status: 'complete',
           nodeCount: 4,
-          model,
+          model: 'planning-model',
+          tags,
           topicSlug: planning.topic_slug,
           confidenceScore: evaluation.score,
           timestamp: new Date().toISOString(),
@@ -181,7 +178,7 @@ export function createArchitectureGraph() {
 
         return {
           response: finalResponse,
-          model,
+          model: 'architecture-planner',
           traversedNodes: ['start', 'plan', 'evaluate', 'finalize'],
         };
       } catch (error) {
@@ -193,6 +190,7 @@ export function createArchitectureGraph() {
           executionId: options.executionId,
           status: 'error',
           error: String(error),
+          tags,
           timestamp: new Date().toISOString(),
         };
 

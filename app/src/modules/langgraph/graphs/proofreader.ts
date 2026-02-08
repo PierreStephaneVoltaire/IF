@@ -2,21 +2,15 @@
  * ProofreaderGraph - Single Node Flow
  *
  * A simple graph for grammar and spellcheck only.
- * - Always uses Tier 1 models (cheapest, fastest)
- * - ONLY fixes grammar and spelling
- * - NEVER alters the intent, tone, or style unless explicitly requested
- * - Preserves the user's voice and message meaning
+ * Uses tag-based routing: tier1 + general
  *
  * Flow: start → proofread → finalize
- *
- * @see plans/langgraph-migration-plan.md
  */
 
 import { createLogger } from '../../../utils/logger';
 import { chatCompletion, extractContent } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
-import { getModelFromTier } from '../../../templates/registry';
 import { loadPrompt } from '../../../templates/loader';
 import { createExecutionLogger } from '../logger';
 import { getMermaidGenerator } from '../mermaid';
@@ -33,6 +27,7 @@ interface ProofreaderGraphState {
   executionId: string;
   flowType: FlowType;
   message: string;
+  tags: string[];
   model: string;
   response: string;
   status: 'running' | 'complete' | 'error';
@@ -44,7 +39,7 @@ interface ProofreaderGraphState {
 // ============================================================================
 
 /**
- * Proofread node - generates grammar/spellcheck response using tier 1 model
+ * Proofread node - generates grammar/spellcheck response using tier1 + general tags
  */
 async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderGraphState> {
   const logger = createExecutionLogger({
@@ -56,12 +51,9 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
   logger.recordNode('proofread');
 
   log.info(`ProofreaderGraph: Starting execution for channel ${state.channelId}`);
+  log.info(`Tags: ${state.tags.join(', ')}`);
 
   try {
-    // Always use tier 1 model for proofreading
-    const model = getModelFromTier('tier1', 0);
-    log.info(`Using tier 1 model for proofreading: ${model}`);
-
     // Load prompt from template
     const systemPrompt = loadPrompt('proofreader');
 
@@ -72,19 +64,23 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
     const params = getModelParams(state.flowType);
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
-    // Generate response
+    // Generate response using tag-based routing
     const response = await chatCompletion({
-      model,
+      model: 'auto',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
       temperature: params.temperature,
       top_p: params.top_p,
+      metadata: {
+        tags: state.tags,
+      },
     });
 
     const content = extractContent(response) || 'No errors found.';
-    log.info(`Response generated: ${content.length} chars`);
+    const modelUsed = response.model;
+    log.info(`Response generated: ${content.length} chars, model: ${modelUsed}`);
 
     // Generate Mermaid diagram
     const generator = getMermaidGenerator();
@@ -106,7 +102,8 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
       executionId: state.executionId,
       status: 'complete',
       nodeCount: 2,
-      model,
+      model: modelUsed,
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -117,7 +114,7 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
 
     return {
       ...state,
-      model,
+      model: modelUsed,
       response: content,
       status: 'complete',
       traversedNodes: ['start', 'proofread'],
@@ -131,6 +128,7 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
       executionId: state.executionId,
       status: 'error',
       error: String(error),
+      tags: state.tags,
       timestamp: new Date().toISOString(),
     };
 
@@ -155,11 +153,15 @@ export function createProofreaderGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking ProofreaderGraph for channel ${options.channelId}`);
 
+      // Use tier1 + general tags (from options or default)
+      const tags = options.tags || ['tier1', 'general'];
+
       const initialState: ProofreaderGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.PROOFREADER,
         message: options.initialPrompt,
+        tags,
         model: '',
         response: '',
         status: 'running',
