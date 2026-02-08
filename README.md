@@ -398,7 +398,7 @@ For suggesting ready-to-run shell commands without code generation.
 
 ```mermaid
 flowchart TD
-    A[User: "How to grep..."] --> B[Classify: SHELL]
+    A["User: How to grep..."] --> B[Classify: SHELL]
     B --> C[Tier2 + General Tags]
     C --> D[Suggest Node]
     D --> E[One-Liner Command Only]
@@ -422,7 +422,7 @@ For direct model access bypassing all checks and routing. Triggered with `!break
 
 ```mermaid
 flowchart TD
-    A[@{modelname} Message] --> B[Parse Model Name]
+    A["@{modelname} Message"] --> B[Parse Model Name]
     B --> C{Valid Model?}
     C -->|Yes| D[Load Breakglass Template]
     C -->|No| E[Error: Invalid Model]
