@@ -62,9 +62,11 @@ interface CoveGraphState {
 // ============================================================================
 
 async function generateBaseline(prompt: string, tags: string[]): Promise<string> {
+  const systemPrompt = await loadPrompt('cove-baseline');
   const response = await chatCompletion({
     model: 'auto',
     messages: [
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: prompt },
     ],
     temperature: 0.7,

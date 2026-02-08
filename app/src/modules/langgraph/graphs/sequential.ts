@@ -97,6 +97,11 @@ function createInitialState(options: GraphInvokeOptions): SequentialGraphState {
   const agentRole = options.agentRole as AgentRole || 'python-coder';
   const tags = options.tags || ['tier2', 'tools', 'programming'];
 
+  const providedPhases = options.plan?.phases || [];
+  const maxPhaseTurns = providedPhases.length > 0
+    ? providedPhases.reduce((sum, phase) => sum + (phase.estimated_turns || 1), 0)
+    : DEFAULT_MAX_TURNS;
+
   return {
     channelId: options.channelId,
     executionId: options.executionId,
@@ -105,7 +110,7 @@ function createInitialState(options: GraphInvokeOptions): SequentialGraphState {
     agentRole,
     workspacePath: options.workspacePath || options.channelId,
     turnNumber: 0,
-    maxTurns: DEFAULT_MAX_TURNS,
+    maxTurns: maxPhaseTurns,
     currentTags: tags,
     conversationHistory: [],
     turns: [],
@@ -124,7 +129,7 @@ function createInitialState(options: GraphInvokeOptions): SequentialGraphState {
     finalResponse: '',
     traversedNodes: [],
     logBuffer: [],
-    phases: [],
+    phases: providedPhases,
     currentPhaseIndex: 0,
     phaseHistory: [],
   };
@@ -256,85 +261,138 @@ export function createSequentialGraph() {
         let turnComplete = false;
         let turnCount = 0;
 
-        while (!turnComplete && !state.abortRequested && turnCount < state.maxTurns) {
-          turnCount++;
-          state.turnNumber = turnCount;
-          logger.recordNode(`execute_turn_${turnCount}`);
+        const phasesToRun = state.phases && state.phases.length > 0
+          ? state.phases
+          : [{
+            id: 1,
+            name: 'Execution',
+            description: 'Single-phase execution (no plan phases provided).',
+            acceptance_criteria: [],
+            estimated_turns: state.maxTurns,
+            dependencies: [],
+          } as PlanPhase];
 
-          // Execute turn
-          const params = getModelParams(FlowType.SEQUENTIAL_THINKING);
-          const response = await chatCompletion({
-            model: 'auto',
-            messages: conversationHistory,
-            temperature: params.temperature,
-            top_p: params.top_p,
-            metadata: {
-              tags: state.currentTags,
-            },
-          });
+        for (let phaseIndex = 0; phaseIndex < phasesToRun.length; phaseIndex++) {
+          if (turnComplete || state.abortRequested) break;
 
-          const turnData = parseTurn(response, turnCount) as ExecutionTurn;
-          turnData.inputTokens = response.usage?.prompt_tokens;
-          turnData.outputTokens = response.usage?.completion_tokens;
+          const phase = phasesToRun[phaseIndex];
+          state.currentPhaseIndex = phaseIndex;
 
-          const modelUsed = response.model;
-          state.totalInputTokens += turnData.inputTokens || 0;
-          state.totalOutputTokens += turnData.outputTokens || 0;
-
-          log.info(`Turn ${turnCount} executed, confidence: ${turnData.confidence}`);
-
-          // Stream progress
           await streamProgressToDiscord(state.channelId, {
             type: 'turn_start',
-            turnNumber: turnCount,
+            phase: `Starting Phase ${phaseIndex + 1}: ${phase.name}`,
+            turnNumber: state.turnNumber,
             maxTurns: state.maxTurns,
-            model: modelUsed,
-            confidence: turnData.confidence,
+            model: `auto:${state.currentTags.join(',')}`,
           });
 
-          // Add to history
-          conversationHistory.push({ role: 'assistant', content: turnData.response });
-          state.turns.push(turnData);
+          const phaseStartTurn = turnCount;
+          const phaseMaxTurns = Math.max(1, phase.estimated_turns || 1);
 
-          // Update confidence tracking
-          const execState = toExecutionState(state);
-          const confidence = calculateConfidence(execState, turnData);
-          state.confidenceScore = confidence;
-          state.consecutiveLowConfidenceTurns = getConfidenceLevel(confidence) === 'critical'
-            ? state.consecutiveLowConfidenceTurns + 1
-            : 0;
+          let phaseComplete = false;
 
-          // Check escalation triggers
-          const escalation = checkEscalationTriggers(execState, turnData, state.currentTags, state.consecutiveLowConfidenceTurns);
-          if (escalation.shouldEscalate) {
-            log.info(`Escalating to tier: ${escalation.reason}`);
-            state.currentTags = escalation.suggestedTags || state.currentTags;
-            state.escalations.push({
-              turnNumber,
-              fromModel: modelUsed,
-              toModel: `auto:${state.currentTags.join(',')}`,
-              reason: escalation.reason,
-              timestamp: new Date().toISOString(),
+          while (!phaseComplete && !turnComplete && !state.abortRequested && (turnCount - phaseStartTurn) < phaseMaxTurns && turnCount < state.maxTurns) {
+            turnCount++;
+            state.turnNumber = turnCount;
+            logger.recordNode(`execute_turn_${turnCount}`);
+
+            // Execute turn
+            const params = getModelParams(FlowType.SEQUENTIAL_THINKING);
+            const response = await chatCompletion({
+              model: 'auto',
+              messages: conversationHistory,
+              temperature: params.temperature,
+              top_p: params.top_p,
+              metadata: {
+                tags: state.currentTags,
+              },
             });
-          }
 
-          // Check completion
-          turnComplete = turnData.status === 'complete' || turnData.status === 'stuck';
+            const turnData = parseTurn(response, turnCount) as ExecutionTurn;
+            turnData.inputTokens = response.usage?.prompt_tokens;
+            turnData.outputTokens = response.usage?.completion_tokens;
 
-          // Add user continuation prompt if not complete
-          if (!turnComplete && turnCount < state.maxTurns) {
-            conversationHistory.push({
-              role: 'user',
-              content: `Continue. Confidence: ${confidence}%. ${state.turnNumber}/${state.maxTurns} turns used.`
+            const modelUsed = response.model;
+            state.totalInputTokens += turnData.inputTokens || 0;
+            state.totalOutputTokens += turnData.outputTokens || 0;
+
+            log.info(`Turn ${turnCount} executed, confidence: ${turnData.confidence}`);
+
+            // Stream progress
+            await streamProgressToDiscord(state.channelId, {
+              type: 'turn_start',
+              turnNumber: turnCount,
+              maxTurns: state.maxTurns,
+              model: modelUsed,
+              confidence: turnData.confidence,
+              phase: `Phase ${phaseIndex + 1}: ${phase.name}`,
             });
+
+            // Add to history
+            conversationHistory.push({ role: 'assistant', content: turnData.response });
+            state.turns.push(turnData);
+
+            // Update confidence tracking
+            const execState = toExecutionState(state);
+            const confidence = calculateConfidence(execState, turnData);
+            state.confidenceScore = confidence;
+            state.consecutiveLowConfidenceTurns = getConfidenceLevel(confidence) === 'critical'
+              ? state.consecutiveLowConfidenceTurns + 1
+              : 0;
+
+            // Check escalation triggers
+            const escalation = checkEscalationTriggers(execState, turnData, state.currentTags, state.consecutiveLowConfidenceTurns);
+            if (escalation.shouldEscalate) {
+              log.info(`Escalating to tier: ${escalation.reason}`);
+              state.currentTags = escalation.suggestedTags || state.currentTags;
+              state.escalations.push({
+                turnNumber: turnCount,
+                fromModel: modelUsed,
+                toModel: `auto:${state.currentTags.join(',')}`,
+                reason: escalation.reason,
+                timestamp: new Date().toISOString(),
+              });
+            }
+
+            // Check completion
+            turnComplete = turnData.status === 'complete' || turnData.status === 'stuck';
+
+            if (turnComplete) {
+              phaseComplete = true;
+            }
+
+            // Add user continuation prompt if not complete
+            if (!turnComplete && turnCount < state.maxTurns) {
+              conversationHistory.push({
+                role: 'user',
+                content: `Continue. Confidence: ${confidence}%. Phase ${phaseIndex + 1}/${phasesToRun.length}, ${turnCount}/${state.maxTurns} turns used.`
+              });
+            }
+
+            // Check abort
+            const newAbortFlag = await checkAbortFlag(state.channelId);
+            if (newAbortFlag) {
+              state.abortRequested = true;
+              break;
+            }
           }
 
-          // Check abort
-          const newAbortFlag = await checkAbortFlag(state.channelId);
-          if (newAbortFlag) {
-            state.abortRequested = true;
-            break;
-          }
+          state.phaseHistory.push({
+            phaseId: phase.id,
+            phaseName: phase.name,
+            completed: phaseComplete,
+            turnsExecuted: turnCount - phaseStartTurn,
+            confidenceAtCompletion: state.confidenceScore,
+            summary: phaseComplete ? 'Phase complete' : 'Phase reached max turns',
+          });
+
+          await streamProgressToDiscord(state.channelId, {
+            type: 'checkpoint',
+            phase: `Phase ${phaseIndex + 1} complete. Progress: ${phaseIndex + 1}/${phasesToRun.length} phases`,
+            turnNumber: state.turnNumber,
+            maxTurns: state.maxTurns,
+            confidence: state.confidenceScore,
+          });
         }
 
         // Finalize

@@ -32,6 +32,17 @@ export interface GraphInvokeOptions {
   modelName?: string; // For breakglass
   workspacePath?: string;
   history?: MessageHistory;
+  plan?: {
+    topicSlug?: string;
+    phases?: Array<{
+      id: number;
+      name: string;
+      description: string;
+      acceptance_criteria: string[];
+      estimated_turns: number;
+      dependencies: number[];
+    }>;
+  };
   // New properties for dynamic model selection
   startingTier?: 'tier1' | 'tier2' | 'tier3' | 'tier4';
   tags?: string[];

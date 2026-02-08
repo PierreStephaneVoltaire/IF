@@ -23,6 +23,9 @@ import { getDiscordClient, createProjectChannel } from '../modules/discord/index
 import { getChatClient } from '../modules/chat';
 import { generateThreadName } from '../modules/litellm/opus';
 import { getConfig } from '../config';
+import { loadPlanFromS3 } from '../modules/workspace/s3-helpers';
+import { createPlan } from './planning';
+import { setupSession } from './session';
 
 // LangGraph imports for Phase 4 migration
 import { getGraphForFlow, invokeGraph } from '../modules/langgraph/graphs';
@@ -220,6 +223,51 @@ export async function processMessage(
           current_message: history.current_message,
         },
       };
+
+      if (flowType === FlowType.SEQUENTIAL_THINKING) {
+        const sessionResult = await setupSession(workspaceId || threadId, threadId);
+        const planningResult = await createPlan({
+          channelId: threadId,
+          branchName: sessionResult.branchName,
+          session: sessionResult.session,
+          history: {
+            formatted_history: history.formatted_history,
+            current_message: history.current_message,
+            current_author: history.current_author,
+            current_attachments: history.current_attachments || {
+              images: [],
+              textFiles: [],
+              otherFiles: [],
+            },
+            poll_entries: history.poll_entries || [],
+          },
+          processedAttachments: [],
+          userAddedFilesMessage: newFilesMessage,
+          previousConfidence: sessionResult.session.confidence_score,
+        });
+        graphOptions.initialPrompt = planningResult.reformulated_prompt;
+        graphOptions.agentRole = planningResult.agent_role;
+        graphOptions.plan = {
+          topicSlug: planningResult.topic_slug,
+          phases: planningResult.phases || [],
+        };
+
+        const topicSlug = planningResult.topic_slug;
+        if (topicSlug) {
+          try {
+            const storedPlan = await loadPlanFromS3(threadId, topicSlug);
+            if (storedPlan?.phases?.length) {
+              graphOptions.plan = {
+                topicSlug,
+                phases: storedPlan.phases,
+              };
+              log.info(`Loaded ${storedPlan.phases.length} phases from S3 for topic ${topicSlug}`);
+            }
+          } catch (error) {
+            log.warn(`Failed to load plan from S3 for ${topicSlug}: ${String(error)}`);
+          }
+        }
+      }
 
       log.info(`Executing ${flowType} flow via LangGraph with tags: ${classifyResult!.tags.join(', ')}`);
       const graph = getGraphForFlow(flowType!);

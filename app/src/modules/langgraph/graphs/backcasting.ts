@@ -58,12 +58,15 @@ async function defineGoal(prompt: string, tags: string[]): Promise<{
   timeline: string;
 }> {
   const systemPrompt = await loadPrompt('backcasting-define-goal');
+  const userPrompt = renderTemplate(await loadPrompt('backcasting-define-goal-user'), {
+    goal_request: prompt,
+  });
   
   const response = await chatCompletion({
     model: 'auto',
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: prompt },
+      { role: 'user', content: userPrompt },
     ],
     temperature: 0.6,
     top_p: 0.85,

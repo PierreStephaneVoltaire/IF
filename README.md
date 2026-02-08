@@ -23,7 +23,7 @@ An autonomous multi-agent Discord bot that can execute complex multi-turn tasks,
 
 ### Execution Flows
 
-The bot supports 11 execution flows based on task classification:
+The bot supports 15 execution flows based on task classification:
 
 ```
 User Message
@@ -73,6 +73,22 @@ User Message
     │   └─→ Angel argues FOR → Devil argues AGAINST → Judge balances
     │   └─→ For "should I..." ethical dilemmas
     │
+    ├─→ ADVERSARIAL_VALIDATION (red-team validation)
+    │   └─→ Generator → Red Team → Patch loop → Judge
+    │   └─→ For security/design hardening
+    │
+    ├─→ CHAIN_OF_VERIFICATION (factual verification)
+    │   └─→ Baseline → Verification questions → Independent checks → Reviser
+    │   └─→ For high-hallucination factual queries
+    │
+    ├─→ BACKCASTING (backward planning)
+    │   └─→ Goal definition → Backward milestones → Feasibility → Action plan
+    │   └─→ For long-term planning and roadmaps
+    │
+    ├─→ DELPHI_METHOD (iterative expert consensus)
+    │   └─→ Expert rounds → Aggregation → Convergence → Judge
+    │   └─→ For estimation/forecasting
+    │
     └─→ BREAKGLASS (emergency override)
         └─→ Direct model access, bypasses all checks
 ```
@@ -91,7 +107,11 @@ User Message
 | **8. DIALECTIC** | Philosophical synthesis | ❌ No | ❌ No | "What is the meaning of...", "Philosophically speaking..." |
 | **9. CONSENSUS** | Factual verification | ❌ No | ❌ No | "Is it true that...", "Fact check...", "Verify..." |
 | **10. ANGEL_DEVIL** | Moral/ethical debate | ❌ No | ❌ No | "Should I...", "Is it ethical...", "Moral dilemma" |
-| **11. BREAKGLASS** | Emergency | ✅ Yes | ✅ Yes | `!breakglass` prefix |
+| **11. ADVERSARIAL_VALIDATION** | Adversarial design review | ❌ No | ❌ No | "Attack this design...", "Find flaws..." |
+| **12. CHAIN_OF_VERIFICATION** | Claim verification | ❌ No | ❌ No | "Verify this claim...", "Fact-check..." |
+| **13. BACKCASTING** | Backward roadmap planning | ❌ No | ❌ No | "How do I get to X in 5 years?" |
+| **14. DELPHI_METHOD** | Expert estimation | ❌ No | ❌ No | "Estimate timeline...", "Forecast..." |
+| **15. BREAKGLASS** | Emergency | ✅ Yes | ✅ Yes | `!breakglass` prefix |
 
 ### Reflexion Learning Pattern
 
@@ -144,7 +164,7 @@ The sequential-thinking flow implements the **Reflexion** pattern for continuous
 | 🛑 Reaction | On "Starting work..." message | Set abort flag, halt at next turn |
 | 👍 Reaction | On commit message | Merge branch to main |
 | 👎 Reaction | On commit message | Delete branch, reject changes |
-| Low confidence | Confidence < 30% for 2 turns | Escalate model |
+| Low confidence | Confidence < 50% for 3 turns | Escalate model |
 | Repeated errors | Same error 3 times | Escalate model |
 | No progress | No file changes for 5 turns | Escalate model |
 | Max escalation | Already at highest tier, still stuck | Ask user for clarification |
@@ -412,33 +432,47 @@ flowchart TD
 
 ### 8. Sequential-Thinking Flow (Code Implementation)
 
-For complex multi-turn tasks requiring code generation and tool execution. This is the **primary agentic flow** with full Reflexion learning.
+For complex multi-turn tasks requiring code generation and tool execution. This is the **primary agentic flow** with full Reflexion learning and **phase-based iterative execution**.
 
 **Process:**
 1. Setup: Acquire lock, create session/branch
-2. Execute turns (up to maxTurns) with Chain-of-Thought prompting
-3. Each turn: LLM + MCP tools execute tasks
-4. Evaluate confidence and trajectory after each turn
-5. Self-reflect on progress, generate key insights
+2. Planning model creates a phase-based plan (if required)
+3. **OUTER LOOP**: For each phase in plan.phases
+   - Stream: "Starting Phase N: {phase.name}"
+   - **INNER LOOP**: Execute turns for this phase (up to phase.estimated_turns)
+     - Execute turn with LLM + MCP tools
+     - Evaluate confidence
+     - Check escalation triggers (confidence < 50% for 3 turns)
+     - Check abort flag
+     - If phase acceptance criteria met → break inner loop
+   - Evaluate phase: Score completion, generate summary, checkpoint
+   - Stream: "Phase N complete. Progress: N/total phases"
+   - Next phase (with summary of completed phases as context)
+4. Final evaluation and self-reflection
+5. Save reflections and key insights to DynamoDB
 6. On completion: checkpoint, commit, ask for user feedback
 
 ```mermaid
 flowchart TD
     A[User Request] --> B[Setup: Lock + Session]
-    B --> C{Execute Turns}
-    C -->|Turn 1| D[Execute: LLM + MCP Tools]
-    D --> E[Evaluate: Confidence + Trajectory]
-    E --> F{Complete?}
-    F -->|No| G[Confidence < 30%?]
-    G -->|Yes| H[Escalate Model Tier]
-    G -->|No| I[Check Abort Flag]
-    I -->|No Abort| J[Next Turn]
-    J --> C
-    F -->|Yes| K[Self-Reflect: What Worked/Failed]
-    K --> L[Save: Reflection + Insights]
-    L --> M[Checkpoint + Commit]
-    H --> C
-    M --> N[User Feedback: 👍/👎]
+    B --> C[Plan Phases]
+    C --> D{Next Phase?}
+    D -->|Yes| E[Stream: Starting Phase N]
+    E --> F[Execute Turn]
+    F --> G[Evaluate Turn]
+    G --> H{Phase Complete?}
+    H -->|No| I{Max Turns for Phase?}
+    I -->|No| J[Check Abort/Escalation]
+    J --> F
+    I -->|Yes| K[Phase Timeout - Summarize]
+    H -->|Yes| L[Evaluate Phase]
+    K --> L
+    L --> M[Checkpoint + Summary]
+    M --> D
+    D -->|No| N[Final Evaluation]
+    N --> O[Self-Reflect]
+    O --> P[Finalize]
+    P --> Q[User Feedback: 👍/👎]
 ```
 
 **Memory Components:**
@@ -453,7 +487,7 @@ flowchart TD
 | 🛑 Reaction | On "Starting work..." | Set abort flag, halt at next turn |
 | 👍 Reaction | On commit message | Merge branch to main |
 | 👎 Reaction | On commit message | Delete branch, reject changes |
-| Low confidence | Confidence < 30% for 2 turns | Escalate model |
+| Low confidence | Confidence < 50% for 3 turns | Escalate model |
 | Repeated errors | Same error 3 times | Escalate model |
 | No progress | No file changes for 5 turns | Escalate model |
 | Max escalation | Already at Opus, still stuck | Ask user for clarification |
@@ -555,6 +589,8 @@ flowchart TD
 
 **Best for:** "Proofread this...", "Check my spelling...", "Grammar review..."
 
+### 13. Dialectic Flow (Thesis → Antithesis → Synthesis)
+
 For abstract philosophical questions seeking understanding through dialectical exploration.
 
 **Process:**
@@ -576,7 +612,7 @@ flowchart TD
 - "meaning of", "nature of", "philosophically", "existential"
 - "what is the purpose", "what is reality", "what is truth"
 
-### 13. Multi-Source Consensus Flow (Factual)
+### 14. Multi-Source Consensus Flow (Factual)
 
 For factual questions requiring verification across multiple independent sources.
 
@@ -602,22 +638,108 @@ flowchart TD
 - "is it true that", "fact check", "verify", "actually true"
 - "how many", "when did", "where is", "who was"
 
-### 14. Angel/Devil Debate Flow (Moral/Ethical)
+### 15. Angel/Devil Debate Flow (Moral/Ethical)
 
 For moral dilemmas and ethical questions requiring balanced consideration of both sides.
 
 **Process:**
-1. Model A (Angel) argues **FOR** the position
-2. Model B (Devil) argues **AGAINST** the position
-3. Tier3 Judge synthesizes a **balanced, nuanced response**
+1. Angel argues **FOR** (tier2)
+2. Devil argues **AGAINST** (tier2)
+3. Angel steel-mans Devil’s argument
+4. Devil steel-mans Angel’s argument
+5. Angel responds to strengthened Devil
+6. Devil responds to strengthened Angel
+7. Tier3 Judge synthesizes a **balanced, nuanced response**
 
 ```mermaid
 flowchart TD
     A[User Question] --> B[Tier2: Angel - Argue FOR]
     A --> C[Tier2: Devil - Argue AGAINST]
-    B --> D[Tier3 + Thinking: Judge]
-    C --> D
-    D --> E[Balanced Nuanced Response]
+    B --> D[Angel Steel-Man]
+    C --> E[Devil Steel-Man]
+    D --> F[Angel Responds]
+    E --> G[Devil Responds]
+    F --> H[Tier3 + Thinking: Judge]
+    G --> H
+    H --> I[Balanced Nuanced Response]
+```
+
+### 16. Adversarial Validation Flow (Design Hardening)
+
+For adversarial design reviews and security hardening.
+
+**Process:**
+1. Generator creates initial solution (tier2)
+2. Red Team attacks/finds flaws (tier3)
+3. Generator patches and repeats (max rounds)
+4. Judge validates final solution (tier3)
+
+```mermaid
+flowchart TD
+    A[User Request] --> B[Improve Prompt]
+    B --> C[Generator: Initial Design]
+    C --> D[Red Team: Attack]
+    D --> E[Generator: Patch]
+    E --> D
+    D --> F[Judge: Final Validation]
+    F --> G[Hardened Output]
+```
+
+### 17. Chain of Verification Flow (CoVe)
+
+For factual queries with high hallucination risk.
+
+**Process:**
+1. Baseline answer (tier2)
+2. Generate verification questions
+3. Independently verify each claim
+4. Reviser compares and revises (tier3)
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Baseline Answer]
+    B --> C[Generate Verification Questions]
+    C --> D[Verify Claim 1]
+    C --> E[Verify Claim 2]
+    D --> F[Reviser]
+    E --> F
+    F --> G[Final Answer]
+```
+
+### 18. Backcasting Flow (Backward Planning)
+
+For long-term roadmaps and goal-driven planning.
+
+**Process:**
+1. Define goal state and timeline (tier2)
+2. Generate backward milestones (tier3)
+3. Feasibility review (tier3)
+4. Action plan from present → goal
+
+```mermaid
+flowchart TD
+    A[User Goal] --> B[Define Goal]
+    B --> C[Backward Milestones]
+    C --> D[Feasibility Review]
+    D --> E[Action Plan]
+```
+
+### 19. Delphi Method Flow (Iterative Expert Consensus)
+
+For estimation and forecasting with iterative expert refinement.
+
+**Process:**
+1. Round 1 expert estimates (tier2)
+2. Aggregate reasoning and ranges
+3. Round 2 revisions (optional Round 3)
+4. Judge synthesizes consensus (tier3)
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Round 1: Experts]
+    B --> C[Aggregate]
+    C --> D[Round 2: Revisions]
+    D --> E[Judge: Consensus]
 ```
 
 **Best for:** "Should I...", "Is it ethical...", "Moral dilemma", "Right or wrong"
