@@ -5,7 +5,7 @@ An autonomous multi-agent Discord bot that can execute complex multi-turn tasks,
 **Key Features:**
 - 🤖 Multi-turn agentic execution with **Reflexion** learning pattern
 - 🧠 **Sequential Thinking** - Planning model thinks step-by-step before generating plans
-- 🗂️ Per-thread S3 artifact storage with automatic file sync
+- 🗂️ Per-channel S3 artifact storage with automatic file sync
 - 🎯 Specialized agent roles (Python coder, DevOps engineer, Architect, etc.)
 - 📈 Automatic tier escalation for complex tasks
 - 🔄 **Self-reflection** and persistent learning from past attempts
@@ -58,7 +58,7 @@ User Message
     ├─→ SEQUENTIAL-THINKING (complex multi-turn with code generation)
     │   └─→ Chain-of-Thought execution with self-reflection
     │   └─→ CODE GENERATION with MCP tools
-    │   └─→ Per-thread artifact storage in S3
+    │   └─→ Per-channel artifact storage in S3
     │   └─→ Evaluator scores trajectory → Model reflects
     │
     ├─→ DIALECTIC (philosophical synthesis)
@@ -294,11 +294,11 @@ This reduces errors and improves logic by forcing models to articulate their rea
 
 ### 3. Per-Thread S3 Artifact Storage
 
-Each Discord thread gets its own isolated workspace:
+Each Discord channel gets its own isolated workspace:
 
 **Architecture:**
-- **Workspace**: `/workspace/<thread-id>/` in Kubernetes pod
-- **S3 Sync**: `s3://discord-bot-artifacts/threads/<thread-id>/`
+- **Workspace**: `/workspace/<channel-id>/` in Kubernetes pod
+- **S3 Sync**: `s3://discord-bot-artifacts/channels/<channel-id>/`
 - **Discord Attachments**: Auto-synced to workspace before execution
 - **Model Outputs**: Use `<<filename>>` markers to send files back to Discord
 
@@ -657,7 +657,7 @@ app/
 │   │   │   ├── evaluator.ts   # Trajectory evaluation
 │   │   │   ├── memory.ts      # Reflection management
 │   │   │   └── types.ts       # Reflexion interfaces
-│   │   ├── workspace/        # Per-thread S3 artifact storage
+│   │   ├── workspace/        # Per-channel S3 artifact storage
 │   │   │   ├── manager.ts    # Workspace operations
 │   │   │   ├── s3-sync.ts    # S3 synchronization
 │   │   │   └── file-sync.ts  # Discord attachment sync
@@ -730,7 +730,7 @@ LITELLM_BASE_URL=http://localhost:4000
 AWS_REGION=ca-central-1
 DYNAMODB_SESSIONS_TABLE=discord_sessions
 DYNAMODB_EXECUTIONS_TABLE=discord_executions
-S3_ARTIFACT_BUCKET=discord-bot-artifacts  # Per-thread artifact storage
+S3_ARTIFACT_BUCKET=discord-bot-artifacts  # Per-channel artifact storage
 PLANNER_MODEL_ID=kimi-k2.5                # Model for planning phase
 ```
 
@@ -758,93 +758,6 @@ terraform apply -target=aws_s3_bucket.artifacts
 ```bash
 terraform apply
 ```
-
-## Usage Examples
-
-### Simple Q&A
-
-```
-User: @bot what is async/await in JavaScript?
-Bot: [Responds with explanation, no code generation]
-```
-
-### Tool Execution
-
-```
-User: @bot run kubectl get pods
-Bot: [Executes command, shows output]
-```
-
-### Code Implementation (Sequential-Thinking)
-
-```
-User: @bot refactor the authentication module to use JWT
-Bot: 🚀 Starting work... (react 🛑 to stop)
-     🤔 Turn 1/20 | Confidence: 85% | Model: gemini
-     📁 Reading: src/auth/index.ts
-     ✏️ Writing: src/auth/jwt.ts
-     ✅ Turn 1 complete | Confidence: 90% | Files: 2 modified
-     
-     [... more turns ...]
-     
-     📝 Commit: Refactor auth to use JWT
-     Branch: `auth-jwt-refactor`
-     Files: auth/index.ts, auth/jwt.ts, auth/middleware.ts
-     👍 to merge | 👎 to reject
-```
-
-User reacts 👍 → Branch merged automatically
-
-### Stopping Execution
-
-```
-Bot: 🚀 Starting work...
-User: [Reacts with 🛑]
-Bot: ⏹️ Execution stop requested. Will halt at next turn.
-     [Stops at next turn, saves checkpoint]
-```
-
-## Debugging
-
-### View Execution Logs
-
-Execution logs are stored in S3 as JSON lines:
-```bash
-# Download execution logs from S3
-aws s3 ls s3://discord-bot-artifacts/executions/<channel-id>/<execution-id>/
-aws s3 cp s3://discord-bot-artifacts/executions/<channel-id>/<execution-id>/execution.log .
-```
-
-**Sessions and executions are stored in DynamoDB:**
-```bash
-aws dynamodb query \
-  --table-name discord_sessions \
-  --key-condition-expression "pk = :channelid" \
-  --expression-attribute-values '{":channelid":{"S":"1234567890"}}'
-```
-
-**Application Logs:**
-```bash
-kubectl logs -f deployment/discord-bot -n discord-bot
-```
-
-### Check Execution State
-
-```typescript
-import { getThreadState } from './modules/redis/state';
-
-const state = await getThreadState(channelId);
-console.log(state);
-```
-
-### Monitor Progress
-
-All progress updates are streamed to Discord in real-time:
-- Turn start/complete
-- Tool execution
-- Checkpoints
-- Escalations
-- Clarification requests
 
 ## Configuration
 
@@ -909,7 +822,7 @@ Example LiteLLM model configuration:
 5. **Checkpointing** - Saves progress every 5 turns
 6. **Error tracking** - Detects repeated failures (3x same error)
 7. **User clarification** - Asks for help when truly stuck
-8. **Thread isolation** - Each thread has independent lock
+8. **Channel isolation** - Each channel has independent lock
 9. **Event logging** - Full audit trail in S3
 10. **Progress streaming** - Real-time visibility in Discord
 
@@ -919,27 +832,6 @@ Example LiteLLM model configuration:
 - [Workspace Module](app/src/modules/workspace/README.md) - S3 artifact storage
 - [Handlers Module](app/src/handlers/README.md) - Reaction & debounce handlers
 - [Infrastructure](terraform/README.md) - Terraform configuration
-
-## Changelog
-
-### Latest Changes
-
-#### Architecture Flow (NEW)
-- Added `ARCHITECTURE` flow type for design/planning tasks without code generation
-- Flow routes `architecture-analysis` and design questions to planning-only mode
-- Confidence evaluation focuses on: completeness, conflicting info, holes identified
-- Can transition to `SEQUENTIAL_THINKING` when user requests implementation
-
-#### Planning Prompt Improvements
-- Added **Sequential Thinking Process** to planning prompt
-- Planning model thinks step-by-step before generating output
-- Steps: Analyze → Identify Domain → Assess Complexity → Determine Continuity → Plan → Draft → Review
-
-#### Architecture-Specific Evaluation
-- Added `evaluateArchitectureTrajectory()` method to evaluator
-- Metrics: Task completion, Design quality, Efficiency
-- NO code quality metrics (since no code is generated)
-- Focus on design clarity and completeness
 
 ## Contributing
 
