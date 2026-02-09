@@ -124,7 +124,12 @@ export async function chatCompletion(
   const config = getConfig();
   const url = `${config.LITELLM_BASE_URL}/v1/chat/completions`;
 
-  const body = JSON.stringify(requestBody);
+  // Build request body with tags from metadata at top level
+  const bodyObj = {
+    ...requestBody,
+    ...(requestBody.metadata?.tags && { tags: requestBody.metadata.tags }),
+  };
+  const body = JSON.stringify(bodyObj);
   log.info(`Request payload: ${body}`);
 
   const startTime = Date.now();
