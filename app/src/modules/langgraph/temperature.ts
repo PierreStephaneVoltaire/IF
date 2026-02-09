@@ -43,6 +43,10 @@ const FLOW_TEMPERATURE_CONFIG: Record<FlowType, FlowTemperatureConfig> = {
   [FlowType.ANGEL_DEVIL]:        { baseTemperature: 0.7, baseTopP: 0.95 },
   [FlowType.BREAKGLASS]:         { baseTemperature: 0.5, baseTopP: 0.95 },
   [FlowType.BRANCH]:             { baseTemperature: 0.5, baseTopP: 0.95 },
+  [FlowType.ADVERSARIAL_VALIDATION]: { baseTemperature: 0.7, baseTopP: 0.95 },
+  [FlowType.CHAIN_OF_VERIFICATION]:  { baseTemperature: 0.3, baseTopP: 0.9 },
+  [FlowType.BACKCASTING]:        { baseTemperature: 0.4, baseTopP: 0.9 },
+  [FlowType.DELPHI_METHOD]:      { baseTemperature: 0.5, baseTopP: 0.9 },
 };
 
 // ---------------------------------------------------------------------------
