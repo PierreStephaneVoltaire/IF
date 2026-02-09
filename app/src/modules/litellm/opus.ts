@@ -120,7 +120,7 @@ export async function classifyRequest(
       },
     ],
     metadata: {
-      tags: ['tier2', 'classifier'],
+      tags: ['tier1', 'classifier'],
     },
   });
 
