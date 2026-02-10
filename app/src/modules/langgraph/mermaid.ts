@@ -248,7 +248,8 @@ export class MermaidGenerator {
 
     try {
       await fs.writeFile(mmdPath, mermaidSource, 'utf-8');
-      await execAsync(`npx @mermaid-js/mermaid-cli -i "${mmdPath}" -o "${pngPath}"`);
+      // Pass --no-sandbox flag for Puppeteer to work in containerized environments
+      await execAsync(`npx @mermaid-js/mermaid-cli -i "${mmdPath}" -o "${pngPath}" -p "--no-sandbox --disable-setuid-sandbox"`);
       const buffer = await fs.readFile(pngPath);
       return buffer;
     } finally {

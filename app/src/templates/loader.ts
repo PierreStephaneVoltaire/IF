@@ -35,6 +35,12 @@ export function loadPrompt(category: string): string {
   return template;
 }
 
+export function loadUserPrompt(name: string): string {
+  log.info(`Loading user prompt: ${name}`);
+  const template = loadTemplate(`user_prompts/${name}`);
+  return template;
+}
+
 export function renderTemplate(template: string, variables: Record<string, string>): string {
   let rendered = template;
   for (const [key, value] of Object.entries(variables)) {

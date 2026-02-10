@@ -4,6 +4,7 @@ import {
   ThreadChannel,
   ChannelType,
   AttachmentBuilder,
+  EmbedBuilder,
 } from 'discord.js';
 import { createLogger } from '../../utils/logger';
 import type { ChannelInfo, SendMessageOptions } from './types';
@@ -133,6 +134,23 @@ export async function createProjectChannel(
 
   log.info(`Project channel created: ${channel.id}`);
   return channel as TextChannel;
+}
+
+export async function sendEmbed(
+  client: Client,
+  channelId: string,
+  embed: EmbedBuilder
+): Promise<void> {
+  log.info(`sendEmbed to ${channelId}`);
+
+  const channel = await client.channels.fetch(channelId);
+  if (!channel || !channel.isTextBased()) {
+    log.error(`Channel ${channelId} not found or not text-based`);
+    throw new Error(`Invalid channel: ${channelId}`);
+  }
+
+  await (channel as TextChannel | ThreadChannel).send({ embeds: [embed] });
+  log.info(`Embed sent to ${channelId}`);
 }
 
 export async function getChannel(client: Client, channelId: string): Promise<ChannelInfo> {

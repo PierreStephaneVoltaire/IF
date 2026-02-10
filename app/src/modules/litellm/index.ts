@@ -183,6 +183,17 @@ export function extractContent(response: ChatCompletionResponse): string {
 }
 
 export function extractJsonFromContent<T>(content: string): T | null {
+  // First try to extract JSON from markdown code blocks
+  const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    try {
+      return JSON.parse(codeBlockMatch[1].trim()) as T;
+    } catch {
+      // Fall through to try raw JSON extraction
+    }
+  }
+
+  // Fall back to raw JSON extraction
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     return null;

@@ -78,7 +78,7 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
     const modelUsed = response.model;
     log.info(`Response generated: ${content.length} chars, model: ${modelUsed}`);
 
-    // Generate Mermaid diagram
+    // Generate Mermaid diagram (non-blocking - don't let diagram errors break the response)
     const generator = getMermaidGenerator();
     const mermaidSource = generator.generate({
       flowType: state.flowType,
@@ -88,8 +88,15 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
     });
 
     await logger.uploadMermaid(mermaidSource);
-    const mermaidPng = await generator.renderPng(mermaidSource);
-    await logger.uploadDiagramPng(mermaidPng);
+
+    // Try to render PNG, but don't let it fail the whole request
+    try {
+      const mermaidPng = await generator.renderPng(mermaidSource);
+      await logger.uploadDiagramPng(mermaidPng);
+    } catch (diagramError) {
+      log.warn(`Failed to render Mermaid diagram: ${diagramError}`);
+      // Continue - diagram is optional, user still gets their response
+    }
 
     // Upload metadata
     const metadata = {

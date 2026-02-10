@@ -110,6 +110,10 @@ resource "kubernetes_deployment" "discord_bot" {
         labels = {
           app = "discord-bot"
         }
+        # Force pod recreation when packer build produces a new image
+        annotations = {
+          "build_trigger" = null_resource.packer_build.id
+        }
       }
 
       spec {

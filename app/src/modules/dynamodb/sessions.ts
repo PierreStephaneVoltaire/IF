@@ -97,6 +97,7 @@ export async function getOrCreateSession(channelid: string, branchName: string):
 
   if (!session) {
     log.info(`Session not found, creating new session`);
+    const config = getConfig();
     session = {
       channel_id: channelid,
       branch_name: branchName,
@@ -108,7 +109,7 @@ export async function getOrCreateSession(channelid: string, branchName: string):
       created_at: new Date().toISOString(),
       sub_topics: {},
       workspace_path: `/workspace/${channelid}`,
-      s3_prefix: `s3://discord-bot-artifacts/threads/${channelid}/`,
+      s3_prefix: `s3://${config.S3_ARTIFACT_BUCKET}/threads/${channelid}/`,
       synced_files: [],
     };
 

@@ -1,5 +1,6 @@
 import { workspaceManager } from './manager';
 import { createLogger } from '../../utils/logger';
+import { getConfig } from '../../config/index';
 
 const log = createLogger('WORKSPACE:S3_SYNC');
 
@@ -7,7 +8,8 @@ export class S3Sync {
     private bucketName: string;
 
     constructor() {
-        this.bucketName = process.env.S3_ARTIFACT_BUCKET || 'discord-bot-artifacts';
+        const config = getConfig();
+        this.bucketName = config.S3_ARTIFACT_BUCKET;
     }
 
     async syncToS3(channelid: string): Promise<void> {

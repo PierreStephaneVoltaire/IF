@@ -194,8 +194,15 @@ async function judgeNode(state: AngelDevilGraphState): Promise<AngelDevilGraphSt
     });
 
     await logger.uploadMermaid(mermaidSource);
-    const mermaidPng = await generator.renderPng(mermaidSource);
-    await logger.uploadDiagramPng(mermaidPng);
+
+    // Try to render PNG, but don't let it fail the whole request
+    try {
+      const mermaidPng = await generator.renderPng(mermaidSource);
+      await logger.uploadDiagramPng(mermaidPng);
+    } catch (diagramError) {
+      log.warn(`Failed to render Mermaid diagram: ${diagramError}`);
+      // Continue - diagram is optional, user still gets their response
+    }
 
     // Upload metadata
     const metadata = {

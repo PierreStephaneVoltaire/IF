@@ -19,7 +19,8 @@ import type { PipelineResult } from './types';
 import { FlowType } from '../modules/litellm/types';
 import { s3Sync } from '../modules/workspace/s3-sync';
 import { discordFileSync, type SyncResult } from '../modules/workspace/file-sync';
-import { getDiscordClient, createProjectChannel } from '../modules/discord/index';
+import { getDiscordClient, createProjectChannel, sendEmbed } from '../modules/discord/index';
+import { EmbedBuilder } from 'discord.js';
 import { getChatClient } from '../modules/chat';
 import { generateThreadName } from '../modules/litellm/opus';
 import { getConfig } from '../config';
@@ -109,6 +110,29 @@ export async function processMessage(
       },
       messageId: message.id,
     });
+
+    // Send confirmation embed showing message received and classified
+    const chatClient = getChatClient();
+    const client = chatClient ? null : getDiscordClient();
+    if (client) {
+      const confirmEmbed = new EmbedBuilder()
+        .setColor(0x00AE86)
+        .setTitle('✅ Message Received')
+        .setDescription(`Processing your request...`)
+        .addFields(
+          { name: 'Classification', value: classifyResult.flow_type, inline: true },
+          { name: 'Tier', value: classifyResult.starting_tier, inline: true },
+          { name: 'Model Group', value: classifyResult.model_group, inline: true }
+        )
+        .setFooter({ text: `Execution ID: ${executionId}` })
+        .setTimestamp();
+
+      if (classifyResult.agent_role) {
+        confirmEmbed.addFields({ name: 'Agent Role', value: classifyResult.agent_role, inline: true });
+      }
+
+      await sendEmbed(client, message.channel_id, confirmEmbed);
+    }
 
     const flowType = classifyResult.flow_type;
     needsWorkspace = flowNeedsWorkspace(flowType);

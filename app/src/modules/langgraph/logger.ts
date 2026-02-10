@@ -38,7 +38,8 @@ export class ExecutionLogger {
   constructor(options: ExecutionLoggerOptions) {
     this.channelId = options.channelId;
     this.executionId = options.executionId;
-    this.bucket = options.bucket || 'discord-bot-artifacts';
+    const config = getConfig();
+    this.bucket = options.bucket || config.S3_ARTIFACT_BUCKET;
     this.buffer = [];
     log.info(`Execution logger initialized: channel=${this.channelId}, execution=${this.executionId}`);
   }
