@@ -23,10 +23,8 @@ export interface ChatCompletionRequest {
   tool_choice?: string | { type: string; function: { name: string } };
   temperature?: number;
   top_p?: number;
-  metadata?: {
-    tags?: string[];
-    [key: string]: unknown;
-  };
+  tags?: string[]; // Deprecated: use model_group instead
+  model_group?: string; // New: specialized model group format {type}-{tier}-{mode}-{tools}
 }
 
 export interface ToolCall {
@@ -277,5 +275,5 @@ export interface ExecuteContext {
   userPrompt: string;
   branchName: string;
   model?: string;
-  tags?: string[];
+  modelGroup?: string; // New: specialized model group format {type}-{tier}-{mode}-{tools}
 }

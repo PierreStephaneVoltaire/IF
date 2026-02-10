@@ -3,11 +3,12 @@ import {
   executeSimpleTask,
 } from '../modules/litellm/executor';
 import { loadPrompt } from '../templates/loader';
-import { getTemplateForAgent, getPromptForTaskType, getModelForTaskType, getModelForAgent, getAgentRoleTags } from '../templates/registry';
+import { getTemplateForAgent, getPromptForTaskType, getModelForTaskType, getModelForAgent } from '../templates/registry';
 import { createLogger } from '../utils/logger';
 import type { PlanningResult, TaskType } from '../modules/litellm/types';
 import type { FormattedHistory, ProcessedAttachment } from './types';
 import type { ModelParams } from '../modules/langgraph/temperature';
+import { getAgentRoleGroup } from '../modules/langgraph/model-tiers';
 
 const log = createLogger('EXECUTE');
 
@@ -46,11 +47,14 @@ export async function executeTechnicalTask(
     systemPrompt = loadPrompt('coding');
   }
 
-  // Use tag-based routing for agent role
+  // Use model group routing for agent role (always tier2 for initial execution)
   const modelName = getModelForAgent(input.planning.agent_role);
-  const tags = getAgentRoleTags(input.planning.agent_role);
+  const modelGroup = getAgentRoleGroup(
+    input.planning.agent_role as unknown as import('../modules/litellm/model-groups').AgentRoleString,
+    'tier2'
+  );
   log.info(`Using model: ${modelName} for agent role: ${input.planning.agent_role}`);
-  log.info(`Using tags: ${tags.join(', ')}`);
+  log.info(`Using model_group: ${modelGroup}`);
 
   const planContext = `
 ## Current Plan (plans/${input.planning.topic_slug}.md)
@@ -79,7 +83,7 @@ ${input.planning.instruction_content}
       userPrompt,
       branchName: input.branchName,
       model: modelName,
-      tags,
+      modelGroup,
     },
     input.channelId
   );
@@ -116,7 +120,7 @@ export async function executeSimple(
     model,
     false, // Simple flow never needs tools
     input.modelParams,
-    input.isTechnical ? ['tier2', 'general'] : undefined
+    input.isTechnical ? 'general-tier2-thinking' : undefined
   );
 
   log.info(`Simple execution complete, response length: ${response.length}`);
@@ -128,7 +132,7 @@ export async function executeSimple(
 }
 
 const BREAKGLASS_MODEL_MAP: Record<string, string> = {
-  'opus': 'claude-opus-4.5',
+  'opus': 'claude-opus-4.6',
   'sonnet': 'claude-sonnet-4.5',
   'gemini': 'gemini-3-pro',
   'qwen': 'qwen3-max',
@@ -182,7 +186,7 @@ export async function executeBreakglass(
     actualModel,
     false, // No tools for breakglass
     input.modelParams,
-    ['tier4', 'tools']
+    'tools-tier4-creative'
   );
 
   log.info(`Breakglass execution complete, response length: ${response.length}`);

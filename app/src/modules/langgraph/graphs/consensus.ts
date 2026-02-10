@@ -1,20 +1,21 @@
 /**
- * ConsensusGraph - Parallel Flow
+ * ConsensusGraph - Multi-Node Flow
  *
- * A parallel graph for multi-source consensus on factual questions.
- * Uses tag-based routing:
- * - Independent answers: tier2 + general
- * - Judge: tier3 + thinking
+ * A graph for building consensus from multiple sources.
+ * Uses model group-based routing:
+ * - Answer nodes: general-tier2
+ * - Judge: general-tier3
  *
  * Flow: start → answer_1 → answer_2 → answer_3 → judge → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
 import { chatCompletion, extractContent } from '../../litellm/index';
+import { getModelGroup } from '../model-tiers';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { createExecutionLogger } from '../logger';
-import { loadPrompt, renderTemplate } from '../../../templates/loader';
+import { loadPrompt } from '../../../templates/loader';
 import { getMermaidGenerator } from '../mermaid';
 import type { GraphResult, GraphInvokeOptions } from './types';
 
@@ -29,8 +30,8 @@ interface ConsensusGraphState {
   executionId: string;
   flowType: FlowType;
   userQuestion: string;
-  answerTags: string[];
-  judgeTags: string[];
+  answerModelGroup: string;
+  judgeModelGroup: string;
   models: string[];
   judgeModel: string;
   answers: string[];
@@ -40,48 +41,164 @@ interface ConsensusGraphState {
 }
 
 // ============================================================================
-// Finalize Helper
+// Node Functions
 // ============================================================================
 
-async function finalizeGraph(state: ConsensusGraphState): Promise<ConsensusGraphState> {
+/**
+ * Generate answers from multiple models
+ */
+async function generateAnswers(state: ConsensusGraphState): Promise<ConsensusGraphState> {
   const logger = createExecutionLogger({
     channelId: state.channelId,
     executionId: state.executionId,
   });
 
-  logger.recordNode('finalize');
+  logger.recordNode('start');
+  logger.recordNode('answer_1');
+  logger.recordNode('answer_2');
+  logger.recordNode('answer_3');
 
-  const generator = getMermaidGenerator();
-  const mermaidSource = generator.generate({
-    flowType: state.flowType,
-    traversedNodes: [...state.traversedNodes, 'finalize'],
-    turns: [],
-    finalStatus: 'complete',
-  });
+  log.info(`ConsensusGraph: Starting execution for channel ${state.channelId}`);
 
-  await logger.uploadMermaid(mermaidSource);
-  const mermaidPng = await generator.renderPng(mermaidSource);
-  await logger.uploadDiagramPng(mermaidPng);
+  try {
+    const systemPrompt = loadPrompt('consensus-independent');
+    const params = getModelParams(FlowType.CONSENSUS);
 
-  const metadata = {
-    flowType: state.flowType,
+    const [response1, response2, response3] = await Promise.all([
+      chatCompletion({
+        model: state.answerModelGroup,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: state.userQuestion },
+        ],
+        temperature: params.temperature,
+        top_p: params.top_p,
+      }),
+      chatCompletion({
+        model: state.answerModelGroup,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: state.userQuestion },
+        ],
+        temperature: params.temperature,
+        top_p: params.top_p,
+      }),
+      chatCompletion({
+        model: state.answerModelGroup,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: state.userQuestion },
+        ],
+        temperature: params.temperature,
+        top_p: params.top_p,
+      }),
+    ]);
+
+    const answers = [
+      extractContent(response1),
+      extractContent(response2),
+      extractContent(response3),
+    ];
+    const models = [response1.model, response2.model, response3.model];
+
+    log.info(`Generated ${answers.length} answers, total length: ${answers.join('\n---\n').length} chars`);
+
+    return {
+      ...state,
+      answers,
+      models,
+      traversedNodes: ['start', 'answer_1', 'answer_2', 'answer_3'],
+    };
+  } catch (error) {
+    log.error(`Consensus answer generation error: ${error}`);
+    return {
+      ...state,
+      status: 'error',
+      consensus: `Error generating answers: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Judge node - evaluates and synthesizes consensus
+ */
+async function judgeNode(state: ConsensusGraphState): Promise<ConsensusGraphState> {
+  const logger = createExecutionLogger({
     channelId: state.channelId,
     executionId: state.executionId,
-    status: 'complete',
-    nodeCount: state.traversedNodes.length + 1,
-    models: state.models,
-    judgeModel: state.judgeModel,
-    tags: state.judgeTags,
-    timestamp: new Date().toISOString(),
-  };
+  });
 
-  await logger.uploadMetadata(metadata);
-  await logger.flush();
+  logger.recordNode('judge');
 
-  return {
-    ...state,
-    traversedNodes: [...state.traversedNodes, 'finalize'],
-  };
+  try {
+    const systemPrompt = loadPrompt('consensus-judge');
+    const params = getModelParams(FlowType.CONSENSUS);
+
+    const combinedAnswers = state.answers
+      .map((answer, i) => `Answer ${i + 1} (${state.models[i]}): ${answer}`)
+      .join('\n\n');
+
+    const response = await chatCompletion({
+      model: state.judgeModelGroup,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: `${state.userQuestion}\n\n${combinedAnswers}`,
+        },
+      ],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    const consensus = extractContent(response);
+    const judgeModel = response.model;
+    log.info(`Consensus generated: ${consensus.length} chars, model: ${judgeModel}`);
+
+    // Generate Mermaid diagram
+    const generator = getMermaidGenerator();
+    const mermaidSource = generator.generate({
+      flowType: state.flowType,
+      traversedNodes: ['start', 'answer_1', 'answer_2', 'answer_3', 'judge'],
+      turns: [],
+      finalStatus: 'complete',
+    });
+
+    await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
+
+    // Upload metadata
+    const metadata = {
+      flowType: state.flowType,
+      channelId: state.channelId,
+      executionId: state.executionId,
+      status: 'complete',
+      nodeCount: 5,
+      judgeModel,
+      models: state.models,
+      answerModelGroup: state.answerModelGroup,
+      timestamp: new Date().toISOString(),
+    };
+
+    await logger.uploadMetadata(metadata);
+    await logger.flush();
+
+    return {
+      ...state,
+      consensus,
+      judgeModel,
+      status: 'complete',
+      traversedNodes: [...state.traversedNodes, 'judge'],
+    };
+  } catch (error) {
+    log.error(`Consensus judge error: ${error}`);
+    return {
+      ...state,
+      status: 'error',
+      consensus: `Error generating consensus: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 // ============================================================================
@@ -94,104 +211,48 @@ export function createConsensusGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking ConsensusGraph for channel ${options.channelId}`);
 
-      // Use tier2 for independent answers, tier3 + thinking for judge
-      const answerTags = ['tier2', 'general'];
-      const judgeTags = ['tier3', 'thinking'];
+      // Get model groups from options, or use new tiered system
+      let answerModelGroup = options.modelGroup;
+      if (!answerModelGroup && options.startingTier) {
+        answerModelGroup = getModelGroup('consensus', options.startingTier as import('../model-tiers').Tier);
+      }
+      // Legacy fallback: convert tags if provided
+      if (!answerModelGroup && options.tags && options.tags.length > 0) {
+        const { tagsToModelGroup } = require('../../litellm/model-groups');
+        answerModelGroup = tagsToModelGroup(options.tags);
+      }
+      if (!answerModelGroup) {
+        answerModelGroup = 'consensus-tier2';
+      }
 
-      const params = getModelParams(FlowType.CONSENSUS);
-      const logger = createExecutionLogger({
-        channelId: options.channelId,
-        executionId: options.executionId,
-      });
-
-      logger.recordNode('start');
-      logger.recordNode('answer_1');
-      logger.recordNode('answer_2');
-      logger.recordNode('answer_3');
-
-      const independentPrompt = renderTemplate(loadPrompt('consensus-independent'), {
-        user_question: options.initialPrompt,
-      });
-
-      // Execute answers in parallel with tag-based routing
-      const [response1, response2, response3] = await Promise.all([
-        chatCompletion({
-          model: 'auto',
-          messages: [{ role: 'user', content: independentPrompt }],
-          temperature: params.temperature,
-          top_p: params.top_p,
-          metadata: { tags: answerTags },
-        }),
-        chatCompletion({
-          model: 'auto',
-          messages: [{ role: 'user', content: independentPrompt }],
-          temperature: params.temperature,
-          top_p: params.top_p,
-          metadata: { tags: answerTags },
-        }),
-        chatCompletion({
-          model: 'auto',
-          messages: [{ role: 'user', content: independentPrompt }],
-          temperature: params.temperature,
-          top_p: params.top_p,
-          metadata: { tags: answerTags },
-        }),
-      ]);
-
-      const answer1 = extractContent(response1);
-      const answer2 = extractContent(response2);
-      const answer3 = extractContent(response3);
-      const answers = [answer1, answer2, answer3];
-      const models = [response1.model, response2.model, response3.model];
-
-      log.info(`Independent answers generated: ${answer1.length}, ${answer2.length}, ${answer3.length} chars`);
-      log.info(`Models used: ${models.join(', ')}`);
-
-      logger.recordNode('judge');
-
-      const judgePrompt = renderTemplate(loadPrompt('consensus-judge'), {
-        user_question: options.initialPrompt,
-        model_1: models[0],
-        model_2: models[1],
-        model_3: models[2],
-        answer_1: answer1,
-        answer_2: answer2,
-        answer_3: answer3,
-      });
-
-      const judgeResponse = await chatCompletion({
-        model: 'auto',
-        messages: [{ role: 'user', content: judgePrompt }],
-        temperature: params.temperature,
-        top_p: params.top_p,
-        metadata: { tags: judgeTags },
-      });
-
-      const consensus = extractContent(judgeResponse);
-      const judgeModel = judgeResponse.model;
-      log.info(`Consensus synthesized: ${consensus.length} chars, judge model: ${judgeModel}`);
-
-      const state: ConsensusGraphState = {
+      const initialState: ConsensusGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.CONSENSUS,
         userQuestion: options.initialPrompt,
-        answerTags,
-        judgeTags,
-        models,
-        judgeModel,
-        answers,
-        consensus,
-        status: 'complete',
-        traversedNodes: ['start', 'answer_1', 'answer_2', 'answer_3', 'judge'],
+        answerModelGroup,
+        judgeModelGroup: 'consensus-tier3',
+        models: [],
+        judgeModel: '',
+        answers: [],
+        consensus: '',
+        status: 'running',
+        traversedNodes: ['start'],
       };
 
-      await finalizeGraph(state);
+      // Execute flow: answers → judge
+      let state = await generateAnswers(initialState);
+      if (state.status === 'error') {
+        return { response: state.consensus, model: state.models[0] || 'general-tier2', traversedNodes: state.traversedNodes, error: state.consensus };
+      }
+
+      state = await judgeNode(state);
 
       return {
-        response: consensus,
-        model: judgeModel,
+        response: state.consensus,
+        model: state.judgeModel || state.models[0] || 'general-tier2',
         traversedNodes: state.traversedNodes,
+        error: state.status === 'error' ? state.consensus : undefined,
       };
     },
   };

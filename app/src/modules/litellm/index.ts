@@ -3,6 +3,7 @@ import { getConfig } from '../../config/index';
 import { createLogger } from '../../utils/logger';
 import { getLiteLLMAgent } from './agent';
 import type { ChatCompletionRequest, ChatCompletionResponse, Tool, McpTool, ToolCall } from './types';
+import { tagsToModelGroup } from './model-groups';
 
 const log = createLogger('LITELLM');
 
@@ -124,11 +125,28 @@ export async function chatCompletion(
   const config = getConfig();
   const url = `${config.LITELLM_BASE_URL}/v1/chat/completions`;
 
-  // Build request body with tags from metadata at top level
-  const bodyObj = {
-    ...requestBody,
-    ...(requestBody.metadata?.tags && { tags: requestBody.metadata.tags }),
+  // Convert tags to model_group if model_group is not provided
+  let modelGroup = requestBody.model_group;
+  if (!modelGroup && requestBody.tags && requestBody.tags.length > 0) {
+    modelGroup = tagsToModelGroup(requestBody.tags);
+    log.info(`Converted tags ${requestBody.tags.join(', ')} to model_group: ${modelGroup}`);
+  }
+
+  // Use model_group as model name if model is not provided
+  const model = requestBody.model || modelGroup;
+  log.info(`Using model: ${model}`);
+
+  // Build request body without tags (use model_group instead)
+  const bodyObj: Record<string, unknown> = {
+    model,
+    messages: requestBody.messages,
+    ...(requestBody.tools && { tools: requestBody.tools }),
+    ...(requestBody.tool_choice && { tool_choice: requestBody.tool_choice }),
+    ...(requestBody.temperature !== undefined && { temperature: requestBody.temperature }),
+    ...(requestBody.top_p !== undefined && { top_p: requestBody.top_p }),
+    ...(modelGroup && { model_group: modelGroup }),
   };
+  
   const body = JSON.stringify(bodyObj);
   log.info(`Request payload: ${body}`);
 
@@ -181,3 +199,6 @@ export * from './opus';
 export * from './executor';
 export * from './types';
 export * from './agent'; // Export agent for connection management
+
+// Export model group functions for specialized routing
+export * from './model-groups';

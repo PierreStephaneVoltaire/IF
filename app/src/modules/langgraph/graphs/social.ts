@@ -2,13 +2,14 @@
  * SocialGraph - Single Node Flow
  *
  * A simple graph for social interactions, greetings, and casual chat.
- * Uses tag-based routing: tier1 + social
+ * Uses model group-based routing: general-tier1
  *
  * Flow: start → respond → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
 import { chatCompletion, extractContent } from '../../litellm/index';
+import { getModelGroup } from '../model-tiers';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { loadPrompt } from '../../../templates/loader';
@@ -28,7 +29,7 @@ interface SocialGraphState {
   flowType: FlowType;
   message: string;
   history?: MessageHistory;
-  tags: string[];
+  modelGroup: string;
   model: string;
   response: string;
   status: 'running' | 'complete' | 'error';
@@ -40,7 +41,7 @@ interface SocialGraphState {
 // ============================================================================
 
 /**
- * Respond node - generates a social response using tier1 + social tags
+ * Respond node - generates a social response using general-tier1 model group
  */
 async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
   const logger = createExecutionLogger({
@@ -52,7 +53,7 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
   logger.recordNode('respond');
 
   log.info(`SocialGraph: Starting execution for channel ${state.channelId}`);
-  log.info(`Tags: ${state.tags.join(', ')}`);
+  log.info(`Model Group: ${state.modelGroup}`);
 
   try {
     // Load prompt from template
@@ -65,18 +66,15 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
     const params = getModelParams(state.flowType);
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
-    // Generate response using tag-based routing
+    // Generate response using model group-based routing
     const response = await chatCompletion({
-      model: 'auto',
+      model: state.modelGroup,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
       temperature: params.temperature,
       top_p: params.top_p,
-      metadata: {
-        tags: state.tags,
-      },
     });
 
     const content = extractContent(response) || 'Hello!';
@@ -104,7 +102,7 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
       status: 'complete',
       nodeCount: 2,
       model: modelUsed,
-      tags: state.tags,
+      modelGroup: state.modelGroup,
       timestamp: new Date().toISOString(),
     };
 
@@ -129,7 +127,7 @@ async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
       executionId: state.executionId,
       status: 'error',
       error: String(error),
-      tags: state.tags,
+      modelGroup: state.modelGroup,
       timestamp: new Date().toISOString(),
     };
 
@@ -154,8 +152,20 @@ export function createSocialGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking SocialGraph for channel ${options.channelId}`);
 
-      // Use tier1 + social tags (from options or default)
-      const tags = options.tags || ['tier1', 'social'];
+      // Get modelGroup from options, or use new tiered system
+      let modelGroup = options.modelGroup;
+      if (!modelGroup) {
+        // Social is always tier1
+        modelGroup = getModelGroup('social', 'tier1');
+      }
+      // Legacy fallback: convert tags if provided
+      if (!modelGroup && options.tags && options.tags.length > 0) {
+        const { tagsToModelGroup } = require('../../litellm/model-groups');
+        modelGroup = tagsToModelGroup(options.tags);
+      }
+      if (!modelGroup) {
+        modelGroup = 'social-tier1';
+      }
 
       const initialState: SocialGraphState = {
         channelId: options.channelId,
@@ -163,7 +173,7 @@ export function createSocialGraph() {
         flowType: FlowType.SOCIAL,
         message: options.initialPrompt,
         history: options.history,
-        tags,
+        modelGroup,
         model: '',
         response: '',
         status: 'running',

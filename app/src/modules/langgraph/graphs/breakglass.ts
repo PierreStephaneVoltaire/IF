@@ -14,6 +14,7 @@ import { FlowType } from '../../litellm/types';
 import { loadPrompt } from '../../../templates/loader';
 import { createExecutionLogger } from '../logger';
 import { getMermaidGenerator } from '../mermaid';
+import { getModelGroup } from '../model-tiers';
 import type { GraphResult, GraphInvokeOptions, MessageHistory } from './types';
 
 const log = createLogger('GRAPH:BREAKGLASS');
@@ -23,7 +24,7 @@ const log = createLogger('GRAPH:BREAKGLASS');
 // ============================================================================
 
 const BREAKGLASS_MODEL_MAP: Record<string, string> = {
-  'opus': 'claude-opus-4.5',
+  'opus': 'claude-opus-4.6',
   'sonnet': 'claude-sonnet-4.5',
   'gemini': 'gemini-3-pro',
   'qwen': 'qwen3-max',
@@ -99,7 +100,14 @@ async function respondNode(state: BreakglassGraphState): Promise<BreakglassGraph
     const params = getModelParams(state.flowType);
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
-    // Call the model directly without tools (use tags for routing if actualModel is 'auto')
+    // Call the model directly without tools (use modelGroup for routing)
+    // Use new tiered model group system
+    const modelGroup = state.tags && state.tags.length > 0
+      ? (() => {
+          const { tagsToModelGroup } = require('../model-tiers');
+          return tagsToModelGroup(state.tags);
+        })()
+      : getModelGroup('breakglass', 'tier4');
     const response = await executeSimpleTask(
       'breakglass',
       userPrompt,
@@ -107,7 +115,7 @@ async function respondNode(state: BreakglassGraphState): Promise<BreakglassGraph
       actualModel,
       false, // No tools for breakglass
       params,
-      state.tags
+      modelGroup
     );
 
     log.info(`Breakglass execution complete, response length: ${response.length}`);
@@ -184,8 +192,10 @@ export function createBreakglassGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking BreakglassGraph for channel ${options.channelId}`);
 
-      // Use tier4 + tools tags (highest quality) or from options
+      // Use tier4 + tools (highest quality) or from options
       const tags = options.tags || ['tier4', 'tools'];
+      // Also set modelGroup if not provided
+      const modelGroup = options.modelGroup || getModelGroup('breakglass', 'tier4');
 
       const initialState: BreakglassGraphState = {
         channelId: options.channelId,

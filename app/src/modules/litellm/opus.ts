@@ -1,6 +1,7 @@
 import { chatCompletion, extractContent, extractJsonFromContent } from './index';
+import { buildModelGroup, getClassifierModel } from './model-groups';
 import { getConfig } from '../../config/index';
-import { loadTemplate, renderTemplate } from '../../templates/loader';
+import { loadTemplate, renderTemplate, loadUserPrompt } from '../../templates/loader';
 import { createLogger } from '../../utils/logger';
 import { shouldUseAgenticLoop } from '../../templates/registry';
 import type {
@@ -62,17 +63,14 @@ export async function shouldRespond(
   });
 
   const response = await chatCompletion({
-    model: 'auto',
+    model: getClassifierModel(),
     messages: [
       { role: 'system', content: systemPrompt },
       {
         role: 'user',
-        content: `Analyze the message and respond with JSON only.`,
+        content: loadUserPrompt('should_respond'),
       },
     ],
-    metadata: {
-      tags: ['tier2', 'general'],
-    },
   });
 
   const content = extractContent(response);
@@ -111,17 +109,14 @@ export async function classifyRequest(
   });
 
   const response = await chatCompletion({
-    model: 'auto',
+    model: getClassifierModel(),
     messages: [
       { role: 'system', content: systemPrompt },
       {
         role: 'user',
-        content: `Classify this request and respond with JSON only.`,
+        content: loadUserPrompt('classify_request'),
       },
     ],
-    metadata: {
-      tags: ['tier1', 'classifier'],
-    },
   });
 
   const content = extractContent(response);
@@ -188,7 +183,7 @@ export async function generatePlan(
       { role: 'system', content: systemPrompt },
       {
         role: 'user',
-        content: 'Generate a plan and respond with JSON only.',
+        content: loadUserPrompt('planning'),
       },
     ],
   });
@@ -273,3 +268,4 @@ export async function generateThreadName(content: string): Promise<string> {
 
   return slug || fallback || name || content.substring(0, 50);
 }
+

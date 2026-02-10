@@ -2,13 +2,14 @@
  * ShellGraph - Single Node Flow
  *
  * A simple graph for shell command suggestions.
- * Uses tag-based routing: tier2 + general
+ * Uses model group-based routing: general-tier2
  *
  * Flow: start → suggest → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
 import { chatCompletion, extractContent } from '../../litellm/index';
+import { getModelGroup } from '../model-tiers';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { loadPrompt } from '../../../templates/loader';
@@ -29,7 +30,7 @@ interface ShellGraphState {
   message: string;
   history?: MessageHistory;
   workspaceId: string;
-  tags: string[];
+  modelGroup: string;
   model: string;
   response: string;
   status: 'running' | 'complete' | 'error';
@@ -41,7 +42,7 @@ interface ShellGraphState {
 // ============================================================================
 
 /**
- * Suggest node - generates shell command suggestions using tier2 + general tags
+ * Suggest node - generates shell command suggestions using general-tier2 model group
  */
 async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
   const logger = createExecutionLogger({
@@ -53,7 +54,7 @@ async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
   logger.recordNode('suggest');
 
   log.info(`ShellGraph: Starting execution for channel ${state.channelId}`);
-  log.info(`Tags: ${state.tags.join(', ')}`);
+  log.info(`Model Group: ${state.modelGroup}`);
 
   try {
     // Load prompt from template
@@ -68,18 +69,15 @@ async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
     const params = getModelParams(state.flowType);
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
-    // Generate response using tag-based routing
+    // Generate response using model group-based routing
     const response = await chatCompletion({
-      model: 'auto',
+      model: state.modelGroup,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: fullHistory },
       ],
       temperature: params.temperature,
       top_p: params.top_p,
-      metadata: {
-        tags: state.tags,
-      },
     });
 
     const content = extractContent(response);
@@ -107,7 +105,7 @@ async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
       status: 'complete',
       nodeCount: 2,
       model: modelUsed,
-      tags: state.tags,
+      modelGroup: state.modelGroup,
       timestamp: new Date().toISOString(),
     };
 
@@ -132,7 +130,7 @@ async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
       executionId: state.executionId,
       status: 'error',
       error: String(error),
-      tags: state.tags,
+      modelGroup: state.modelGroup,
       timestamp: new Date().toISOString(),
     };
 
@@ -157,8 +155,20 @@ export function createShellGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking ShellGraph for channel ${options.channelId}`);
 
-      // Use tier2 + general tags (from options or default)
-      const tags = options.tags || ['tier2', 'general'];
+      // Get modelGroup from options, or use new tiered system
+      let modelGroup = options.modelGroup;
+      if (!modelGroup) {
+        // Shell is always tier2
+        modelGroup = getModelGroup('shell', 'tier2');
+      }
+      // Legacy fallback: convert tags if provided
+      if (!modelGroup && options.tags && options.tags.length > 0) {
+        const { tagsToModelGroup } = require('../../litellm/model-groups');
+        modelGroup = tagsToModelGroup(options.tags);
+      }
+      if (!modelGroup) {
+        modelGroup = 'shell-tier2';
+      }
 
       const initialState: ShellGraphState = {
         channelId: options.channelId,
@@ -167,7 +177,7 @@ export function createShellGraph() {
         message: options.initialPrompt,
         history: options.history,
         workspaceId: options.workspacePath || options.channelId,
-        tags,
+        modelGroup,
         model: '',
         response: '',
         status: 'running',

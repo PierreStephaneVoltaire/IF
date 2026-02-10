@@ -1,16 +1,17 @@
 /**
- * DialecticGraph - Parallel Flow
+ * DialecticGraph - Multi-Node Flow
  *
- * A parallel graph for philosophical exploration.
- * Uses tag-based routing:
- * - thesis/antithesis: tier2 + websearch (if websearch enabled)
- * - synthesizer: tier3 + thinking
+ * Implements thesis → antithesis → synthesis pattern for philosophical discourse.
+ * Uses model group-based routing:
+ * - Thesis/Antithesis: websearch-tier2
+ * - Synthesizer: general-tier3-thinking
  *
  * Flow: start → thesis → antithesis → synthesize → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
 import { chatCompletion, extractContent } from '../../litellm/index';
+import { getModelGroup } from '../model-tiers';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { createExecutionLogger } from '../logger';
@@ -29,9 +30,9 @@ interface DialecticGraphState {
   executionId: string;
   flowType: FlowType;
   userQuestion: string;
-  thesisTags: string[];
-  antithesisTags: string[];
-  synthesizerTags: string[];
+  thesisModelGroup: string;
+  antithesisModelGroup: string;
+  synthesizerModelGroup: string;
   thesisModel: string;
   antithesisModel: string;
   synthesizerModel: string;
@@ -46,6 +47,9 @@ interface DialecticGraphState {
 // Node Functions
 // ============================================================================
 
+/**
+ * Thesis node - presents the initial argument
+ */
 async function thesisNode(state: DialecticGraphState): Promise<DialecticGraphState> {
   const logger = createExecutionLogger({
     channelId: state.channelId,
@@ -55,151 +59,164 @@ async function thesisNode(state: DialecticGraphState): Promise<DialecticGraphSta
   logger.recordNode('start');
   logger.recordNode('thesis');
 
-  log.info(`DialecticGraph: Generating thesis for channel ${state.channelId}`);
-  log.info(`Tags: ${state.thesisTags.join(', ')}`);
+  log.info(`DialecticGraph: Starting execution for channel ${state.channelId}`);
 
-  const params = getModelParams(state.flowType);
+  try {
+    const systemPrompt = loadPrompt('dialectic-thesis');
+    const params = getModelParams(FlowType.DIALECTIC);
 
-  const thesisPrompt = renderTemplate(loadPrompt('dialectic-thesis'), {
-    user_question: state.userQuestion,
-  });
+    const response = await chatCompletion({
+      model: state.thesisModelGroup,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: state.userQuestion },
+      ],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
 
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [{ role: 'user', content: thesisPrompt }],
-    temperature: params.temperature,
-    top_p: params.top_p,
-    metadata: {
-      tags: state.thesisTags,
-    },
-  });
+    const thesis = extractContent(response);
+    const thesisModel = response.model;
+    log.info(`Thesis generated: ${thesis.length} chars, model: ${thesisModel}`);
 
-  const thesis = extractContent(response);
-  const modelUsed = response.model;
-  log.info(`Thesis generated: ${thesis.length} chars, model: ${modelUsed}`);
-
-  return {
-    ...state,
-    thesisModel: modelUsed,
-    thesis,
-    traversedNodes: ['start', 'thesis'],
-  };
+    return {
+      ...state,
+      thesis,
+      thesisModel,
+      traversedNodes: ['start', 'thesis'],
+    };
+  } catch (error) {
+    log.error(`Dialectic thesis error: ${error}`);
+    return {
+      ...state,
+      status: 'error',
+      synthesis: `Error generating thesis: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
+/**
+ * Antithesis node - presents opposing argument
+ */
 async function antithesisNode(state: DialecticGraphState): Promise<DialecticGraphState> {
-  const logger = createExecutionLogger({ channelId: state.channelId, executionId: state.executionId });
-  logger.recordNode('antithesis');
-
-  log.info(`DialecticGraph: Generating antithesis`);
-  log.info(`Tags: ${state.antithesisTags.join(', ')}`);
-
-  const params = getModelParams(state.flowType);
-
-  const antithesisPrompt = renderTemplate(loadPrompt('dialectic-antithesis'), {
-    user_question: state.userQuestion,
-    thesis: state.thesis,
-  });
-
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [{ role: 'user', content: antithesisPrompt }],
-    temperature: params.temperature,
-    top_p: params.top_p,
-    metadata: {
-      tags: state.antithesisTags,
-    },
-  });
-
-  const antithesis = extractContent(response);
-  const modelUsed = response.model;
-  log.info(`Antithesis generated: ${antithesis.length} chars, model: ${modelUsed}`);
-
-  return {
-    ...state,
-    antithesisModel: modelUsed,
-    antithesis,
-    traversedNodes: [...state.traversedNodes, 'antithesis'],
-  };
-}
-
-async function synthesizeNode(state: DialecticGraphState): Promise<DialecticGraphState> {
-  const logger = createExecutionLogger({ channelId: state.channelId, executionId: state.executionId });
-  logger.recordNode('synthesize');
-
-  log.info(`DialecticGraph: Generating synthesis`);
-  log.info(`Tags: ${state.synthesizerTags.join(', ')}`);
-
-  const params = getModelParams(state.flowType);
-
-  const synthesisPrompt = renderTemplate(loadPrompt('dialectic-synthesis'), {
-    user_question: state.userQuestion,
-    thesis: state.thesis,
-    antithesis: state.antithesis,
-  });
-
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [{ role: 'user', content: synthesisPrompt }],
-    temperature: params.temperature,
-    top_p: params.top_p,
-    metadata: {
-      tags: state.synthesizerTags,
-    },
-  });
-
-  const synthesis = extractContent(response);
-  const modelUsed = response.model;
-  log.info(`Synthesis generated: ${synthesis.length} chars, model: ${modelUsed}`);
-
-  return {
-    ...state,
-    synthesizerModel: modelUsed,
-    synthesis,
-    traversedNodes: [...state.traversedNodes, 'synthesize'],
-  };
-}
-
-async function finalizeNode(state: DialecticGraphState): Promise<DialecticGraphState> {
   const logger = createExecutionLogger({
     channelId: state.channelId,
     executionId: state.executionId,
   });
 
-  logger.recordNode('finalize');
+  logger.recordNode('antithesis');
 
-  // Generate Mermaid diagram
-  const generator = getMermaidGenerator();
-  const mermaidSource = generator.generate({
-    flowType: state.flowType,
-    traversedNodes: ['start', 'thesis', 'antithesis', 'synthesize', 'finalize'],
-    turns: [],
-    finalStatus: 'complete',
-  });
+  try {
+    const systemPrompt = loadPrompt('dialectic-antithesis');
+    const params = getModelParams(FlowType.DIALECTIC);
 
-  await logger.uploadMermaid(mermaidSource);
-  const mermaidPng = await generator.renderPng(mermaidSource);
-  await logger.uploadDiagramPng(mermaidPng);
+    const response = await chatCompletion({
+      model: state.antithesisModelGroup,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `${state.userQuestion}\n\nThesis: ${state.thesis}` },
+      ],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
 
-  const metadata = {
-    flowType: state.flowType,
+    const antithesis = extractContent(response);
+    const antithesisModel = response.model;
+    log.info(`Antithesis generated: ${antithesis.length} chars, model: ${antithesisModel}`);
+
+    return {
+      ...state,
+      antithesis,
+      antithesisModel,
+      traversedNodes: [...state.traversedNodes, 'antithesis'],
+    };
+  } catch (error) {
+    log.error(`Dialectic antithesis error: ${error}`);
+    return {
+      ...state,
+      status: 'error',
+      synthesis: `Error generating antithesis: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Synthesizer node - combines thesis and antithesis
+ */
+async function synthesizerNode(state: DialecticGraphState): Promise<DialecticGraphState> {
+  const logger = createExecutionLogger({
     channelId: state.channelId,
     executionId: state.executionId,
-    status: 'complete',
-    nodeCount: 5,
-    thesisModel: state.thesisModel,
-    antithesisModel: state.antithesisModel,
-    synthesizerModel: state.synthesizerModel,
-    tags: state.synthesizerTags,
-    timestamp: new Date().toISOString(),
-  };
+  });
 
-  await logger.uploadMetadata(metadata);
-  await logger.flush();
+  logger.recordNode('synthesize');
 
-  return {
-    ...state,
-    traversedNodes: [...state.traversedNodes, 'finalize'],
-  };
+  try {
+    const systemPrompt = loadPrompt('dialectic-synthesis');
+    const params = getModelParams(FlowType.DIALECTIC);
+
+    const response = await chatCompletion({
+      model: state.synthesizerModelGroup,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: `${state.userQuestion}\n\nThesis: ${state.thesis}\n\nAntithesis: ${state.antithesis}`,
+        },
+      ],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    const synthesis = extractContent(response);
+    const synthesizerModel = response.model;
+    log.info(`Synthesis generated: ${synthesis.length} chars, model: ${synthesizerModel}`);
+
+    // Generate Mermaid diagram
+    const generator = getMermaidGenerator();
+    const mermaidSource = generator.generate({
+      flowType: state.flowType,
+      traversedNodes: ['start', 'thesis', 'antithesis', 'synthesize'],
+      turns: [],
+      finalStatus: 'complete',
+    });
+
+    await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
+
+    // Upload metadata
+    const metadata = {
+      flowType: state.flowType,
+      channelId: state.channelId,
+      executionId: state.executionId,
+      status: 'complete',
+      nodeCount: 4,
+      thesisModel: state.thesisModel,
+      antithesisModel: state.antithesisModel,
+      synthesizerModel,
+      modelGroup: state.synthesizerModelGroup,
+      timestamp: new Date().toISOString(),
+    };
+
+    await logger.uploadMetadata(metadata);
+    await logger.flush();
+
+    return {
+      ...state,
+      synthesis,
+      synthesizerModel,
+      status: 'complete',
+      traversedNodes: [...state.traversedNodes, 'synthesize'],
+    };
+  } catch (error) {
+    log.error(`Dialectic synthesis error: ${error}`);
+    return {
+      ...state,
+      status: 'error',
+      synthesis: `Error generating synthesis: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 // ============================================================================
@@ -212,19 +229,29 @@ export function createDialecticGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking DialecticGraph for channel ${options.channelId}`);
 
-      // Thesis/antithesis always require websearch
-      const thesisTags = ['tier2', 'websearch'];
-      const antithesisTags = ['tier2', 'websearch'];
-      const synthesizerTags = ['tier3', 'thinking'];
+      // Get model groups from options, or use new tiered system
+      let thesisModelGroup = options.modelGroup;
+      if (!thesisModelGroup) {
+        // Dialectic is always tier2
+        thesisModelGroup = getModelGroup('dialectic', 'tier2');
+      }
+      // Legacy fallback: convert tags if provided
+      if (!thesisModelGroup && options.tags && options.tags.length > 0) {
+        const { tagsToModelGroup } = require('../../litellm/model-groups');
+        thesisModelGroup = tagsToModelGroup(options.tags);
+      }
+      if (!thesisModelGroup) {
+        thesisModelGroup = 'dialectic-tier2';
+      }
 
-      let state: DialecticGraphState = {
+      const initialState: DialecticGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.DIALECTIC,
         userQuestion: options.initialPrompt,
-        thesisTags,
-        antithesisTags,
-        synthesizerTags,
+        thesisModelGroup,
+        antithesisModelGroup: thesisModelGroup,
+        synthesizerModelGroup: 'dialectic-tier3',
         thesisModel: '',
         antithesisModel: '',
         synthesizerModel: '',
@@ -232,18 +259,25 @@ export function createDialecticGraph() {
         antithesis: '',
         synthesis: '',
         status: 'running',
-        traversedNodes: [],
+        traversedNodes: ['start'],
       };
 
-      // Execute sequential nodes
-      state = await thesisNode(state);
+      // Execute flow: thesis → antithesis → synthesize
+      let state = await thesisNode(initialState);
+      if (state.status === 'error') {
+        return { response: state.synthesis, model: state.thesisModel, traversedNodes: state.traversedNodes, error: state.synthesis };
+      }
+
       state = await antithesisNode(state);
-      state = await synthesizeNode(state);
-      state = await finalizeNode(state);
+      if (state.status === 'error') {
+        return { response: state.synthesis, model: state.antithesisModel, traversedNodes: state.traversedNodes, error: state.synthesis };
+      }
+
+      state = await synthesizerNode(state);
 
       return {
         response: state.synthesis,
-        model: state.synthesizerModel,
+        model: state.synthesizerModel || state.antithesisModel || state.thesisModel,
         traversedNodes: state.traversedNodes,
         error: state.status === 'error' ? state.synthesis : undefined,
       };

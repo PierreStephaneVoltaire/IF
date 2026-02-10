@@ -1,6 +1,6 @@
 import { createLogger } from '../utils/logger';
 import { classifyRequest as opusClassifyRequest } from '../modules/litellm/opus';
-import { buildTags } from '../modules/langgraph/model-tiers';
+import { getModelGroup, getClassifierModel } from '../modules/langgraph/model-tiers';
 import { FlowType, type AgentRole } from '../modules/litellm/types';
 import type { FilterContext } from './types';
 
@@ -20,7 +20,7 @@ export interface ClassifyOutput {
   flow_type: FlowType;
   starting_tier: 'tier1' | 'tier2' | 'tier3' | 'tier4';
   websearch: boolean;
-  tags: string[];
+  model_group: string; // New: specialized model group format {type}-{tier}-{mode}-{tools}
   agent_role?: AgentRole;
 }
 
@@ -62,12 +62,12 @@ export async function classifyRequest(input: ClassifyInput): Promise<ClassifyOut
   // Bypass for breakglass flow
   if (input.filter.is_breakglass) {
     log.info(`Breakglass flow detected, bypassing classification`);
-    const tags = ['tier4', 'tools'];
+    const modelGroup = getModelGroup('breakglass', 'tier4');
     return {
       flow_type: FlowType.BREAKGLASS,
       starting_tier: 'tier4',
       websearch: false,
-      tags,
+      model_group: modelGroup,
     };
   }
 
@@ -81,20 +81,31 @@ export async function classifyRequest(input: ClassifyInput): Promise<ClassifyOut
 
   const classifyResult = await opusClassifyRequest(context, input.messageId);
 
-  // Build tags from the classification result
-  const tags = buildTags(classifyResult.flow_type, classifyResult.starting_tier, {
-    websearch: classifyResult.websearch,
-    agentRole: classifyResult.agent_role,
-  });
+  // Build model_group from the classification result using new tiered system
+  const flowTypeString = classifyResult.flow_type as unknown as import('../modules/litellm/model-groups').FlowTypeString;
+  const agentRoleString = classifyResult.agent_role as unknown as import('../modules/litellm/model-groups').AgentRoleString | undefined;
+  
+  let modelGroup: string;
+  if (classifyResult.flow_type === FlowType.SEQUENTIAL_THINKING && agentRoleString) {
+    // For sequential thinking, use agent role group
+    modelGroup = getModelGroup('sequential-thinking', classifyResult.starting_tier, {
+      agentRole: agentRoleString,
+    });
+  } else {
+    // For other flows, use flow type group
+    modelGroup = getModelGroup(flowTypeString, classifyResult.starting_tier, {
+      websearch: classifyResult.websearch,
+    });
+  }
 
   log.info(`Classification result: flow=${classifyResult.flow_type}, tier=${classifyResult.starting_tier}, websearch=${classifyResult.websearch}`);
-  log.info(`Built tags: ${tags.join(', ')}`);
+  log.info(`Built model_group: ${modelGroup}`);
 
   return {
     flow_type: classifyResult.flow_type,
     starting_tier: classifyResult.starting_tier,
     websearch: classifyResult.websearch,
-    tags,
+    model_group: modelGroup,
     agent_role: classifyResult.agent_role,
   };
 }

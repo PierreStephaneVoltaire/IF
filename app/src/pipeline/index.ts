@@ -202,7 +202,7 @@ export async function processMessage(
           current_message: history.current_message,
         },
         startingTier: 'tier4',
-        tags: ['tier4', 'tools'],
+        modelGroup: 'general-tier4-tools',
       };
       
       log.info('Executing breakglass flow via LangGraph');
@@ -215,7 +215,7 @@ export async function processMessage(
         initialPrompt: history.current_message,
         flowType: flowType!,
         startingTier: classifyResult!.starting_tier,
-        tags: classifyResult!.tags,
+        modelGroup: classifyResult!.model_group,
         agentRole: classifyResult!.agent_role,
         history: {
           formatted_history: history.formatted_history,
@@ -269,7 +269,7 @@ export async function processMessage(
         }
       }
 
-      log.info(`Executing ${flowType} flow via LangGraph with tags: ${classifyResult!.tags.join(', ')}`);
+      log.info(`Executing ${flowType} flow via LangGraph with model_group: ${classifyResult!.model_group}`);
       const graph = getGraphForFlow(flowType!);
       log.info(`Using graph: ${graph.name}`);
       

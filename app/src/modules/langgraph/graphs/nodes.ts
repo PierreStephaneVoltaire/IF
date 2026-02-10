@@ -89,7 +89,7 @@ export async function simpleLLMCall(input: SimpleLLMInput): Promise<{ response: 
     ],
     temperature: params.temperature,
     top_p: params.top_p,
-    ...(input.tags ? { metadata: { tags: input.tags } } : {}),
+    ...(input.tags ? { tags: input.tags } : {}),
   });
 
   const content = extractContent(response);

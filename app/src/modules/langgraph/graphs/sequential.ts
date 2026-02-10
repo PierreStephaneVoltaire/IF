@@ -23,7 +23,7 @@ import { acquireLock as acquireRedisLock, checkAbortFlag } from '../../redis';
 import { streamProgressToDiscord } from '../../agentic/progress';
 import { loadPrompt } from '../../../templates/loader';
 import { getTemplateForAgent } from '../../../templates/registry';
-import { getReflectionTags, escalateTier } from '../model-tiers';
+import { getAgentRoleGroup, type Tier } from '../model-tiers';
 import { checkEscalationTriggers } from '../escalation';
 import type { GraphResult, GraphInvokeOptions } from './types';
 import type { Message, EscalationEvent, LogEntry } from '../state';
@@ -51,7 +51,7 @@ export interface SequentialGraphState {
   workspacePath: string;
   turnNumber: number;
   maxTurns: number;
-  currentTags: string[];
+  currentModelGroup: string;
   conversationHistory: Message[];
   turns: ExecutionTurn[];
   confidenceScore: number;
@@ -95,7 +95,25 @@ export interface SequentialGraphState {
 
 function createInitialState(options: GraphInvokeOptions): SequentialGraphState {
   const agentRole = options.agentRole as AgentRole || 'python-coder';
-  const tags = options.tags || ['tier2', 'tools', 'programming'];
+  let modelGroup = options.modelGroup;
+  
+  // Use new tiered model group system
+  if (!modelGroup && options.startingTier) {
+    modelGroup = getAgentRoleGroup(
+      (agentRole as unknown as import('../../litellm/model-groups').AgentRoleString) || 'python-coder',
+      options.startingTier as Tier
+    );
+  }
+  
+  // Legacy fallback: convert tags to model group
+  if (!modelGroup && options.tags && options.tags.length > 0) {
+    const { tagsToModelGroup } = require('../model-tiers');
+    modelGroup = tagsToModelGroup(options.tags);
+  }
+  
+  if (!modelGroup) {
+    modelGroup = 'python-coder-tier2';
+  }
 
   const providedPhases = options.plan?.phases || [];
   const maxPhaseTurns = providedPhases.length > 0
@@ -111,7 +129,7 @@ function createInitialState(options: GraphInvokeOptions): SequentialGraphState {
     workspacePath: options.workspacePath || options.channelId,
     turnNumber: 0,
     maxTurns: maxPhaseTurns,
-    currentTags: tags,
+    currentModelGroup: modelGroup,
     conversationHistory: [],
     turns: [],
     confidenceScore: 0,
@@ -179,7 +197,7 @@ function parseTurn(response: unknown, turnNumber: number): Partial<ExecutionTurn
     response: content,
     confidence,
     status,
-    modelUsed: `auto`,
+    modelUsed: '',
   };
 }
 
@@ -208,7 +226,7 @@ export function createSequentialGraph() {
     name: 'SequentialThinkingGraph',
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking SequentialThinkingGraph for channel ${options.channelId}`);
-      log.info(`Using tags: ${(options.tags || ['tier2', 'tools', 'programming']).join(', ')}`);
+      log.info(`Using model group: ${options.modelGroup || 'programming-tier2-tools'}`);
 
       const state = createInitialState(options);
       const logger = createExecutionLogger({
@@ -227,7 +245,7 @@ export function createSequentialGraph() {
           log.warn('Abort flag detected');
           return {
             response: 'Task aborted',
-            model: `auto:${state.currentTags.join(',')}`,
+            model: state.currentModelGroup,
             traversedNodes: ['start', 'setup'],
           };
         }
@@ -237,7 +255,7 @@ export function createSequentialGraph() {
           log.error('Failed to acquire lock');
           return {
             response: 'Could not acquire lock',
-            model: `auto:${state.currentTags.join(',')}`,
+            model: state.currentModelGroup,
             traversedNodes: ['start', 'setup'],
             error: 'Lock acquisition failed',
           };
@@ -283,7 +301,7 @@ export function createSequentialGraph() {
             phase: `Starting Phase ${phaseIndex + 1}: ${phase.name}`,
             turnNumber: state.turnNumber,
             maxTurns: state.maxTurns,
-            model: `auto:${state.currentTags.join(',')}`,
+            model: state.currentModelGroup,
           });
 
           const phaseStartTurn = turnCount;
@@ -299,13 +317,10 @@ export function createSequentialGraph() {
             // Execute turn
             const params = getModelParams(FlowType.SEQUENTIAL_THINKING);
             const response = await chatCompletion({
-              model: 'auto',
+              model: state.currentModelGroup,
               messages: conversationHistory,
               temperature: params.temperature,
               top_p: params.top_p,
-              metadata: {
-                tags: state.currentTags,
-              },
             });
 
             const turnData = parseTurn(response, turnCount) as ExecutionTurn;
@@ -323,7 +338,7 @@ export function createSequentialGraph() {
               type: 'turn_start',
               turnNumber: turnCount,
               maxTurns: state.maxTurns,
-              model: modelUsed,
+              model: state.currentModelGroup,
               confidence: turnData.confidence,
               phase: `Phase ${phaseIndex + 1}: ${phase.name}`,
             });
@@ -341,14 +356,21 @@ export function createSequentialGraph() {
               : 0;
 
             // Check escalation triggers
-            const escalation = checkEscalationTriggers(execState, turnData, state.currentTags, state.consecutiveLowConfidenceTurns);
+            const escalation = checkEscalationTriggers(
+              execState,
+              turnData,
+              state.currentModelGroup,
+              state.consecutiveLowConfidenceTurns,
+              'sequential-thinking',
+              (state.agentRole as unknown as import('../../litellm/model-groups').AgentRoleString) || 'python-coder'
+            );
             if (escalation.shouldEscalate) {
-              log.info(`Escalating to tier: ${escalation.reason}`);
-              state.currentTags = escalation.suggestedTags || state.currentTags;
+              log.info(`Escalating model group: ${escalation.reason}`);
+              state.currentModelGroup = escalation.suggestedModelGroup || state.currentModelGroup;
               state.escalations.push({
                 turnNumber: turnCount,
                 fromModel: modelUsed,
-                toModel: `auto:${state.currentTags.join(',')}`,
+                toModel: `auto:${state.currentModelGroup}`,
                 reason: escalation.reason,
                 timestamp: new Date().toISOString(),
               });
@@ -422,8 +444,7 @@ export function createSequentialGraph() {
           executionId: options.executionId,
           status: state.status,
           nodeCount: state.traversedNodes.length,
-          model: `auto:${state.currentTags.join(',')}`,
-          tags: state.currentTags,
+          model: state.currentModelGroup,
           turns: state.turnNumber,
           confidence: state.confidenceScore,
           timestamp: new Date().toISOString(),
@@ -436,7 +457,7 @@ export function createSequentialGraph() {
 
         return {
           response: state.finalResponse,
-          model: `auto:${state.currentTags.join(',')}`,
+          model: state.currentModelGroup,
           traversedNodes: state.traversedNodes,
         };
 
@@ -449,7 +470,7 @@ export function createSequentialGraph() {
           executionId: options.executionId,
           status: 'error',
           error: String(error),
-          tags: state.currentTags,
+          modelGroup: state.currentModelGroup,
           timestamp: new Date().toISOString(),
         };
 
@@ -458,7 +479,7 @@ export function createSequentialGraph() {
 
         return {
           response: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          model: `auto:${state.currentTags.join(',')}`,
+          model: state.currentModelGroup,
           traversedNodes: ['start', 'setup', 'error'],
           error: String(error),
         };

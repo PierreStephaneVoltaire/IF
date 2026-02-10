@@ -2,13 +2,14 @@
  * ProofreaderGraph - Single Node Flow
  *
  * A simple graph for grammar and spellcheck only.
- * Uses tag-based routing: tier1 + general
+ * Uses model group-based routing: general-tier1
  *
  * Flow: start → proofread → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
 import { chatCompletion, extractContent } from '../../litellm/index';
+import { getModelGroup } from '../model-tiers';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { loadPrompt } from '../../../templates/loader';
@@ -27,7 +28,7 @@ interface ProofreaderGraphState {
   executionId: string;
   flowType: FlowType;
   message: string;
-  tags: string[];
+  modelGroup: string;
   model: string;
   response: string;
   status: 'running' | 'complete' | 'error';
@@ -39,7 +40,7 @@ interface ProofreaderGraphState {
 // ============================================================================
 
 /**
- * Proofread node - generates grammar/spellcheck response using tier1 + general tags
+ * Proofread node - generates grammar/spellcheck response using general-tier1 model group
  */
 async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderGraphState> {
   const logger = createExecutionLogger({
@@ -51,7 +52,7 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
   logger.recordNode('proofread');
 
   log.info(`ProofreaderGraph: Starting execution for channel ${state.channelId}`);
-  log.info(`Tags: ${state.tags.join(', ')}`);
+  log.info(`Model Group: ${state.modelGroup}`);
 
   try {
     // Load prompt from template
@@ -64,18 +65,15 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
     const params = getModelParams(state.flowType);
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
-    // Generate response using tag-based routing
+    // Generate response using model group-based routing
     const response = await chatCompletion({
-      model: 'auto',
+      model: state.modelGroup,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
       temperature: params.temperature,
       top_p: params.top_p,
-      metadata: {
-        tags: state.tags,
-      },
     });
 
     const content = extractContent(response) || 'No errors found.';
@@ -103,7 +101,7 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
       status: 'complete',
       nodeCount: 2,
       model: modelUsed,
-      tags: state.tags,
+      modelGroup: state.modelGroup,
       timestamp: new Date().toISOString(),
     };
 
@@ -128,7 +126,7 @@ async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderG
       executionId: state.executionId,
       status: 'error',
       error: String(error),
-      tags: state.tags,
+      modelGroup: state.modelGroup,
       timestamp: new Date().toISOString(),
     };
 
@@ -153,15 +151,27 @@ export function createProofreaderGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking ProofreaderGraph for channel ${options.channelId}`);
 
-      // Use tier1 + general tags (from options or default)
-      const tags = options.tags || ['tier1', 'general'];
+      // Get modelGroup from options, or use new tiered system
+      let modelGroup = options.modelGroup;
+      if (!modelGroup) {
+        // Proofreader is always tier1
+        modelGroup = getModelGroup('proofreader', 'tier1');
+      }
+      // Legacy fallback: convert tags if provided
+      if (!modelGroup && options.tags && options.tags.length > 0) {
+        const { tagsToModelGroup } = require('../../litellm/model-groups');
+        modelGroup = tagsToModelGroup(options.tags);
+      }
+      if (!modelGroup) {
+        modelGroup = 'proofreader-tier1';
+      }
 
       const initialState: ProofreaderGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.PROOFREADER,
         message: options.initialPrompt,
-        tags,
+        modelGroup,
         model: '',
         response: '',
         status: 'running',

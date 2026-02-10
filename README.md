@@ -242,7 +242,7 @@ Models are selected dynamically via LiteLLM tags instead of hardcoded lists. Eac
 | o3 | 128K | $2.00/$8.00 | tier4, tools, thinking, general |
 | claude-sonnet-4.5 | 64K | $3.00/$15.00 | tier4, tools, thinking, programming |
 | claude-opus-4.6 | 64K | $5.00/$25.00 | tier4, tools, thinking, programming |
-| claude-opus-4.5 | 16K | $5.00/$25.00 | tier4, tools, thinking, programming |
+| claude-opus-4.6 | 16K | $5.00/$25.00 | tier4, tools, thinking, programming |
 
 **Websearch Models (Cross-Tier)**
 | Model | Tier | Price | Use Case |

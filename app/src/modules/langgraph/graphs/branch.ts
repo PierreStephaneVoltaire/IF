@@ -2,15 +2,15 @@
  * BranchGraph - Parallel Flow
  *
  * A parallel graph for exploring multiple architectural approaches.
- * Uses tag-based routing:
- * - Branch nodes: tier3 + thinking
- * - Aggregator: tier4 + thinking
+ * Uses model group-based routing:
+ * - Branch nodes: general-tier3-thinking
+ * - Aggregator: general-tier4-thinking
  *
  * Flow: start → branch_1 → branch_2 → branch_3 → aggregate → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
-import { chatCompletion, extractContent } from '../../litellm/index';
+import { chatCompletion, extractContent, tagsToModelGroup } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { createExecutionLogger } from '../logger';
@@ -29,8 +29,8 @@ interface BranchGraphState {
   executionId: string;
   flowType: FlowType;
   userQuestion: string;
-  branchTags: string[];
-  aggregatorTags: string[];
+  branchModelGroup: string;
+  aggregatorModelGroup: string;
   branchModels: string[];
   aggregatorModel: string;
   responses: string[];
@@ -53,80 +53,68 @@ async function branchNodes(state: BranchGraphState): Promise<BranchGraphState> {
   });
 
   logger.recordNode('start');
+  logger.recordNode('branch_1');
+  logger.recordNode('branch_2');
+  logger.recordNode('branch_3');
 
   log.info(`BranchGraph: Starting execution for channel ${state.channelId}`);
-  log.info(`Branch tags: ${state.branchTags.join(', ')}`);
-  log.info(`Aggregator tags: ${state.aggregatorTags.join(', ')}`);
+  log.info(`Branch model group: ${state.branchModelGroup}`);
+  log.info(`Aggregator model group: ${state.aggregatorModelGroup}`);
 
   try {
     // Get temperature params
     const params = getModelParams(state.flowType);
     log.info(`Temperature: ${params.temperature}, top_p: ${params.top_p}`);
 
-    // Brainstorming prompt
-    const brainstormingPrompt = renderTemplate(loadPrompt('branch-brainstorm'), {
-      user_question: state.userQuestion,
+    // Load prompts
+    const branchPrompt = renderTemplate(loadPrompt('branch-brainstorm'), {
+      question: state.userQuestion,
     });
 
-    // Record branch nodes
-    logger.recordNode('branch_1');
-    logger.recordNode('branch_2');
-    logger.recordNode('branch_3');
+    const aggregatorPrompt = renderTemplate(loadPrompt('branch-aggregator'), {
+      question: state.userQuestion,
+      content_1: '', // Will be replaced with responses
+      content_2: '',
+      content_3: '',
+    });
 
-    // Execute branches in parallel with tag-based routing
+    // Execute branches in parallel with model group-based routing
     const [response1, response2, response3] = await Promise.all([
       chatCompletion({
-        model: 'auto',
-        messages: [{ role: 'user', content: brainstormingPrompt }],
+        model: state.branchModelGroup,
+        messages: [{ role: 'user', content: branchPrompt }],
         temperature: params.temperature,
         top_p: params.top_p,
-        metadata: { tags: state.branchTags },
       }),
       chatCompletion({
-        model: 'auto',
-        messages: [{ role: 'user', content: brainstormingPrompt }],
+        model: state.branchModelGroup,
+        messages: [{ role: 'user', content: branchPrompt }],
         temperature: params.temperature,
         top_p: params.top_p,
-        metadata: { tags: state.branchTags },
       }),
       chatCompletion({
-        model: 'auto',
-        messages: [{ role: 'user', content: brainstormingPrompt }],
+        model: state.branchModelGroup,
+        messages: [{ role: 'user', content: branchPrompt }],
         temperature: params.temperature,
         top_p: params.top_p,
-        metadata: { tags: state.branchTags },
       }),
     ]);
 
     const content1 = extractContent(response1);
     const content2 = extractContent(response2);
     const content3 = extractContent(response3);
-    const branchModels = [response1.model, response2.model, response3.model];
+    const model1 = response1.model;
+    const model2 = response2.model;
+    const model3 = response3.model;
 
     log.info(`Branch responses generated: ${content1.length}, ${content2.length}, ${content3.length} chars`);
-    log.info(`Branch models: ${branchModels.join(', ')}`);
 
-    // Record aggregate node
-    logger.recordNode('aggregate');
-
-    // Aggregator prompt
-    const aggregatorPrompt = renderTemplate(loadPrompt('branch-aggregator'), {
-      user_question: state.userQuestion,
-      model_1: branchModels[0],
-      model_2: branchModels[1],
-      model_3: branchModels[2],
-      content_1: content1,
-      content_2: content2,
-      content_3: content3,
-    });
-
-    // Execute aggregator with tag-based routing
+    // Execute aggregator with model group-based routing
     const aggregatorResponse = await chatCompletion({
-      model: 'auto',
+      model: state.aggregatorModelGroup,
       messages: [{ role: 'user', content: aggregatorPrompt }],
       temperature: params.temperature,
       top_p: params.top_p,
-      metadata: { tags: state.aggregatorTags },
     });
 
     const aggregatorContent = extractContent(aggregatorResponse);
@@ -153,20 +141,18 @@ async function branchNodes(state: BranchGraphState): Promise<BranchGraphState> {
       executionId: state.executionId,
       status: 'complete',
       nodeCount: 5,
-      branchModels,
+      branchModels: [model1, model2, model3],
       aggregatorModel,
-      tags: state.aggregatorTags,
+      modelGroup: state.aggregatorModelGroup,
       timestamp: new Date().toISOString(),
     };
 
     await logger.uploadMetadata(metadata);
-
-    // Flush logs
     await logger.flush();
 
     return {
       ...state,
-      branchModels,
+      branchModels: [model1, model2, model3],
       aggregatorModel,
       responses: [content1, content2, content3],
       finalResponse: aggregatorContent,
@@ -182,7 +168,7 @@ async function branchNodes(state: BranchGraphState): Promise<BranchGraphState> {
       executionId: state.executionId,
       status: 'error',
       error: String(error),
-      tags: state.branchTags,
+      modelGroup: state.branchModelGroup,
       timestamp: new Date().toISOString(),
     };
 
@@ -207,30 +193,40 @@ export function createBranchGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking BranchGraph for channel ${options.channelId}`);
 
-      // Use tier3 + thinking for branches, tier4 + thinking for aggregator
-      const branchTags = ['tier3', 'thinking'];
-      const aggregatorTags = ['tier4', 'thinking'];
+      // Get model groups from options, or convert tags if provided
+      let branchModelGroup = options.modelGroup;
+      let aggregatorModelGroup = 'general-tier4-thinking';
+
+      if (!branchModelGroup && options.tags && options.tags.length > 0) {
+        const tags = options.tags;
+        branchModelGroup = tagsToModelGroup(tags);
+        // Aggregator is always tier higher
+        aggregatorModelGroup = 'general-tier4-thinking';
+      }
+      if (!branchModelGroup) {
+        branchModelGroup = 'general-tier3-thinking';
+      }
 
       const initialState: BranchGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.BRANCH,
         userQuestion: options.initialPrompt,
-        branchTags,
-        aggregatorTags,
+        branchModelGroup,
+        aggregatorModelGroup,
         branchModels: [],
         aggregatorModel: '',
         responses: [],
         finalResponse: '',
         status: 'running',
-        traversedNodes: [],
+        traversedNodes: ['start'],
       };
 
       const finalState = await branchNodes(initialState);
 
       return {
         response: finalState.finalResponse,
-        model: finalState.aggregatorModel,
+        model: finalState.aggregatorModel || finalState.branchModels[0] || 'general-tier2',
         traversedNodes: finalState.traversedNodes,
         error: finalState.status === 'error' ? finalState.finalResponse : undefined,
       };

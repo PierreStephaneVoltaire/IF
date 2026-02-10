@@ -1,23 +1,22 @@
 /**
- * BackcastingGraph - Backcasting Flow
+ * BackcastingGraph - Multi-Node Flow
  *
- * A backward planning flow for long-term goals. Works from future state to present:
- * - Define Goal (tier2): User states desired future state + timeline
- * - Milestone Generator (tier3): Work BACKWARD from goal to present
- * - Feasibility Check (tier3): Review backward path for contradictions
- * - Action Plan: Present → Goal roadmap
+ * Implements backward planning from goal to present.
+ * Uses model group-based routing:
+ * - Goal/Milestones: general-tier2
+ * - Feasibility: general-tier3-thinking
  *
- * Flow: start → define_goal → generate_milestones → feasibility_check → action_plan → finalize
+ * Flow: start → define_goal → milestones → feasibility → action_plan → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
-import { chatCompletion } from '../../litellm/index';
+import { chatCompletion, extractContent, tagsToModelGroup } from '../../litellm/index';
+import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { createExecutionLogger } from '../logger';
-import { getMermaidGenerator } from '../mermaid';
 import { loadPrompt, renderTemplate } from '../../../templates/loader';
+import { getMermaidGenerator } from '../mermaid';
 import type { GraphResult, GraphInvokeOptions } from './types';
-import type { LogEntry } from '../state';
 
 const log = createLogger('GRAPH:BACKCASTING');
 
@@ -29,245 +28,239 @@ interface BackcastingGraphState {
   channelId: string;
   executionId: string;
   flowType: FlowType;
-  initialPrompt: string;
-  goalDefinition: string;
+  prompt: string;
+  goalModelGroup: string;
+  milestoneModelGroup: string;
+  feasibilityModelGroup: string;
+  actionPlanModelGroup: string;
   goalModel: string;
   milestoneModel: string;
   feasibilityModel: string;
-  timeline: string;
+  actionPlanModel: string;
   goalState: string;
-  milestones: Array<{
-    timepoint: string;
-    milestone: string;
-    prerequisites: string[];
-  }>;
-  feasibilityIssues: string[];
-  actionPlan: string;
+  timeline: Array<{ timepoint: string; milestone: string; prerequisites: string[] }>;
   isFeasible: boolean;
+  issues: string[];
+  actionPlan: string;
   status: 'running' | 'complete' | 'error';
   traversedNodes: string[];
-  logBuffer: LogEntry[];
 }
 
 // ============================================================================
-// Helper Functions
+// Node Functions
 // ============================================================================
 
-async function defineGoal(prompt: string, tags: string[]): Promise<{
-  goalState: string;
-  timeline: string;
-}> {
-  const systemPrompt = await loadPrompt('backcasting-define-goal');
-  const userPrompt = renderTemplate(await loadPrompt('backcasting-define-goal-user'), {
-    goal_request: prompt,
-  });
-  
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.6,
-    top_p: 0.85,
-    metadata: { tags },
-  });
+/**
+ * Define goal state
+ */
+async function defineGoalNode(state: BackcastingGraphState): Promise<BackcastingGraphState> {
+  log.info(`BackcastingGraph: Defining goal for channel ${state.channelId}`);
 
-  const content = response.choices[0]?.message?.content || '{}';
-  
   try {
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      return {
-        goalState: result.goal_state || content,
-        timeline: result.timeline || 'Not specified',
-      };
-    }
-    return { goalState: content, timeline: 'Not specified' };
-  } catch {
-    return { goalState: content, timeline: 'Not specified' };
+    const params = getModelParams(FlowType.BACKCASTING);
+    const prompt = renderTemplate(loadPrompt('backcasting-define-goal-user'), {
+      question: state.prompt,
+    });
+
+    const response = await chatCompletion({
+      model: state.goalModelGroup,
+      messages: [
+        { role: 'system', content: loadPrompt('backcasting-define-goal') },
+        { role: 'user', content: prompt },
+      ],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    return {
+      ...state,
+      goalState: extractContent(response),
+      goalModel: response.model,
+      traversedNodes: ['start', 'define_goal'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      actionPlan: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 
-async function generateMilestones(
-  goalState: string,
-  timeline: string,
-  tags: string[]
-): Promise<Array<{
-  timepoint: string;
-  milestone: string;
-  prerequisites: string[];
-}>> {
-  const systemPrompt = await loadPrompt('backcasting-milestones');
-  const userPrompt = renderTemplate(await loadPrompt('backcasting-milestones-user'), {
-    goal_state: goalState,
-    timeline: timeline,
-  });
-  
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.7,
-    top_p: 0.9,
-    metadata: { tags },
-  });
-
-  const content = response.choices[0]?.message?.content || '[]';
-  
+/**
+ * Define milestones
+ */
+async function milestonesNode(state: BackcastingGraphState): Promise<BackcastingGraphState> {
   try {
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    const params = getModelParams(FlowType.BACKCASTING);
+    const prompt = renderTemplate(loadPrompt('backcasting-milestones-user'), {
+      goal: state.goalState,
+    });
+
+    const response = await chatCompletion({
+      model: state.milestoneModelGroup,
+      messages: [
+        { role: 'system', content: loadPrompt('backcasting-milestones') },
+        { role: 'user', content: prompt },
+      ],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    const content = extractContent(response);
+    // Parse timeline from response (simplified)
+    const timeline: BackcastingGraphState['timeline'] = [];
+    const lines = content.split('\n').filter(l => l.trim().length > 0);
+    
+    for (const line of lines) {
+      const timepointMatch = line.match(/^[\[\(]?(\d+)[\]\)]?[\s:]+(.+)/);
+      if (timepointMatch) {
+        timeline.push({
+          timepoint: timepointMatch[1],
+          milestone: timepointMatch[2],
+          prerequisites: [],
+        });
+      }
     }
-    return [];
-  } catch {
-    return [];
+
+    return {
+      ...state,
+      timeline,
+      milestoneModel: response.model,
+      traversedNodes: [...state.traversedNodes, 'milestones'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      actionPlan: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 
-async function checkFeasibility(
-  goalState: string,
-  milestones: Array<{ timepoint: string; milestone: string; prerequisites: string[] }>,
-  tags: string[]
-): Promise<{ issues: string[]; isFeasible: boolean }> {
-  const milestoneText = milestones.map(m =>
-    `${m.timepoint}: ${m.milestone}\nPrerequisites: ${m.prerequisites.join(', ')}`
-  ).join('\n\n');
+/**
+ * Check feasibility
+ */
+async function feasibilityNode(state: BackcastingGraphState): Promise<BackcastingGraphState> {
+  log.info(`BackcastingGraph: Checking feasibility for channel ${state.channelId}`);
 
-  const systemPrompt = await loadPrompt('backcasting-feasibility');
-  const userPrompt = renderTemplate(await loadPrompt('backcasting-feasibility-user'), {
-    goal_state: goalState,
-    milestone_text: milestoneText,
-  });
-  
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.6,
-    top_p: 0.85,
-    metadata: { tags },
-  });
+  try {
+    const params = getModelParams(FlowType.BACKCASTING);
+    const prompt = renderTemplate(loadPrompt('backcasting-feasibility-user'), {
+      goal: state.goalState,
+      milestones: state.timeline.map(t => `${t.timepoint}: ${t.milestone}`).join('\n'),
+    });
 
-  const content = response.choices[0]?.message?.content || '';
-  const issues: string[] = [];
-  
-  // Parse issues from response
-  if (content.toLowerCase().includes('no significant issues') ||
-      content.toLowerCase().includes('no major issues')) {
-    return { issues: [], isFeasible: true };
+    const response = await chatCompletion({
+      model: state.feasibilityModelGroup,
+      messages: [
+        { role: 'system', content: loadPrompt('backcasting-feasibility') },
+        { role: 'user', content: prompt },
+      ],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    const content = extractContent(response);
+    const isFeasible = content.toLowerCase().includes('feasible') && !content.toLowerCase().includes('not feasible');
+    const issues = content.split('\n').filter(l => l.toLowerCase().includes('issue') || l.toLowerCase().includes('problem'));
+
+    return {
+      ...state,
+      isFeasible,
+      issues,
+      feasibilityModel: response.model,
+      traversedNodes: [...state.traversedNodes, 'feasibility'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      actionPlan: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
-
-  // Extract potential issues
-  const lines = content.split('\n').filter(l => l.trim().length > 0);
-  for (const line of lines) {
-    if (line.match(/^\d+\.|^[-•*]/) && line.length > 10) {
-      issues.push(line.replace(/^\d+\.\s*|^[-•*]\s*/, '').trim());
-    }
-  }
-
-  return {
-    issues: issues.length > 0 ? issues : [content],
-    isFeasible: issues.length < 3,
-  };
 }
 
-async function generateActionPlan(
-  goalState: string,
-  timeline: string,
-  milestones: Array<{ timepoint: string; milestone: string; prerequisites: string[] }>,
-  feasibilityIssues: string[],
-  isFeasible: boolean,
-  tags: string[]
-): Promise<string> {
-  const milestoneText = milestones.map(m =>
-    `**${m.timepoint}**: ${m.milestone}\n   Prerequisites: ${m.prerequisites.join(', ')}`
-  ).join('\n\n');
-
-  const issuesText = feasibilityIssues.length > 0
-    ? `**Feasibility Concerns**:\n${feasibilityIssues.map(i => `- ${i}`).join('\n')}`
-    : '✓ No significant feasibility issues identified';
-
-  const systemPrompt = await loadPrompt('backcasting-action-plan');
-  const userPrompt = renderTemplate(await loadPrompt('backcasting-action-plan-user'), {
-    goal_state: goalState,
-    timeline: timeline,
-    milestone_text: milestoneText,
-    feasibility_text: issuesText,
-    is_feasible: isFeasible ? 'Yes' : 'Requires revision',
-  });
-  
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.7,
-    top_p: 0.9,
-    metadata: { tags },
-  });
-
-  return response.choices[0]?.message?.content || 'Unable to generate action plan';
-}
-
-async function finalizeGraph(state: BackcastingGraphState): Promise<GraphResult> {
+/**
+ * Generate action plan
+ */
+async function actionPlanNode(state: BackcastingGraphState): Promise<BackcastingGraphState> {
   const logger = createExecutionLogger({
     channelId: state.channelId,
     executionId: state.executionId,
   });
 
-  logger.recordNode('finalize');
+  logger.recordNode('action_plan');
 
-  const generator = getMermaidGenerator();
-  const mermaidSource = generator.generate({
-    flowType: state.flowType,
-    traversedNodes: state.traversedNodes,
-    turns: [],
-    finalStatus: 'complete',
-  });
+  try {
+    const params = getModelParams(FlowType.BACKCASTING);
+    const prompt = renderTemplate(loadPrompt('backcasting-action-plan-user'), {
+      goal: state.goalState,
+      milestones: state.timeline.map(t => `${t.timepoint}: ${t.milestone}`).join('\n'),
+      feasibility: state.isFeasible ? 'Feasible' : 'Not Feasible',
+      issues: state.issues.join('\n'),
+    });
 
-  await logger.uploadMermaid(mermaidSource);
-  const mermaidPng = await generator.renderPng(mermaidSource);
-  await logger.uploadDiagramPng(mermaidPng);
+    const response = await chatCompletion({
+      model: state.actionPlanModelGroup,
+      messages: [
+        { role: 'system', content: loadPrompt('backcasting-action-plan') },
+        { role: 'user', content: prompt },
+      ],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
 
-  const milestoneSection = state.milestones.map(m =>
-    `**${m.timepoint}**: ${m.milestone}\n   _Prerequisites: ${m.prerequisites.join(', ') || 'None'}_`
-  ).join('\n\n');
+    const content = extractContent(response);
+    const actionPlanModel = response.model;
 
-  const issuesSection = state.feasibilityIssues.length > 0
-    ? `**Feasibility Review**:\n${state.feasibilityIssues.map(i => `- ${i}`).join('\n')}`
-    : '✓ No significant feasibility issues';
+    // Generate Mermaid diagram
+    const generator = getMermaidGenerator();
+    const mermaidSource = generator.generate({
+      flowType: state.flowType,
+      traversedNodes: ['start', 'define_goal', 'milestones', 'feasibility', 'action_plan'],
+      turns: [],
+      finalStatus: 'complete',
+    });
 
-  const finalResponse = `## Backcasting Plan Complete\n\n**Goal:** ${state.goalState}\n\n**Timeline:** ${state.timeline}\n\n### Backward Milestones:\n${milestoneSection}\n\n${issuesSection}\n\n### Action Plan:\n${state.actionPlan}\n\n**Feasibility:** ${state.isFeasible ? '✓ Path appears viable' : '⚠ Requires careful consideration of issues'}\n\n**Status:** ${state.status}`;
+    await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
 
-  const metadata = {
-    flowType: state.flowType,
-    channelId: state.channelId,
-    executionId: state.executionId,
-    status: 'complete',
-    nodeCount: state.traversedNodes.length + 1,
-    model: state.feasibilityModel,
-    tags: ['tier3', 'thinking'],
-    milestonesCount: state.milestones.length,
-    isFeasible: state.isFeasible,
-    timestamp: new Date().toISOString(),
-  };
+    // Upload metadata
+    const metadata = {
+      flowType: state.flowType,
+      channelId: state.channelId,
+      executionId: state.executionId,
+      status: 'complete',
+      nodeCount: 5,
+      goalModel: state.goalModel,
+      milestoneModel: state.milestoneModel,
+      feasibilityModel: state.feasibilityModel,
+      actionPlanModel,
+      isFeasible: state.isFeasible,
+      milestonesCount: state.timeline.length,
+      modelGroup: state.actionPlanModelGroup,
+      timestamp: new Date().toISOString(),
+    };
 
-  await logger.uploadMetadata(metadata);
-  await logger.flush();
+    await logger.uploadMetadata(metadata);
+    await logger.flush();
 
-  return {
-    response: finalResponse,
-    model: state.feasibilityModel,
-    traversedNodes: state.traversedNodes,
-  };
+    return {
+      ...state,
+      actionPlan: content,
+      actionPlanModel,
+      status: 'complete',
+      traversedNodes: [...state.traversedNodes, 'action_plan'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      actionPlan: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 // ============================================================================
@@ -280,104 +273,53 @@ export function createBackcastingGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking BackcastingGraph for channel ${options.channelId}`);
 
-      const state: BackcastingGraphState = {
+      // Get model groups from options, or convert tags if provided
+      let goalModelGroup = options.modelGroup;
+      if (!goalModelGroup && options.tags && options.tags.length > 0) {
+        goalModelGroup = tagsToModelGroup(options.tags);
+      }
+      if (!goalModelGroup) {
+        goalModelGroup = 'general-tier2';
+      }
+
+      const initialState: BackcastingGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.BACKCASTING,
-        initialPrompt: options.initialPrompt,
-        goalDefinition: '',
-        goalModel: 'auto',
-        milestoneModel: 'auto',
-        feasibilityModel: 'auto',
-        timeline: '',
+        prompt: options.initialPrompt,
+        goalModelGroup,
+        milestoneModelGroup: goalModelGroup,
+        feasibilityModelGroup: 'general-tier3-thinking',
+        actionPlanModelGroup: goalModelGroup,
+        goalModel: '',
+        milestoneModel: '',
+        feasibilityModel: '',
+        actionPlanModel: '',
         goalState: '',
-        milestones: [],
-        feasibilityIssues: [],
-        actionPlan: '',
+        timeline: [],
         isFeasible: true,
+        issues: [],
+        actionPlan: '',
         status: 'running',
-        traversedNodes: [],
-        logBuffer: [],
+        traversedNodes: ['start'],
       };
 
-      const logger = createExecutionLogger({
-        channelId: options.channelId,
-        executionId: options.executionId,
-      });
-
-      try {
-        logger.recordNode('start');
-
-        // Step 1: Define goal
-        logger.recordNode('define_goal');
-        const goalResult = await defineGoal(state.initialPrompt, ['tier2', 'general']);
-        state.goalState = goalResult.goalState;
-        state.timeline = goalResult.timeline;
-        state.traversedNodes.push('define_goal');
-        log.info('Goal defined');
-
-        // Step 2: Generate backward milestones
-        logger.recordNode('generate_milestones');
-        state.milestones = await generateMilestones(
-          state.goalState,
-          state.timeline,
-          ['tier3', 'thinking']
-        );
-        state.traversedNodes.push('generate_milestones');
-        log.info(`Generated ${state.milestones.length} milestones`);
-
-        // Step 3: Check feasibility
-        logger.recordNode('feasibility_check');
-        const feasibilityResult = await checkFeasibility(
-          state.goalState,
-          state.milestones,
-          ['tier3', 'thinking']
-        );
-        state.feasibilityIssues = feasibilityResult.issues;
-        state.isFeasible = feasibilityResult.isFeasible;
-        state.traversedNodes.push('feasibility_check');
-        log.info(`Feasibility check complete. Feasible: ${state.isFeasible}`);
-
-        // Step 4: Generate action plan
-        logger.recordNode('action_plan');
-        state.actionPlan = await generateActionPlan(
-          state.goalState,
-          state.timeline,
-          state.milestones,
-          state.feasibilityIssues,
-          state.isFeasible,
-          ['tier3', 'thinking']
-        );
-        state.traversedNodes.push('action_plan');
-        log.info('Action plan generated');
-
-        state.status = 'complete';
-        return await finalizeGraph(state);
-
-      } catch (error) {
-        log.error(`Backcasting error: ${error}`);
-        state.status = 'error';
-
-        const metadata = {
-          flowType: state.flowType,
-          channelId: options.channelId,
-          executionId: options.executionId,
-          status: 'error',
-          error: String(error),
-          tags: ['tier3', 'thinking'],
-          timestamp: new Date().toISOString(),
-        };
-
-        await logger.uploadMetadata(metadata);
-        await logger.flush();
-
-        return {
-          response: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          model: 'auto',
-          traversedNodes: ['start', 'error'],
-          error: String(error),
-        };
+      // Execute flow: goal → milestones → feasibility → action_plan
+      let state = await defineGoalNode(initialState);
+      if (state.status === 'error') {
+        return { response: state.actionPlan, model: state.goalModel, traversedNodes: state.traversedNodes, error: state.actionPlan };
       }
+
+      state = await milestonesNode(state);
+      state = await feasibilityNode(state);
+      state = await actionPlanNode(state);
+
+      return {
+        response: state.actionPlan,
+        model: state.actionPlanModel || state.feasibilityModel || state.milestoneModel || state.goalModel,
+        traversedNodes: state.traversedNodes,
+        error: state.status === 'error' ? state.actionPlan : undefined,
+      };
     },
   };
 }

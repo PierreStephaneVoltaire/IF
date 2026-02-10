@@ -43,9 +43,10 @@ export interface GraphInvokeOptions {
       dependencies: number[];
     }>;
   };
-  // New properties for dynamic model selection
+  // Properties for dynamic model selection
   startingTier?: 'tier1' | 'tier2' | 'tier3' | 'tier4';
-  tags?: string[];
+  modelGroup?: string; // New: specialized model group format {type}-{tier}-{mode}-{tools}
+  tags?: string[]; // Kept for backward compatibility during migration
   websearch?: boolean;
 }
 

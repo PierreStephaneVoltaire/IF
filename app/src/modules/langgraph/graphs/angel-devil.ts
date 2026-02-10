@@ -1,21 +1,17 @@
 /**
- * AngelDevilGraph - Enhanced with Steel Manning
+ * AngelDevilGraph - Multi-Node Flow
  *
- * A parallel graph for moral/ethical debate with steel-manning enhancement.
- * Flow:
- * 1. Angel argues FOR (tier2)
- * 2. Devil argues AGAINST (tier2) — parallel with step 1
- * 3. Angel steel-mans Devil: "What's the STRONGEST version of their argument?"
- * 4. Devil steel-mans Angel: "What's the STRONGEST version of their argument?" — parallel with step 3
- * 5. Angel responds to strengthened Devil argument
- * 6. Devil responds to strengthened Angel argument — parallel with step 5
- * 7. Judge (tier3 + thinking): Synthesizes with both strongest arguments
+ * Implements angel/devil debate pattern for moral/ethical decisions.
+ * Uses model group-based routing:
+ * - Angel/Devil arguments: general-tier2
+ * - Steelman: general-tier3-thinking
+ * - Judge: general-tier3
  *
- * Flow: start → angel → devil → angel_steelman → devil_steelman → angel_respond → devil_respond → judge → finalize
+ * Flow: start → angel → devil → steelman → judge → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
-import { chatCompletion, extractContent } from '../../litellm/index';
+import { chatCompletion, extractContent, tagsToModelGroup } from '../../litellm/index';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { createExecutionLogger } from '../logger';
@@ -33,182 +29,206 @@ interface AngelDevilGraphState {
   channelId: string;
   executionId: string;
   flowType: FlowType;
-  userQuestion: string;
-  debateTags: string[];
-  judgeTags: string[];
+  question: string;
+  angelModelGroup: string;
+  devilModelGroup: string;
+  steelmanModelGroup: string;
+  judgeModelGroup: string;
   angelModel: string;
   devilModel: string;
+  steelmanModel: string;
   judgeModel: string;
-  
-  // Round 1: Initial arguments
-  angelArgument: string;
-  devilArgument: string;
-  
-  // Round 2: Steel-manning
-  angelSteelmansDevil: string;  // Angel improves Devil's argument
-  devilSteelMansAngel: string; // Devil improves Angel's argument
-  
-  // Round 3: Responses to strengthened arguments
-  angelRespondsToStrengthenedDevil: string;
-  devilRespondsToStrengthenedAngel: string;
-  
-  // Final synthesis
-  synthesis: string;
+  angelResponse: string;
+  devilResponse: string;
+  steelman: string;
+  finalResponse: string;
   status: 'running' | 'complete' | 'error';
   traversedNodes: string[];
 }
 
 // ============================================================================
-// Helper Functions
+// Node Functions
 // ============================================================================
 
-async function generateAngelArgument(question: string, tags: string[]): Promise<string> {
-  const angelPrompt = renderTemplate(loadPrompt('angel-devil-angel'), {
-    user_question: question,
-  });
-  
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [{ role: 'user', content: angelPrompt }],
-    temperature: 0.7,
-    top_p: 0.9,
-    metadata: { tags },
-  });
-  
-  return extractContent(response);
+/**
+ * Generate angel's argument (supporting the decision)
+ */
+async function angelNode(state: AngelDevilGraphState): Promise<AngelDevilGraphState> {
+  log.info(`AngelDevilGraph: Angel argument for channel ${state.channelId}`);
+
+  try {
+    const params = getModelParams(FlowType.ANGEL_DEVIL);
+    const prompt = renderTemplate(loadPrompt('angel-devil-angel'), {
+      question: state.question,
+    });
+
+    const response = await chatCompletion({
+      model: state.angelModelGroup,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    return {
+      ...state,
+      angelResponse: extractContent(response),
+      angelModel: response.model,
+      traversedNodes: ['start', 'angel'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      finalResponse: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
-async function generateDevilArgument(question: string, tags: string[]): Promise<string> {
-  const devilPrompt = renderTemplate(loadPrompt('angel-devil-devil'), {
-    user_question: question,
-  });
-  
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [{ role: 'user', content: devilPrompt }],
-    temperature: 0.7,
-    top_p: 0.9,
-    metadata: { tags },
-  });
-  
-  return extractContent(response);
+/**
+ * Generate devil's argument (opposing the decision)
+ */
+async function devilNode(state: AngelDevilGraphState): Promise<AngelDevilGraphState> {
+  log.info(`AngelDevilGraph: Devil argument for channel ${state.channelId}`);
+
+  try {
+    const params = getModelParams(FlowType.ANGEL_DEVIL);
+    const prompt = renderTemplate(loadPrompt('angel-devil-devil'), {
+      question: state.question,
+    });
+
+    const response = await chatCompletion({
+      model: state.devilModelGroup,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    return {
+      ...state,
+      devilResponse: extractContent(response),
+      devilModel: response.model,
+      traversedNodes: [...state.traversedNodes, 'devil'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      finalResponse: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
-async function steelmanOpposingArgument(
-  ownArgument: string,
-  opposingArgument: string,
-  question: string,
-  role: 'angel' | 'devil',
-  tags: string[]
-): Promise<string> {
-  const roleName = role === 'angel' ? 'Angel' : 'Devil';
-  const opposingRole = role === 'angel' ? 'Devil' : 'Angel';
+/**
+ * Generate steelman (strongest counter-argument)
+ */
+async function steelmanNode(state: AngelDevilGraphState): Promise<AngelDevilGraphState> {
+  log.info(`AngelDevilGraph: Steelman for channel ${state.channelId}`);
 
-  const systemPrompt = renderTemplate(loadPrompt('angel-devil-steelman'), {
-    role: roleName,
-    opposing_role: opposingRole,
-  });
+  try {
+    const params = getModelParams(FlowType.ANGEL_DEVIL);
+    const prompt = renderTemplate(loadPrompt('angel-devil-steelman'), {
+      question: state.question,
+      angel_response: state.angelResponse,
+      devil_response: state.devilResponse,
+    });
 
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: `Question: ${question}\n\nYour original argument:\n${ownArgument}\n\n${opposingRole}'s original argument:\n${opposingArgument}\n\nSteel-man the ${opposingRole}'s argument: What is the STRONGEST version of their position?`
-      },
-    ],
-    temperature: 0.8,
-    top_p: 0.95,
-    metadata: { tags },
-  });
-  
-  return extractContent(response);
+    const response = await chatCompletion({
+      model: state.steelmanModelGroup,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    return {
+      ...state,
+      steelman: extractContent(response),
+      steelmanModel: response.model,
+      traversedNodes: [...state.traversedNodes, 'steelman'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      finalResponse: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
-async function respondToStrengthenedArgument(
-  ownOriginal: string,
-  strengthenedOpposing: string,
-  question: string,
-  role: 'angel' | 'devil',
-  tags: string[]
-): Promise<string> {
-  const roleName = role === 'angel' ? 'Angel' : 'Devil';
-  const opposingRole = role === 'angel' ? 'Devil' : 'Angel';
-
-  const systemPrompt = renderTemplate(loadPrompt('angel-devil-respond'), {
-    role: roleName,
-    opposing_role: opposingRole,
+/**
+ * Judge node - provides final balanced response
+ */
+async function judgeNode(state: AngelDevilGraphState): Promise<AngelDevilGraphState> {
+  const logger = createExecutionLogger({
+    channelId: state.channelId,
+    executionId: state.executionId,
   });
 
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: `Question: ${question}\n\nYour original argument:\n${ownOriginal}\n\n${opposingRole}'s STEEL-MANNED argument (their strongest case):\n${strengthenedOpposing}\n\nRespond to their strongest argument:`
-      },
-    ],
-    temperature: 0.7,
-    top_p: 0.9,
-    metadata: { tags },
-  });
-  
-  return extractContent(response);
-}
+  logger.recordNode('judge');
 
-async function generateSynthesis(
-  question: string,
-  angelOriginal: string,
-  devilOriginal: string,
-  angelSteelman: string,
-  devilSteelman: string,
-  angelResponse: string,
-  devilResponse: string,
-  tags: string[]
-): Promise<string> {
-  const judgePrompt = renderTemplate(loadPrompt('angel-devil-judge'), {
-    user_question: question,
-    angel_argument: angelOriginal,
-    devil_argument: devilOriginal,
-  });
+  try {
+    const params = getModelParams(FlowType.ANGEL_DEVIL);
+    const prompt = renderTemplate(loadPrompt('angel-devil-respond'), {
+      question: state.question,
+      angel_response: state.angelResponse,
+      devil_response: state.devilResponse,
+      steelman: state.steelman,
+    });
 
-  const enhancedJudgePrompt = `${judgePrompt}\n\n=== ENHANCED ANALYSIS WITH STEEL-MANNING ===
+    const response = await chatCompletion({
+      model: state.judgeModelGroup,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
 
-**Angel's Original Position:** ${angelOriginal}
+    const content = extractContent(response);
+    const judgeModel = response.model;
 
-**Devil's Original Position:** ${devilOriginal}
+    // Generate Mermaid diagram
+    const generator = getMermaidGenerator();
+    const mermaidSource = generator.generate({
+      flowType: state.flowType,
+      traversedNodes: ['start', 'angel', 'devil', 'steelman', 'judge'],
+      turns: [],
+      finalStatus: 'complete',
+    });
 
-**Angel's Steel-Man of Devil:** (How Angel improves Devil's argument)
-${angelSteelman}
+    await logger.uploadMermaid(mermaidSource);
+    const mermaidPng = await generator.renderPng(mermaidSource);
+    await logger.uploadDiagramPng(mermaidPng);
 
-**Devil's Steel-Man of Angel:** (How Devil improves Angel's argument)
-${devilSteelman}
+    // Upload metadata
+    const metadata = {
+      flowType: state.flowType,
+      channelId: state.channelId,
+      executionId: state.executionId,
+      status: 'complete',
+      nodeCount: 5,
+      angelModel: state.angelModel,
+      devilModel: state.devilModel,
+      steelmanModel: state.steelmanModel,
+      judgeModel,
+      modelGroup: state.judgeModelGroup,
+      timestamp: new Date().toISOString(),
+    };
 
-**Angel's Response to Steel-Manned Devil:**
-${angelResponse}
+    await logger.uploadMetadata(metadata);
+    await logger.flush();
 
-**Devil's Response to Steel-Manned Angel:**
-${devilResponse}
-
-=== SYNTHESIS REQUIREMENTS ===
-Based on this enhanced debate with steel-manning:
-1. Identify the strongest points from each side (now both original AND steel-manned versions)
-2. Show how each side's position evolved through the steel-manning process
-3. Provide a balanced synthesis that acknowledges the valid points from BOTH perspectives
-4. Present a nuanced final conclusion that represents genuine辩证思维 (dialectical thinking)
-`;
-
-  const response = await chatCompletion({
-    model: 'auto',
-    messages: [{ role: 'user', content: enhancedJudgePrompt }],
-    temperature: 0.6,
-    top_p: 0.85,
-    metadata: { tags },
-  });
-  
-  return extractContent(response);
+    return {
+      ...state,
+      finalResponse: content,
+      judgeModel,
+      status: 'complete',
+      traversedNodes: [...state.traversedNodes, 'judge'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      finalResponse: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 // ============================================================================
@@ -219,225 +239,62 @@ export function createAngelDevilGraph() {
   return {
     name: 'AngelDevilGraph',
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
-      log.info(`Invoking Enhanced AngelDevilGraph for channel ${options.channelId}`);
+      log.info(`Invoking AngelDevilGraph for channel ${options.channelId}`);
 
-      const debateTags = ['tier2', 'general'];
-      const judgeTags = ['tier3', 'thinking'];
+      // Get model groups from options, or convert tags if provided
+      let angelModelGroup = options.modelGroup;
+      if (!angelModelGroup && options.tags && options.tags.length > 0) {
+        angelModelGroup = tagsToModelGroup(options.tags);
+      }
+      if (!angelModelGroup) {
+        angelModelGroup = 'general-tier2';
+      }
 
-      const params = getModelParams(FlowType.ANGEL_DEVIL);
-      const logger = createExecutionLogger({
-        channelId: options.channelId,
-        executionId: options.executionId,
-      });
-
-      const state: AngelDevilGraphState = {
+      const initialState: AngelDevilGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.ANGEL_DEVIL,
-        userQuestion: options.initialPrompt,
-        debateTags,
-        judgeTags,
-        angelModel: 'auto',
-        devilModel: 'auto',
-        judgeModel: 'auto',
-        angelArgument: '',
-        devilArgument: '',
-        angelSteelmansDevil: '',
-        devilSteelMansAngel: '',
-        angelRespondsToStrengthenedDevil: '',
-        devilRespondsToStrengthenedAngel: '',
-        synthesis: '',
+        question: options.initialPrompt,
+        angelModelGroup,
+        devilModelGroup: angelModelGroup,
+        steelmanModelGroup: 'general-tier3-thinking',
+        judgeModelGroup: 'general-tier3',
+        angelModel: '',
+        devilModel: '',
+        steelmanModel: '',
+        judgeModel: '',
+        angelResponse: '',
+        devilResponse: '',
+        steelman: '',
+        finalResponse: '',
         status: 'running',
-        traversedNodes: [],
+        traversedNodes: ['start'],
       };
 
-      try {
-        logger.recordNode('start');
-
-        // === ROUND 1: Initial Arguments (Parallel) ===
-        logger.recordNode('angel_round1');
-        logger.recordNode('devil_round1');
-        
-        state.traversedNodes.push('angel_round1', 'devil_round1');
-        
-        const [angelArgument, devilArgument] = await Promise.all([
-          generateAngelArgument(options.initialPrompt, debateTags),
-          generateDevilArgument(options.initialPrompt, debateTags),
-        ]);
-        
-        state.angelArgument = angelArgument;
-        state.devilArgument = devilArgument;
-        
-        log.info(`Round 1: Angel (${angelArgument.length} chars), Devil (${devilArgument.length} chars)`);
-
-        // === ROUND 2: Steel-Manning (Parallel) ===
-        logger.recordNode('angel_steelman');
-        logger.recordNode('devil_steelman');
-        
-        state.traversedNodes.push('angel_steelman', 'devil_steelman');
-        
-        const [angelSteelman, devilSteelman] = await Promise.all([
-          steelmanOpposingArgument(
-            state.angelArgument,
-            state.devilArgument,
-            options.initialPrompt,
-            'angel',
-            debateTags
-          ),
-          steelmanOpposingArgument(
-            state.devilArgument,
-            state.angelArgument,
-            options.initialPrompt,
-            'devil',
-            debateTags
-          ),
-        ]);
-        
-        state.angelSteelmansDevil = angelSteelman;
-        state.devilSteelMansAngel = devilSteelman;
-        
-        log.info(`Round 2: Steel-manning complete`);
-
-        // === ROUND 3: Responses to Strengthened Arguments (Parallel) ===
-        logger.recordNode('angel_respond');
-        logger.recordNode('devil_respond');
-        
-        state.traversedNodes.push('angel_respond', 'devil_respond');
-        
-        const [angelResponse, devilResponse] = await Promise.all([
-          respondToStrengthenedArgument(
-            state.angelArgument,
-            state.devilSteelMansAngel,
-            options.initialPrompt,
-            'angel',
-            debateTags
-          ),
-          respondToStrengthenedArgument(
-            state.devilArgument,
-            state.angelSteelmansDevil,
-            options.initialPrompt,
-            'devil',
-            debateTags
-          ),
-        ]);
-        
-        state.angelRespondsToStrengthenedDevil = angelResponse;
-        state.devilRespondsToStrengthenedAngel = devilResponse;
-        
-        log.info(`Round 3: Responses to strengthened arguments complete`);
-
-        // === FINAL: Judge Synthesis ===
-        logger.recordNode('judge');
-        state.traversedNodes.push('judge');
-        
-        state.synthesis = await generateSynthesis(
-          options.initialPrompt,
-          state.angelArgument,
-          state.devilArgument,
-          state.angelSteelmansDevil,
-          state.devilSteelMansAngel,
-          state.angelRespondsToStrengthenedDevil,
-          state.devilRespondsToStrengthenedAngel,
-          judgeTags
-        );
-        
-        log.info(`Final synthesis: ${state.synthesis.length} chars`);
-
-        logger.recordNode('finalize');
-        state.traversedNodes.push('finalize');
-
-        const generator = getMermaidGenerator();
-        const mermaidSource = generator.generate({
-          flowType: FlowType.ANGEL_DEVIL,
-          traversedNodes: state.traversedNodes,
-          turns: [],
-          finalStatus: 'complete',
-        });
-
-        await logger.uploadMermaid(mermaidSource);
-        const mermaidPng = await generator.renderPng(mermaidSource);
-        await logger.uploadDiagramPng(mermaidPng);
-
-        const finalResponse = `## Angel/Devil Debate with Steel Manning Complete
-
-**Question:** ${options.initialPrompt}
-
-### Round 1: Initial Arguments
-
-**👼 Angel's Argument (FOR):**
-${state.angelArgument}
-
-**😈 Devil's Argument (AGAINST):**
-${state.devilArgument}
-
-### Round 2: Steel-Manning
-*Each side strengthens the other's argument*
-
-**👼 Angel's Steel-Man of Devil:**
-${state.angelSteelmansDevil}
-
-**😈 Devil's Steel-Man of Angel:**
-${state.devilSteelMansAngel}
-
-### Round 3: Responses to Strengthened Arguments
-
-**👼 Angel's Response to Steel-Manned Devil:**
-${state.angelRespondsToStrengthenedDevil}
-
-**😈 Devil's Response to Steel-Manned Angel:**
-${state.devilRespondsToStrengthenedAngel}
-
-### Final Synthesis
-${state.synthesis}
-
----
-
-*This analysis used steel-manning to ensure both perspectives were presented in their strongest possible form before synthesis.*`;
-
-        const metadata = {
-          flowType: FlowType.ANGEL_DEVIL,
-          channelId: options.channelId,
-          executionId: options.executionId,
-          status: 'complete',
-          nodeCount: state.traversedNodes.length,
-          tags: judgeTags,
-          rounds: 3,
-          timestamp: new Date().toISOString(),
-        };
-
-        await logger.uploadMetadata(metadata);
-        await logger.flush();
-
-        return {
-          response: finalResponse,
-          model: 'auto',
-          traversedNodes: state.traversedNodes,
-        };
-
-      } catch (error) {
-        log.error(`Angel/Devil error: ${error}`);
-        state.status = 'error';
-
-        const metadata = {
-          flowType: FlowType.ANGEL_DEVIL,
-          channelId: options.channelId,
-          executionId: options.executionId,
-          status: 'error',
-          error: String(error),
-          tags: judgeTags,
-          timestamp: new Date().toISOString(),
-        };
-
-        await logger.uploadMetadata(metadata);
-        await logger.flush();
-
-        return {
-          response: `Error: ${error instanceof Error ? error.message : String(error)}`,
-          model: 'auto',
-          traversedNodes: ['start', 'error'],
-          error: String(error),
-        };
+      // Execute flow: angel → devil → steelman → judge
+      let state = await angelNode(initialState);
+      if (state.status === 'error') {
+        return { response: state.finalResponse, model: state.angelModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
       }
+
+      state = await devilNode(state);
+      if (state.status === 'error') {
+        return { response: state.finalResponse, model: state.devilModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
+      }
+
+      state = await steelmanNode(state);
+      if (state.status === 'error') {
+        return { response: state.finalResponse, model: state.steelmanModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
+      }
+
+      state = await judgeNode(state);
+
+      return {
+        response: state.finalResponse,
+        model: state.judgeModel || state.steelmanModel || state.devilModel || state.angelModel,
+        traversedNodes: state.traversedNodes,
+        error: state.status === 'error' ? state.finalResponse : undefined,
+      };
     },
   };
 }

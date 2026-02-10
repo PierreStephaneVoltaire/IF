@@ -34,16 +34,18 @@ Use the provided tools to:
   log.info(`User prompt length: ${context.userPrompt.length}`);
   log.info(`Tools provided: ${tools.map(t => t.function.name).join(', ')}`);
 
+  // Use modelGroup as the model name
+  const model = context.modelGroup || context.model || 'general-tier2';
+
   const startTime = Date.now();
   const response = await chatCompletion({
-    model: context.model || 'auto',
+    model: model,
     messages: [
       { role: 'system', content: fullSystemPrompt },
       { role: 'user', content: context.userPrompt },
     ],
     tools: tools,
     tool_choice: 'auto',
-    ...(context.tags ? { metadata: { tags: context.tags } } : {}),
     ...(modelParams && { temperature: modelParams.temperature, top_p: modelParams.top_p }),
   });
   const elapsedMs = Date.now() - startTime;
@@ -65,7 +67,7 @@ export async function executeSimpleTask(
   model?: string,
   enableTools: boolean = false,
   modelParams?: ModelParams,
-  tags?: string[]
+  modelGroup?: string
 ): Promise<string> {
   log.info(`executeSimpleTask for thread ${channelid}, prompt: ${promptCategory}, model: ${model || 'general'}, tools: ${enableTools}`);
 
@@ -77,22 +79,24 @@ export async function executeSimpleTask(
   if (enableTools) {
     tools = await getTools();
     log.info(`Tools loaded: ${tools.map(t => t.function.name).join(', ')}`);
-    
+
     if (tools.length === 0) {
       log.warn('No MCP tools available - model will not be able to execute commands');
     }
   }
 
+  // Use modelGroup as the model name, fallback to model param, then default
+  const resolvedModel = modelGroup || model || 'general-tier2';
+
   const startTime = Date.now();
   const response = await chatCompletion({
-    model: model || 'auto',
+    model: resolvedModel,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: history },
     ],
     tools: enableTools && tools.length > 0 ? tools : undefined,
     tool_choice: enableTools && tools.length > 0 ? 'auto' : undefined,
-    ...(tags ? { metadata: { tags } } : {}),
     ...(modelParams && { temperature: modelParams.temperature, top_p: modelParams.top_p }),
   });
   const elapsedMs = Date.now() - startTime;

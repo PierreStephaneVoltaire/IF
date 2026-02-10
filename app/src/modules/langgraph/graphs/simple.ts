@@ -2,13 +2,14 @@
  * SimpleGraph - Single Node Flow
  *
  * A simple graph for basic responses that don't require tools or complex processing.
- * Uses tag-based model routing via LiteLLM.
+ * Uses model group-based routing via LiteLLM.
  *
  * Flow: start → respond → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
 import { chatCompletion, extractContent } from '../../litellm/index';
+import { getModelGroup } from '../model-tiers';
 import { getModelParams } from '../temperature';
 import { FlowType } from '../../litellm/types';
 import { loadPrompt } from '../../../templates/loader';
@@ -27,7 +28,7 @@ interface SimpleGraphState {
   executionId: string;
   flowType: FlowType;
   taskType: string;
-  tags: string[];
+  modelGroup: string;
   model: string;
   response: string;
   status: 'running' | 'complete' | 'error';
@@ -39,7 +40,7 @@ interface SimpleGraphState {
 // ============================================================================
 
 /**
- * Respond node - generates a simple response using tags for model routing
+ * Respond node - generates a simple response using model group routing
  */
 async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
   const logger = createExecutionLogger({
@@ -51,7 +52,7 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
   logger.recordNode('respond');
 
   log.info(`SimpleGraph: Starting execution for channel ${state.channelId}`);
-  log.info(`Tags: ${state.tags.join(', ')}`);
+  log.info(`Model Group: ${state.modelGroup}`);
 
   try {
     // Load prompt from template
@@ -60,20 +61,17 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
 
     // Get temperature params
     const params = getModelParams(state.flowType);
-    log.info(`Using tags: ${state.tags.join(', ')}, temperature: ${params.temperature}`);
+    log.info(`Using model group: ${state.modelGroup}, temperature: ${params.temperature}`);
 
-    // Generate response using tag-based routing
+    // Generate response using model group-based routing
     const response = await chatCompletion({
-      model: 'auto',
+      model: state.modelGroup,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: state.response },
       ],
       temperature: params.temperature,
       top_p: params.top_p,
-      metadata: {
-        tags: state.tags,
-      },
     });
 
     const content = extractContent(response);
@@ -101,8 +99,7 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
       status: 'complete',
       nodeCount: 2,
       model: modelUsed,
-      taskType: state.taskType,
-      tags: state.tags,
+      modelGroup: state.modelGroup,
       timestamp: new Date().toISOString(),
     };
 
@@ -127,7 +124,7 @@ async function respondNode(state: SimpleGraphState): Promise<SimpleGraphState> {
       executionId: state.executionId,
       status: 'error',
       error: String(error),
-      tags: state.tags,
+      modelGroup: state.modelGroup,
       timestamp: new Date().toISOString(),
     };
 
@@ -170,15 +167,28 @@ export function createSimpleGraph() {
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking SimpleGraph for channel ${options.channelId}`);
 
-      // Get tags from options, default to tier2 + general
-      const tags = options.tags || ['tier2', 'general'];
+      // Get modelGroup from options, or use new tiered system
+      let modelGroup = options.modelGroup;
+      if (!modelGroup && options.startingTier) {
+        modelGroup = getModelGroup('simple', options.startingTier as import('../model-tiers').Tier, {
+          websearch: options.websearch,
+        });
+      }
+      // Legacy fallback: convert tags if provided
+      if (!modelGroup && options.tags && options.tags.length > 0) {
+        const { tagsToModelGroup } = require('../../litellm/model-groups');
+        modelGroup = tagsToModelGroup(options.tags);
+      }
+      if (!modelGroup) {
+        modelGroup = 'simple-tier2';
+      }
 
       const initialState: SimpleGraphState = {
         channelId: options.channelId,
         executionId: options.executionId,
         flowType: FlowType.SIMPLE,
         taskType: options.taskType || 'general',
-        tags,
+        modelGroup,
         model: '',
         response: options.initialPrompt,
         status: 'running',
