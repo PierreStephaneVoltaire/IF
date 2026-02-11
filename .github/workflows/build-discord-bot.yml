@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - develop
+      - master
     paths:
       - 'app/**'
       - '.github/workflows/build-discord-bot.yml'
@@ -12,6 +13,7 @@ on:
     branches:
       - main
       - develop
+      - master
     paths:
       - 'app/**'
       - '.github/workflows/build-discord-bot.yml'

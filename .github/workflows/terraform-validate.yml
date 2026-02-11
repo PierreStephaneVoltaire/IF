@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - develop
+      - master
     paths:
       - 'terraform/**'
       - '.github/workflows/terraform-validate.yml'
@@ -12,6 +13,7 @@ on:
     branches:
       - main
       - develop
+      - master
     paths:
       - 'terraform/**'
       - '.github/workflows/terraform-validate.yml'
