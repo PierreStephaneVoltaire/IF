@@ -3,8 +3,8 @@
  *
  * Implements Chain of Verification for factual accuracy.
  * Uses model group-based routing:
- * - Baseline/Verifier: general-tier2
- * - Reviser: general-tier3
+ * - Baseline/Verifier: chain-of-verification-tier2
+ * - Reviser: chain-of-verification-tier3
  *
  * Flow: start → baseline → generate_questions → verify_claims → revise → finalize
  */
@@ -284,7 +284,7 @@ export function createCoveGraph() {
         baselineModelGroup = tagsToModelGroup(options.tags);
       }
       if (!baselineModelGroup) {
-        baselineModelGroup = 'general-tier2';
+        baselineModelGroup = 'chain-of-verification-tier2';
       }
 
       const initialState: CoveGraphState = {
@@ -294,7 +294,7 @@ export function createCoveGraph() {
         prompt: options.initialPrompt,
         baselineModelGroup,
         verifierModelGroup: baselineModelGroup,
-        reviserModelGroup: 'general-tier3',
+        reviserModelGroup: 'chain-of-verification-tier3',
         baselineModel: '',
         verifierModel: '',
         reviserModel: '',

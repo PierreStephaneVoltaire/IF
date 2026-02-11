@@ -3,8 +3,8 @@
  *
  * Implements Delphi method for expert consensus building.
  * Uses model group-based routing:
- * - Experts: general-tier2
- * - Judge: general-tier3
+ * - Experts: delphi-method-tier2
+ * - Judge: delphi-method-tier3
  *
  * Flow: start → expert_1 → ... → expert_n → judge → finalize
  */
@@ -205,7 +205,7 @@ export function createDelphiGraph() {
         expertModelGroup = tagsToModelGroup(options.tags);
       }
       if (!expertModelGroup) {
-        expertModelGroup = 'general-tier2';
+        expertModelGroup = 'delphi-method-tier2';
       }
 
       const initialState: DelphiGraphState = {
@@ -214,7 +214,7 @@ export function createDelphiGraph() {
         flowType: FlowType.DELPHI_METHOD,
         userQuestion: options.initialPrompt,
         expertModelGroup,
-        judgeModelGroup: 'general-tier3',
+        judgeModelGroup: 'delphi-method-tier3',
         expertModels: [],
         judgeModel: '',
         estimates: [],
@@ -259,7 +259,7 @@ export function createDelphiGraph() {
 
       return {
         response: `${finalState.consensus.estimate}\n\nConfidence Range: ${finalState.consensus.confidenceRange.low}-${finalState.consensus.confidenceRange.high}\nStrength: ${finalState.consensus.strength}%`,
-        model: finalState.judgeModel || finalState.expertModels[0] || 'general-tier2',
+        model: finalState.judgeModel || finalState.expertModels[0] || 'delphi-method-tier2',
         traversedNodes: finalState.traversedNodes,
         error: finalState.status === 'error' ? finalState.consensus.estimate : undefined,
       };

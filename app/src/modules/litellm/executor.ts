@@ -35,7 +35,7 @@ Use the provided tools to:
   log.info(`Tools provided: ${tools.map(t => t.function.name).join(', ')}`);
 
   // Use modelGroup as the model name
-  const model = context.modelGroup || context.model || 'general-tier2';
+  const model = context.modelGroup || context.model || 'simple-tier2';
 
   const startTime = Date.now();
   const response = await chatCompletion({
@@ -86,7 +86,7 @@ export async function executeSimpleTask(
   }
 
   // Use modelGroup as the model name, fallback to model param, then default
-  const resolvedModel = modelGroup || model || 'general-tier2';
+  const resolvedModel = modelGroup || model || 'simple-tier2';
 
   const startTime = Date.now();
   const response = await chatCompletion({

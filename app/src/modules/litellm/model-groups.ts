@@ -83,7 +83,7 @@ export function getModelGroup(
       if (options?.websearch) {
         // Websearch available at tier2, tier3, tier4
         // Classifier will never assign tier1 with websearch
-        return `simple-websearch-${tier}`;
+        return `websearch-${tier}`;
       }
       // Simple available at tier1, tier2
       return `simple-${tier}`;
@@ -160,7 +160,7 @@ export function getAgentRoleGroup(agentRole: AgentRoleString, tier: Tier): strin
       return 'devops-engineer-tier3'; // Always tier3
 
     case 'architect':
-      return 'architect-role-tier4'; // Always tier4
+      return 'architect-tier4'; // Always tier4
 
     case 'code-reviewer':
       // Available at tier3, tier4
@@ -322,7 +322,7 @@ export function getClassifierModel(): string {
 
 /**
  * Parse a model group string back into components
- * @param group - Model group string like "programming-tier2-thinking-tools"
+ * @param group - Model group string like "simple-tier2"
  * @returns ModelGroup object
  * @deprecated Use the new tiered model group system instead
  */
@@ -370,46 +370,41 @@ export function parseModelGroup(group: string): ModelGroup {
 export function buildModelGroup(
   type: ModelType,
   tier: Tier,
-  mode: ModelMode = '',
-  hasTools: boolean = false
+  _mode: ModelMode = '',
+  _hasTools: boolean = false
 ): string {
-  const parts: string[] = [type, tier];
-
-  if (mode) {
-    parts.push(mode);
+  switch (type) {
+    case 'classifier':
+      return 'classifier';
+    case 'social':
+      return 'social-tier1';
+    case 'websearch':
+      return `websearch-${tier}`;
+    case 'programming':
+    case 'general':
+    default:
+      return `simple-${tier}`;
   }
-
-  if (hasTools) {
-    parts.push('tools');
-  }
-
-  return parts.join('-');
 }
 
 /**
  * Convert legacy tags to model group name
  * Legacy tags: ['tier2', 'tools', 'programming']
- * New format: 'programming-tier2-tools'
+ * New format: 'simple-tier2'
  * @deprecated Use getModelGroup() instead
  */
 export function tagsToModelGroup(tags: string[]): string {
   const tier = (tags.find((t) => t.startsWith('tier')) as Tier) || 'tier2';
-  const hasTools = tags.includes('tools');
-  const mode = tags.includes('thinking') ? 'thinking' : tags.includes('creative') ? 'creative' : '';
-
-  // Determine type from tags
-  let type: ModelType = 'general';
-  if (tags.includes('programming')) {
-    type = 'programming';
-  } else if (tags.includes('websearch')) {
-    type = 'websearch';
-  } else if (tags.includes('social')) {
-    type = 'social';
-  } else if (tags.includes('classifier')) {
-    type = 'classifier';
+  if (tags.includes('classifier')) {
+    return 'classifier';
   }
-
-  return buildModelGroup(type, tier, mode, hasTools);
+  if (tags.includes('social')) {
+    return 'social-tier1';
+  }
+  if (tags.includes('websearch')) {
+    return `websearch-${tier}`;
+  }
+  return `simple-${tier}`;
 }
 
 /**
@@ -490,7 +485,7 @@ export function getReflectionModelGroup(workerModelGroup: string): string {
  * @deprecated Use getClassifierModel() instead
  */
 export function getClassifierModelGroup(): string {
-  return buildModelGroup('classifier', 'tier1', '', false);
+  return 'classifier';
 }
 
 /**

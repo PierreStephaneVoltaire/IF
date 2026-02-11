@@ -3,8 +3,8 @@
  *
  * A graph for building consensus from multiple sources.
  * Uses model group-based routing:
- * - Answer nodes: general-tier2
- * - Judge: general-tier3
+ * - Answer nodes: consensus-tier2
+ * - Judge: consensus-tier3
  *
  * Flow: start → answer_1 → answer_2 → answer_3 → judge → finalize
  */
@@ -250,14 +250,14 @@ export function createConsensusGraph() {
       // Execute flow: answers → judge
       let state = await generateAnswers(initialState);
       if (state.status === 'error') {
-        return { response: state.consensus, model: state.models[0] || 'general-tier2', traversedNodes: state.traversedNodes, error: state.consensus };
+        return { response: state.consensus, model: state.models[0] || 'consensus-tier2', traversedNodes: state.traversedNodes, error: state.consensus };
       }
 
       state = await judgeNode(state);
 
       return {
         response: state.consensus,
-        model: state.judgeModel || state.models[0] || 'general-tier2',
+        model: state.judgeModel || state.models[0] || 'consensus-tier2',
         traversedNodes: state.traversedNodes,
         error: state.status === 'error' ? state.consensus : undefined,
       };

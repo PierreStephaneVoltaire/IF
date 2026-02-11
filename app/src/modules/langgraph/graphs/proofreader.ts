@@ -2,7 +2,7 @@
  * ProofreaderGraph - Single Node Flow
  *
  * A simple graph for grammar and spellcheck only.
- * Uses model group-based routing: general-tier1
+ * Uses model group-based routing: proofreader-tier1
  *
  * Flow: start → proofread → finalize
  */
@@ -40,7 +40,7 @@ interface ProofreaderGraphState {
 // ============================================================================
 
 /**
- * Proofread node - generates grammar/spellcheck response using general-tier1 model group
+ * Proofread node - generates grammar/spellcheck response using proofreader-tier1 model group
  */
 async function proofreadNode(state: ProofreaderGraphState): Promise<ProofreaderGraphState> {
   const logger = createExecutionLogger({

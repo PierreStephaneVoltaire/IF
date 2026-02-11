@@ -3,8 +3,8 @@
  *
  * A parallel graph for exploring multiple architectural approaches.
  * Uses model group-based routing:
- * - Branch nodes: general-tier3-thinking
- * - Aggregator: general-tier4-thinking
+ * - Branch nodes: branch-tier3
+ * - Aggregator: branch-tier4
  *
  * Flow: start → branch_1 → branch_2 → branch_3 → aggregate → finalize
  */
@@ -202,16 +202,16 @@ export function createBranchGraph() {
 
       // Get model groups from options, or convert tags if provided
       let branchModelGroup = options.modelGroup;
-      let aggregatorModelGroup = 'general-tier4-thinking';
+      let aggregatorModelGroup = 'branch-tier4';
 
       if (!branchModelGroup && options.tags && options.tags.length > 0) {
         const tags = options.tags;
         branchModelGroup = tagsToModelGroup(tags);
         // Aggregator is always tier higher
-        aggregatorModelGroup = 'general-tier4-thinking';
+        aggregatorModelGroup = 'branch-tier4';
       }
       if (!branchModelGroup) {
-        branchModelGroup = 'general-tier3-thinking';
+        branchModelGroup = 'branch-tier3';
       }
 
       const initialState: BranchGraphState = {
@@ -233,7 +233,7 @@ export function createBranchGraph() {
 
       return {
         response: finalState.finalResponse,
-        model: finalState.aggregatorModel || finalState.branchModels[0] || 'general-tier2',
+        model: finalState.aggregatorModel || finalState.branchModels[0] || 'branch-tier3',
         traversedNodes: finalState.traversedNodes,
         error: finalState.status === 'error' ? finalState.finalResponse : undefined,
       };

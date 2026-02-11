@@ -3,8 +3,8 @@
  *
  * Implements backward planning from goal to present.
  * Uses model group-based routing:
- * - Goal/Milestones: general-tier2
- * - Feasibility: general-tier3-thinking
+ * - Goal/Milestones: backcasting-tier2
+ * - Feasibility: backcasting-tier3
  *
  * Flow: start → define_goal → milestones → feasibility → action_plan → finalize
  */
@@ -286,7 +286,7 @@ export function createBackcastingGraph() {
         goalModelGroup = tagsToModelGroup(options.tags);
       }
       if (!goalModelGroup) {
-        goalModelGroup = 'general-tier2';
+        goalModelGroup = 'backcasting-tier2';
       }
 
       const initialState: BackcastingGraphState = {
@@ -296,7 +296,7 @@ export function createBackcastingGraph() {
         prompt: options.initialPrompt,
         goalModelGroup,
         milestoneModelGroup: goalModelGroup,
-        feasibilityModelGroup: 'general-tier3-thinking',
+        feasibilityModelGroup: 'backcasting-tier3',
         actionPlanModelGroup: goalModelGroup,
         goalModel: '',
         milestoneModel: '',

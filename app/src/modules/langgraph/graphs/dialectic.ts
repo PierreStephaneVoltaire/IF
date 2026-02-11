@@ -4,7 +4,7 @@
  * Implements thesis → antithesis → synthesis pattern for philosophical discourse.
  * Uses model group-based routing:
  * - Thesis/Antithesis: websearch-tier2
- * - Synthesizer: general-tier3-thinking
+ * - Synthesizer: dialectic-tier3
  *
  * Flow: start → thesis → antithesis → synthesize → finalize
  */

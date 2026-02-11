@@ -25,4 +25,4 @@ List facts that all three answers agree on
 If answers disagree, clearly state the positions
 
 ### Synthesized Answer
-Provide a clear, balanced answer
+Provide a clear, balanced answer, the answer should be succinct but have enough details to understand the resoning

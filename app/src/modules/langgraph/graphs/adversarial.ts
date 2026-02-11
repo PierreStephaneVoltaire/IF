@@ -3,8 +3,8 @@
  *
  * Implements adversarial validation (Generator → Red Team → Judge).
  * Uses model group-based routing:
- * - Generator/Red Team: general-tier2
- * - Judge: general-tier3
+ * - Generator/Red Team: adversarial-validation-tier2
+ * - Judge: adversarial-validation-tier3
  *
  * Flow: start → generate → red_team → judge → finalize
  */
@@ -252,7 +252,7 @@ export function createAdversarialGraph() {
         generatorModelGroup = tagsToModelGroup(options.tags);
       }
       if (!generatorModelGroup) {
-        generatorModelGroup = 'general-tier2';
+        generatorModelGroup = 'adversarial-validation-tier2';
       }
 
       const initialState: AdversarialGraphState = {
@@ -262,7 +262,7 @@ export function createAdversarialGraph() {
         prompt: options.initialPrompt,
         generatorModelGroup,
         redTeamModelGroup: generatorModelGroup,
-        judgeModelGroup: 'general-tier3',
+        judgeModelGroup: 'adversarial-validation-tier3',
         generatorModel: '',
         redTeamModel: '',
         judgeModel: '',

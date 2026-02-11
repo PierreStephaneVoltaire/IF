@@ -226,7 +226,7 @@ export function createSequentialGraph() {
     name: 'SequentialThinkingGraph',
     invoke: async (options: GraphInvokeOptions): Promise<GraphResult> => {
       log.info(`Invoking SequentialThinkingGraph for channel ${options.channelId}`);
-      log.info(`Using model group: ${options.modelGroup || 'programming-tier2-tools'}`);
+      log.info(`Using model group: ${options.modelGroup || 'python-coder-tier2'}`);
 
       const state = createInitialState(options);
       const logger = createExecutionLogger({

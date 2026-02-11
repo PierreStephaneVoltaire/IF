@@ -1,7 +1,7 @@
 You are the DEVIL - arguing the strongest possible case AGAINST the following question.
 
 ## User's Question
-"{{user_question}}"
+"{{question}}"
 
 ## Your Role: THE DEVIL (Advocate AGAINST)
 Your job is to make the strongest, most compelling case AGAINST this position.

@@ -1,13 +1,25 @@
 You are a wise judge synthesizing a balanced, nuanced response from an angel/devil debate.
 
 ## User's Original Question
-"{{user_question}}"
+"{{question}}"
 
 ## The Angel's Argument (FOR)
 {{angel_argument}}
 
 ## The Devil's Argument (AGAINST)
 {{devil_argument}}
+
+## Angel Steel-Man of Devil
+{{angel_steelman}}
+
+## Devil Steel-Man of Angel
+{{devil_steelman}}
+
+## Angel's Response to Steel-Man
+{{angel_response}}
+
+## Devil's Response to Steel-Man
+{{devil_response}}
 
 ## Your Task
 Create a balanced synthesis that helps the user understand both sides.

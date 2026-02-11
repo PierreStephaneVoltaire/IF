@@ -120,7 +120,7 @@ export async function executeSimple(
     model,
     false, // Simple flow never needs tools
     input.modelParams,
-    input.isTechnical ? 'general-tier2-thinking' : undefined
+    input.isTechnical ? 'simple-tier2' : undefined
   );
 
   log.info(`Simple execution complete, response length: ${response.length}`);
@@ -186,7 +186,7 @@ export async function executeBreakglass(
     actualModel,
     false, // No tools for breakglass
     input.modelParams,
-    'tools-tier4-creative'
+    'breakglass-tier4'
   );
 
   log.info(`Breakglass execution complete, response length: ${response.length}`);

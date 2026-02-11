@@ -2,7 +2,7 @@
  * ShellGraph - Single Node Flow
  *
  * A simple graph for shell command suggestions.
- * Uses model group-based routing: general-tier2
+ * Uses model group-based routing: shell-tier2
  *
  * Flow: start → suggest → finalize
  */
@@ -42,7 +42,7 @@ interface ShellGraphState {
 // ============================================================================
 
 /**
- * Suggest node - generates shell command suggestions using general-tier2 model group
+ * Suggest node - generates shell command suggestions using shell-tier2 model group
  */
 async function suggestNode(state: ShellGraphState): Promise<ShellGraphState> {
   const logger = createExecutionLogger({

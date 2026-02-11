@@ -226,7 +226,7 @@ export async function processMessage(
           current_message: history.current_message,
         },
         startingTier: 'tier4',
-        modelGroup: 'general-tier4-tools',
+        modelGroup: 'breakglass-tier4',
       };
       
       log.info('Executing breakglass flow via LangGraph');

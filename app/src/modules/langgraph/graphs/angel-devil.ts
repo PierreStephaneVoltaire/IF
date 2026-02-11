@@ -3,11 +3,11 @@
  *
  * Implements angel/devil debate pattern for moral/ethical decisions.
  * Uses model group-based routing:
- * - Angel/Devil arguments: general-tier2
- * - Steelman: general-tier3-thinking
- * - Judge: general-tier3
+ * - Angel/Devil arguments: angel-devil-tier2
+ * - Steelman + Responses: angel-devil-tier3
+ * - Judge: angel-devil-tier3
  *
- * Flow: start → angel → devil → steelman → judge → finalize
+ * Flow: start → angel → devil → angel_steelman → devil_steelman → angel_respond → devil_respond → judge → finalize
  */
 
 import { createLogger } from '../../../utils/logger';
@@ -36,11 +36,17 @@ interface AngelDevilGraphState {
   judgeModelGroup: string;
   angelModel: string;
   devilModel: string;
-  steelmanModel: string;
+  angelSteelmanModel: string;
+  devilSteelmanModel: string;
+  angelRespondModel: string;
+  devilRespondModel: string;
   judgeModel: string;
   angelResponse: string;
   devilResponse: string;
-  steelman: string;
+  angelSteelman: string;
+  devilSteelman: string;
+  angelRespond: string;
+  devilRespond: string;
   finalResponse: string;
   status: 'running' | 'complete' | 'error';
   traversedNodes: string[];
@@ -119,17 +125,18 @@ async function devilNode(state: AngelDevilGraphState): Promise<AngelDevilGraphSt
 }
 
 /**
- * Generate steelman (strongest counter-argument)
+ * Angel steel-mans Devil's argument
  */
-async function steelmanNode(state: AngelDevilGraphState): Promise<AngelDevilGraphState> {
-  log.info(`AngelDevilGraph: Steelman for channel ${state.channelId}`);
+async function angelSteelmanNode(state: AngelDevilGraphState): Promise<AngelDevilGraphState> {
+  log.info(`AngelDevilGraph: Angel steelman for channel ${state.channelId}`);
 
   try {
     const params = getModelParams(FlowType.ANGEL_DEVIL);
     const prompt = renderTemplate(loadPrompt('angel-devil-steelman'), {
+      role: 'Angel',
+      opposing_role: 'Devil',
       question: state.question,
-      angel_response: state.angelResponse,
-      devil_response: state.devilResponse,
+      opposing_argument: state.devilResponse,
     });
 
     const response = await chatCompletion({
@@ -141,9 +148,122 @@ async function steelmanNode(state: AngelDevilGraphState): Promise<AngelDevilGrap
 
     return {
       ...state,
-      steelman: extractContent(response),
-      steelmanModel: response.model,
-      traversedNodes: [...state.traversedNodes, 'steelman'],
+      angelSteelman: extractContent(response),
+      angelSteelmanModel: response.model,
+      traversedNodes: [...state.traversedNodes, 'angel_steelman'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      finalResponse: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Devil steel-mans Angel's argument
+ */
+async function devilSteelmanNode(state: AngelDevilGraphState): Promise<AngelDevilGraphState> {
+  log.info(`AngelDevilGraph: Devil steelman for channel ${state.channelId}`);
+
+  try {
+    const params = getModelParams(FlowType.ANGEL_DEVIL);
+    const prompt = renderTemplate(loadPrompt('angel-devil-steelman'), {
+      role: 'Devil',
+      opposing_role: 'Angel',
+      question: state.question,
+      opposing_argument: state.angelResponse,
+    });
+
+    const response = await chatCompletion({
+      model: state.steelmanModelGroup,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    return {
+      ...state,
+      devilSteelman: extractContent(response),
+      devilSteelmanModel: response.model,
+      traversedNodes: [...state.traversedNodes, 'devil_steelman'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      finalResponse: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Angel responds to Devil's steel-manned argument
+ */
+async function angelRespondNode(state: AngelDevilGraphState): Promise<AngelDevilGraphState> {
+  log.info(`AngelDevilGraph: Angel response for channel ${state.channelId}`);
+
+  try {
+    const params = getModelParams(FlowType.ANGEL_DEVIL);
+    const prompt = renderTemplate(loadPrompt('angel-devil-respond'), {
+      role: 'Angel',
+      opposing_role: 'Devil',
+      question: state.question,
+      role_argument: state.angelResponse,
+      opposing_steelman: state.angelSteelman,
+    });
+
+    const response = await chatCompletion({
+      model: state.steelmanModelGroup,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    return {
+      ...state,
+      angelRespond: extractContent(response),
+      angelRespondModel: response.model,
+      traversedNodes: [...state.traversedNodes, 'angel_respond'],
+    };
+  } catch (error) {
+    return {
+      ...state,
+      status: 'error',
+      finalResponse: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Devil responds to Angel's steel-manned argument
+ */
+async function devilRespondNode(state: AngelDevilGraphState): Promise<AngelDevilGraphState> {
+  log.info(`AngelDevilGraph: Devil response for channel ${state.channelId}`);
+
+  try {
+    const params = getModelParams(FlowType.ANGEL_DEVIL);
+    const prompt = renderTemplate(loadPrompt('angel-devil-respond'), {
+      role: 'Devil',
+      opposing_role: 'Angel',
+      question: state.question,
+      role_argument: state.devilResponse,
+      opposing_steelman: state.devilSteelman,
+    });
+
+    const response = await chatCompletion({
+      model: state.steelmanModelGroup,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: params.temperature,
+      top_p: params.top_p,
+    });
+
+    return {
+      ...state,
+      devilRespond: extractContent(response),
+      devilRespondModel: response.model,
+      traversedNodes: [...state.traversedNodes, 'devil_respond'],
     };
   } catch (error) {
     return {
@@ -167,11 +287,14 @@ async function judgeNode(state: AngelDevilGraphState): Promise<AngelDevilGraphSt
 
   try {
     const params = getModelParams(FlowType.ANGEL_DEVIL);
-    const prompt = renderTemplate(loadPrompt('angel-devil-respond'), {
+    const prompt = renderTemplate(loadPrompt('angel-devil-judge'), {
       question: state.question,
-      angel_response: state.angelResponse,
-      devil_response: state.devilResponse,
-      steelman: state.steelman,
+      angel_argument: state.angelResponse,
+      devil_argument: state.devilResponse,
+      angel_steelman: state.angelSteelman,
+      devil_steelman: state.devilSteelman,
+      angel_response: state.angelRespond,
+      devil_response: state.devilRespond,
     });
 
     const response = await chatCompletion({
@@ -188,7 +311,7 @@ async function judgeNode(state: AngelDevilGraphState): Promise<AngelDevilGraphSt
     const generator = getMermaidGenerator();
     const mermaidSource = generator.generate({
       flowType: state.flowType,
-      traversedNodes: ['start', 'angel', 'devil', 'steelman', 'judge'],
+      traversedNodes: ['start', 'angel', 'devil', 'angel_steelman', 'devil_steelman', 'angel_respond', 'devil_respond', 'judge'],
       turns: [],
       finalStatus: 'complete',
     });
@@ -210,10 +333,13 @@ async function judgeNode(state: AngelDevilGraphState): Promise<AngelDevilGraphSt
       channelId: state.channelId,
       executionId: state.executionId,
       status: 'complete',
-      nodeCount: 5,
+      nodeCount: 8,
       angelModel: state.angelModel,
       devilModel: state.devilModel,
-      steelmanModel: state.steelmanModel,
+      angelSteelmanModel: state.angelSteelmanModel,
+      devilSteelmanModel: state.devilSteelmanModel,
+      angelRespondModel: state.angelRespondModel,
+      devilRespondModel: state.devilRespondModel,
       judgeModel,
       modelGroup: state.judgeModelGroup,
       timestamp: new Date().toISOString(),
@@ -254,7 +380,7 @@ export function createAngelDevilGraph() {
         angelModelGroup = tagsToModelGroup(options.tags);
       }
       if (!angelModelGroup) {
-        angelModelGroup = 'general-tier2';
+        angelModelGroup = 'angel-devil-tier2';
       }
 
       const initialState: AngelDevilGraphState = {
@@ -264,21 +390,27 @@ export function createAngelDevilGraph() {
         question: options.initialPrompt,
         angelModelGroup,
         devilModelGroup: angelModelGroup,
-        steelmanModelGroup: 'general-tier3-thinking',
-        judgeModelGroup: 'general-tier3',
+        steelmanModelGroup: 'angel-devil-tier3',
+        judgeModelGroup: 'angel-devil-tier3',
         angelModel: '',
         devilModel: '',
-        steelmanModel: '',
+        angelSteelmanModel: '',
+        devilSteelmanModel: '',
+        angelRespondModel: '',
+        devilRespondModel: '',
         judgeModel: '',
         angelResponse: '',
         devilResponse: '',
-        steelman: '',
+        angelSteelman: '',
+        devilSteelman: '',
+        angelRespond: '',
+        devilRespond: '',
         finalResponse: '',
         status: 'running',
         traversedNodes: ['start'],
       };
 
-      // Execute flow: angel → devil → steelman → judge
+      // Execute flow: angel → devil → angel_steelman → devil_steelman → angel_respond → devil_respond → judge
       let state = await angelNode(initialState);
       if (state.status === 'error') {
         return { response: state.finalResponse, model: state.angelModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
@@ -289,16 +421,31 @@ export function createAngelDevilGraph() {
         return { response: state.finalResponse, model: state.devilModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
       }
 
-      state = await steelmanNode(state);
+      state = await angelSteelmanNode(state);
       if (state.status === 'error') {
-        return { response: state.finalResponse, model: state.steelmanModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
+        return { response: state.finalResponse, model: state.angelSteelmanModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
+      }
+
+      state = await devilSteelmanNode(state);
+      if (state.status === 'error') {
+        return { response: state.finalResponse, model: state.devilSteelmanModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
+      }
+
+      state = await angelRespondNode(state);
+      if (state.status === 'error') {
+        return { response: state.finalResponse, model: state.angelRespondModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
+      }
+
+      state = await devilRespondNode(state);
+      if (state.status === 'error') {
+        return { response: state.finalResponse, model: state.devilRespondModel, traversedNodes: state.traversedNodes, error: state.finalResponse };
       }
 
       state = await judgeNode(state);
 
       return {
         response: state.finalResponse,
-        model: state.judgeModel || state.steelmanModel || state.devilModel || state.angelModel,
+        model: state.judgeModel || state.devilRespondModel || state.angelRespondModel || state.devilSteelmanModel || state.angelSteelmanModel || state.devilModel || state.angelModel,
         traversedNodes: state.traversedNodes,
         error: state.status === 'error' ? state.finalResponse : undefined,
       };

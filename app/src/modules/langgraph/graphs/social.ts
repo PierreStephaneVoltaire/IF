@@ -2,7 +2,7 @@
  * SocialGraph - Single Node Flow
  *
  * A simple graph for social interactions, greetings, and casual chat.
- * Uses model group-based routing: general-tier1
+ * Uses model group-based routing: social-tier1
  *
  * Flow: start → respond → finalize
  */
@@ -41,7 +41,7 @@ interface SocialGraphState {
 // ============================================================================
 
 /**
- * Respond node - generates a social response using general-tier1 model group
+ * Respond node - generates a social response using social-tier1 model group
  */
 async function respondNode(state: SocialGraphState): Promise<SocialGraphState> {
   const logger = createExecutionLogger({
