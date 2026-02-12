@@ -1,5 +1,0 @@
-Create a detailed plan to address:
-
-{{user_prompt}}
-
-Respond with your plan and indicate your confidence level (0-100).

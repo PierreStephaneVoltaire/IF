@@ -1,3 +1,0 @@
-Improve this prompt for adversarial validation. Ask clarifying questions and make the requirements more precise:
-
-{{initial_prompt}}

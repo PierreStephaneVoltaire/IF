@@ -1,2 +1,0 @@
-You are a baseline answer generator. Provide a clear, concise response to the user's question.
-If the question involves factual claims, answer as accurately as possible.

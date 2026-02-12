@@ -1,7 +1,0 @@
-Original Request:
-{{original_prompt}}
-
-Proposed Solution:
-{{proposed_solution}}
-
-Identify flaws, vulnerabilities, edge cases, and potential weaknesses. Be thorough and adversarial.

@@ -1,7 +1,0 @@
-Original Question:
-{{original_prompt}}
-
-Expert Estimates Across Rounds:
-{{estimate_history}}
-
-Synthesize into a final consensus with confidence range.

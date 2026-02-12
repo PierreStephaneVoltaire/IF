@@ -1,7 +1,0 @@
-Goal State:
-{{goal_state}}
-
-Timeline:
-{{timeline}}
-
-Generate backward milestones from goal to present.

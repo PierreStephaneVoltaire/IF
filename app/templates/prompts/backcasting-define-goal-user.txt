@@ -1,4 +1,0 @@
-User request:
-{{goal_request}}
-
-Clarify the desired future state and timeline based on the request above.

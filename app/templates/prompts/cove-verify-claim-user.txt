@@ -1,7 +1,0 @@
-Original Question:
-{{original_prompt}}
-
-Verification Question:
-{{verification_question}}
-
-Provide your answer based on verified facts. If uncertain, state that clearly.
