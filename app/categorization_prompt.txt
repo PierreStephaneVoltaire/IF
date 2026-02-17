@@ -1,0 +1,26 @@
+Classify the following chat into one of these categories. Focus on the overall topic of the conversation but give slightly more weight to the later messages, especially the last message (the last quarter of the conversation should carry roughly 25% extra influence, not override the rest and the last message should carry roughly 15% extra influence).
+
+Return a JSON object with an independent confidence score (0.0–1.0) for each category. Scores do NOT need to sum to 1.
+
+### coding
+Code implementation, refactoring, bug fixes (regardless of fix size), creating files, complex system implementations, Terraform modules, Kubernetes manifests, Helm charts, Dockerfiles, CI/CD pipeline definitions (GitHub Actions, GitLab CI, ArgoCD application configs), monitoring setup (Prometheus rules, Grafana dashboards), security implementations (OPA policies, network policies), AI/ML code, training scripts, data processing pipelines, automation scripts, backend code, API development. Any task where the expected output includes writing or modifying code or configuration.
+
+### architecture
+System design, architecture planning, infrastructure design, debugging strategies, error handling patterns, resilience patterns, FinOps and cost optimization, capacity planning, SRE platform design, SLO/SLI/SLA planning, security architecture, threat modeling, AI/ML infrastructure planning, platform engineering, backend design, software design, roadmap planning, technical RFC review, ADR writing, architecture critique and evaluation. These are complex discussions requiring senior-level reflection. The output is plans, diagrams, trade-off analysis, or professional evaluations.
+
+### shell
+Code or shell command requests that would result in one-liner shell commands or very short shell scripts (nothing beyond ~15 lines). The asks are usually how-to's or what's. They can also be questions related to CLI flags or options. Shell command suggestions, one-liners, CLI help, piped commands, kubectl, helm, terraform, docker, git, argocd, aws cli, az cli, gcloud, prometheus, openssl, security scanning tools, networking commands (curl, httpie, ssh, scp, dig, traceroute), performance tools (top, htop, strace, netstat, ss), jq/yq, awk, sed, grep, environment/path/permissions troubleshooting.
+
+### social
+Greetings, farewells, onomatopoeia, emotional one-word responses, casual chat, compliments, insults, small talk, reactions, acknowledgments, expressions, internet slang, meme speak, jokes, emotional support, banter, "thanks", "got it", "lol", "nice". Social interactions where there is no substantive information request.
+
+### financial
+Queries related to ETFs, stocks, crypto,taxes, investment accounts, bonds, options, investing, trading, technical analysis, risk management, taxes, retirement, FIRE, saving, budgeting, debt management, investing strategies, financial planning, financial independence, financial education, financial news, financial advice, financial analysis, financial reporting, financial statements, financial ratios, financial metrics, financial modeling, financial forecasting, portfolio strategy, market commentary.
+
+### health
+Physical health, fitness, and nutrition. Diets, meal planning, macros, supplements, powerlifting, bodybuilding, workout programming, recovery, sleep, mobility, deload strategies, injury management, powerlifting competition preparation, peaking, water cutting, weight management, body composition, bloodwork interpretation.
+
+### general
+General questions or requests that don't fit into any other category. Always non-technical. Could be about general knowledge, things that would require web search, moral advice, rants, opinions about what topics to learn, proofreading messages, rewriting or reviewing non-code text, career advice, creative writing, brainstorming, philosophical questions, personal decisions.
+
+Message:
