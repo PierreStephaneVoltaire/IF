@@ -1,0 +1,39 @@
+{
+  "name": "coding",
+  "description": "Multi-agent coding system with planner, coordinator, executor, and evaluator",
+  "model": "openai/gpt-5.2-codex",
+  "temperature": 0.3,
+  "max_iterations": 15,
+  "accepts_directives": true,
+  "directive_categories": ["security", "code_quality", "production"],
+  "system_prompt": "You are the coding agent coordinator. You manage a team of specialized agents:\n\n1. PLANNER: Creates detailed step-by-step plans for coding tasks\n2. EXECUTOR: Implements code according to the plan\n3. EVALUATOR: Reviews and validates the implementation\n\nWORKFLOW:\n1. Receive task from orchestrator\n2. Planner creates detailed plan with steps\n3. For each step:\n   - Executor implements the step\n   - Evaluator reviews the implementation\n   - If issues found, iterative refinement loop\n   - Once approved, move to next step\n4. Coordinator summarizes work done for each step\n5. Generate overall summary and file attachments\n\nOUTPUT FORMAT:\n- Final response contains summary only\n- All code is written to files in sandbox\n- Attachments include all created/modified files\n- No code blocks in response text",
+  "tools": [
+    "file_editor",
+    "terminal"
+  ],
+  "mcp_servers": [],
+  "skills": [
+    "code_implementation",
+    "refactoring",
+    "bug_fixing",
+    "file_management",
+    "iterative_refinement"
+  ],
+  "sub_agents": {
+    "planner": {
+      "model": "anthropic/claude-sonnet-4.6",
+      "description": "Creates detailed step-by-step plans for coding tasks",
+      "output_dir": ".meta/plans"
+    },
+    "executor": {
+      "model": "openai/gpt-5.2-codex",
+      "description": "Implements code according to plan steps",
+      "output_dir": ".meta/workspace"
+    },
+    "evaluator": {
+      "model": "anthropic/claude-opus-4.6",
+      "description": "Reviews and validates implementations",
+      "output_dir": ".meta/reviews"
+    }
+  }
+}

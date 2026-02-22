@@ -1,5 +1,10 @@
-Classify the following chat into one of these categories. Focus on the overall topic of the conversation but give slightly more weight to the later messages, especially the last message (the last quarter of the conversation should carry roughly 25% extra influence, not override the rest and the last message should carry roughly 15% extra influence).
-Return a JSON object with an independent confidence score (0.0–1.0) for each category. Scores do NOT need to sum to 1.
+Analyze the following conversation and return a single JSON object with two sections: category scores and reasoning pattern scores.
+
+Focus on the overall topic of the conversation but give slightly more weight to the later messages, especially the last message (the last quarter of the conversation should carry roughly 25% extra influence, not override the rest and the last message should carry roughly 15% extra influence).
+
+All scores are independent confidence values (0.0–1.0). Scores do NOT need to sum to 1 within each section.
+
+## CATEGORY SCORES
 
 ### coding
 Code implementation, refactoring, bug fixes (regardless of fix size), creating files, complex system implementations, Terraform modules, Kubernetes manifests, Helm charts, Dockerfiles, CI/CD pipeline definitions (GitHub Actions, GitLab CI, ArgoCD application configs), monitoring setup (Prometheus rules, Grafana dashboards), security implementations (OPA policies, network policies), AI/ML code, training scripts, data processing pipelines, automation scripts, backend code, API development. Also includes code review, explaining what a specific piece of code does, debugging a specific error in code, writing tests, and generating or modifying any config file. Any task where the expected output includes writing, reading, explaining, or modifying code or configuration files.
@@ -21,5 +26,44 @@ Physical health, fitness, and nutrition. Diets, meal planning, macros, supplemen
 
 ### general
 General questions or requests that don't fit into any other category. Always non-technical. Includes personal decisions or advice where money, numbers, or financial terms appear as context but the real question is about relationships, behavior, judgment, or values — these belong here, not in financial. Examples: should I lend money to a friend, my coworker got a raise and acts differently, someone spent their back pay on impractical things and is now asking for help. Also includes: general knowledge, things that would require web search, moral advice, rants, venting, opinions about what topics to learn, proofreading or rewriting non-code text, career advice, creative writing, brainstorming, philosophical questions, and any personal decisions that don't fit a more specific category.
+
+## REASONING PATTERN SCORES
+
+### simple
+Factual questions requiring direct, straightforward answers. The answer is stable, well-defined, and doesn't require synthesis across multiple sources or perspectives. Examples: "what does this flag do", "what's the syntax for X", "what year did Y happen", "what's the difference between A and B" when the answer is unambiguous.
+
+### opposing_perspective
+Questions or decisions that benefit from considering two distinct, opposing viewpoints. Useful for debates, ethical dilemmas, controversial topics, or decisions where there are two clear camps. Examples: "should I use microservices or monolith", "is this approach good or bad", "pros and cons of X", "should I do A or B", evaluating trade-offs between exactly two options.
+
+### multi_perspective
+Design decisions, trade-offs, comparisons, or judgment calls that benefit from weighing multiple (more than two) viewpoints or approaches. Applies when there is no single correct answer and the quality of the response depends on exploring competing options, risks, or priorities. Examples: choosing between three or more architectures, evaluating a system design with many stakeholders, deciding on a technology stack with multiple viable options, reviewing a strategy from different angles.
+
+### sequential_refinement
+Tasks that involve producing, improving, or iterating on a concrete artifact — whether in one shot or across multiple turns. This includes writing or fixing code, generating scripts or configs, drafting or editing documents, implementing features, and reviewing or refactoring existing work. The key signal is that the output is a tangible artifact being built or improved.
+
+### research
+Queries where producing an accurate response requires access to current or rapidly changing data — where information from hours or days ago may differ meaningfully from last week. Applies to financial markets, stock prices, tax law changes, health guidelines, current events, and any domain where recency is critical to correctness. Does NOT apply to technical documentation, syntax, cloud service APIs, or developer tooling, as those change slowly enough that static knowledge suffices.
+
+## OUTPUT FORMAT
+
+Return ONLY valid JSON with this exact structure:
+{
+  "category": {
+    "coding": <score>,
+    "architecture": <score>,
+    "social": <score>,
+    "financial": <score>,
+    "health": <score>,
+    "general": <score>,
+    "shell": <score>
+  },
+  "reasoning": {
+    "simple": <score>,
+    "opposing_perspective": <score>,
+    "multi_perspective": <score>,
+    "sequential_refinement": <score>,
+    "research": <score>
+  }
+}
 
 Message:

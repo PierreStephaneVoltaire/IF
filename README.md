@@ -1,1 +1,0 @@
-speed and classification quality are an issue. back to the drawing board

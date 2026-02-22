@@ -2,3 +2,27 @@ fastapi
 httpx
 uvicorn
 pydantic
+sse-starlette
+starlette
+
+# OpenHands SDK for condenser functionality
+# Correct PyPI package name is openhands-ai (All-Hands AI open source project)
+openhands-ai>=0.1.0
+# Pin lmnr to version with guarded dist.name in package_check.py
+# Pre-0.5.0 lmnr crashes at import time with:
+#   TypeError: 'NoneType' object is not subscriptable
+# when any installed package has corrupt/missing METADATA files.
+lmnr>=0.5.0
+# Constrain importlib_metadata to stable range to avoid None-metadata regression
+importlib_metadata>=7.0.0,<8.0.0
+# LangGraph core and checkpointer dependencies
+langgraph>=0.2.0
+langgraph-checkpoint>=1.0.0
+langgraph-checkpoint-sqlite>=1.0.0
+langchain-core>=0.3.0
+
+# Optional: for in-memory checkpointer (included in langgraph)
+# langgraph.checkpoint.memory is included in langgraph
+
+# Optional: for SQLite checkpointer
+aiosqlite>=0.19.0
