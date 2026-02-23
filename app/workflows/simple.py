@@ -539,7 +539,7 @@ Output ONLY valid JSON."""
         
         invocation = AgentInvocation(
             agent_name="evaluator",
-            model=evaluator_config.get("model", "anthropic/claude-opus-4.6"),
+            model=evaluator_config.get("model", "anthropic/claude-sonnet-4.6"),
             system_prompt=evaluator_config.get("system_prompt", ""),
             user_prompt=eval_prompt,
         )

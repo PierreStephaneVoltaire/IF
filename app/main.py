@@ -9,6 +9,7 @@ This module uses LangGraph's native features:
 """
 from __future__ import annotations
 import asyncio
+import json
 import uuid
 from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
@@ -184,8 +185,8 @@ async def chat_completions(body: ChatRequest, request: Request):
     - Request tracker monitors in-flight requests
     """
     messages_dicts = [normalize_message_content(msg) for msg in body.messages]
-    print(body)
-    print(request)
+    raw = await request.json()
+    print(json.dumps(raw, indent=2))
     if is_openwebui_task(messages_dicts):
         # Bypass the graph, call LLM directly
         from categorization import call_openrouter

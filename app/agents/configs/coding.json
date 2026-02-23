@@ -21,7 +21,7 @@
   ],
   "sub_agents": {
     "planner": {
-      "model": "anthropic/claude-sonnet-4.6",
+      "model": "anthropic/claude-opus-4.6",
       "description": "Creates detailed step-by-step plans for coding tasks",
       "output_dir": ".meta/plans"
     },
@@ -31,7 +31,7 @@
       "output_dir": ".meta/workspace"
     },
     "evaluator": {
-      "model": "anthropic/claude-opus-4.6",
+      "model": "anthropic/claude-sonnet-4.6",
       "description": "Reviews and validates implementations",
       "output_dir": ".meta/reviews"
     }
