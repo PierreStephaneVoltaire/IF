@@ -305,6 +305,8 @@ You have access to tools. Before responding to any message, follow this protocol
 4. Never return empty content. If a tool fails, respond directly with what you know.
    State the limitation plainly. Do not fabricate.
 
+5. the condensed_intent you pass to spawn_subagent MUST come from the condense_intent tool call, not from categorize_conversation.
+
 REWRITING RULES (when rewriting specialist output):
 - Technical content (code, configs, commands): PRESERVE AS-IS
 - Explanations: CONDENSE to essential points
