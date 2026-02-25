@@ -226,7 +226,7 @@ def build_graph() -> StateGraph:
 
 Combined single-prompt classification using three fast models in parallel:
 - `meta-llama/llama-4-scout`
-- `qwen/qwen3-235b-a22b-2507`
+- `google/gemini-3-flash-preview`
 - `mistralai/devstral-small`
 
 **3 API calls** (combined prompt) instead of 6 (separate category + reasoning prompts).

@@ -106,9 +106,8 @@ REASONING_PATTERNS = [
 
 # Models used for categorization (cheap, fast models)
 CATEGORIZATION_MODELS = [
-    "meta-llama/llama-4-scout",
-    "qwen/qwen3-235b-a22b-2507", 
-    "mistralai/devstral-small",
+    "meta-llama/llama-4-maverick",
+    "google/gemini-2.5-flash-lite", 
 ]
 
 # JSON schemas for structured output

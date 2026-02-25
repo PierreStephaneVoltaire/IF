@@ -224,7 +224,7 @@ async def node_main_agent(state: LangGraphState) -> Dict[str, Any]:
     final_content = "Acknowledged."
     for iteration in range(MAX_ITERATIONS):
         result = await call_openrouter(
-            "google/gemini-2.5-flash-lite",
+            "google/gemini-3-flash-preview",
             agent_messages,
             tools=ALL_MAIN_AGENT_TOOLS,
         )
@@ -297,7 +297,7 @@ async def node_main_agent(state: LangGraphState) -> Dict[str, Any]:
         "content": final_content,
         "success": True,
         "agent_name": "if_prototype_a1",
-        "model": "google/gemini-2.5-flash-lite",
+        "model": "google/gemini-3-flash-preview",
         "attachments": [],
         "metadata": {"agent_driven": True},
     }
@@ -307,7 +307,7 @@ async def node_main_agent(state: LangGraphState) -> Dict[str, Any]:
         "id": f"chatcmpl-{chat_id[:8] if chat_id else 'default'}",
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": "google/gemini-2.5-flash-lite",
+        "model": "google/gemini-3-flash-preview",
         "choices": [
             {
                 "index": 0,

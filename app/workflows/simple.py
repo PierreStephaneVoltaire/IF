@@ -454,7 +454,7 @@ Output ONLY valid JSON, no markdown code blocks."""
         
         invocation = AgentInvocation(
             agent_name="executor",
-            model=executor_config.get("model", "openai/gpt-5.2-codex"),
+            model=executor_config.get("model", "openai/gpt-5.3-codex"),
             system_prompt=executor_config.get("system_prompt", ""),
             user_prompt=step_prompt,
         )
@@ -644,7 +644,7 @@ How would you like to proceed?"""
         
         invocation = AgentInvocation(
             agent_name="executor",
-            model=executor_config.get("model", "openai/gpt-5.2-codex"),
+            model=executor_config.get("model", "openai/gpt-5.3-codex"),
             system_prompt=executor_config.get("system_prompt", ""),
             user_prompt=refinement_prompt,
         )

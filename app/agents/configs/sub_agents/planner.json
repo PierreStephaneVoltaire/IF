@@ -8,7 +8,14 @@
   "tools": [
     "file_editor"
   ],
-  "mcp_servers": [],
+     "mcp_config": {
+    "mcpServers": {
+      "time": {
+      "command": "uvx",
+      "args": ["mcp-server-time"]
+    }
+    }
+  },
   "skills": [
     "task_decomposition",
     "dependency_analysis",

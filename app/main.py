@@ -190,7 +190,7 @@ async def chat_completions(body: ChatRequest, request: Request):
     if is_openwebui_task(messages_dicts):
         # Bypass the graph, call LLM directly
         from categorization import call_openrouter
-        result = await call_openrouter("google/gemini-2.5-flash-lite", messages_dicts)
+        result = await call_openrouter("google/gemini-3-flash-preview", messages_dicts)
         return result  # already in the right shape for OpenWebUI
     
     # Generate chat_id if not provided - used for sandbox folder and state persistence

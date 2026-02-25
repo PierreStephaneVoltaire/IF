@@ -124,7 +124,8 @@ class CategorizationTool:
             "shell": "shell",
         }
         suggested_agent = agent_map.get(category, "general")
-        
+        print(category)
+        print(reasoning_debug)
         return CategorizationToolResult(
             category=category,
             reasoning_pattern=reasoning_pattern,
