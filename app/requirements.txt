@@ -5,6 +5,7 @@
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 fastmcp>=2.11.3
+
 # HTTP Client
 httpx>=0.25.0
 
@@ -22,6 +23,14 @@ tiktoken>=0.5.0
 
 # OpenHands Agent Runtime
 openhands-sdk==1.11.4
+
+# Discord Integration
+discord.py>=2.3.0
+
+# Math & Arithmetic
+sympy>=1.12
+numpy>=1.26.0
+pysqlite3-binary>=0.5.0
 
 # Optional: For development and testing
 # pytest>=7.4.0

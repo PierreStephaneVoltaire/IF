@@ -4,26 +4,33 @@ This module implements Step 5 of the routing pipeline:
 - System prompt assembly (base + memory + preset-specific)
 - MCP server resolution
 - Agent session creation/reuse
-- Message passing to agent
+- Message passing to agent via OpenHands SDK
 - Response handling and attachment scanning
 """
 from __future__ import annotations
 import json
 import os
+import uuid
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
 
+from pydantic import SecretStr
+
+from openhands.sdk import LLM, Agent, Conversation , MessageEvent, TextContent
+
 from config import (
     PRESET_MCP_MAP,
     SANDBOX_PATH,
     MEMORY_DB_PATH,
-    OPENROUTER_API_KEY,
-    OPENROUTER_BASE_URL,
-    OPENROUTER_HEADERS,
+    PERSISTENCE_DIR,
+    LLM_API_KEY,
+    LLM_BASE_URL,
 )
 from presets.loader import PresetManager
+from mcp_servers.config import resolve_mcp_config
+from agent.tools import get_memory_tools
 
 
 logger = logging.getLogger(__name__)
@@ -213,61 +220,87 @@ async def execute_agent(
     http_client: Any,
     stream: bool = False
 ) -> AgentResponse:
-    """Execute agent with messages.
+    """Execute agent with messages using OpenHands SDK.
     
-    This is a mock implementation that uses OpenRouter directly.
-    In production, this would use the OpenHands SDK for full agent
-    capabilities including MCP server access and tool use.
+    This implementation uses the OpenHands Agent and Conversation classes
+    for full MCP server access, tool use, and conversation persistence.
     
     Args:
         session: Agent session configuration
         messages: Conversation messages
-        http_client: HTTP client for API calls
+        http_client: HTTP client (unused, kept for API compatibility)
         stream: Whether to stream response (not implemented yet)
         
     Returns:
         AgentResponse with content and attachments
     """
-    # Prepare messages for OpenRouter
-    # Prepend system prompt
-    formatted_messages = [
-        {"role": "system", "content": session.system_prompt}
-    ]
-    formatted_messages.extend(messages)
-    
-    # Make request to OpenRouter
-    # Note: This is a simplified version. Full implementation would:
-    # 1. Use OpenHands SDK for agent session management
-    # 2. Enable MCP server access
-    # 3. Handle tool calls
-    # 4. Manage sandbox file operations
-    
     try:
-        response = await http_client.post(
-            f"{OPENROUTER_BASE_URL}/chat/completions",
-            headers=OPENROUTER_HEADERS,
-            json={
-                "model": session.model,
-                "messages": formatted_messages,
-                "stream": False,  # TODO: Implement streaming
-            },
-            timeout=60.0
+        # Convert the preset model to OpenRouter format
+        # The preset.model is like "@preset/architecture", we need "openrouter/@preset/architecture"
+        model = session.model
+        if not model.startswith("openrouter/"):
+            model = f"openrouter/{model}"
+        
+        # Create OpenHands LLM instance
+        llm = LLM(
+            usage_id="agent",
+            model=model,
+            base_url=LLM_BASE_URL,
+            api_key=SecretStr(LLM_API_KEY),
         )
-        response.raise_for_status()
+        print(f"[Agent] Using model: {model}")
+        # Get MCP config for this preset
+        mcp_config = resolve_mcp_config(session.preset_slug)
+        print(f"[Agent] Resolved MCP servers: {list(mcp_config.keys())}")
+        # Get memory tools
+        tools = get_memory_tools()
+        print(f"[Agent] Loaded memory tools")
+        # Create OpenHands Agent
+        agent = Agent(
+            llm=llm,
+            tools=tools,
+            mcp_config=mcp_config,
+        )
+        print("[Agent] Agent created with system prompt:")
+        # Create or restore Conversation for persistence
+        # OpenHands Conversation expects a UUID object, not a string
+        conversation_id_uuid = uuid.uuid4()
+        conversation = Conversation(
+            agent=agent,
+            workspace=os.getcwd(),
+            persistence_dir=PERSISTENCE_DIR,
+            conversation_id=conversation_id_uuid,
+        )
+        print(f"[Agent] Conversation initialized with ID: {session.session_id}")
+        # Format messages for the agent
+        # OpenHands expects messages in a specific format
+        # The system prompt is already included in session.system_prompt
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            conversation.send_message(content)
         
-        data = response.json()
-        
-        # Extract content
-        content = data["choices"][0]["message"]["content"]
-        finish_reason = data["choices"][0].get("finish_reason", "stop")
-        
+        conversation.run()
+        events = conversation.state.events
+        last_agent_message:MessageEvent = None
+        for event in events:
+          if isinstance(event, MessageEvent) and event.source == "agent":
+            last_agent_message = event
+       
+        content = ""
+        if last_agent_message:
+            content = " ".join(
+                    c.text
+                    for c in last_agent_message.llm_message.content
+                    if isinstance(c, TextContent)
+                )
         # Scan sandbox for attachments
         attachments = scan_sandbox_for_attachments()
-        
+        print(f"[Agent] Found attachments: {attachments}")
         return AgentResponse(
             content=content,
             attachments=attachments,
-            finish_reason=finish_reason
+            finish_reason="stop"
         )
         
     except Exception as e:
@@ -320,7 +353,6 @@ def create_session_id(conversation_id: str, preset_slug: str) -> str:
     Returns:
         Unique session ID
     """
-    import uuid
     return f"{conversation_id}-{preset_slug}-{uuid.uuid4().hex[:8]}"
 
 

@@ -11,7 +11,7 @@ import os
 from typing import Dict, Any, Optional, Set
 from dataclasses import dataclass
 
-from config import SANDBOX_PATH
+from config import SANDBOX_PATH, GOOGLE_SHEETS_CREDENTIALS, ALPHAVANTAGE_API_KEY
 
 
 # ============================================================================
@@ -43,6 +43,22 @@ MCP_SERVERS: Dict[str, Dict[str, Any]] = {
         "command": "uvx",
         "args": ["mcp-server-google-sheets@latest"],
         "env": {
+            "FASTMCP_LOG_LEVEL": "ERROR",
+            "CREDENTIALS_CONFIG": GOOGLE_SHEETS_CREDENTIALS,
+        }
+    },
+    "yahoo_finance": {
+        "command": "uvx",
+        "args": ["mcp-yahoo-finance"],
+        "env": {
+            "FASTMCP_LOG_LEVEL": "ERROR"
+        }
+    },
+    "alpha_vantage": {
+        "command": "uvx",
+        "args": ["alphavantage-mcp"],
+        "env": {
+            "ALPHAVANTAGE_API_KEY": ALPHAVANTAGE_API_KEY,
             "FASTMCP_LOG_LEVEL": "ERROR"
         }
     },
@@ -72,6 +88,9 @@ PRESET_MCP_MAP: Dict[str, list] = {
     "architecture": ["aws_docs", "sandbox"],
     "coding": ["sandbox"],
     "health": ["google_sheets"],
+    "mental_health": [],  # No MCP servers for mental health
+    "social": [],  # No MCP servers for social
+    "finance": ["yahoo_finance", "alpha_vantage"],  # Finance preset gets stock data servers
     
     # Other presets receive only __all__ servers
     # Add more mappings as needed

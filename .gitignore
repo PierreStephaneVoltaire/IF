@@ -31,7 +31,7 @@ yarn-error.log*
 .idea/
 .vscode/
 *.swp
-
-
+app/venv/*
+app/src/data/*
 .claude*
 app/sandbox/*

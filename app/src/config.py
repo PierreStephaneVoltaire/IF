@@ -49,6 +49,19 @@ SCORING_MODELS: List[str] = [
 
 MENTAL_HEALTH_PRESET = os.getenv("MENTAL_HEALTH_PRESET", "mental-health-black-box")
 
+# ============================================================================
+# MCP Server API Keys Configuration
+# ============================================================================
+
+# Google Sheets MCP server
+GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")
+
+# Yahoo Finance (no API key required)
+# Uses mcp-yahoo-finance package directly
+
+# Alpha Vantage API key for stock data
+ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY", "")
+
 # Paths
 SANDBOX_PATH = os.getenv("SANDBOX_PATH", "./sandbox")
 MEMORY_DB_PATH = os.getenv("MEMORY_DB_PATH", "./data/memory_db")
@@ -91,14 +104,17 @@ OPENWEBUI_TASK_MARKERS = [
 
 
 # ============================================================================
-# MCP Server Configuration (Deprecated - use mcp.config instead)
+# MCP Server Configuration (Deprecated - use mcp_servers.config instead)
 # ============================================================================
 
-# This is kept for backward compatibility but should be imported from mcp.config
+# This is kept for backward compatibility but should be imported from mcp_servers.config
 PRESET_MCP_MAP = {
     "__all__": ["time"],  # Memory tools are registered separately, not via MCP
     "architecture": ["aws_docs", "sandbox"],
     "coding": ["sandbox"],
     "health": ["google_sheets"],
+    "mental_health": [],  # No MCP servers for mental health
+    "social": [],  # No MCP servers for social
+    "finance": ["yahoo_finance", "alpha_vantage"],  # Finance preset gets stock data servers
 }
 
