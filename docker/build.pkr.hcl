@@ -16,85 +16,51 @@ variable "image_tag" {
   default = "latest"
 }
 
-source "docker" "discord_bot" {
-  image    = "public.ecr.aws/docker/library/node:20"
+source "docker" "if_agent" {
+  image    = "public.ecr.aws/docker/library/python:3.11-slim"
   commit   = true
   platform = "linux/amd64"
   changes = [
     "WORKDIR /app",
     "ENV PATH=/root/.local/bin:/usr/local/bin:$PATH",
-    "CMD [\"node\", \"dist/index.js\"]"
+    "CMD [\"python\", \"-m\", \"uvicorn\", \"src.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]"
   ]
 }
 
 build {
-  name    = "discord-bot"
-  sources = ["source.docker.discord_bot"]
+  name    = "if-agent"
+  sources = ["source.docker.if_agent"]
 
-  # Install system dependencies & Python
+  # Install system dependencies
   provisioner "shell" {
     inline = [
-      "apt-get update && apt-get install -y curl unzip ca-certificates git python3 python3-pip python3-venv",
-      # Chrome dependencies for Puppeteer/Mermaid diagram rendering
-      "apt-get install -yq gconf-service libasound2 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 libgcc1 libgconf-2-4 libgdk-pixbuf2.0-0 libglib2.0-0 libgtk-3-0 libnspr4 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 ca-certificates fonts-liberation libnss3 lsb-release xdg-utils wget",
+      "apt-get update && apt-get install -y curl unzip ca-certificates git",
       "rm -rf /var/lib/apt/lists/*",
       "mkdir -p /app"
     ]
   }
 
-  # Install AWS CLI
+  # Install uv for fast Python package management
   provisioner "shell" {
     inline = [
-      "curl \"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip\" -o \"/awscliv2.zip\"",
-      "unzip /awscliv2.zip -d /",
-      "/aws/install",
-      "rm -rf /awscliv2.zip /aws",
-      "aws --version"
+      "curl -LsSf https://astral.sh/uv/install.sh | sh",
+      "export PATH=\"/root/.local/bin:$PATH\"",
+      "uv --version"
     ]
   }
 
-  # Install kubectl
-  provisioner "shell" {
-    inline = [
-      "curl -LO \"https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl\"",
-      "install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl",
-      "kubectl version --client"
-    ]
-  }
-
-  # Install Helm
-  provisioner "shell" {
-    inline = [
-      "curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash",
-      "helm version"
-    ]
-  }
-
-  # Create directories
-  provisioner "shell" {
-    inline = [
-      "mkdir -p /mnt/fs",
-      "mkdir -p /root/.kube"
-    ]
-  }
-
-  # Copy package files first for better caching
+  # Copy requirements first for better caching
   provisioner "file" {
-    source      = "../app/package.json"
-    destination = "/app/package.json"
+    source      = "../app/requirements.txt"
+    destination = "/app/requirements.txt"
   }
 
-  # Install dependencies
+  # Install Python dependencies using uv
   provisioner "shell" {
     inline = [
-      "cd /app && npm install"
+      "export PATH=\"/root/.local/bin:$PATH\"",
+      "cd /app && uv pip install --system -r requirements.txt"
     ]
-  }
-
-  # Copy TypeScript config
-  provisioner "file" {
-    source      = "../app/tsconfig.json"
-    destination = "/app/tsconfig.json"
   }
 
   # Copy source code
@@ -103,24 +69,35 @@ build {
     destination = "/app/"
   }
 
-  # Copy templates
+  # Copy main entry point
   provisioner "file" {
-    source      = "../app/templates"
+    source      = "../app/main_system_prompt.txt"
+    destination = "/app/main_system_prompt.txt"
+  }
+
+  # Copy .env.example for reference
+  provisioner "file" {
+    source      = "../app/.env.example"
+    destination = "/app/.env.example"
+  }
+
+  # Copy data directory structure
+  provisioner "file" {
+    source      = "../app/data"
     destination = "/app/"
   }
 
-  # Build TypeScript
-  provisioner "shell" {
-    inline = [
-      "cd /app && npm run build"
-    ]
+  # Copy sandbox directory
+  provisioner "file" {
+    source      = "../app/sandbox"
+    destination = "/app/"
   }
 
-  # Clean up dev dependencies and source
+  # Clean up unnecessary files
   provisioner "shell" {
     inline = [
-      "cd /app && npm prune --production",
-      "rm -rf /app/src /app/tsconfig.json"
+      "rm -rf /app/data/memory.json",
+      "rm -rf /root/.cache"
     ]
   }
   
