@@ -41,13 +41,13 @@ SUGGESTION_MODEL = os.getenv("SUGGESTION_MODEL", "mistralai/mistral-nemo")
 # Parse comma-separated scoring models
 SCORING_MODELS_STR = os.getenv(
     "SCORING_MODELS",
-    "openai/gpt-oss-120b,z-ai/glm-4.7-flash"
+    "google/gemini-2.5-flash-lite,openai/gpt-oss-120b,anthropic/claude-haiku-4.5"
 )
 SCORING_MODELS: List[str] = [
     model.strip() for model in SCORING_MODELS_STR.split(",") if model.strip()
 ]
 
-MENTAL_HEALTH_PRESET = os.getenv("MENTAL_HEALTH_PRESET", "mental-health-black-box")
+MENTAL_HEALTH_PRESET = os.getenv("MENTAL_HEALTH_PRESET", "mental-health")
 
 # ============================================================================
 # MCP Server API Keys Configuration
