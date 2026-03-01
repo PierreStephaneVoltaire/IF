@@ -1,91 +1,209 @@
-# IF Prototype A1 — Agent API
+# IF Prototype A1 — Intelligent Routing Agent API
 
-OpenAI-compatible API server in Python exposing a single custom model (`if-prototype`) backed by a routing layer. Incoming chat completions are analyzed, scored against dynamically loaded OpenRouter presets, and dispatched to the best-fit preset model. The agent runs on the OpenHands SDK with access to MCP servers, a persistent RAG-backed memory store, human-in-the-loop interaction, conversation persistence, and a file-based attachment system.
+An OpenAI-compatible API server in Python that provides intelligent routing to specialized AI presets based on conversation analysis. Incoming chat completions are analyzed by parallel scoring models, classified against preset definitions, and dispatched to the best-fit specialist model via OpenRouter presets.
 
-The API is designed as a platform-agnostic backend. Platform-specific adapters (Discord, OpenWebUI, etc.) connect to it via the standard OpenAI chat completions interface.
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                  Client (OpenWebUI / Discord / etc.)             │
-└──────────────────────────────┬──────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   OpenAI-Compatible API (FastAPI)               │
-│                                                                 │
-│  ┌─────────────┐   ┌──────────────┐   ┌─────────────────────┐  │
-│  │  /v1/models  │   │  /v1/chat/   │   │  Attachment Serving │  │
-│  │             │   │  completions │   │  /files/sandbox/*   │  │
-│  └─────────────┘   └──────┬───────┘   └─────────────────────┘  │
-│                           │                                     │
-│            ┌──────────────┴──────────────┐                      │
-│            │     Request Interceptor      │                     │
-│            │  (OpenWebUI suggestion check)│                     │
-│            └──────────┬──────────┬───────┘                      │
-│              suggestion│          │ normal                       │
-│                   ▼    │          ▼                              │
-│  ┌────────────────┐   │   ┌──────────────────┐                 │
-│  │  Mistral Nemo  │   │   │ Context Condenser │                 │
-│  │  (quick reply) │   │   │  (if > 250k tok)  │                 │
-│  └────────────────┘   │   └────────┬─────────┘                 │
-│                       │            ▼                            │
-│                       │   ┌─────────────────┐                  │
-│                       │   │ Routing Pipeline │                  │
-│                       │   │  ┌───────────┐  │                  │
-│                       │   │  │ Scorer(s)  │  │                  │
-│                       │   │  │ (parallel) │  │                  │
-│                       │   │  └─────┬─────┘  │                  │
-│                       │   │        ▼        │                  │
-│                       │   │  ┌───────────┐  │                  │
-│                       │   │  │ Decision   │  │                  │
-│                       │   │  │ Logic      │  │                  │
-│                       │   │  └─────┬─────┘  │                  │
-│                       │   │        ▼        │                  │
-│                       │   │  ┌───────────┐  │                  │
-│                       │   │  │ State      │  │                  │
-│                       │   │  │ Cache      │  │                  │
-│                       │   │  └─────┬─────┘  │                  │
-│                       │   └────────┼────────┘                  │
-│                       │            │                            │
-│                       │            ▼ selected preset            │
-│                       │   ┌──────────────────────────┐         │
-│                       │   │    OpenHands Agent        │         │
-│                       │   │    (Persistent Session)   │         │
-│                       │   │                          │         │
-│                       │   │  ┌────────┐ ┌─────────┐ │         │
-│                       │   │  │  MCP   │ │ Memory  │ │         │
-│                       │   │  │ Servers│ │  (RAG)  │ │         │
-│                       │   │  └────────┘ └─────────┘ │         │
-│                       │   │  ┌────────┐ ┌─────────┐ │         │
-│                       │   │  │Sandbox │ │ Human   │ │         │
-│                       │   │  │ (files)│ │ in Loop │ │         │
-│                       │   │  └────────┘ └─────────┘ │         │
-│                       │   └───────────┬──────────────┘         │
-│                       │               │                        │
-│                       ▼               ▼                        │
-│               ┌─────────────────────────┐                      │
-│               │   Response Assembler     │                      │
-│               │  (text + attachments)    │                      │
-│               └─────────────────────────┘                      │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-                          OpenRouter API
-                     (@preset/{name} routing)
-```
+The agent runs on the OpenHands SDK with access to MCP servers for extended capabilities (AWS docs, financial data, file system), a persistent RAG-backed memory store, conversation persistence, and a file-based attachment system.
 
 ---
 
-## API Specification
+## Table of Contents
 
-### GET /v1/models
+- [Architecture Overview](#architecture-overview)
+- [Request Flow Diagram](#request-flow-diagram)
+- [API Endpoints](#api-endpoints)
+- [Routing Pipeline](#routing-pipeline)
+- [Channel System](#channel-system)
+- [Storage Layer](#storage-layer)
+- [MCP Server Configuration](#mcp-server-configuration)
+- [Preset System](#preset-system)
+- [Environment Variables](#environment-variables)
+- [Project Structure](#project-structure)
+- [Startup Sequence](#startup-sequence)
+- [Quick Start](#quick-start)
 
-Returns the model list with a single entry.
+---
 
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Client Layer                                       │
+│                                                                              │
+│  ┌────────────────┐    ┌────────────────┐    ┌────────────────┐            │
+│  │   OpenWebUI    │    │    Discord     │    │   HTTP Client  │            │
+│  │   (polling)    │    │    (bot)       │    │   (curl/SDK)   │            │
+│  └───────┬────────┘    └───────┬────────┘    └───────┬────────┘            │
+└──────────┼─────────────────────┼─────────────────────┼──────────────────────┘
+           │                     │                     │
+           ▼                     ▼                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Channel System (src/channels/)                        │
+│                                                                              │
+│  ┌────────────────┐    ┌────────────────┐    ┌────────────────┐            │
+│  │ OpenWebUI      │    │ Discord        │    │ HTTP API       │            │
+│  │ Listener       │    │ Listener       │    │ (FastAPI)      │            │
+│  └───────┬────────┘    └───────┬────────┘    └───────┬────────┘            │
+│          │                     │                     │                      │
+│          ▼                     ▼                     │                      │
+│  ┌────────────────┐    ┌────────────────┐           │                      │
+│  │ Translator     │    │ Translator     │           │                      │
+│  └───────┬────────┘    └───────┬────────┘           │                      │
+│          │                     │                     │                      │
+│          ▼                     ▼                     │                      │
+│  ┌────────────────┐    ┌────────────────┐           │                      │
+│  │ Debounce Queue │    │ Debounce Queue │           │                      │
+│  └───────┬────────┘    └───────┬────────┘           │                      │
+│          │                     │                     │                      │
+│          └──────────┬──────────┘                     │                      │
+│                     ▼                                │                      │
+│          ┌────────────────┐                          │                      │
+│          │ Dispatcher     │                          │                      │
+│          └───────┬────────┘                          │                      │
+│                  │                                   │                      │
+└──────────────────┼───────────────────────────────────┼──────────────────────┘
+                   │                                   │
+                   ▼                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     Core Pipeline (src/api/completions.py)                   │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    process_chat_completion_internal()                │   │
+│  │                                                                      │   │
+│  │  Step 1: Request Interceptor (OpenWebUI task detection)             │   │
+│  │          ┌────────────────────────────────────────────────┐          │   │
+│  │          │ intercept_request() → SUGGESTION_MODEL         │          │   │
+│  │          │ (bypass routing for title/suggestion tasks)    │          │   │
+│  │          └────────────────────────────────────────────────┘          │   │
+│  │                           │                                          │   │
+│  │  Step 2: Parallel Scoring (preset classification)                   │   │
+│  │          ┌────────────────────────────────────────────────┐          │   │
+│  │          │ score_conversation() → SCORING_MODELS (3x)     │          │   │
+│  │          │ (gemini-flash, gpt-oss, claude-haiku)          │          │   │
+│  │          └────────────────────────────────────────────────┘          │   │
+│  │                           │                                          │   │
+│  │  Step 3: Decision Logic (preset selection)                          │   │
+│  │          ┌────────────────────────────────────────────────┐          │   │
+│  │          │ select_preset() → Crisis/Confident/Ambiguous   │          │   │
+│  │          └────────────────────────────────────────────────┘          │   │
+│  │                           │                                          │   │
+│  │  Step 4: Conversation Cache (routing state)                         │   │
+│  │          ┌────────────────────────────────────────────────┐          │   │
+│  │          │ ConversationCache → Topic Shift Detection      │          │   │
+│  │          └────────────────────────────────────────────────┘          │   │
+│  │                           │                                          │   │
+│  │  Step 5: Agent Execution (OpenHands SDK)                            │   │
+│  │          ┌────────────────────────────────────────────────┐          │   │
+│  │          │ execute_agent() → @preset/{selected_preset}    │          │   │
+│  │          └────────────────────────────────────────────────┘          │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     OpenHands Agent (src/agent/)                            │
+│                                                                              │
+│  ┌────────────────┐    ┌────────────────┐    ┌────────────────┐            │
+│  │  LLM Config    │    │  MCP Servers   │    │ Memory Tools   │            │
+│  │  @preset/slug  │    │  (uvx-based)   │    │  (ChromaDB)    │            │
+│  └────────────────┘    └────────────────┘    └────────────────┘            │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────┐            │
+│  │                    Conversation Persistence                 │            │
+│  │                 (src/data/conversations/{id}/)             │            │
+│  └────────────────────────────────────────────────────────────┘            │
+└─────────────────────────────────────────────────────────────────────────────┘
+                   │
+                   ▼
+            OpenRouter API
+         (@preset/{name} routing)
+```
+
+---
+
+## Request Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as FastAPI Endpoint
+    participant Interceptor
+    participant Scorer
+    participant Decision
+    participant Cache
+    participant Agent as OpenHands Agent
+    participant OR as OpenRouter
+
+    Client->>API: POST /v1/chat/completions
+
+    Note over API: Extract conversation_id
+
+    API->>Interceptor: intercept_request messages
+
+    alt Is OpenWebUI Task
+        Interceptor->>OR: Call SUGGESTION_MODEL
+        OR-->>Interceptor: Quick response
+        Interceptor-->>API: Bypass routing
+        API-->>Client: Return response
+    else Normal Request
+        Interceptor-->>API: Continue to routing
+
+        API->>Cache: get conversation_id
+
+        alt Cache Hit and No Topic Shift
+            Cache-->>API: Return cached preset
+        else Cache Miss or Topic Shift
+            API->>Scorer: score_conversation messages
+
+            par Parallel Scoring
+                Scorer->>OR: Model 1: gemini-2.5-flash-lite
+                Scorer->>OR: Model 2: gpt-oss-120b
+                Scorer->>OR: Model 3: claude-haiku-4.5
+            end
+
+            OR-->>Scorer: Scores from all models
+            Scorer->>Scorer: Aggregate scores
+            Scorer-->>API: AggregatedScores
+
+            API->>Decision: select_preset scores
+
+            alt Crisis Detected
+                Decision-->>API: Route to mental_health preset
+            else Confident Match
+                Decision-->>API: Route to top preset
+            else Ambiguous
+                Decision-->>API: Route to most capable
+            else Low Confidence
+                Decision-->>API: Route to fallback
+            end
+
+            API->>Cache: Update conversation state
+        end
+
+        API->>Agent: execute_agent preset messages
+
+        Agent->>Agent: Assemble system prompt
+        Agent->>Agent: Resolve MCP servers
+        Agent->>OR: Call @preset/selected_preset
+
+        OR-->>Agent: Stream response
+        Agent->>Agent: Scan for attachments
+        Agent-->>API: AgentResponse
+
+        API-->>Client: ChatCompletionResponse
+    end
+```
+
+---
+
+## API Endpoints
+
+### Core Endpoints
+
+#### `GET /v1/models`
+
+Returns the model list with a single entry for `if-prototype`.
+
+**Response:**
 ```json
 {
   "object": "list",
@@ -100,78 +218,199 @@ Returns the model list with a single entry.
 }
 ```
 
-### POST /v1/chat/completions
+#### `POST /v1/chat/completions`
 
-Standard OpenAI chat completions interface. Accepts `model: "if-prototype"` (any other model value is rejected).
+Standard OpenAI chat completions interface. Accepts `model: "if-prototype"` only.
 
-Request body follows the OpenAI chat completions schema: `messages`, `stream`, `temperature`, etc. All parameters are forwarded to the downstream preset model after routing.
-
-Response follows the OpenAI chat completions schema. When the agent produces file artifacts (code files, diagrams), they are returned as attachments in the response.
-
-Streaming is supported. When `stream: true`, the response is an SSE stream of `chat.completion.chunk` objects. Attachments are delivered as a final non-streamed payload after the stream completes, or as tool-call artifacts within the stream depending on client capabilities.
-
-Concurrent messages are supported for non-blocking clients. While an agent session is running, additional messages can be sent to the same conversation. These are delivered to the running agent via OpenHands' send-message-while-running capability. OpenWebUI is sequential and blocking, but other clients (Discord adapter, custom frontends) can take advantage of this.
-
----
-
-## Startup & Configuration
-
-### Preset Loading
-
-On server startup:
-
-1. Call the OpenRouter API to fetch all presets associated with the configured API key.
-2. Build an in-memory map:
-
-```python
-presets = {
-    "preset-slug-1": {
-        "name": "preset-slug-1",
-        "description": "Description from OpenRouter preset config...",
-        "model": "@preset/preset-slug-1"
-    },
-    # ... one entry per preset
+**Request Body:**
+```json
+{
+  "model": "if-prototype",
+  "messages": [
+    {"role": "user", "content": "Hello, how are you?"}
+  ],
+  "stream": false
 }
 ```
 
-3. Validate that at least one preset loaded successfully. Fail startup if zero presets are available.
-4. Log the loaded preset names and their descriptions for debugging.
+**Response:**
+```json
+{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1700000000,
+  "model": "if-prototype",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Response text here..."
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}
+```
 
-The preset descriptions are the source of truth for the routing pipeline. The scoring models use them to determine which preset fits a conversation. Preset descriptions on OpenRouter must be written to clearly differentiate their domains. The quality of routing is directly proportional to the quality of these descriptions. The scoring prompt injects these descriptions dynamically, so adding, removing, or modifying presets on OpenRouter automatically updates routing behavior on the next server restart with zero code changes.
+#### `POST /api/v1/chat/completions`
+
+Alias for `/v1/chat/completions` for OpenWebUI compatibility.
 
 ---
 
-## Context Condensation
+### Webhook Management Endpoints
 
-When the total token count of the incoming conversation exceeds `CONTEXT_CONDENSE_THRESHOLD` (default 250k tokens), the conversation is condensed before any further processing.
+#### `POST /v1/webhooks/register`
 
-Use OpenHands' built-in context condenser to produce a summary that preserves:
+Register a new channel webhook and start listening immediately.
 
-- The core topic and intent
-- Key decisions and outcomes
-- Recent messages verbatim (the last `MESSAGE_WINDOW` messages are kept intact)
-- Any operator-disclosed personal context
+**Request Body (Discord):**
+```json
+{
+  "platform": "discord",
+  "label": "My Discord Channel",
+  "discord": {
+    "bot_token": "your-bot-token",
+    "channel_id": "123456789"
+  }
+}
+```
 
-The condensed conversation replaces the original in all downstream steps: routing scorer receives the condensed version, and the agent session receives it as its conversation history.
+**Request Body (OpenWebUI):**
+```json
+{
+  "platform": "openwebui",
+  "label": "My OpenWebUI Channel",
+  "openwebui": {
+    "base_url": "https://openwebui.example.com",
+    "channel_id": "channel-uuid",
+    "api_key": "your-api-key"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "webhook_id": "wh_abc123def456",
+  "conversation_id": "conv_xyz789",
+  "platform": "discord",
+  "label": "My Discord Channel",
+  "status": "listening"
+}
+```
+
+#### `GET /v1/webhooks/`
+
+List all registered webhooks (active and inactive).
+
+**Response:**
+```json
+{
+  "webhooks": [
+    {
+      "webhook_id": "wh_abc123",
+      "conversation_id": "conv_xyz",
+      "platform": "discord",
+      "label": "My Channel",
+      "status": "active"
+    }
+  ],
+  "total": 1
+}
+```
+
+#### `GET /v1/webhooks/active`
+
+List only active webhooks.
+
+#### `GET /v1/webhooks/{webhook_id}`
+
+Get a specific webhook by ID.
+
+#### `DELETE /v1/webhooks/{webhook_id}`
+
+Deactivate a webhook (stops listener, marks as inactive).
+
+#### `POST /v1/webhooks/{webhook_id}/restart`
+
+Restart a deactivated webhook.
+
+---
+
+### File Serving Endpoints
+
+#### `GET /files/sandbox/{conversation_id}/{filepath:path}`
+
+Serve files from a conversation's sandbox directory.
+
+**Features:**
+- Path traversal protection
+- Automatic MIME type detection
+- Scoped to conversation-specific directory
+
+---
+
+### Health Check
+
+#### `GET /health`
+
+Returns system health status.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "if-prototype-a1",
+  "features": {
+    "routing": "partial",
+    "interceptor": "active",
+    "attachments": "active",
+    "memory_store": "active",
+    "memory_count": 42,
+    "presets_loaded": true,
+    "preset_count": 8,
+    "channel_system": "active",
+    "active_listeners": 2,
+    "pending_messages": 3
+  }
+}
+```
 
 ---
 
 ## Routing Pipeline
 
+The routing pipeline in [`src/api/completions.py`](src/api/completions.py:74) (`process_chat_completion_internal()`) consists of 5 steps:
+
 ### Step 1: Request Interception
 
-Before routing, check if the incoming request is an OpenWebUI suggestion or title generation request.
+**Module:** [`src/routing/interceptor.py`](src/routing/interceptor.py)
 
-Detection heuristics:
-- The `messages` array contains a single message with content matching OpenWebUI's suggestion prompt patterns
-- The message array is very short (1-2 messages) and the content asks for title suggestions or conversation summaries
+Detects OpenWebUI suggestion/title generation requests and bypasses the full routing pipeline.
 
-If detected: Call `SUGGESTION_MODEL` directly via OpenRouter. Skip the entire routing pipeline. Return the response immediately.
+- Checks for known OpenWebUI task markers in message content
+- Calls `SUGGESTION_MODEL` (default: `mistralai/mistral-nemo`) directly
+- Returns immediately without running scoring
+
+**Detection Markers:**
+- `"### Task:\nSuggest 3-5 relevant follow-up"`
+- `"### Task:\nGenerate a concise, 3-5 word title"`
+- `"### Task:\nGenerate 1-3 broad tags"`
 
 ### Step 2: Parallel Scoring
 
-Extract the last `MESSAGE_WINDOW` messages from the conversation. Send them to all `SCORING_MODELS` in parallel with the following scoring prompt:
+**Module:** [`src/routing/scorer.py`](src/routing/scorer.py)
 
+Sends the last `MESSAGE_WINDOW` messages to all scoring models in parallel.
+
+**Default Scoring Models:**
+1. `google/gemini-2.5-flash-lite`
+2. `openai/gpt-oss-120b`
+3. `anthropic/claude-haiku-4.5`
+
+**Scoring Prompt Structure:**
 ```
 You are a conversation classifier. Given the following conversation
 and a set of preset descriptions, score how well the conversation
@@ -181,172 +420,343 @@ Return a JSON object where each key is the preset slug and the
 value is a confidence score from 0.0 to 1.0.
 
 Additionally, include a "crisis" key scored 0.0 to 1.0 indicating
-whether the conversation contains signals of genuine distress,
-hopelessness, self-harm ideation, or mental health crisis.
-
-Focus on the overall conversation topic but weight the most recent
-messages more heavily.
-
-## PRESETS
-
-{dynamically_generated_preset_descriptions}
-
-## CONVERSATION
-
-{last_n_messages}
-
-Return ONLY valid JSON.
+whether the conversation contains signals of genuine distress.
 ```
 
-Preset descriptions are injected dynamically from the map built at startup.
+**Response Validation:**
+1. Parse response as JSON
+2. Verify all preset slugs are present
+3. Verify `crisis` key exists
+4. Verify all values are floats between 0.0 and 1.0
+5. Discard invalid responses
 
-Parallel execution: All scoring model calls fire concurrently using asyncio.gather. The pipeline waits for all to complete or times out after a configurable duration.
-
-Response validation for each scoring model:
-1. Parse the response as JSON. If parsing fails, discard.
-2. Verify all preset slugs from the preset map are present as keys. If any are missing, discard.
-3. Verify a `crisis` key is present. If missing, discard.
-4. Verify all values are floats between 0.0 and 1.0. If any are out of range, discard.
-5. If all scoring models are discarded, fall back to a default preset.
-
-Score aggregation:
-1. Each valid scoring model nominates a top preset and reports the gap between its top and second score.
-2. If all models agree on the same top preset, use that preset.
-3. If models disagree, use the scores from the model with the largest gap between top and second.
-4. For the crisis score, take the maximum across all models. If any model detects crisis, treat it as detected.
+**Score Aggregation:**
+- Each model nominates a top preset with confidence gap
+- If all models agree → use that preset
+- If models disagree → use scores from model with largest gap
+- Crisis score = maximum across all models
 
 ### Step 3: Decision Logic
 
-Once aggregated scores are resolved:
+**Module:** [`src/routing/decision.py`](src/routing/decision.py)
+
+Selects the final preset based on aggregated scores.
+
+**Decision Tree:**
 
 ```
 1. CRISIS CHECK
-   If crisis score > CRISIS_THRESHOLD:
-     Route to MENTAL_HEALTH_PRESET.
-     Skip all other logic.
+   If crisis_score > CRISIS_THRESHOLD (0.3):
+     → Route to MENTAL_HEALTH_PRESET
+     → Skip all other logic
 
 2. CONFIDENT ROUTE
-   If top_score > CONFIDENCE_THRESHOLD
-   AND (top_score - second_score) > CONFIDENCE_GAP:
-     Route to the top-scoring preset.
+   If top_score > CONFIDENCE_THRESHOLD (0.6)
+   AND (top_score - second_score) > CONFIDENCE_GAP (0.2):
+     → Route to top-scoring preset
 
 3. AMBIGUOUS ROUTE
    If multiple presets score above CONFIDENCE_THRESHOLD
-   and the gap is within CONFIDENCE_GAP:
-     Route to the preset backed by the MORE CAPABLE model.
+   and gap is within CONFIDENCE_GAP:
+     → Route to most capable preset among candidates
 
 4. LOW CONFIDENCE FALLBACK
    If no preset scores above CONFIDENCE_THRESHOLD:
-     Route to the most capable general-purpose preset.
+     → Route to most capable general preset
+```
+
+**Capability Ranking:**
+```python
+capability_ranking = {
+    "architecture": 100,  # Claude 3.5 Sonnet
+    "coding": 95,         # Claude 3.5 Sonnet
+    "reasoning": 90,      # o1-preview
+    "general": 50,
+    "social": 40,
+    "health": 30,
+}
 ```
 
 ### Step 4: Conversation State Cache
 
-Maintain a per-conversation cache that stores:
-- The currently active preset for this conversation
-- The scores from the last routing decision
-- A message counter since the last reclassification
+**Module:** [`src/routing/cache.py`](src/routing/cache.py)
 
-Cache logic:
-- First message in a conversation: Always run the full routing pipeline
-- Subsequent messages: Check if reclassification is needed
-- If fewer than N messages since last classification, reuse cached route
-- If the new message is short and matches social patterns (greetings, acknowledgments), reuse cached route
+Caches routing decisions per conversation to avoid reclassifying on every message.
+
+**Cache Entry:**
+```python
+@dataclass
+class ConversationState:
+    conversation_id: str
+    active_preset: str
+    anchor_window: List[str]      # Messages at last classification
+    last_scores: AggregatedScores
+    last_decision: RoutingDecision
+    last_updated: datetime
+```
+
+**Topic Shift Detection:**
+
+**Module:** [`src/routing/topic_shift.py`](src/routing/topic_shift.py)
+
+When cache is warm (preset already assigned), uses LLM to detect topic shifts:
+
+```python
+async def topic_has_shifted(
+    anchor_messages: List[str],  # From cache
+    current_messages: List[str], # Current window
+    http_client: httpx.AsyncClient,
+) -> bool:
+```
+
+- Uses `TOPIC_SHIFT_MODEL` (default: `z-ai/glm-4.7-flash`)
+- 5-second timeout, defaults to `False` on failure
+- Returns `True` only for major domain shifts (coding → finance)
+- Ignores sub-topic shifts (Python → Terraform)
+- Ignores social noise ("thanks", "ok")
+
+### Step 5: Agent Execution
+
+**Module:** [`src/agent/session.py`](src/agent/session.py)
+
+Executes the conversation with the selected preset via OpenHands SDK.
+
+**Process:**
+1. Get or create agent session for conversation
+2. Assemble system prompt (base + memory + preset-specific)
+3. Resolve MCP servers for preset
+4. Execute agent with messages
+5. Scan for new file attachments
+6. Return response with attachments
 
 ---
 
-## OpenHands Agent Sessions
+## Channel System
 
-### Session Creation
+The channel system enables multi-platform integration with Discord and OpenWebUI.
 
-Each conversation maps to a persistent OpenHands agent session. When a routed request reaches the agent layer, the API either creates a new session or restores an existing one.
+### Architecture
 
-```python
-from pydantic import SecretStr
-from openhands.sdk import LLM, Agent, Conversation
-
-llm = LLM(
-    usage_id="agent",
-    model=f"openrouter/@preset/{selected_preset_slug}",
-    base_url=os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1"),
-    api_key=SecretStr(os.getenv("LLM_API_KEY")),
-)
-
-agent = Agent(
-    llm=llm,
-    tools=tools,
-    mcp_config=resolved_mcp_config,
-)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Channel System Flow                           │
+│                                                                  │
+│  Discord Bot              OpenWebUI Poller                      │
+│      │                         │                                │
+│      ▼                         ▼                                │
+│  discord_listener.py     openwebui_listener.py                  │
+│      │                         │                                │
+│      │    push_message()       │                                │
+│      └─────────┬───────────────┘                                │
+│                ▼                                                 │
+│         debounce.py                                             │
+│    (30s batching window)                                        │
+│                │                                                 │
+│                ▼                                                 │
+│         dispatcher.py                                           │
+│                │                                                 │
+│      ┌─────────┴─────────┐                                      │
+│      ▼                   ▼                                      │
+│  discord_translator  openwebui_translator                       │
+│      │                   │                                      │
+│      └─────────┬─────────┘                                      │
+│                ▼                                                 │
+│    process_chat_completion_internal()                           │
+│                │                                                 │
+│                ▼                                                 │
+│         chunker.py                                              │
+│    (1500 char chunks)                                           │
+│                │                                                 │
+│                ▼                                                 │
+│         delivery.py                                             │
+│      ┌─────────┴─────────┐                                      │
+│      ▼                   ▼                                      │
+│  Discord Channel    OpenWebUI Channel                           │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Conversation Persistence
+### Components
 
-All conversations use OpenHands' persistence system to save and restore state across sessions. Each conversation is created with a unique ID and a persistence directory.
+#### Listener Manager
 
-On subsequent requests for the same conversation, the session is restored from disk and continues from saved state.
+**File:** [`src/channels/manager.py`](src/channels/manager.py)
 
-What gets persisted:
-- Agent state and configuration
-- Message history (complete event log)
-- Tool outputs from previous turns
-- Execution state (iteration count, status)
-- Activated skills and MCP connections
-- LLM usage statistics
+Manages listener lifecycle in background daemon threads.
 
-### Human-in-the-Loop
+```python
+def start_listener(record: WebhookRecord) -> None
+def stop_listener(webhook_id: str) -> None
+def start_all_active(records: list[WebhookRecord]) -> None  # Called at startup
+def stop_all() -> None  # Called at shutdown
+```
 
-The agent asks for more information or presents choices before proceeding with ambiguous or high-impact actions. This is handled natively by OpenHands' conversation model.
+#### Discord Listener
 
-Trigger conditions:
-- Ambiguous requests where multiple valid interpretations exist
-- High-impact actions: destructive operations, infrastructure changes, bulk memory modifications
-- Multi-step plans requiring confirmation
-- Any action gated by memory deletion or security override
+**File:** [`src/channels/listeners/discord_listener.py`](src/channels/listeners/discord_listener.py)
 
-### Concurrent Messages
+- Uses `discord.py` client in a dedicated thread
+- Listens to a single registered channel
+- Ignores bot messages and own messages
+- Pushes messages to debounce queue with attachments
 
-For non-blocking clients, messages can be sent to a conversation while the agent is already running via OpenHands' send-message-while-running support.
+#### OpenWebUI Listener
+
+**File:** [`src/channels/listeners/openwebui_listener.py`](src/channels/listeners/openwebui_listener.py)
+
+- Polling-based listener (default: 5-second interval)
+- Tracks last-seen message ID for incremental updates
+- Extracts files and attachments from messages
+
+#### Debounce System
+
+**File:** [`src/channels/debounce.py`](src/channels/debounce.py)
+
+Thread-safe message batching with configurable window.
+
+**Configuration:**
+- `CHANNEL_DEBOUNCE_SECONDS`: Inactivity window (default: 30s)
+- Messages are accumulated and flushed after silence period
+
+**Threading Model:**
+- Listener threads call `push_message()` from their own event loops
+- Uses `threading.Lock` for buffer access
+- Schedules timers on main asyncio event loop via `call_soon_threadsafe`
+
+#### Translators
+
+**Files:**
+- [`src/channels/translators/discord_translator.py`](src/channels/translators/discord_translator.py)
+- [`src/channels/translators/openwebui_translator.py`](src/channels/translators/openwebui_translator.py)
+
+Convert platform messages to `ChatCompletionRequest` format:
+
+```python
+def translate_discord_batch(messages: list[dict], conversation_id: str) -> dict:
+    # Returns:
+    # {
+    #     "model": "if-prototype",
+    #     "stream": True,
+    #     "messages": [{"role": "user", "content": content_parts}],
+    #     "_conversation_id": conversation_id,
+    # }
+```
+
+- Prepends sender attribution: `[Alice]: message text`
+- Converts image attachments to `image_url` content parts
+- References non-image attachments as text with URL
+
+#### Response Chunker
+
+**File:** [`src/channels/chunker.py`](src/channels/chunker.py)
+
+Splits long responses for platform limits.
+
+**Configuration:**
+- `CHANNEL_MAX_CHUNK_CHARS`: Max chars per chunk (default: 1500)
+
+**Split Priority:**
+1. Paragraph break (`\n\n`)
+2. Sentence break (`.\n` or `.`)
+3. Newline (`\n`)
+4. Space (` `)
+5. Hard cut
+
+#### Delivery
+
+**File:** [`src/channels/delivery.py`](src/channels/delivery.py)
+
+Platform-specific response delivery.
+
+**Discord:**
+- Sequential chunk delivery with 0.5s delay
+- Files attached to last chunk
+- Typing indicator during processing
+
+**OpenWebUI:**
+- Single combined message
+- Attachments as markdown links
+
+---
+
+## Storage Layer
+
+The storage layer provides an abstract interface for webhook persistence with pluggable backends.
+
+### Architecture
+
+**Protocol:** [`src/storage/protocol.py`](src/storage/protocol.py)
+
+```python
+@runtime_checkable
+class WebhookStore(Protocol):
+    def create(self, record: WebhookRecord) -> WebhookRecord: ...
+    def get(self, webhook_id: str) -> WebhookRecord | None: ...
+    def list_all(self) -> list[WebhookRecord]: ...
+    def list_active(self) -> list[WebhookRecord]: ...
+    def deactivate(self, webhook_id: str) -> bool: ...
+```
+
+### Data Model
+
+**File:** [`src/storage/models.py`](src/storage/models.py)
+
+```python
+class WebhookRecord(SQLModel, table=True):
+    __tablename__ = "webhooks"
+
+    webhook_id: str        # Primary key, auto-generated: wh_{uuid12}
+    conversation_id: str   # Index, auto-generated: conv_{uuid12}
+    platform: str          # "discord" | "openwebui"
+    label: str             # Human-readable name
+    status: str            # "active" | "inactive"
+    created_at: str        # ISO timestamp
+    config_json: str       # JSON-serialized platform config
+```
+
+### SQLite Backend
+
+**File:** [`src/storage/sqlite_backend.py`](src/storage/sqlite_backend.py)
+
+- Uses SQLModel ORM over SQLite
+- WAL mode for concurrent read/write safety
+- Thread-safe for listener + API access
+
+### Factory
+
+**File:** [`src/storage/factory.py`](src/storage/factory.py)
+
+```python
+def init_store() -> None       # Called at startup
+def get_webhook_store() -> WebhookStore
+def close_store() -> None      # Called at shutdown
+```
+
+**Configuration:**
+- `STORE_BACKEND`: Backend type (default: `sqlite`)
+- `STORAGE_DB_PATH`: SQLite file path (default: `./data/store.db`)
+
+**Future:** DynamoDB backend planned for AWS deployment.
 
 ---
 
 ## MCP Server Configuration
 
-MCP servers are configured using the standard MCP config format and passed to the OpenHands Agent constructor. All MCP servers in this project use uvx-based command execution.
+MCP servers provide extended capabilities to the agent.
 
-### MCP Server Definitions
+### Available Servers
 
-```python
-MCP_SERVERS = {
-    "time": {
-        "command": "uvx",
-        "args": ["mcp-server-time@latest"],
-    },
-    "aws_docs": {
-        "command": "uvx",
-        "args": ["awslabs.aws-documentation-mcp-server@latest"],
-    },
-    "google_sheets": {
-        "command": "uvx",
-        "args": ["mcp-server-google-sheets@latest"],
-    },
-    "yahoo_finance": {
-        "command": "uvx",
-        "args": ["mcp-yahoo-finance"],
-    },
-    "alpha_vantage": {
-        "command": "uvx",
-        "args": ["alphavantage-mcp"],
-    },
-    "sandbox": {
-        "command": "uvx",
-        "args": ["mcp-server-filesystem@latest", "--root", os.getenv("SANDBOX_PATH", "./sandbox")],
-    }
-}
-```
+**File:** [`src/mcp_servers/config.py`](src/mcp_servers/config.py)
 
-### Preset-to-MCP Mapping
+| Server | Package | Purpose |
+|--------|---------|---------|
+| `time` | `mcp-server-time@latest` | Current date/time |
+| `aws_docs` | `awslabs.aws-documentation-mcp-server@latest` | AWS documentation lookup |
+| `google_sheets` | `mcp-server-google-sheets@latest` | Spreadsheet access |
+| `yahoo_finance` | `mcp-yahoo-finance` | Stock quotes and data |
+| `alpha_vantage` | `alphavantage-mcp` | Financial indicators |
+| `sandbox` | `mcp-server-filesystem@latest` | File system access |
 
-Each preset can have zero or more MCP servers attached. Some MCP servers are shared across all presets via the `__all__` key.
+### Preset Mapping
 
 ```python
 PRESET_MCP_MAP = {
@@ -354,14 +764,281 @@ PRESET_MCP_MAP = {
     "architecture": ["aws_docs", "sandbox"],
     "coding": ["sandbox"],
     "health": ["google_sheets"],
+    "mental_health": [],
+    "social": [],
+    "finance": ["yahoo_finance", "alpha_vantage"],
 }
 ```
 
-### Sandbox Behavior
+### Sandbox Scoping
 
-The sandbox MCP server provides file system access scoped to SANDBOX_PATH. Presets with sandbox access are instructed via a system message injected by the API before dispatching:
+The sandbox server is scoped per-conversation:
 
-> If your response includes code exceeding 5 lines, do not embed it in the message body. Write it to a file in the sandbox and reference the file path. The file will be delivered as an attachment.
+```python
+def resolve_mcp_config(preset_slug: str, conversation_id: str) -> Dict[str, Any]:
+    # Sandbox root becomes: {SANDBOX_PATH}/{conversation_id}/
+```
+
+This prevents file cross-contamination between parallel sessions.
+
+---
+
+## Preset System
+
+Presets are static definitions that define routing targets.
+
+### Available Presets
+
+**File:** [`src/presets/loader.py`](src/presets/loader.py)
+
+| Preset | Model | Description |
+|--------|-------|-------------|
+| `architecture` | `@preset/architecture` | System design, infrastructure planning |
+| `code` | `@preset/code` | Writing, modifying, debugging code |
+| `shell` | `@preset/shell` | CLI commands, one-liners |
+| `security` | `@preset/security` | Threat modeling, compliance |
+| `health` | `@preset/health` | Fitness, nutrition, sports |
+| `mental_health` | `@preset/mental_health` | Emotional support, crisis routing |
+| `finance` | `@preset/finance` | Market data, investing |
+| `social` | `@preset/social` | Casual conversation |
+| `general` | `@preset/general` | General-purpose fallback |
+
+### Preset Structure
+
+```python
+@dataclass
+class Preset:
+    slug: str           # URL-safe identifier
+    name: str           # Display name
+    description: str    # Used for scoring classification
+    model: str          # OpenRouter model: @preset/{slug}
+```
+
+---
+
+## Environment Variables
+
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `OPENROUTER_API_KEY` | OpenRouter API key for model access |
+
+### Routing Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MESSAGE_WINDOW` | `8` | Recent messages for routing |
+| `CRISIS_THRESHOLD` | `0.3` | Crisis score threshold |
+| `CONFIDENCE_THRESHOLD` | `0.6` | Minimum score for confident routing |
+| `CONFIDENCE_GAP` | `0.2` | Minimum gap for confident decision |
+| `RECLASSIFY_MESSAGE_COUNT` | `4` | Messages before reclassification check |
+
+### Model Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SUGGESTION_MODEL` | `mistralai/mistral-nemo` | Quick reply model |
+| `SCORING_MODELS` | *(see below)* | Comma-separated scoring models |
+| `TOPIC_SHIFT_MODEL` | `z-ai/glm-4.7-flash` | Topic shift detection |
+| `MENTAL_HEALTH_PRESET` | `mental-health` | Crisis routing target |
+
+**Default SCORING_MODELS:**
+```
+google/gemini-2.5-flash-lite,openai/gpt-oss-120b,anthropic/claude-haiku-4.5
+```
+
+### Storage Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STORE_BACKEND` | `sqlite` | Storage backend type |
+| `STORAGE_DB_PATH` | `./data/store.db` | SQLite database path |
+| `SANDBOX_PATH` | `./sandbox` | File output directory |
+| `MEMORY_DB_PATH` | `./data/memory_db` | ChromaDB path |
+| `PERSISTENCE_DIR` | `./data/conversations` | Conversation persistence |
+
+### Channel Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHANNEL_DEBOUNCE_SECONDS` | `30` | Message batching window |
+| `CHANNEL_MAX_CHUNK_CHARS` | `1500` | Max chars per response chunk |
+| `OPENWEBUI_POLL_INTERVAL` | `5.0` | OpenWebUI polling interval |
+
+### MCP Server Keys
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_SHEETS_CREDENTIALS` | Base64-encoded JSON credentials |
+| `ALPHAVANTAGE_API_KEY` | Alpha Vantage API key |
+
+### Server Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HOST` | `0.0.0.0` | Server bind address |
+| `PORT` | `8000` | Server bind port |
+| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | LLM API base URL |
+
+---
+
+## Project Structure
+
+```
+if-prototype-a1/
+├── README.md                    # This file
+├── requirements.txt             # Python dependencies
+├── .env.example                 # Environment template
+├── main_system_prompt.txt       # Base system prompt for agent
+├── plan.md                      # Implementation plan
+│
+├── data/                        # Runtime data directory
+│   ├── memory_db/               # ChromaDB vector storage
+│   ├── conversations/           # OpenHands persistence
+│   │   └── {conversation_id}/
+│   │       ├── base_state.json
+│   │       └── events/
+│   └── store.db                 # SQLite webhook storage
+│
+├── sandbox/                     # File output directory
+│   └── {conversation_id}/       # Per-conversation isolation
+│
+├── plans/                       # Implementation phase docs
+│   ├── phase1-2-implementation.md
+│   ├── phase3-4-implementation.md
+│   ├── phase5-implementation.md
+│   └── phase6-implementation.md
+│
+└── src/                         # Source code
+    ├── main.py                  # FastAPI app entry point
+    ├── config.py                # Environment configuration
+    │
+    ├── api/                     # HTTP API layer
+    │   ├── __init__.py
+    │   ├── models.py            # /v1/models endpoint
+    │   ├── completions.py       # /v1/chat/completions endpoint
+    │   ├── files.py             # /files/sandbox/* endpoint
+    │   ├── webhooks.py          # /v1/webhooks/* endpoints
+    │   └── schemas.py           # Pydantic request/response models
+    │
+    ├── routing/                 # Routing pipeline
+    │   ├── __init__.py
+    │   ├── interceptor.py       # Step 1: OpenWebUI task detection
+    │   ├── scorer.py            # Step 2: Parallel scoring
+    │   ├── decision.py          # Step 3: Preset selection
+    │   ├── cache.py             # Step 4: Conversation state
+    │   └── topic_shift.py       # Topic shift detection
+    │
+    ├── agent/                   # OpenHands agent integration
+    │   ├── __init__.py
+    │   ├── session.py           # Session management
+    │   ├── tools.py             # Memory tools
+    │   ├── sandbox.py           # Sandbox path resolution
+    │   ├── condenser.py         # Context condensation
+    │   └── prompts/
+    │       └── system_prompt.j2
+    │
+    ├── channels/                # Channel system
+    │   ├── __init__.py
+    │   ├── manager.py           # Listener lifecycle
+    │   ├── debounce.py          # Message batching
+    │   ├── dispatcher.py        # Pipeline bridge
+    │   ├── chunker.py           # Response chunking
+    │   ├── delivery.py          # Platform delivery
+    │   ├── listeners/
+    │   │   ├── __init__.py
+    │   │   ├── discord_listener.py
+    │   │   └── openwebui_listener.py
+    │   └── translators/
+    │       ├── __init__.py
+    │       ├── discord_translator.py
+    │       └── openwebui_translator.py
+    │
+    ├── storage/                 # Persistence layer
+    │   ├── __init__.py
+    │   ├── protocol.py          # WebhookStore protocol
+    │   ├── models.py            # WebhookRecord model
+    │   ├── factory.py           # Backend factory
+    │   ├── sqlite_backend.py    # SQLite implementation
+    │   └── dynamodb_backend.py  # Future AWS implementation
+    │
+    ├── memory/                  # Memory store
+    │   ├── __init__.py
+    │   └── store.py             # ChromaDB integration
+    │
+    ├── mcp_servers/             # MCP configuration
+    │   ├── __init__.py
+    │   └── config.py            # Server definitions and mapping
+    │
+    └── presets/                 # Preset definitions
+        ├── __init__.py
+        └── loader.py            # Static preset loading
+```
+
+---
+
+## Startup Sequence
+
+The application startup in [`src/main.py`](src/main.py:34) follows this sequence:
+
+```mermaid
+sequenceDiagram
+    participant App as FastAPI App
+    participant HTTP as HTTP Client
+    participant Presets as PresetManager
+    participant Memory as MemoryStore
+    participant Storage as SQLite Store
+    participant Debounce as Debounce System
+    participant Channels as Channel Manager
+
+    App->>HTTP: Initialize HTTP client
+    App->>HTTP: Configure connection pooling
+
+    App->>Presets: load_presets
+    Presets-->>App: Static presets loaded
+
+    App->>App: Create directories
+    Note over App: sandbox, memory_db, conversations
+
+    App->>App: validate_mcp_config
+
+    App->>Memory: get_memory_store
+    Memory->>Memory: Initialize ChromaDB
+    Memory-->>App: Store ready
+
+    App->>Storage: init_store
+    Storage->>Storage: Create SQLite with WAL
+    Storage-->>App: Store initialized
+
+    App->>Debounce: init_debounce
+    Debounce-->>App: Main loop registered
+
+    App->>Storage: get_webhook_store
+    Storage-->>App: WebhookStore instance
+
+    App->>Channels: start_all_active
+    Channels->>Channels: Resume listeners from DB
+    Channels-->>App: Listeners started
+
+    App-->>App: Server ready
+```
+
+**Startup Log Output:**
+```
+[Startup] Initializing IF Prototype A1...
+[Startup] HTTP client initialized
+[Startup] Loading presets...
+[Startup] Sandbox directory: /path/to/sandbox
+[Startup] Memory database directory: /path/to/data/memory_db
+[Startup] Conversation persistence directory: /path/to/data/conversations
+[Startup] MCP configuration validated
+[Startup] Memory store initialized (0 memories)
+[Startup] Storage backend initialized at ./data/store.db
+[Startup] Debounce system initialized (window=30.0s)
+[Startup] Resumed 0 active channel listeners
+[Startup] Server ready on 0.0.0.0:8000
+```
 
 ---
 
@@ -402,121 +1079,49 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -d '{
     "model": "if-prototype",
     "messages": [
-      {
-        "role": "user",
-        "content": "Hello"
-      }
+      {"role": "user", "content": "Hello"}
     ]
+  }'
+
+# Health check
+curl http://localhost:8000/health
+```
+
+### 5. Register a Discord Channel
+
+```bash
+curl -X POST http://localhost:8000/v1/webhooks/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "discord",
+    "label": "My Channel",
+    "discord": {
+      "bot_token": "your-bot-token",
+      "channel_id": "123456789"
+    }
   }'
 ```
 
 ---
 
-## Project Structure
-
-```
-if-prototype-a1/
-├── README.md
-├── requirements.txt
-├── .env.example
-├── main_system_prompt.txt
-├── plan.md
-├── data/
-│   ├── memory.json
-│   └── conversations/
-├── sandbox/
-└── src/
-    ├── main.py
-    ├── config.py
-    │
-    ├── api/
-    │   ├── __init__.py
-    │   ├── models.py
-    │   ├── completions.py
-    │   ├── files.py
-    │   └── schemas.py
-    │
-    ├── routing/
-    │   ├── __init__.py
-    │   ├── interceptor.py
-    │   ├── scorer.py
-    │   ├── decision.py
-    │   └── cache.py
-    │
-    ├── agent/
-    │   ├── __init__.py
-    │   ├── session.py
-    │   ├── tools.py
-    │   ├── condenser.py
-    │   └── prompts/
-    │       └── system_prompt.j2
-    │
-    ├── memory/
-    │   ├── __init__.py
-    │   └── store.py
-    │
-    ├── mcp_servers/
-    │   ├── __init__.py
-    │   └── config.py
-    │
-    └── presets/
-        ├── __init__.py
-        └── loader.py
-```
-
----
-
-## Environment Variables
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `OPENROUTER_API_KEY` | Yes | — | OpenRouter API key |
-| `LLM_API_KEY` | No | `OPENROUTER_API_KEY` | LLM API key |
-| `LLM_BASE_URL` | No | `https://openrouter.ai/api/v1` | LLM base URL |
-| `MESSAGE_WINDOW` | No | `8` | Recent messages for routing |
-| `CRISIS_THRESHOLD` | No | `0.3` | Crisis score threshold |
-| `CONFIDENCE_THRESHOLD` | No | `0.6` | Minimum score for confident routing |
-| `CONFIDENCE_GAP` | No | `0.2` | Minimum gap for confident decision |
-| `SUGGESTION_MODEL` | No | `mistralai/mistral-nemo` | Model for suggestions |
-| `SCORING_MODELS` | No | (see .env.example) | Models for scoring |
-| `MENTAL_HEALTH_PRESET` | No | `general` | Crisis preset slug |
-| `SANDBOX_PATH` | No | `./sandbox` | File output directory |
-| `MEMORY_DB_PATH` | No | `./data/memory.json` | Memory store path |
-| `PERSISTENCE_DIR` | No | `./data/conversations` | Conversation persistence |
-| `HOST` | No | `0.0.0.0` | Server bind address |
-| `PORT` | No | `8000` | Server bind port |
-
----
-
 ## Memory Store
 
-The memory store uses ChromaDB for semantic search over operator context. Memory categories:
+The memory store uses ChromaDB for semantic search over operator context.
 
+**Memory Categories:**
 - **preference**: Language/framework preferences, communication style
-- **personal**: Birthday, location, profession, roles, relationships
+- **personal**: Birthday, location, profession, relationships
 - **skill_level**: Self-reported or demonstrated understanding
-- **opinion**: Strong stances on technologies, approaches, topics
+- **opinion**: Strong stances on technologies, approaches
 - **life_event**: Job changes, moves, competitions, milestones
 - **future_plan**: Goals, timelines, aspirations
 - **mental_state**: Noted shifts in mood, stress, outlook
 
-### Memory Tools
-
+**Memory Tools:**
 - `memory_search`: Semantic search across stored memories
 - `memory_add`: Store new memories about the operator
-- `memory_remove`: Delete memories (requires operator confirmation)
+- `memory_remove`: Delete memories (requires confirmation)
 - `memory_list`: List all stored memories
-
----
-
-## MCP Servers
-
-MCP servers are configured per preset:
-
-- **time**: Available to all presets
-- **aws_docs**: Available to architecture preset
-- **sandbox**: Available to coding and architecture presets
-- **google_sheets**: Available to health preset
 
 ---
 
