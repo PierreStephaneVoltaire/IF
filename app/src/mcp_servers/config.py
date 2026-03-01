@@ -101,20 +101,24 @@ PRESET_MCP_MAP: Dict[str, list] = {
 # MCP Config Resolution
 # ============================================================================
 
-def resolve_mcp_config(preset_slug: str) -> Dict[str, Any]:
+def resolve_mcp_config(preset_slug: str, conversation_id: str = "") -> Dict[str, Any]:
     """Resolve the MCP configuration for a given preset.
     
     Merges __all__ servers with preset-specific servers and formats
     into the structure OpenHands expects.
     
+    Sandbox server root is scoped to the conversation's directory when
+    conversation_id is provided.
+    
     Args:
         preset_slug: The preset identifier (e.g., "coding", "architecture")
+        conversation_id: Unique conversation identifier for sandbox scoping
         
     Returns:
         MCP config dict with "mcpServers" key containing server definitions
         
     Example:
-        >>> config = resolve_mcp_config("coding")
+        >>> config = resolve_mcp_config("coding", "conv_abc123")
         >>> print(config["mcpServers"].keys())
         dict_keys(['time', 'sandbox'])
     """
@@ -128,7 +132,19 @@ def resolve_mcp_config(preset_slug: str) -> Dict[str, Any]:
     mcp_servers = {}
     for key in server_keys:
         if key in MCP_SERVERS:
-            mcp_servers[key] = MCP_SERVERS[key]
+            server_def = dict(MCP_SERVERS[key])  # shallow copy
+            
+            # Scope sandbox to conversation directory
+            if key == "sandbox" and conversation_id:
+                from agent.sandbox import sandbox_path_for
+                scoped_path = sandbox_path_for(conversation_id)
+                server_def["args"] = [
+                    "mcp-server-filesystem@latest",
+                    "--root",
+                    scoped_path,
+                ]
+            
+            mcp_servers[key] = server_def
         else:
             # Log warning for undefined servers
             print(f"[MCP] Warning: Server '{key}' referenced but not defined in MCP_SERVERS")
@@ -193,16 +209,21 @@ Supported file types:
 - Data: .csv, .parquet, .sql"""
 
 
-def get_sandbox_instruction(preset_slug: str) -> Optional[str]:
+def get_sandbox_instruction(preset_slug: str, conversation_id: str = "") -> Optional[str]:
     """Get sandbox instruction for presets with sandbox access.
     
     Args:
         preset_slug: The preset identifier
+        conversation_id: Unique conversation identifier for scoped sandbox path
         
     Returns:
         Sandbox instruction string if preset has access, None otherwise
     """
     if has_sandbox_access(preset_slug):
+        if conversation_id:
+            from agent.sandbox import sandbox_path_for
+            scoped_path = sandbox_path_for(conversation_id)
+            return SANDBOX_INSTRUCTION.format(sandbox_path=scoped_path)
         return SANDBOX_INSTRUCTION.format(sandbox_path=SANDBOX_PATH)
     return None
 

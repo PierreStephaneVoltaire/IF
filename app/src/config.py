@@ -88,6 +88,11 @@ MAX_CACHE_SIZE = int(os.getenv("MAX_CACHE_SIZE", "1000"))  # Max conversations i
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
 
+# Channel System Configuration (Phase 5)
+CHANNEL_DEBOUNCE_SECONDS = float(os.getenv("CHANNEL_DEBOUNCE_SECONDS", "30"))
+CHANNEL_MAX_CHUNK_CHARS = int(os.getenv("CHANNEL_MAX_CHUNK_CHARS", "1500"))
+OPENWEBUI_POLL_INTERVAL = float(os.getenv("OPENWEBUI_POLL_INTERVAL", "5.0"))
+
 
 # ============================================================================
 # OpenRouter API Configuration

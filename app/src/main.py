@@ -18,9 +18,12 @@ from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR, ST
 from api.models import router as models_router
 from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
+from api.webhooks import router as webhooks_router
 from presets.loader import get_preset_manager
 from mcp_servers.config import validate_mcp_config
-from storage.factory import init_store, close_store
+from storage.factory import init_store, close_store, get_webhook_store
+from channels.debounce import init_debounce
+from channels.manager import start_all_active, stop_all
 
 
 # Shared HTTP client for connection pooling
@@ -111,11 +114,30 @@ async def lifespan(app: FastAPI):
         print(f"[Startup] ERROR: Storage initialization failed: {e}")
         raise
     
+    # Initialize debounce system for channel messages
+    try:
+        init_debounce(asyncio.get_running_loop())
+        print(f"[Startup] Debounce system initialized")
+    except Exception as e:
+        print(f"[Startup] WARNING: Debounce initialization failed: {e}")
+    
+    # Resume active channel listeners from persisted state
+    try:
+        store = get_webhook_store()
+        active_records = store.list_active()
+        start_all_active(active_records)
+        print(f"[Startup] Resumed {len(active_records)} active channel listeners")
+    except Exception as e:
+        print(f"[Startup] WARNING: Failed to resume listeners: {e}")
+    
     print(f"[Startup] Server ready on {HOST}:{PORT}")
     
     yield
     
     # Shutdown
+    stop_all()
+    print("[Shutdown] All channel listeners stopped")
+    
     close_store()
     print("[Shutdown] Storage backend closed")
     
@@ -141,6 +163,7 @@ app = FastAPI(
 app.include_router(models_router)
 app.include_router(completions_router)
 app.include_router(files_router)
+app.include_router(webhooks_router)
 
 
 # ============================================================================
@@ -163,6 +186,12 @@ async def health_check():
     except Exception:
         pass
     
+    # Check channel system status
+    from channels.manager import get_active_listener_count
+    from channels.debounce import get_all_buffer_sizes
+    active_listeners = get_active_listener_count()
+    buffer_sizes = get_all_buffer_sizes()
+    
     return {
         "status": "healthy",
         "service": "if-prototype-a1",
@@ -174,6 +203,9 @@ async def health_check():
             "memory_count": memory_count,
             "presets_loaded": preset_manager.is_initialized(),
             "preset_count": len(preset_manager.get_all_presets()),
+            "channel_system": "active",
+            "active_listeners": active_listeners,
+            "pending_messages": sum(buffer_sizes.values()),
         }
     }
 
@@ -190,6 +222,7 @@ async def root():
             "chat": "/v1/chat/completions",
             "health": "/health",
             "files": "/files/sandbox/{filepath}",
+            "webhooks": "/v1/webhooks/",
         }
     }
 
