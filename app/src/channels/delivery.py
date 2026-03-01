@@ -194,3 +194,64 @@ async def send_error_message(
         chunks=[f"❌ Error: {error_message}"],
         attachments=[],
     )
+
+
+async def deliver_to_openwebui(
+    api_url: str,
+    channel_id: str,
+    chunks: List[str],
+    attachments: List[Dict[str, Any]],
+) -> None:
+    """Deliver response to OpenWebUI channel directly.
+    
+    Used by heartbeat system for proactive messaging.
+    
+    Args:
+        api_url: OpenWebUI API base URL
+        channel_id: Target channel ID
+        chunks: List of text chunks (will be combined)
+        attachments: List of attachment dicts
+    """
+    if not api_url:
+        logger.error("OpenWebUI API URL not configured")
+        return
+    
+    base_url = api_url.rstrip("/")
+    
+    # Combine chunks into single message
+    full_response = "\n\n".join(chunks)
+    
+    # Add attachment links if any
+    if attachments:
+        full_response += "\n\n**Attachments:**\n"
+        for att in attachments:
+            filename = att.get("filename", "attachment")
+            url = att.get("url", "")
+            full_response += f"- [{filename}]({url})\n"
+    
+    async with httpx.AsyncClient(
+        base_url=base_url,
+        timeout=30.0,
+    ) as client:
+        try:
+            resp = await client.post(
+                f"/api/v1/channels/{channel_id}/messages",
+                json={
+                    "role": "assistant",
+                    "content": full_response,
+                },
+            )
+            
+            if resp.status_code in (200, 201):
+                logger.info(f"OpenWebUI heartbeat delivery successful")
+            else:
+                logger.error(
+                    f"OpenWebUI heartbeat delivery failed: {resp.status_code} - "
+                    f"{resp.text[:200]}"
+                )
+        except httpx.TimeoutException:
+            logger.error("OpenWebUI heartbeat delivery timeout")
+        except httpx.RequestError as e:
+            logger.error(f"OpenWebUI heartbeat connection error: {e}")
+        except Exception as e:
+            logger.error(f"OpenWebUI heartbeat delivery error: {e}")

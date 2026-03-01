@@ -24,6 +24,11 @@ from presets.loader import PresetManager
 logger = logging.getLogger(__name__)
 
 
+# Universal directives that apply to ALL preset categories
+# These are always included in the applicable_directives list
+UNIVERSAL_DIRECTIVES = ["0-1", "0-2", "0-3", "0-4", "2-14", "2-15", "2-16"]
+
+
 @dataclass
 class RoutingDecision:
     """Final routing decision with reasoning."""

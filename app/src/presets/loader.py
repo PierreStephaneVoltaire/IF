@@ -208,6 +208,16 @@ STATIC_PRESETS = [
         ),
         model="@preset/general"
     ),
+    Preset(
+        slug="pondering",
+        name="Pondering",
+        description=(
+            "Agent-initiated reflective conversation. Focus on learning "
+            "about the operator — goals, preferences, context, plans. "
+            "Not for technical problem-solving."
+        ),
+        model="@preset/pondering"
+    ),
 ]
 
 class PresetManager:

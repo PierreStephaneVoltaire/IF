@@ -23,6 +23,53 @@ from config import (
 logger = logging.getLogger(__name__)
 
 
+def should_check_shift(anchor_msgs: List[str], current_msgs: List[str]) -> bool:
+    """Heuristic check to determine if topic shift detection is needed.
+    
+    Skip LLM call for obvious non-shifts (short messages, commands).
+    Check keyword overlap to detect likely shifts.
+    
+    Args:
+        anchor_msgs: Messages from the anchor window
+        current_msgs: Current message window
+        
+    Returns:
+        True if topic shift check should proceed, False to skip
+    """
+    latest = current_msgs[-1].strip() if current_msgs else ""
+
+    # Short acknowledgments — never a topic shift
+    if len(latest) < 15:
+        return False
+
+    # Command prefix — handled elsewhere
+    if latest.startswith("/"):
+        return False
+
+    # Keyword overlap between anchor and current windows
+    anchor_words = _extract_keywords(" ".join(anchor_msgs))
+    current_words = _extract_keywords(" ".join(current_msgs))
+
+    if not anchor_words or not current_words:
+        return True  # Can't determine — let LLM decide
+
+    overlap = len(anchor_words & current_words) / max(len(anchor_words), len(current_words))
+    return overlap <= 0.4
+
+
+def _extract_keywords(text: str) -> set:
+    """Extract keywords using NLTK stopwords. Fallback to no filtering if unavailable."""
+    try:
+        from nltk.corpus import stopwords
+        stop = set(stopwords.words("english"))
+    except (ImportError, LookupError):
+        stop = set()
+
+    words = set(text.lower().split())
+    filtered = {w for w in words if w not in stop and len(w) > 2}
+    return filtered if filtered else words
+
+
 TOPIC_SHIFT_PROMPT = """You are a conversation topic classifier. Your ONLY job is to determine whether the conversation topic has SIGNIFICANTLY changed.
 
 ## PREVIOUS CONVERSATION CONTEXT (used to select the current specialist):

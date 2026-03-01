@@ -35,6 +35,9 @@ sympy>=1.12
 numpy>=1.26.0
 pysqlite3-binary>=0.5.0
 
+# NLP for topic shift heuristic
+nltk>=3.8.0
+
 # Optional: For development and testing
 # pytest>=7.4.0
 # pytest-asyncio>=0.21.0

@@ -23,67 +23,131 @@ from .schemas import (
 from routing.interceptor import intercept_request
 from routing.scorer import score_conversation
 from routing.decision import select_preset
-from routing.cache import get_cache
+from routing.cache import get_cache, ConversationState
+from routing.commands import parse_command, CommandAction
+from routing.topic_shift import should_check_shift, topic_has_shifted
 from presets.loader import get_preset_manager
 from agent.session import get_or_create_session, execute_agent
 
 if TYPE_CHECKING:
     import httpx
+    from storage.models import WebhookRecord
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Message count before checking for topic shift on pinned presets
+RECLASSIFY_MESSAGE_COUNT = 5
 
-def extract_conversation_id(messages: list) -> str:
-    """Extract or generate a conversation ID from messages.
+
+def resolve_cache_key(
+    request_data: Dict[str, Any],
+    webhook: Optional["WebhookRecord"] = None
+) -> str:
+    """Resolve a stable cache key for the conversation.
     
-    In a full implementation, this would extract from metadata or headers.
-    For now, generates a hash of the first message content.
+    Priority:
+    1. Webhook channel_id (for Discord/OpenWebUI webhooks)
+    2. Request chat_id (for API clients like OpenWebUI)
+    3. Hash of first message (fallback)
+    
+    Args:
+        request_data: Request body dict
+        webhook: Optional webhook record
+        
+    Returns:
+        Cache key string
+    """
+    # Webhook takes priority
+    if webhook:
+        config = webhook.get_config()
+        return config.get("channel_id", webhook.conversation_id)
+    
+    # Explicit chat_id
+    chat_id = request_data.get("chat_id")
+    if chat_id:
+        return chat_id
+    
+    # Fallback: hash first message
+    messages = request_data.get("messages", [])
+    if messages:
+        content = messages[0].get("content", "")
+        if isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text_parts.append(part.get("text", ""))
+                elif isinstance(part, str):
+                    text_parts.append(part)
+            content = " ".join(text_parts)
+        return hashlib.sha256(content.encode()).hexdigest()[:16]
+    
+    return "default"
+
+
+def extract_message_window(messages: List[Dict], window_size: int = 5) -> List[str]:
+    """Extract recent message texts for topic shift detection.
+    
+    Args:
+        messages: List of message dicts
+        window_size: Number of recent messages to include
+        
+    Returns:
+        List of message content strings
+    """
+    window = []
+    for msg in reversed(messages[-window_size:]):
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            window.append(content)
+        elif isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text_parts.append(part.get("text", ""))
+            if text_parts:
+                window.append(" ".join(text_parts))
+    return window
+
+
+def extract_last_user_message(messages: List[Dict]) -> str:
+    """Extract the last user message content.
     
     Args:
         messages: List of message dicts
         
     Returns:
-        Conversation ID string
+        Last user message content as string
     """
-    if not messages:
-        return "default"
-    
-    # Use hash of first message content as conversation ID
-    first_msg = messages[0]
-    content = first_msg.get("content", "")
-    
-    # Handle content that might be a string or list of content parts
-    if isinstance(content, list):
-        # Extract text from content parts
-        text_parts = []
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "text":
-                text_parts.append(part.get("text", ""))
-            elif isinstance(part, str):
-                text_parts.append(part)
-        content = " ".join(text_parts)
-    
-    # Simple hash for conversation ID
-    content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
-    
-    return f"conv-{content_hash}"
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                return content
+            elif isinstance(content, list):
+                text_parts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        text_parts.append(part.get("text", ""))
+                return " ".join(text_parts)
+    return ""
 
 
 async def process_chat_completion_internal(
     request_data: Dict[str, Any],
     http_client: "httpx.AsyncClient",
-    conversation_id: Optional[str] = None,
+    webhook: Optional["WebhookRecord"] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Core pipeline for processing chat completions.
     
     This is the internal function that handles:
-    1. Request Interception (OpenWebUI tasks)
-    2. Parallel Scoring (preset selection)
-    3. Decision Logic (best preset)
-    4. Conversation State Cache (routing decisions)
-    5. Agent Execution (run with selected preset)
+    Step 0: Command Parsing (slash commands)
+    Step 1: Request Interception (OpenWebUI tasks)
+    Step 2: Cache Check (pinned presets, topic shift)
+    Step 3: Parallel Scoring (preset selection)
+    Step 4: Decision Logic (best preset)
+    Step 5: Agent Execution (run with selected preset)
     
     Used by:
     - POST /v1/chat/completions (HTTP clients)
@@ -91,9 +155,9 @@ async def process_chat_completion_internal(
     
     Args:
         request_data: Dict matching ChatCompletionRequest shape.
-                      Must include 'messages'. Can include '_conversation_id'.
+                      Must include 'messages'. Can include 'chat_id'.
         http_client: Shared async HTTP client for API calls
-        conversation_id: Optional conversation ID (extracted from messages if not provided)
+        webhook: Optional webhook record for channel integrations
         
     Returns:
         Tuple of (response_text, attachments) where attachments is a list of dicts
@@ -105,12 +169,73 @@ async def process_chat_completion_internal(
     messages = request_data.get("messages", [])
     stream = request_data.get("stream", False)
     
-    # Extract or use provided conversation ID
-    if not conversation_id:
-        conversation_id = request_data.get(
-            "_conversation_id",
-            extract_conversation_id(messages)
-        )
+    # Resolve cache key (chat_id or channel_id)
+    cache_key = resolve_cache_key(request_data, webhook)
+    
+    # Record activity for heartbeat system
+    try:
+        from heartbeat.activity import ActivityTracker
+        from storage.factory import get_webhook_store
+        store = get_webhook_store()
+        if store and hasattr(store, '_backend'):
+            tracker = ActivityTracker(store._backend)
+            webhook_id = webhook.webhook_id if webhook else None
+            tracker.record_activity(cache_key, webhook_id=webhook_id)
+    except Exception as e:
+        logger.debug(f"[Activity] Failed to record: {e}")
+    
+    # Get preset manager and conversation cache
+    preset_manager = get_preset_manager()
+    cache = get_cache()
+    
+    # Extract last user message
+    last_user_message = extract_last_user_message(messages)
+    
+    # Step 0: Command Parsing (before any routing)
+    cmd = parse_command(last_user_message, preset_manager.slugs())
+    if cmd is not None:
+        if cmd.action == CommandAction.RESET_CACHE:
+            # Evict from in-memory cache
+            cache.evict(cache_key)
+            # Persist eviction to SQLite (fire-and-forget)
+            try:
+                from storage.factory import get_webhook_store
+                store = get_webhook_store()
+                if store:
+                    await cache.persist_eviction(cache_key, store._backend)
+            except Exception as e:
+                logger.warning(f"[Cache] Failed to persist eviction: {e}")
+            logger.info(f"[Cache] Evicted cache key: {cache_key}")
+            return cmd.response_text, []
+        
+        if cmd.action == CommandAction.PIN_PRESET:
+            # Create or update cache entry with pinned preset
+            cached_state = cache.get(cache_key)
+            if cached_state:
+                cache.pin(cache_key, cmd.preset)
+            else:
+                # Create new pinned state
+                new_state = ConversationState(
+                    cache_key=cache_key,
+                    active_preset=cmd.preset,
+                    pinned=True,
+                    pin_message_count=0,
+                )
+                cache.set(cache_key, new_state)
+            # Persist to SQLite (fire-and-forget)
+            try:
+                from storage.factory import get_webhook_store
+                store = get_webhook_store()
+                if store:
+                    await cache.persist_entry(cache_key, store._backend)
+            except Exception as e:
+                logger.warning(f"[Cache] Failed to persist pin: {e}")
+            logger.info(f"[Cache] Pinned preset '{cmd.preset}' for key: {cache_key}")
+            return cmd.response_text, []
+        
+        if cmd.action == CommandAction.NOOP:
+            # Unknown command, return error message
+            return cmd.response_text, []
     
     # Step 1: Request Interception
     # Check if this is an OpenWebUI suggestion/title generation request
@@ -133,43 +258,52 @@ async def process_chat_completion_internal(
                 return content, []
         return str(response), []
     
-    # Get preset manager and conversation cache
-    preset_manager = get_preset_manager()
-    cache = get_cache()
-    
-    # Get the last user message for cache checking
-    last_user_message = ""
-    for msg in reversed(messages):
-        if msg.get("role") == "user":
-            content = msg.get("content", "")
-            if isinstance(content, str):
-                last_user_message = content
-            elif isinstance(content, list):
-                # Extract text from content parts
-                text_parts = []
-                for part in content:
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        text_parts.append(part.get("text", ""))
-                last_user_message = " ".join(text_parts)
-            break
-    
-    # Step 4: Check conversation cache
-    cached_state = cache.get(conversation_id)
+    # Step 2: Check conversation cache
+    cached_state = cache.get(cache_key)
     selected_preset = None
     
-    if cached_state:
-        # Increment message counter
-        cache.increment_message_count(conversation_id)
-        
-        # Check if we should reclassify
+    if cached_state and cached_state.pinned:
+        # Pinned preset logic
+        if cached_state.active_preset == "pondering":
+            # Pondering pins never auto-release
+            selected_preset = cached_state.active_preset
+            logger.info(f"[Cache] Pondering mode active, skipping topic shift")
+        else:
+            # Increment pin message count
+            cached_state.pin_message_count += 1
+            
+            if cached_state.pin_message_count >= RECLASSIFY_MESSAGE_COUNT:
+                # Check for topic shift
+                current_window = extract_message_window(messages)
+                
+                if should_check_shift(cached_state.anchor_window, current_window):
+                    shifted = await topic_has_shifted(
+                        cached_state.anchor_window,
+                        current_window,
+                        http_client
+                    )
+                    
+                    if shifted:
+                        # Topic shifted, release pin and fall through to scoring
+                        cached_state.pinned = False
+                        cached_state.pin_message_count = 0
+                        logger.info(f"[Cache] Topic shifted, releasing pin")
+                    else:
+                        selected_preset = cached_state.active_preset
+                else:
+                    selected_preset = cached_state.active_preset
+            else:
+                selected_preset = cached_state.active_preset
+    
+    elif cached_state:
+        # Normal cache logic (warm cache)
         should_reclassify = cached_state.should_reclassify(last_user_message)
         
         if not should_reclassify:
-            # Reuse cached route
             logger.info(f"[Cache] Reusing cached preset: {cached_state.active_preset}")
             selected_preset = cached_state.active_preset
     
-    # Step 2: Parallel Scoring (if no cached preset or reclassification needed)
+    # Step 3: Parallel Scoring (if no cached preset or reclassification needed)
     if selected_preset is None:
         scores = await score_conversation(
             messages=messages,
@@ -177,7 +311,7 @@ async def process_chat_completion_internal(
             http_client=http_client
         )
         
-        # Step 3: Decision Logic
+        # Step 4: Decision Logic
         decision = select_preset(
             scores=scores,
             preset_manager=preset_manager
@@ -187,26 +321,38 @@ async def process_chat_completion_internal(
         logger.info(decision.log_message)
         selected_preset = decision.selected_preset
         
-        # Step 4: Update conversation cache
+        # Update conversation cache
+        current_window = extract_message_window(messages)
+        
         if cached_state:
-            cached_state.update(decision, scores)
+            cached_state.update(decision, scores, current_window)
             logger.info(f"[Cache] Updated preset: {decision.selected_preset}")
         else:
-            from routing.cache import ConversationState
             new_state = ConversationState(
-                conversation_id=conversation_id,
+                cache_key=cache_key,
                 active_preset=decision.selected_preset,
+                anchor_window=current_window,
                 last_scores=scores,
                 last_decision=decision
             )
-            cache.set(conversation_id, new_state)
+            cache.set(cache_key, new_state)
             logger.info(f"[Cache] Created new state with preset: {decision.selected_preset}")
+        
+        # Persist to SQLite (fire-and-forget)
+        try:
+            from storage.factory import get_webhook_store
+            store = get_webhook_store()
+            if store:
+                await cache.persist_entry(cache_key, store._backend)
+        except Exception as e:
+            logger.warning(f"[Cache] Failed to persist entry: {e}")
     
     # Step 5: Agent Execution
     session = get_or_create_session(
-        conversation_id=conversation_id,
+        conversation_id=cache_key,
         preset_slug=selected_preset,
-        preset_manager=preset_manager
+        preset_manager=preset_manager,
+        messages=messages  # Pass messages for operator context retrieval
     )
     
     agent_response = await execute_agent(
@@ -216,12 +362,28 @@ async def process_chat_completion_internal(
         stream=stream
     )
     
+    # Fire-and-forget conversation summary (Phase2)
+    try:
+        import asyncio
+        from memory.summarizer import summarize_and_store
+        username = request_data.get("user", "operator")
+        asyncio.create_task(
+            summarize_and_store(
+                cache_key=cache_key,
+                messages=messages,
+                username=username,
+                http_client=http_client,
+            )
+        )
+    except Exception as e:
+        logger.debug(f"Failed to queue conversation summary: {e}")
+    
     # Build attachments list
     attachments = []
     for att_path in agent_response.attachments:
         attachments.append({
             "filename": att_path,
-            "url": f"/files/sandbox/{conversation_id}/{att_path}",
+            "url": f"/files/sandbox/{cache_key}/{att_path}",
             "local_path": att_path,
             "content_type": "application/octet-stream",
         })

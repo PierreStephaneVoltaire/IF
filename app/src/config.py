@@ -93,6 +93,15 @@ CHANNEL_DEBOUNCE_SECONDS = float(os.getenv("CHANNEL_DEBOUNCE_SECONDS", "30"))
 CHANNEL_MAX_CHUNK_CHARS = int(os.getenv("CHANNEL_MAX_CHUNK_CHARS", "1500"))
 OPENWEBUI_POLL_INTERVAL = float(os.getenv("OPENWEBUI_POLL_INTERVAL", "5.0"))
 
+# ============================================================================
+# Heartbeat Configuration (Phase 5)
+# ============================================================================
+
+HEARTBEAT_ENABLED: bool = os.getenv("HEARTBEAT_ENABLED", "true").lower() == "true"
+HEARTBEAT_IDLE_HOURS: float = float(os.getenv("HEARTBEAT_IDLE_HOURS", "6.0"))
+HEARTBEAT_COOLDOWN_HOURS: float = float(os.getenv("HEARTBEAT_COOLDOWN_HOURS", "6.0"))
+HEARTBEAT_QUIET_HOURS: str = os.getenv("HEARTBEAT_QUIET_HOURS", "23:00-07:00")  # UTC
+
 
 # ============================================================================
 # OpenRouter API Configuration

@@ -55,6 +55,7 @@ class ChatCompletionRequest(BaseModel):
     user: Optional[str] = None
     # Additional parameters for our implementation
     metadata: Optional[Dict[str, Any]] = None
+    chat_id: Optional[str] = None  # Optional stable conversation identifier
 
 
 class ChatCompletionChoice(BaseModel):

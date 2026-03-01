@@ -91,6 +91,7 @@ PRESET_MCP_MAP: Dict[str, list] = {
     "mental_health": [],  # No MCP servers for mental health
     "social": [],  # No MCP servers for social
     "finance": ["yahoo_finance", "alpha_vantage"],  # Finance preset gets stock data servers
+    "pondering": [],  # Only gets time via __all__ - no other MCP servers
     
     # Other presets receive only __all__ servers
     # Add more mappings as needed

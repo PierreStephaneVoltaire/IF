@@ -98,6 +98,19 @@ async def dispatch_channel_batch(
     )
     
     logger.info(f"Delivery completed for {conversation_id}")
+    
+    # Record activity for heartbeat system (outbound message)
+    try:
+        from heartbeat.activity import ActivityTracker
+        from storage.factory import get_webhook_store
+        store = get_webhook_store()
+        if store and hasattr(store, '_backend'):
+            tracker = ActivityTracker(store._backend)
+            # Get webhook_id from channel_ref if available
+            webhook_id = getattr(channel_ref, 'webhook_id', None)
+            tracker.record_activity(conversation_id, webhook_id=webhook_id)
+    except Exception as e:
+        logger.debug(f"[Activity] Failed to record outbound: {e}")
 
 
 async def dispatch_single_message(

@@ -6,11 +6,13 @@ This module implements Step 5 of the routing pipeline:
 - Agent session creation/reuse
 - Message passing to agent via OpenHands SDK
 - Response handling and attachment scanning
+- Operator context auto-retrieval from user facts
 """
 from __future__ import annotations
 import json
 import os
 import uuid
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -31,9 +33,28 @@ from config import (
 from presets.loader import PresetManager
 from mcp_servers.config import resolve_mcp_config
 from agent.tools import get_memory_tools
+from agent.tools.user_facts import get_user_facts_tools, set_session_context
 
 
 logger = logging.getLogger(__name__)
+
+
+# Path to pondering addendum file
+PONDERING_ADDENDUM_PATH = Path(__file__).parent / "prompts" / "pondering_addendum.md"
+
+
+def load_pondering_addendum() -> str:
+    """Load the pondering mode addendum.
+    
+    Returns:
+        Content of pondering_addendum.md or empty string if not found
+    """
+    try:
+        if PONDERING_ADDENDUM_PATH.exists():
+            return PONDERING_ADDENDUM_PATH.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to load pondering addendum: {e}")
+    return ""
 
 
 @dataclass
@@ -101,22 +122,95 @@ def resolve_mcp_servers(preset_slug: str) -> List[str]:
     return all_servers
 
 
+def get_operator_context(messages: List[Dict[str, Any]]) -> str:
+    """Retrieve relevant operator context for system prompt.
+    
+    Searches user facts based on the last user message.
+    This runs synchronously - ChromaDB is local and fast.
+    
+    Args:
+        messages: Conversation messages
+        
+    Returns:
+        Formatted operator context block, or empty string if no matches
+    """
+    from memory.user_facts import (
+        FactCategory,
+        FactSource,
+        get_user_fact_store
+    )
+    
+    # Extract last user message
+    last_user_msg = None
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                text_parts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        text_parts.append(part.get("text", ""))
+                last_user_msg = " ".join(text_parts)
+            else:
+                last_user_msg = content
+            break
+    
+    if not last_user_msg:
+        return ""
+    
+    try:
+        store = get_user_fact_store()
+        
+        # Search for relevant facts
+        facts = store.search(last_user_msg, limit=5)
+        
+        # Search for model assessments separately
+        assessments = store.search(
+            last_user_msg,
+            category=FactCategory.MODEL_ASSESSMENT,
+            limit=3
+        )
+        
+        # Deduplicate by ID
+        all_facts = {f.id: f for f in facts + assessments}.values()
+        
+        if not all_facts:
+            return ""
+        
+        # Format context block
+        lines = ["═══ OPERATOR CONTEXT ═══"]
+        for f in all_facts:
+            source_tag = "observed" if f.source in (
+                FactSource.MODEL_OBSERVED, FactSource.MODEL_ASSESSED
+            ) else "stated"
+            lines.append(f"- [{f.category.value}] [{source_tag}] {f.content} ({f.updated_at[:10]})")
+        lines.append("══════════════════════")
+        return "\n".join(lines)
+        
+    except Exception as e:
+        logger.warning(f"Failed to get operator context: {e}")
+        return ""
+
+
 def assemble_system_prompt(
     preset_slug: str,
     preset_manager: PresetManager,
-    memory_context: Optional[str] = None
+    memory_context: Optional[str] = None,
+    operator_context: Optional[str] = None
 ) -> str:
     """Assemble the complete system prompt for a preset.
     
     Combines:
     1. Base system prompt from preset
-    2. Memory context block (if provided)
-    3. Preset-specific instructions (sandbox rules, etc.)
+    2. Operator context block (auto-retrieved from user facts)
+    3. Memory context block (if provided)
+    4. Preset-specific instructions (sandbox rules, etc.)
     
     Args:
         preset_slug: Preset identifier
         preset_manager: Manager with preset data
         memory_context: Optional memory context to inject
+        operator_context: Optional operator context from user facts
         
     Returns:
         Complete system prompt string
@@ -131,6 +225,10 @@ def assemble_system_prompt(
     
     # Start with base prompt
     prompt_parts = [base_prompt]
+    
+    # Add operator context if provided (from user facts)
+    if operator_context:
+        prompt_parts.append(f"\n{operator_context}\n")
     
     # Add memory protocol
     memory_protocol = """
@@ -172,6 +270,13 @@ DO NOT USE memory_add FOR:
     
     # Add preset-specific instructions
     mcp_servers = resolve_mcp_servers(preset_slug)
+    
+    # Load pondering addendum if active preset is pondering
+    if preset_slug == "pondering":
+        pondering_addendum = load_pondering_addendum()
+        if pondering_addendum:
+            logger.info(f"[Session] Loaded pondering addendum ({len(pondering_addendum)} chars)")
+            prompt_parts.append(f"\n{pondering_addendum}\n")
     
     # Sandbox instructions for presets with sandbox access
     if "sandbox" in mcp_servers:
@@ -254,7 +359,9 @@ async def execute_agent(
         print(f"[Agent] Resolved MCP servers: {list(mcp_config.keys())}")
         # Get memory tools
         tools = get_memory_tools()
-        print(f"[Agent] Loaded memory tools")
+        # Get user facts tools
+        tools.extend(get_user_facts_tools())
+        print(f"[Agent] Loaded memory tools and user facts tools")
         # Create OpenHands Agent
         agent = Agent(
             llm=llm,
@@ -364,7 +471,8 @@ def get_or_create_session(
     conversation_id: str,
     preset_slug: str,
     preset_manager: PresetManager,
-    memory_context: Optional[str] = None
+    memory_context: Optional[str] = None,
+    messages: Optional[List[Dict[str, Any]]] = None
 ) -> AgentSession:
     """Get existing session or create new one.
     
@@ -376,6 +484,7 @@ def get_or_create_session(
         preset_slug: Preset identifier
         preset_manager: Manager with preset data
         memory_context: Optional memory context
+        messages: Optional messages for operator context retrieval
         
     Returns:
         AgentSession instance
@@ -387,11 +496,24 @@ def get_or_create_session(
     if session_key in _session_cache:
         return _session_cache[session_key]
     
+    # Get operator context from user facts if messages provided
+    operator_context = None
+    if messages:
+        operator_context = get_operator_context(messages)
+    
     # Create new session
     session_id = create_session_id(conversation_id, preset_slug)
     model = get_model_for_preset(preset_slug, preset_manager)
-    system_prompt = assemble_system_prompt(preset_slug, preset_manager, memory_context)
+    system_prompt = assemble_system_prompt(
+        preset_slug, 
+        preset_manager, 
+        memory_context,
+        operator_context
+    )
     mcp_servers = resolve_mcp_servers(preset_slug)
+    
+    # Set session context for user facts tools
+    set_session_context("operator", conversation_id)
     
     session = AgentSession(
         session_id=session_id,

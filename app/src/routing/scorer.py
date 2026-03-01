@@ -23,6 +23,25 @@ from config import (
 from presets.loader import PresetManager
 
 
+def get_scorable_presets(preset_manager: PresetManager) -> Dict[str, str]:
+    """Get preset descriptions excluding pondering.
+    
+    Pondering is never auto-selected by scoring. It must be
+    explicitly activated via /pondering command or heartbeat.
+    
+    Args:
+        preset_manager: Manager with loaded presets
+        
+    Returns:
+        Dictionary of slug -> description (excluding pondering)
+    """
+    all_presets = preset_manager.get_preset_descriptions()
+    return {
+        slug: desc for slug, desc in all_presets.items()
+        if slug != "pondering"
+    }
+
+
 @dataclass
 class ScoringResult:
     """Result from a single scoring model."""
@@ -281,8 +300,8 @@ async def score_conversation(
             total_models=len(SCORING_MODELS)
         )
     
-    # Step 2: Build scoring prompt
-    preset_descriptions = preset_manager.get_preset_descriptions()
+    # Step 2: Build scoring prompt (excluding pondering - it's never auto-selected)
+    preset_descriptions = get_scorable_presets(preset_manager)
     expected_presets = set(preset_descriptions.keys())
     prompt = build_scoring_prompt(preset_descriptions, last_messages)
     
