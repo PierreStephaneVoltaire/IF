@@ -14,12 +14,13 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, PlainTextResponse
 
-from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR
+from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR, STORAGE_DB_PATH
 from api.models import router as models_router
 from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
 from presets.loader import get_preset_manager
 from mcp_servers.config import validate_mcp_config
+from storage.factory import init_store, close_store
 
 
 # Shared HTTP client for connection pooling
@@ -99,11 +100,25 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[Startup] WARNING: Memory store initialization failed: {e}")
     
+    # Initialize storage backend (SQLite with WAL mode)
+    try:
+        # Ensure storage database directory exists
+        storage_db_path = Path(STORAGE_DB_PATH)
+        storage_db_path.parent.mkdir(parents=True, exist_ok=True)
+        init_store()
+        print(f"[Startup] Storage backend initialized at {STORAGE_DB_PATH}")
+    except Exception as e:
+        print(f"[Startup] ERROR: Storage initialization failed: {e}")
+        raise
+    
     print(f"[Startup] Server ready on {HOST}:{PORT}")
     
     yield
     
     # Shutdown
+    close_store()
+    print("[Shutdown] Storage backend closed")
+    
     if http_client:
         await http_client.aclose()
         print("[Shutdown] HTTP client closed")

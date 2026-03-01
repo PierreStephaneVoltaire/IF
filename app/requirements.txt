@@ -12,6 +12,9 @@ httpx>=0.25.0
 # Data Validation
 pydantic>=2.5.0
 
+# Database ORM (SQLite + SQLModel for storage abstraction)
+sqlmodel>=0.0.22
+
 # Environment Variables
 python-dotenv>=1.0.0
 

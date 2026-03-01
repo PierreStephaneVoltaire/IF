@@ -2,17 +2,16 @@
 
 This module implements Step 4 of the routing pipeline:
 - Caches routing decisions per conversation
-- Tracks message count since last classification
-- Implements reclassification logic
-- Handles social pattern detection
+- Stores anchor window for topic shift detection
+- Implements reclassification logic via topic shift detection
+- Handles social pattern detection (deprecated - now handled by topic shift)
 """
 from __future__ import annotations
 import re
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from config import RECLASSIFY_MESSAGE_COUNT
 from .scorer import AggregatedScores
 from .decision import RoutingDecision
 
@@ -22,46 +21,28 @@ class ConversationState:
     """Cached state for a single conversation."""
     conversation_id: str
     active_preset: str
+    anchor_window: List[str] = field(default_factory=list)  # Message texts at last classification
     last_scores: Optional[AggregatedScores] = None
     last_decision: Optional[RoutingDecision] = None
-    message_count: int = 0
     last_updated: datetime = field(default_factory=datetime.now)
     
-    def increment(self):
-        """Increment message counter and update timestamp."""
-        self.message_count += 1
-        self.last_updated = datetime.now()
-    
-    def should_reclassify(self, new_message: str) -> bool:
-        """Determine if conversation should be reclassified.
-        
-        Args:
-            new_message: The new incoming message
-            
-        Returns:
-            True if reclassification is needed, False to reuse cached route
-        """
-        # Check if message is a social pattern (greetings, thanks, etc.)
-        if is_social_pattern(new_message):
-            return False  # Don't reclassify for social messages
-        
-        # Check message count threshold
-        if self.message_count >= RECLASSIFY_MESSAGE_COUNT:
-            return True
-        
-        return False
-    
-    def update(self, decision: RoutingDecision, scores: AggregatedScores):
+    def update(
+        self,
+        decision: RoutingDecision,
+        scores: AggregatedScores,
+        anchor_window: List[str]
+    ):
         """Update cached state with new routing decision.
         
         Args:
             decision: New routing decision
             scores: New aggregated scores
+            anchor_window: Message texts at time of classification
         """
         self.active_preset = decision.selected_preset
         self.last_decision = decision
         self.last_scores = scores
-        self.message_count = 0  # Reset counter
+        self.anchor_window = anchor_window
         self.last_updated = datetime.now()
 
 
@@ -100,7 +81,8 @@ class ConversationCache:
         self,
         conversation_id: str,
         initial_decision: RoutingDecision,
-        initial_scores: AggregatedScores
+        initial_scores: AggregatedScores,
+        initial_anchor_window: List[str]
     ) -> ConversationState:
         """Get existing state or create new one.
         
@@ -108,6 +90,7 @@ class ConversationCache:
             conversation_id: Unique conversation identifier
             initial_decision: Initial routing decision (for new conversations)
             initial_scores: Initial aggregated scores (for new conversations)
+            initial_anchor_window: Initial message texts (for new conversations)
             
         Returns:
             ConversationState (existing or newly created)
@@ -119,21 +102,12 @@ class ConversationCache:
         state = ConversationState(
             conversation_id=conversation_id,
             active_preset=initial_decision.selected_preset,
+            anchor_window=initial_anchor_window,
             last_scores=initial_scores,
             last_decision=initial_decision
         )
         self._cache[conversation_id] = state
         return state
-    
-    def increment_message_count(self, conversation_id: str):
-        """Increment message counter for a conversation.
-        
-        Args:
-            conversation_id: Unique conversation identifier
-        """
-        state = self._cache.get(conversation_id)
-        if state:
-            state.increment()
     
     def clear(self, conversation_id: Optional[str] = None):
         """Clear cache (all or specific conversation).

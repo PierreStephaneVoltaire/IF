@@ -67,6 +67,16 @@ SANDBOX_PATH = os.getenv("SANDBOX_PATH", "./sandbox")
 MEMORY_DB_PATH = os.getenv("MEMORY_DB_PATH", "./data/memory_db")
 PERSISTENCE_DIR = os.getenv("PERSISTENCE_DIR", "./data/conversations")
 
+# Storage Configuration (Phase 2)
+STORAGE_DB_PATH = os.getenv("STORAGE_DB_PATH", "./data/store.db")
+STORE_BACKEND = os.getenv("STORE_BACKEND", "sqlite")
+# Future DynamoDB vars:
+# DYNAMODB_WEBHOOK_TABLE = os.getenv("DYNAMODB_WEBHOOK_TABLE", "")
+# AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+
+# Topic Shift Detection (Phase 1)
+TOPIC_SHIFT_MODEL = os.getenv("TOPIC_SHIFT_MODEL", "z-ai/glm-4.7-flash")
+
 # Context Condensation
 CONTEXT_CONDENSE_THRESHOLD = int(os.getenv("CONTEXT_CONDENSE_THRESHOLD", "250000"))
 
