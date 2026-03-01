@@ -12,6 +12,10 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
 - [Request Flow Diagram](#request-flow-diagram)
 - [API Endpoints](#api-endpoints)
 - [Routing Pipeline](#routing-pipeline)
+- [Command System](#command-system)
+- [User Facts Store](#user-facts-store)
+- [Pondering Preset](#pondering-preset)
+- [Heartbeat System](#heartbeat-system)
 - [Channel System](#channel-system)
 - [Storage Layer](#storage-layer)
 - [MCP Server Configuration](#mcp-server-configuration)
@@ -364,16 +368,20 @@ Returns system health status.
   "status": "healthy",
   "service": "if-prototype-a1",
   "features": {
-    "routing": "partial",
+    "routing": "active",
     "interceptor": "active",
+    "commands": "active",
     "attachments": "active",
-    "memory_store": "active",
-    "memory_count": 42,
+    "user_facts_store": "active",
+    "user_facts_count": 47,
     "presets_loaded": true,
-    "preset_count": 8,
+    "preset_count": 10,
     "channel_system": "active",
     "active_listeners": 2,
-    "pending_messages": 3
+    "heartbeat": "active",
+    "heartbeat_idle_hours": 6.0,
+    "cached_conversations": 5,
+    "pinned_conversations": 1
   }
 }
 ```
@@ -523,11 +531,251 @@ Executes the conversation with the selected preset via OpenHands SDK.
 
 **Process:**
 1. Get or create agent session for conversation
-2. Assemble system prompt (base + memory + preset-specific)
+2. Assemble system prompt (base + operator context + preset-specific)
 3. Resolve MCP servers for preset
 4. Execute agent with messages
 5. Scan for new file attachments
 6. Return response with attachments
+7. Fire-and-forget conversation summarization
+
+---
+
+## Command System
+
+The command system provides slash commands for manual control over routing behavior. Commands are processed before any routing or LLM calls, returning synthetic responses immediately with zero latency.
+
+**Module:** [`src/routing/commands.py`](src/routing/commands.py)
+
+### Available Commands
+
+| Command | Action | Response |
+|---------|--------|----------|
+| `/end_convo` | Clear conversation state, force reclassification | `"Acknowledged. Categorisation state cleared. Next message will be re-evaluated."` |
+| `/{preset_name}` | Pin routing to a specific preset | `"Acknowledged. Routing pinned to preset: {preset_name}. Send /end_convo to release."` |
+| `/pondering` | Engage pondering mode (special pin behavior) | `"Acknowledged. Pondering mode engaged."` |
+| `/{invalid}` | Unknown preset | `"Negative. Preset \"{name}\" not recognized.\nAvailable: {sorted list}."` |
+
+### Command Processing
+
+Commands are processed in **Step 0** of the routing pipeline, before interception or scoring:
+
+```python
+cmd = parse_command(last_message_content, preset_manager.slugs())
+if cmd is not None:
+    if cmd.action == CommandAction.RESET_CACHE:
+        conversation_cache.evict(cache_key)
+        return synthetic_response(cmd.response_text)
+    if cmd.action == CommandAction.PIN_PRESET:
+        conversation_cache.pin(cache_key, cmd.preset)
+        return synthetic_response(cmd.response_text)
+```
+
+### Pin Lifecycle
+
+When a preset is pinned:
+
+1. **Normal presets**: Auto-release after `RECLASSIFY_MESSAGE_COUNT` messages if topic shift is detected
+2. **Pondering preset**: Never auto-releases. Only `/end_convo` or `/{other_preset}` can release it.
+
+```python
+if cached and cached.pinned:
+    if cached.active_preset == "pondering":
+        # Pondering pins never auto-release
+        selected_preset = cached.active_preset
+    else:
+        cached.pin_message_count += 1
+        if cached.pin_message_count >= RECLASSIFY_MESSAGE_COUNT:
+            if should_check_shift(cached.anchor_window, current_window):
+                shifted = await topic_has_shifted(...)
+                if shifted:
+                    cached.pinned = False  # Release pin
+```
+
+---
+
+## User Facts Store
+
+The user facts store replaces the simpler memory store with a structured fact system supporting categories, sources, and supersession. It uses ChromaDB for semantic search.
+
+**Module:** [`src/memory/user_facts.py`](src/memory/user_facts.py)
+
+### Fact Schema
+
+```python
+@dataclass
+class UserFact:
+    id: str                    # UUID
+    username: str              # Operator identifier
+    content: str               # The fact content
+    category: FactCategory     # Classification category
+    source: FactSource         # How this fact was captured
+    confidence: float          # 0.0 to 1.0
+    cache_key: str             # Where this fact was captured
+    created_at: str            # ISO timestamp
+    updated_at: str            # ISO timestamp
+    superseded_by: str | None  # ID of replacement fact
+    active: bool               # False if superseded
+```
+
+### Categories
+
+| Category | Description | Example |
+|----------|-------------|---------|
+| `personal` | Name, location, profession, relationships | "Operator lives in Boston" |
+| `preference` | Language/framework preferences, communication style | "Operator prefers TypeScript over JavaScript" |
+| `opinion` | Strong stances on technologies, approaches | "Operator dislikes microservices architecture" |
+| `skill` | Self-reported or demonstrated understanding | "Operator identifies as senior DevOps engineer" |
+| `life_event` | Job changes, moves, competitions, milestones | "Operator started new job at TechCorp (2026-02)" |
+| `future_direction` | Goals, timelines, aspirations | "Operator planning to learn Rust (as of 2026-03)" |
+| `project_direction` | Current project plans and direction | "Operator migrating from Express to Fastify (as of 2026-02)" |
+| `mental_state` | Noted shifts in mood, stress, outlook | "Operator showing increased stress about deadline" |
+| `conversation_summary` | Auto-generated summaries of discussions | "Discussed Kubernetes deployment strategies" |
+| `topic_log` | Domains discussed and when | "Topic: containerization discussed 2026-03-01" |
+| `model_assessment` | Agent's observations about the operator | "Operator shows knowledge gap in network subnetting" |
+
+### Sources
+
+| Source | Description |
+|--------|-------------|
+| `user_stated` | Explicitly stated by the operator |
+| `model_observed` | Observed from operator behavior |
+| `model_assessed` | Agent's assessment of operator capabilities |
+| `conversation_derived` | Extracted from conversation context |
+
+### Agent Tools
+
+**Module:** [`src/agent/tools/user_facts.py`](src/agent/tools/user_facts.py)
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `user_facts_search` | `query`, `category?`, `limit?` | Semantic search across stored facts |
+| `user_facts_add` | `content`, `category`, `source?`, `confidence?` | Store a new fact |
+| `user_facts_update` | `fact_id`, `new_content`, `reason` | Supersede an existing fact |
+| `user_facts_list` | `category?`, `include_history?` | List all stored facts |
+| `user_facts_remove` | `fact_id` | Hard delete (requires confirmation per Directive 0-1) |
+
+### Auto-Retrieval
+
+During system prompt assembly, relevant facts are automatically retrieved and injected:
+
+```python
+async def get_operator_context(messages: list[dict], store: UserFactStore) -> str:
+    facts = await store.search(last_user_msg, limit=5)
+    assessments = await store.search(last_user_msg, category=FactCategory.MODEL_ASSESSMENT, limit=3)
+    # Returns formatted "OPERATOR CONTEXT" block
+```
+
+### Conversation Summarization
+
+**Module:** [`src/memory/summarizer.py`](src/memory/summarizer.py)
+
+After each agent execution, a fire-and-forget task generates a conversation summary:
+
+- Only summarizes substantive exchanges (>3 messages)
+- Uses `SUGGESTION_MODEL` for cheap summarization
+- Stores as `conversation_summary` fact
+- Zero impact on response latency
+
+---
+
+## Pondering Preset
+
+The pondering preset is a special mode for operator profiling and engagement. Unlike other presets, it is **never auto-selected by the router** — it must be explicitly activated via `/pondering` command or the heartbeat system.
+
+**Addendum:** [`src/agent/prompts/pondering_addendum.md`](src/agent/prompts/pondering_addendum.md)
+
+### Characteristics
+
+- **Objective**: Build and refine the operator profile
+- **Behavior**: Ask ONE question at a time, focus on depth over breadth
+- **MCP Servers**: Only `time` (all others disabled)
+- **Pin Behavior**: Never auto-releases; only `/end_convo` or `/{other_preset}` releases
+
+### Behavioral Rules
+
+1. Focus areas: current projects, goals, preferences, frustrations, problem-solving approaches
+2. Listen more than speak — the operator's words are the data
+3. Every fact learned MUST be stored via `user_facts_add`
+4. Every observation MUST be stored with `source: model_assessed`
+5. Do not announce storage
+6. If operator pivots to technical question, answer briefly then redirect
+
+### Hard Constraints
+
+- Do NOT produce code blocks
+- Do NOT start architecture discussions
+- Do NOT enter analysis or debugging flows
+- Do NOT generate files
+
+### Activation
+
+```bash
+# Manual activation
+/pondering
+
+# Automatic activation via heartbeat after idle period
+# (see Heartbeat System section)
+```
+
+---
+
+## Heartbeat System
+
+The heartbeat system provides proactive operator engagement by monitoring channel activity and initiating pondering conversations after idle periods.
+
+**Modules:**
+- [`src/heartbeat/activity.py`](src/heartbeat/activity.py) — Activity tracking
+- [`src/heartbeat/runner.py`](src/heartbeat/runner.py) — Background runner
+
+### How It Works
+
+1. **Activity Tracking**: Every message (inbound/outbound) updates `last_message_at` for the channel
+2. **Idle Detection**: Every 60 seconds, check for channels idle beyond `HEARTBEAT_IDLE_HOURS`
+3. **Cooldown**: Skip channels that received a heartbeat within `HEARTBEAT_COOLDOWN_HOURS`
+4. **Quiet Hours**: Skip during configured quiet hours (default: 23:00-07:00 UTC)
+5. **Initiation**: Pin channel to pondering, generate contextual opening, deliver message
+
+### Activity Log Schema
+
+```sql
+CREATE TABLE activity_log (
+    cache_key TEXT PRIMARY KEY,       -- channel_id or chat_id
+    webhook_id TEXT,                  -- nullable (HTTP chats have no webhook)
+    last_message_at TEXT NOT NULL,    -- ISO timestamp
+    last_heartbeat_at TEXT            -- ISO timestamp
+);
+```
+
+### Opening Message Generation
+
+When initiating a heartbeat, the system:
+
+1. Pulls relevant user facts (`future_direction`, `project_direction`, general)
+2. Builds context block from stored facts
+3. Calls LLM to generate personalized opening
+4. Falls back to cold open if no facts exist:
+
+```
+"Statement: Idle period detected. Initiating baseline calibration. Query: What are you currently working on?"
+```
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEARTBEAT_ENABLED` | `true` | Enable/disable heartbeat system |
+| `HEARTBEAT_IDLE_HOURS` | `6.0` | Hours of inactivity before heartbeat |
+| `HEARTBEAT_COOLDOWN_HOURS` | `6.0` | Hours between heartbeats on same channel |
+| `HEARTBEAT_QUIET_HOURS` | `23:00-07:00` | UTC time range to skip heartbeats |
+
+### Structured Logging
+
+```
+[Heartbeat] Tick: 3 active webhooks, 1 idle, 0 on cooldown
+[Heartbeat] Pondering initiated on "Discord #dev-chat" (channel_id=123456)
+[Heartbeat] Skipped channel_id=789: on cooldown (2.3h since last)
+[Cache] Pin set: abc123 → pondering
+```
 
 ---
 
@@ -794,7 +1042,7 @@ Presets are static definitions that define routing targets.
 | Preset | Model | Description |
 |--------|-------|-------------|
 | `architecture` | `@preset/architecture` | System design, infrastructure planning |
-| `code` | `@preset/code` | Writing, modifying, debugging code |
+| `coding` | `@preset/coding` | Writing, modifying, debugging code |
 | `shell` | `@preset/shell` | CLI commands, one-liners |
 | `security` | `@preset/security` | Threat modeling, compliance |
 | `health` | `@preset/health` | Fitness, nutrition, sports |
@@ -802,6 +1050,9 @@ Presets are static definitions that define routing targets.
 | `finance` | `@preset/finance` | Market data, investing |
 | `social` | `@preset/social` | Casual conversation |
 | `general` | `@preset/general` | General-purpose fallback |
+| `pondering` | `@preset/pondering` | Operator profiling (manual/heartbeat only) |
+
+> **Note:** The `pondering` preset is excluded from automatic scoring. It can only be activated via `/pondering` command or the heartbeat system.
 
 ### Preset Structure
 
@@ -866,6 +1117,15 @@ google/gemini-2.5-flash-lite,openai/gpt-oss-120b,anthropic/claude-haiku-4.5
 | `CHANNEL_MAX_CHUNK_CHARS` | `1500` | Max chars per response chunk |
 | `OPENWEBUI_POLL_INTERVAL` | `5.0` | OpenWebUI polling interval |
 
+### Heartbeat Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEARTBEAT_ENABLED` | `true` | Enable/disable heartbeat system |
+| `HEARTBEAT_IDLE_HOURS` | `6.0` | Hours of inactivity before heartbeat |
+| `HEARTBEAT_COOLDOWN_HOURS` | `6.0` | Hours between heartbeats on same channel |
+| `HEARTBEAT_QUIET_HOURS` | `23:00-07:00` | UTC time range to skip heartbeats |
+
 ### MCP Server Keys
 
 | Variable | Description |
@@ -894,20 +1154,20 @@ if-prototype-a1/
 ├── plan.md                      # Implementation plan
 │
 ├── data/                        # Runtime data directory
-│   ├── memory_db/               # ChromaDB vector storage
+│   ├── memory_db/               # ChromaDB vector storage (user facts)
 │   ├── conversations/           # OpenHands persistence
 │   │   └── {conversation_id}/
 │   │       ├── base_state.json
 │   │       └── events/
-│   └── store.db                 # SQLite webhook storage
+│   └── store.db                 # SQLite webhook + activity storage
 │
 ├── sandbox/                     # File output directory
 │   └── {conversation_id}/       # Per-conversation isolation
 │
 ├── plans/                       # Implementation phase docs
-│   ├── phase1-2-implementation.md
+│   ├── phase0-1-2-implementation.md
 │   ├── phase3-4-implementation.md
-│   ├── phase5-implementation.md
+│   ├── phase5-6-implementation.md
 │   └── phase6-implementation.md
 │
 └── src/                         # Source code
@@ -925,19 +1185,23 @@ if-prototype-a1/
     ├── routing/                 # Routing pipeline
     │   ├── __init__.py
     │   ├── interceptor.py       # Step 1: OpenWebUI task detection
+    │   ├── commands.py          # Step 0: Slash command parser
     │   ├── scorer.py            # Step 2: Parallel scoring
     │   ├── decision.py          # Step 3: Preset selection
-    │   ├── cache.py             # Step 4: Conversation state
-    │   └── topic_shift.py       # Topic shift detection
+    │   ├── cache.py             # Step 4: Conversation state + pinning
+    │   └── topic_shift.py       # Topic shift detection with heuristic
     │
     ├── agent/                   # OpenHands agent integration
     │   ├── __init__.py
-    │   ├── session.py           # Session management
-    │   ├── tools.py             # Memory tools
+    │   ├── session.py           # Session management + operator context
+    │   ├── tools.py             # Legacy memory tools
+    │   ├── tools/               # Agent tool implementations
+    │   │   └── user_facts.py    # User facts tools (add/search/update/remove)
     │   ├── sandbox.py           # Sandbox path resolution
     │   ├── condenser.py         # Context condensation
     │   └── prompts/
-    │       └── system_prompt.j2
+    │       ├── system_prompt.j2 # Jinja2 template for system prompt
+    │       └── pondering_addendum.md  # Pondering mode instructions
     │
     ├── channels/                # Channel system
     │   ├── __init__.py
@@ -958,22 +1222,28 @@ if-prototype-a1/
     ├── storage/                 # Persistence layer
     │   ├── __init__.py
     │   ├── protocol.py          # WebhookStore protocol
-    │   ├── models.py            # WebhookRecord model
+    │   ├── models.py            # WebhookRecord + ActivityLogEntry models
     │   ├── factory.py           # Backend factory
     │   ├── sqlite_backend.py    # SQLite implementation
     │   └── dynamodb_backend.py  # Future AWS implementation
     │
     ├── memory/                  # Memory store
     │   ├── __init__.py
-    │   └── store.py             # ChromaDB integration
+    │   ├── user_facts.py        # ChromaDB user facts store
+    │   └── summarizer.py        # Background conversation summarization
+    │
+    ├── heartbeat/               # Heartbeat system
+    │   ├── __init__.py
+    │   ├── activity.py          # Activity tracker
+    │   └── runner.py            # Background heartbeat runner
     │
     ├── mcp_servers/             # MCP configuration
     │   ├── __init__.py
-    │   └── config.py            # Server definitions and mapping
+    │   └── config.py            # Server definitions and preset mapping
     │
     └── presets/                 # Preset definitions
         ├── __init__.py
-        └── loader.py            # Static preset loading
+        └── loader.py            # Static preset loading (includes pondering)
 ```
 
 ---
@@ -1104,24 +1374,23 @@ curl -X POST http://localhost:8000/v1/webhooks/register \
 
 ---
 
-## Memory Store
+## Structured Logging
 
-The memory store uses ChromaDB for semantic search over operator context.
+The system produces structured log events for monitoring and debugging:
 
-**Memory Categories:**
-- **preference**: Language/framework preferences, communication style
-- **personal**: Birthday, location, profession, relationships
-- **skill_level**: Self-reported or demonstrated understanding
-- **opinion**: Strong stances on technologies, approaches
-- **life_event**: Job changes, moves, competitions, milestones
-- **future_plan**: Goals, timelines, aspirations
-- **mental_state**: Noted shifts in mood, stress, outlook
-
-**Memory Tools:**
-- `memory_search`: Semantic search across stored memories
-- `memory_add`: Store new memories about the operator
-- `memory_remove`: Delete memories (requires confirmation)
-- `memory_list`: List all stored memories
+```
+[UserFacts] Added: category=project_direction source=user_stated cache_key=abc123
+[UserFacts] Superseded: old=fact_xyz → new=fact_abc reason="Operator changed direction"
+[UserFacts] Assessment: category=model_assessment content="Networking knowledge gap..."
+[Command] /end_convo executed for cache_key=abc123
+[Command] /coding pinned for cache_key=abc123
+[Heartbeat] Tick: 3 active webhooks, 1 idle, 0 on cooldown
+[Heartbeat] Pondering initiated on "Discord #dev-chat" (channel_id=123456)
+[Heartbeat] Skipped channel_id=789: on cooldown (2.3h since last)
+[Cache] Pin set: abc123 → pondering
+[Cache] Pin released: abc123 (topic shift)
+[TopicShift] Heuristic skip: keyword overlap 0.62 > 0.40
+```
 
 ---
 
