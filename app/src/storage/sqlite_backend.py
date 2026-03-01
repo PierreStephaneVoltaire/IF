@@ -53,8 +53,36 @@ def close_sqlite() -> None:
         logger.info("SQLite store closed")
 
 
+class _SQLiteBackend:
+    """Simple backend wrapper exposing the engine.
+    
+    Used by ActivityTracker and other components that need direct
+    engine access.
+    """
+    def __init__(self):
+        pass
+    
+    @property
+    def engine(self):
+        """Get the SQLite engine.
+        
+        Returns:
+            The SQLModel/engine instance
+            
+        Raises:
+            RuntimeError: If SQLite not initialized
+        """
+        if _engine is None:
+            raise RuntimeError("SQLite not initialized. Call init_sqlite().")
+        return _engine
+
+
 class SQLiteWebhookStore:
     """WebhookStore implementation backed by SQLite + SQLModel."""
+    
+    def __init__(self):
+        """Initialize the store with a backend wrapper."""
+        self._backend = _SQLiteBackend()
     
     def _session(self) -> Session:
         """Create a new database session.

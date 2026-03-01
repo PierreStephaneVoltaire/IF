@@ -32,7 +32,7 @@ from config import (
 )
 from presets.loader import PresetManager
 from mcp_servers.config import resolve_mcp_config
-from agent.tools import get_memory_tools
+from agent.memory_tools import get_memory_tools
 from agent.tools.user_facts import get_user_facts_tools, set_session_context
 
 

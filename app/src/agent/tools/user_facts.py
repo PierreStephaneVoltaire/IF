@@ -14,7 +14,8 @@ Tools:
 from __future__ import annotations
 from typing import List, Optional
 
-from openhands.sdk import Tool, ToolExecutor
+from openhands.sdk import Tool
+from openhands.sdk.tool import ToolExecutor
 
 from memory.user_facts import (
     UserFact,
