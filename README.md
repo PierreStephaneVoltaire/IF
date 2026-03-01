@@ -1,4 +1,4 @@
-# IF Prototype A1 — Intelligent Routing Agent API
+# IF — Intelligent Routing Agent API
 
 An OpenAI-compatible API server in Python that provides intelligent routing to specialized AI presets based on conversation analysis. Incoming chat completions are analyzed by parallel scoring models, classified against preset definitions, and dispatched to the best-fit specialist model via OpenRouter presets.
 
