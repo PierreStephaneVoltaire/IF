@@ -12,9 +12,17 @@ Tools:
 - user_facts_remove: Request removal of a fact (requires confirmation)
 """
 from __future__ import annotations
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Sequence
 
-from openhands.sdk import Tool
+from pydantic import Field
+
+from openhands.sdk import (
+    Action,
+    Observation,
+    Tool,
+    ToolDefinition,
+    register_tool,
+)
 from openhands.sdk.tool import ToolExecutor
 
 from memory.user_facts import (
@@ -46,7 +54,11 @@ def set_session_context(username: str, cache_key: str) -> None:
     _current_cache_key = cache_key or ""
 
 
-def user_facts_search(
+# ============================================================================
+# Plain Python implementations (called by executors)
+# ============================================================================
+
+def _user_facts_search(
     query: str,
     category: Optional[str] = None,
     limit: int = 5
@@ -89,7 +101,7 @@ def user_facts_search(
         return f"Error searching facts: {str(e)}"
 
 
-def user_facts_add(
+def _user_facts_add(
     content: str,
     category: str,
     source: str = "user_stated",
@@ -112,7 +124,7 @@ def user_facts_add(
     Returns:
         Confirmation message with the new fact ID
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     # Validate category
     valid_categories = [c.value for c in FactCategory]
@@ -127,6 +139,7 @@ def user_facts_add(
     try:
         store = get_user_fact_store()
         
+        now = datetime.now(timezone.utc).isoformat()
         fact = UserFact(
             username=_current_username,
             content=content,
@@ -134,8 +147,8 @@ def user_facts_add(
             source=FactSource(source),
             confidence=confidence,
             cache_key=_current_cache_key,
-            created_at=datetime.utcnow().isoformat() + "Z",
-            updated_at=datetime.utcnow().isoformat() + "Z",
+            created_at=now,
+            updated_at=now,
         )
         
         store.add(fact)
@@ -144,7 +157,7 @@ def user_facts_add(
         return f"Error storing fact: {str(e)}"
 
 
-def user_facts_update(
+def _user_facts_update(
     fact_id: str,
     new_content: str,
     reason: str
@@ -177,7 +190,7 @@ def user_facts_update(
         return f"Error updating fact: {str(e)}"
 
 
-def user_facts_list(
+def _user_facts_list(
     category: Optional[str] = None,
     include_history: bool = False
 ) -> str:
@@ -213,7 +226,7 @@ def user_facts_list(
         return f"Error listing facts: {str(e)}"
 
 
-def user_facts_remove(fact_id: str) -> str:
+def _user_facts_remove(fact_id: str) -> str:
     """Request removal of a fact.
     
     Per Directive 0-1, fact deletion requires explicit operator
@@ -242,7 +255,7 @@ def user_facts_remove(fact_id: str) -> str:
         return f"Error: {str(e)}"
 
 
-def user_facts_remove_confirmed(fact_id: str) -> str:
+def _user_facts_remove_confirmed(fact_id: str) -> str:
     """Actually remove a fact after confirmation.
     
     This should only be called after the operator has explicitly
@@ -269,125 +282,192 @@ def user_facts_remove_confirmed(fact_id: str) -> str:
         return f"Error removing fact: {str(e)}"
 
 
+# ============================================================================
+# Action classes
+# ============================================================================
+
+class UserFactsSearchAction(Action):
+    query: str = Field(description="The search query describing what you're looking for")
+    category: Optional[str] = Field(
+        default=None,
+        description="Optional category filter"
+    )
+    limit: int = Field(default=5, description="Maximum number of results to return")
+
+
+class UserFactsAddAction(Action):
+    content: str = Field(description="The fact content (be specific and clear)")
+    category: str = Field(
+        description="Category of the fact: personal, preference, opinion, skill, life_event, future_direction, project_direction, mental_state, conversation_summary, topic_log, model_assessment"
+    )
+    source: str = Field(default="user_stated", description="Source of the fact")
+    confidence: float = Field(default=0.8, description="Confidence level 0.0-1.0")
+
+
+class UserFactsUpdateAction(Action):
+    fact_id: str = Field(description="ID of the fact to update")
+    new_content: str = Field(description="The new/updated content")
+    reason: str = Field(description="Reason for the update")
+
+
+class UserFactsListAction(Action):
+    category: Optional[str] = Field(default=None, description="Optional category filter")
+    include_history: bool = Field(default=False, description="Include superseded/inactive facts")
+
+
+class UserFactsRemoveAction(Action):
+    fact_id: str = Field(description="ID of the fact to remove")
+
+
+# ============================================================================
+# Observation classes
+# ============================================================================
+
+class UserFactsSearchObservation(Observation):
+    pass
+
+
+class UserFactsAddObservation(Observation):
+    pass
+
+
+class UserFactsUpdateObservation(Observation):
+    pass
+
+
+class UserFactsListObservation(Observation):
+    pass
+
+
+class UserFactsRemoveObservation(Observation):
+    pass
+
+
+# ============================================================================
+# Executor classes
+# ============================================================================
+
+class UserFactsSearchExecutor(ToolExecutor[UserFactsSearchAction, UserFactsSearchObservation]):
+    def __call__(self, action: UserFactsSearchAction, conversation=None) -> UserFactsSearchObservation:
+        result = _user_facts_search(action.query, action.category, action.limit)
+        return UserFactsSearchObservation.from_text(result)
+
+
+class UserFactsAddExecutor(ToolExecutor[UserFactsAddAction, UserFactsAddObservation]):
+    def __call__(self, action: UserFactsAddAction, conversation=None) -> UserFactsAddObservation:
+        result = _user_facts_add(action.content, action.category, action.source, action.confidence)
+        return UserFactsAddObservation.from_text(result)
+
+
+class UserFactsUpdateExecutor(ToolExecutor[UserFactsUpdateAction, UserFactsUpdateObservation]):
+    def __call__(self, action: UserFactsUpdateAction, conversation=None) -> UserFactsUpdateObservation:
+        result = _user_facts_update(action.fact_id, action.new_content, action.reason)
+        return UserFactsUpdateObservation.from_text(result)
+
+
+class UserFactsListExecutor(ToolExecutor[UserFactsListAction, UserFactsListObservation]):
+    def __call__(self, action: UserFactsListAction, conversation=None) -> UserFactsListObservation:
+        result = _user_facts_list(action.category, action.include_history)
+        return UserFactsListObservation.from_text(result)
+
+
+class UserFactsRemoveExecutor(ToolExecutor[UserFactsRemoveAction, UserFactsRemoveObservation]):
+    def __call__(self, action: UserFactsRemoveAction, conversation=None) -> UserFactsRemoveObservation:
+        result = _user_facts_remove(action.fact_id)
+        return UserFactsRemoveObservation.from_text(result)
+
+
+# ============================================================================
+# ToolDefinition classes
+# ============================================================================
+
+class UserFactsSearchTool(ToolDefinition[UserFactsSearchAction, UserFactsSearchObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["UserFactsSearchTool"]:
+        return [cls(
+            description=(
+                "Search stored facts about the operator semantically. "
+                "Use to retrieve context about preferences, skills, history, or any stored information."
+            ),
+            action_type=UserFactsSearchAction,
+            observation_type=UserFactsSearchObservation,
+            executor=UserFactsSearchExecutor(),
+        )]
+
+
+class UserFactsAddTool(ToolDefinition[UserFactsAddAction, UserFactsAddObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["UserFactsAddTool"]:
+        return [cls(
+            description=(
+                "Store a new fact about the operator. "
+                "Use to capture preferences, skills, goals, patterns, or observations that should persist."
+            ),
+            action_type=UserFactsAddAction,
+            observation_type=UserFactsAddObservation,
+            executor=UserFactsAddExecutor(),
+        )]
+
+
+class UserFactsUpdateTool(ToolDefinition[UserFactsUpdateAction, UserFactsUpdateObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["UserFactsUpdateTool"]:
+        return [cls(
+            description=(
+                "Update an existing fact by superseding it. "
+                "The old fact is preserved for history."
+            ),
+            action_type=UserFactsUpdateAction,
+            observation_type=UserFactsUpdateObservation,
+            executor=UserFactsUpdateExecutor(),
+        )]
+
+
+class UserFactsListTool(ToolDefinition[UserFactsListAction, UserFactsListObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["UserFactsListTool"]:
+        return [cls(
+            description=(
+                "List all stored facts. "
+                "Use to review what is known about the operator."
+            ),
+            action_type=UserFactsListAction,
+            observation_type=UserFactsListObservation,
+            executor=UserFactsListExecutor(),
+        )]
+
+
+class UserFactsRemoveTool(ToolDefinition[UserFactsRemoveAction, UserFactsRemoveObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["UserFactsRemoveTool"]:
+        return [cls(
+            description=(
+                "Request removal of a fact. "
+                "Requires operator confirmation per Directive 0-1."
+            ),
+            action_type=UserFactsRemoveAction,
+            observation_type=UserFactsRemoveObservation,
+            executor=UserFactsRemoveExecutor(),
+        )]
+
+
+# ============================================================================
+# Registration
+# ============================================================================
+
+register_tool("UserFactsSearchTool", UserFactsSearchTool)
+register_tool("UserFactsAddTool", UserFactsAddTool)
+register_tool("UserFactsUpdateTool", UserFactsUpdateTool)
+register_tool("UserFactsListTool", UserFactsListTool)
+register_tool("UserFactsRemoveTool", UserFactsRemoveTool)
+
+
 def get_user_facts_tools() -> List[Tool]:
-    """Get user facts tool definitions for OpenHands agent.
-    
-    Returns:
-        List of Tool objects for registration with the agent
-    """
+    """Return Tool specs for all user facts tools, for use in Agent construction."""
     return [
-        Tool(
-            name="user_facts_search",
-            description="Search stored facts about the operator semantically. Use to retrieve context about preferences, skills, history, or any stored information.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query describing what you're looking for"
-                    },
-                    "category": {
-                        "type": "string",
-                        "description": "Optional category filter",
-                        "enum": [c.value for c in FactCategory]
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results (default 5)"
-                    }
-                },
-                "required": ["query"]
-            },
-            executor=ToolExecutor(user_facts_search)
-        ),
-        Tool(
-            name="user_facts_add",
-            description="Store a new fact about the operator. Use to capture preferences, skills, goals, patterns, or observations that should persist.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "The fact content (be specific and clear)"
-                    },
-                    "category": {
-                        "type": "string",
-                        "description": "Category of the fact",
-                        "enum": [c.value for c in FactCategory]
-                    },
-                    "source": {
-                        "type": "string",
-                        "description": "Source of the fact",
-                        "enum": [s.value for s in FactSource],
-                        "default": "user_stated"
-                    },
-                    "confidence": {
-                        "type": "number",
-                        "description": "Confidence level 0.0-1.0",
-                        "default": 0.8
-                    }
-                },
-                "required": ["content", "category"]
-            },
-            executor=ToolExecutor(user_facts_add)
-        ),
-        Tool(
-            name="user_facts_update",
-            description="Update an existing fact by superseding it. The old fact is preserved for history.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "fact_id": {
-                        "type": "string",
-                        "description": "ID of the fact to update"
-                    },
-                    "new_content": {
-                        "type": "string",
-                        "description": "The new/updated content"
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Reason for the update"
-                    }
-                },
-                "required": ["fact_id", "new_content", "reason"]
-            },
-            executor=ToolExecutor(user_facts_update)
-        ),
-        Tool(
-            name="user_facts_list",
-            description="List all stored facts. Use to review what is known about the operator.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "category": {
-                        "type": "string",
-                        "description": "Optional category filter",
-                        "enum": [c.value for c in FactCategory]
-                    },
-                    "include_history": {
-                        "type": "boolean",
-                        "description": "Include superseded/inactive facts",
-                        "default": False
-                    }
-                },
-                "required": []
-            },
-            executor=ToolExecutor(user_facts_list)
-        ),
-        Tool(
-            name="user_facts_remove",
-            description="Request removal of a fact. Requires operator confirmation per Directive 0-1.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "fact_id": {
-                        "type": "string",
-                        "description": "ID of the fact to remove"
-                    }
-                },
-                "required": ["fact_id"]
-            },
-            executor=ToolExecutor(user_facts_remove)
-        ),
+        Tool(name="UserFactsSearchTool"),
+        Tool(name="UserFactsAddTool"),
+        Tool(name="UserFactsUpdateTool"),
+        Tool(name="UserFactsListTool"),
+        Tool(name="UserFactsRemoveTool"),
     ]

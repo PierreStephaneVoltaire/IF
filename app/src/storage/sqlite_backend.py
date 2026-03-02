@@ -75,6 +75,19 @@ class _SQLiteBackend:
         if _engine is None:
             raise RuntimeError("SQLite not initialized. Call init_sqlite().")
         return _engine
+    
+    def get_session(self) -> Session:
+        """Create a new database session.
+        
+        Returns:
+            SQLModel Session instance
+            
+        Raises:
+            RuntimeError: If SQLite not initialized
+        """
+        if _engine is None:
+            raise RuntimeError("SQLite not initialized. Call init_sqlite().")
+        return Session(_engine)
 
 
 class SQLiteWebhookStore:

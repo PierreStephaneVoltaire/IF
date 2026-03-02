@@ -213,16 +213,23 @@ class UserFactStore:
         Returns:
             List of matching UserFact objects, ordered by relevance
         """
-        where = {}
+        # Build where clause - ChromaDB requires $and for multiple conditions
+        where = None
+        conditions = []
         if active_only:
-            where["active"] = True
+            conditions.append({"active": True})
         if category:
-            where["category"] = category.value
+            conditions.append({"category": category.value})
+        
+        if len(conditions) == 1:
+            where = conditions[0]
+        elif len(conditions) > 1:
+            where = {"$and": conditions}
         
         results = self.collection.query(
             query_texts=[query],
             n_results=limit,
-            where=where if where else None,
+            where=where,
             include=["documents", "metadatas"]
         )
         

@@ -161,6 +161,16 @@ async def lifespan(app: FastAPI):
         user_facts_store = get_user_fact_store()
         facts_count = user_facts_store.active_count
         print(f"[Startup] User facts store initialized ({facts_count} active facts)")
+        
+        # Warm up the embedding model to prevent runtime download delays
+        # This triggers ChromaDB to load the ONNX embedding model
+        print(f"[Startup] Warming up embedding model...")
+        try:
+            # Perform a dummy search to trigger model loading
+            user_facts_store.search("__warmup_query__", limit=1)
+            print(f"[Startup] Embedding model ready")
+        except Exception as warmup_error:
+            print(f"[Startup] WARNING: Embedding model warmup failed: {warmup_error}")
     except ImportError as e:
         print(f"[Startup] WARNING: User facts store not available: {e}")
         print(f"[Startup] Install chromadb to enable user facts: pip install chromadb")

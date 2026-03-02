@@ -294,6 +294,16 @@ class PresetManager:
     def is_initialized(self) -> bool:
         """Check if presets have been loaded."""
         return self._initialized
+    
+    def slugs(self) -> List[str]:
+        """Get list of all preset slugs.
+        
+        This is used by the command parser to validate preset names.
+        
+        Returns:
+            List of preset slug strings
+        """
+        return list(self.presets.keys())
 
 
 # Global preset manager instance

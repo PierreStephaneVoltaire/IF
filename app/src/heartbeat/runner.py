@@ -6,7 +6,7 @@ initiates pondering conversations to maintain engagement.
 from __future__ import annotations
 import asyncio
 import logging
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timezone
 from typing import TYPE_CHECKING, Any, Optional
 
 from config import (
@@ -329,7 +329,7 @@ class HeartbeatRunner:
         
         try:
             start_str, end_str = HEARTBEAT_QUIET_HOURS.split("-")
-            now = datetime.utcnow().time()
+            now = datetime.now(timezone.utc).time()
             start = dt_time.fromisoformat(start_str.strip())
             end = dt_time.fromisoformat(end_str.strip())
             
