@@ -14,6 +14,13 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
 - [Routing Pipeline](#routing-pipeline)
 - [Command System](#command-system)
 - [User Facts Store](#user-facts-store)
+- [Metacognitive Memory System](#metacognitive-memory-system)
+- [Reflection Engine](#reflection-engine)
+- [Capability Gap Tracking](#capability-gap-tracking)
+- [Pattern Detection](#pattern-detection)
+- [Opinion Formation](#opinion-formation)
+- [Operator Growth Tracking](#operator-growth-tracking)
+- [Meta-Analysis](#meta-analysis)
 - [Pondering Preset](#pondering-preset)
 - [Heartbeat System](#heartbeat-system)
 - [Channel System](#channel-system)
@@ -115,6 +122,47 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
 │  │                    Conversation Persistence                 │            │
 │  │                 (src/data/conversations/{id}/)             │            │
 │  └────────────────────────────────────────────────────────────┘            │
+└─────────────────────────────────────────────────────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              METACOGNITIVE LAYER (src/agent/reflection/)                     │
+│                                                                              │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐       │
+│  │   Pattern    │ │   Opinion    │ │   Meta       │ │   Growth     │       │
+│  │   Detector   │ │   Former     │ │   Analyzer   │ │   Tracker    │       │
+│  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └──────┬───────┘       │
+│         │                │                │                │                │
+│         └────────────────┼────────────────┼────────────────┘                │
+│                          │                │                                 │
+│                    ┌─────┴──────┐   ┌─────┴──────┐                          │
+│                    │ Reflection │   │ Capability │                          │
+│                    │   Engine   │   │  Tracker   │                          │
+│                    └─────┬──────┘   └─────┬──────┘                          │
+└──────────────────────────┼────────────────┼──────────────────────────────────┘
+                           │                │
+                           ▼                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  KNOWLEDGE STORE (src/memory/user_facts.py)                  │
+│                                                                              │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
+│  │  Operator   │ │   Agent     │ │  Capability │ │  Session    │           │
+│  │   Facts     │ │   Self      │ │    Gaps     │ │  Outcomes   │           │
+│  ├─────────────┤ ├─────────────┤ ├─────────────┤ ├─────────────┤           │
+│  │ preferences │ │ identity    │ │ limitation  │ │ what_worked │           │
+│  │ opinions    │ │ opinions    │ │ frequency   │ │ what_failed │           │
+│  │ skills      │ │ principles  │ │ workarounds │ │ open_issues │           │
+│  │ life_events │ │ stance_log  │ │ tool_spec   │ │             │           │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
+│                                                                              │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐                           │
+│  │  Opinion    │ │  Pattern    │ │Misconception│                           │
+│  │   Pairs     │ │   Log       │ │   Tracker   │                           │
+│  ├─────────────┤ ├─────────────┤ ├─────────────┤                           │
+│  │ user_stated │ │ theme       │ │ topic       │                           │
+│  │ agent_view  │ │ frequency   │ │ what_wrong  │                           │
+│  │ reasoning   │ │ trend_dir   │ │ corrected   │                           │
+│  └─────────────┘ └─────────────┘ └─────────────┘                           │
 └─────────────────────────────────────────────────────────────────────────────┘
                    │
                    ▼
@@ -381,7 +429,11 @@ Returns system health status.
     "heartbeat": "active",
     "heartbeat_idle_hours": 6.0,
     "cached_conversations": 5,
-    "pinned_conversations": 1
+    "pinned_conversations": 1,
+    "reflection_engine": "active",
+    "reflection_periodic_hours": 6.0,
+    "capability_gaps": 3,
+    "tool_suggestions": 1
   }
 }
 ```
@@ -542,11 +594,13 @@ Executes the conversation with the selected preset via OpenHands SDK.
 
 ## Command System
 
-The command system provides slash commands for manual control over routing behavior. Commands are processed before any routing or LLM calls, returning synthetic responses immediately with zero latency.
+The command system provides slash commands for manual control over routing behavior and metacognitive features. Commands are processed before any routing or LLM calls, returning synthetic responses immediately with zero latency.
 
-**Module:** [`src/routing/commands.py`](src/routing/commands.py)
+**Modules:**
+- [`src/routing/commands.py`](src/routing/commands.py) — Routing commands
+- [`src/agent/commands.py`](src/agent/commands.py) — Metacognitive commands
 
-### Available Commands
+### Routing Commands
 
 | Command | Action | Response |
 |---------|--------|----------|
@@ -554,6 +608,18 @@ The command system provides slash commands for manual control over routing behav
 | `/{preset_name}` | Pin routing to a specific preset | `"Acknowledged. Routing pinned to preset: {preset_name}. Send /end_convo to release."` |
 | `/pondering` | Engage pondering mode (special pin behavior) | `"Acknowledged. Pondering mode engaged."` |
 | `/{invalid}` | Unknown preset | `"Negative. Preset \"{name}\" not recognized.\nAvailable: {sorted list}."` |
+
+### Metacognitive Commands
+
+| Command | Action | Example Output |
+|---------|--------|----------------|
+| `/reflect` | Trigger manual reflection cycle | "Reflection cycle initiated. Check logs for results." |
+| `/gaps` | List capability gaps by priority | Table: Priority, Status, Triggers, Description |
+| `/patterns` | Show detected patterns | Pattern types with frequency and confidence |
+| `/opinions` | Show opinion pairs | User vs agent positions with reasoning |
+| `/growth` | Show operator growth report | Knowledge gaps, skill trends, abandoned interests |
+| `/meta` | Show store health metrics | Category distribution, suggestions |
+| `/tools` | Show tool suggestions from gaps | Priority, acceptance criteria, example triggers |
 
 ### Command Processing
 
@@ -619,6 +685,8 @@ class UserFact:
 
 ### Categories
 
+#### Operator Facts
+
 | Category | Description | Example |
 |----------|-------------|---------|
 | `personal` | Name, location, profession, relationships | "Operator lives in Boston" |
@@ -629,9 +697,38 @@ class UserFact:
 | `future_direction` | Goals, timelines, aspirations | "Operator planning to learn Rust (as of 2026-03)" |
 | `project_direction` | Current project plans and direction | "Operator migrating from Express to Fastify (as of 2026-02)" |
 | `mental_state` | Noted shifts in mood, stress, outlook | "Operator showing increased stress about deadline" |
+| `interest_area` | Topics they gravitate toward | "Operator frequently asks about AWS networking" |
 | `conversation_summary` | Auto-generated summaries of discussions | "Discussed Kubernetes deployment strategies" |
 | `topic_log` | Domains discussed and when | "Topic: containerization discussed 2026-03-01" |
 | `model_assessment` | Agent's observations about the operator | "Operator shows knowledge gap in network subnetting" |
+
+#### Agent Self-Knowledge
+
+| Category | Description | Example |
+|----------|-------------|---------|
+| `agent_identity` | Agent's self-knowledge | "I am IF, an intelligent routing agent" |
+| `agent_opinion` | Agent's formed positions | "Monoliths are correct default for teams < 20" |
+| `agent_principle` | Operating principles learned | "Always verify arithmetic with calculator" |
+
+#### Capability Tracking
+
+| Category | Description | Example |
+|----------|-------------|---------|
+| `capability_gap` | Things agent can't do | "Cannot send emails" |
+| `tool_suggestion` | Derived from frequent gaps | "email_mcp_server" |
+
+#### Opinion Pairs
+
+| Category | Description | Example |
+|----------|-------------|---------|
+| `opinion_pair` | User + agent positions on topics | Topic: "Microservices", User: "Always better", Agent: "Disagree" |
+
+#### Operator Growth
+
+| Category | Description | Example |
+|----------|-------------|---------|
+| `misconception` | User misunderstandings corrected | "CIDR /24 = 512 addresses (corrected to 256)" |
+| `session_reflection` | Post-session learnings | "What worked: step-by-step explanations" |
 
 ### Sources
 
@@ -675,6 +772,308 @@ After each agent execution, a fire-and-forget task generates a conversation summ
 - Uses `SUGGESTION_MODEL` for cheap summarization
 - Stores as `conversation_summary` fact
 - Zero impact on response latency
+
+---
+
+## Metacognitive Memory System
+
+The metacognitive memory system provides self-reflective capabilities that allow the agent to learn from experience, track its own limitations, and improve over time. This implements the architecture from plan.md Parts 1-10.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    REFLECTION ENGINE CYCLE                        │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────┐        │
+│  │ 1. POST-SESSION REFLECTION                          │        │
+│  │    - Summarize what happened                        │        │
+│  │    - Identify what worked / what failed             │        │
+│  │    - Log capability gaps hit                        │        │
+│  │    - Detect misconceptions surfaced                 │        │
+│  │    - Store as session_reflection                    │        │
+│  └──────────────────────┬──────────────────────────────┘        │
+│                         │                                        │
+│  ┌──────────────────────▼──────────────────────────────┐        │
+│  │ 2. PATTERN DETECTION                                │        │
+│  │    - Cluster recent topics by semantic similarity   │        │
+│  │    - Detect temporal patterns                       │        │
+│  │    - Detect skill gap patterns                      │        │
+│  │    - Update frequency + confidence or create new    │        │
+│  └──────────────────────┬──────────────────────────────┘        │
+│                         │                                        │
+│  ┌──────────────────────▼──────────────────────────────┐        │
+│  │ 3. OPINION FORMATION                                │        │
+│  │    - Review user opinions without agent responses   │        │
+│  │    - Form agent position with reasoning             │        │
+│  │    - Store as opinion_pair                          │        │
+│  └──────────────────────┬──────────────────────────────┘        │
+│                         │                                        │
+│  ┌──────────────────────▼──────────────────────────────┐        │
+│  │ 4. CAPABILITY GAP ANALYSIS                          │        │
+│  │    - Aggregate gaps by frequency                    │        │
+│  │    - Generate acceptance criteria for top gaps      │        │
+│  │    - Promote high-priority gaps to tool_suggestion  │        │
+│  └──────────────────────┬──────────────────────────────┘        │
+│                         │                                        │
+│  ┌──────────────────────▼──────────────────────────────┐        │
+│  │ 5. META-ANALYSIS                                    │        │
+│  │    - Category distribution (what's growing?)        │        │
+│  │    - Stale fact detection                           │        │
+│  │    - Category fit analysis                          │        │
+│  └──────────────────────┬──────────────────────────────┘        │
+│                         │                                        │
+│  ┌──────────────────────▼──────────────────────────────┐        │
+│  │ 6. OPERATOR GROWTH TRACKING                         │        │
+│  │    - Review misconceptions: any repeated?           │        │
+│  │    - Review skill assessments: improvement trend?   │        │
+│  │    - Generate learning suggestions                  │        │
+│  └──────────────────────────────────────────────────────┘        │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### What This Gets You
+
+The metacognitive system maintains a structured model of:
+
+| Knowledge Type | Description | Benefit |
+|----------------|-------------|---------|
+| **Operator Knowledge** | What the operator knows and doesn't know | Personalized responses, gap-aware assistance |
+| **Agent Capabilities** | What the agent can and can't do | Clear limitation tracking, tool development pipeline |
+| **Strategy Memory** | What approaches work for what problem types | Improved routing, better outcomes |
+| **Opinion Positions** | Where both parties disagree and why | Transparent disagreement, reasoned discussion |
+| **Behavioral Patterns** | What patterns exist in operator behavior | Proactive suggestions, anticipation |
+| **Self-Knowledge** | What the system itself is missing | Self-improving feedback loop |
+
+---
+
+## Reflection Engine
+
+The reflection engine runs metacognitive analysis cycles to learn from experience.
+
+**Module:** [`src/agent/reflection/engine.py`](src/agent/reflection/engine.py)
+
+### When It Runs
+
+| Trigger | Condition | Description |
+|---------|-----------|-------------|
+| Post-session | >5 exchanges | After substantive conversations |
+| Periodic | Every 6 hours | Background analysis |
+| On-demand | `/reflect` command | Manual trigger |
+| Threshold | Store size limits | When thresholds are hit |
+
+### Threshold Triggers
+
+| Threshold | Default | Description |
+|-----------|---------|-------------|
+| `REFLECTION_THRESHOLD_UNCATEGORIZED` | 20 | Uncategorized facts limit |
+| `REFLECTION_THRESHOLD_GAPS_NO_CRITERIA` | 5 | Gaps without criteria limit |
+| `REFLECTION_THRESHOLD_OPINIONS_NO_RESPONSE` | 10 | Opinions needing response |
+
+### Components
+
+| Component | Module | Purpose |
+|-----------|--------|---------|
+| Pattern Detector | [`pattern_detector.py`](src/agent/reflection/pattern_detector.py) | Detect recurring themes |
+| Opinion Former | [`opinion_formation.py`](src/agent/reflection/opinion_formation.py) | Form agent positions |
+| Meta Analyzer | [`meta_analysis.py`](src/agent/reflection/meta_analysis.py) | Store health metrics |
+| Growth Tracker | [`growth_tracker.py`](src/agent/reflection/growth_tracker.py) | Track operator learning |
+
+---
+
+## Capability Gap Tracking
+
+The capability gap system tracks agent limitations and generates tool development suggestions.
+
+**Module:** [`src/agent/tools/capability_tracker.py`](src/agent/tools/capability_tracker.py)
+
+### Gap Lifecycle
+
+```
+User asks for something ──► Agent can't do it
+         │
+         ▼
+Log capability_gap
+{content, context, timestamp}
+         │
+         ▼
+Reflection engine aggregates ──► trigger_count++
+         │
+         ▼
+threshold (trigger_count >= 3)?
+     │               │
+    No              Yes
+     │               │
+     ▼               ▼
+Continue      Generate acceptance criteria
+tracking      Compute priority score
+              Promote to tool_suggestion
+                   │
+                   ▼
+         Surface via /gaps command
+```
+
+### Gap Schema
+
+```python
+@dataclass
+class CapabilityGap:
+    id: str
+    content: str                    # "Cannot send emails"
+    trigger_count: int              # How many times hit
+    first_seen: str                 # ISO timestamp
+    last_seen: str                  # ISO timestamp
+    trigger_contexts: list[str]     # When it was hit
+    workaround: str | None          # Suggested workaround
+    suggested_tool: str | None      # "email_mcp_server"
+    acceptance_criteria: list[str]  # What "solved" looks like
+    status: str                     # "open" | "workaround_exists" | "resolved"
+    priority_score: float           # Computed priority
+```
+
+### Priority Score Formula
+
+```
+priority = (trigger_count / max_triggers) * 0.4
+         + recency_weight * 0.3
+         + impact_estimate * 0.3
+
+Where recency_weight = e^(-0.05 * days_since_last_seen)
+```
+
+---
+
+## Pattern Detection
+
+The pattern detector identifies recurring themes in operator behavior.
+
+**Module:** [`src/agent/reflection/pattern_detector.py`](src/agent/reflection/pattern_detector.py)
+
+### Pattern Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| Temporal | Time-based patterns | "Asks about AWS every Monday" |
+| Topical | Subject clustering | "Networking questions cluster together" |
+| Behavioral | Action patterns | "Prefers step-by-step explanations" |
+| Skill Gap | Learning patterns | "Repeated basic questions in domain" |
+
+### Pattern Schema
+
+```python
+@dataclass
+class Pattern:
+    id: str
+    description: str            # "Operator asks about AWS networking weekly"
+    pattern_type: str           # "temporal" | "topical" | "behavioral" | "skill_gap"
+    evidence: list[str]         # Fact IDs supporting this pattern
+    frequency: int              # How many times observed
+    confidence: float           # How confident the pattern is real
+    trend_direction: str        # "increasing" | "stable" | "decreasing"
+    last_seen: str
+    actionable: bool            # Does this suggest action?
+    suggested_action: str       # "Proactively surface VPC docs"
+```
+
+---
+
+## Opinion Formation
+
+The opinion formation system creates agent positions on user-stated opinions.
+
+**Module:** [`src/agent/reflection/opinion_formation.py`](src/agent/reflection/opinion_formation.py)
+
+### Opinion Pair Schema
+
+```python
+@dataclass
+class OpinionPair:
+    id: str
+    topic: str                  # "Microservices vs monoliths"
+    user_position: str          # "Microservices are always better"
+    agent_position: str         # "Disagree. Monoliths correct for teams < 20"
+    agent_reasoning: str        # The why
+    agent_confidence: float     # 0.0-1.0
+    agreement_level: str        # "agree" | "partial" | "disagree"
+    evolution: list[dict]       # Track position changes
+    created_at: str
+    updated_at: str
+```
+
+### Agreement Levels
+
+| Level | Emoji | Meaning |
+|-------|-------|---------|
+| `agree` | 🟢 | Agent agrees with user position |
+| `partial` | 🟡 | Agent partially agrees |
+| `disagree` | 🔴 | Agent disagrees with reasoning |
+| `insufficient_data` | ⚪ | Not enough information |
+
+---
+
+## Operator Growth Tracking
+
+The growth tracker monitors operator learning and identifies knowledge gaps.
+
+**Module:** [`src/agent/reflection/growth_tracker.py`](src/agent/reflection/growth_tracker.py)
+
+### Misconception Schema
+
+```python
+@dataclass
+class Misconception:
+    id: str
+    topic: str                  # "CIDR notation"
+    what_they_said: str         # "A /24 gives you 512 addresses"
+    what_is_correct: str        # "A /24 gives you 256 addresses"
+    domain: str                 # "networking"
+    severity: str               # "minor" | "moderate" | "critical"
+    corrected_in_session: bool  # Was it corrected live?
+    recurrence_count: int       # How many times repeated
+    suggested_resources: list   # Reading suggestions
+```
+
+### Growth Report
+
+The `/growth` command generates reports showing:
+
+- **Knowledge Gaps Identified**: Misconceptions logged, trends
+- **Skills Trending Up**: Progressive advancement in topics
+- **Abandoned Interests**: Topics mentioned but not followed up
+
+---
+
+## Meta-Analysis
+
+The meta-analyzer examines the fact store itself to identify patterns and health metrics.
+
+**Module:** [`src/agent/reflection/meta_analysis.py`](src/agent/reflection/meta_analysis.py)
+
+### Store Health Metrics
+
+```python
+@dataclass
+class StoreHealthMetrics:
+    total_facts: int
+    active_facts: int
+    superseded_facts: int
+    category_distribution: dict[str, int]
+    stalest_category: str           # Category with oldest avg fact
+    fastest_growing: str            # Most new facts in last 30 days
+    most_superseded: str            # Category with most churn
+    uncategorized_pressure: list    # Facts hard to categorize
+    suggested_new_categories: list  # Proposed categories
+    capability_gap_summary: dict    # {total, open, resolved, top_priority}
+    reflection_count: int           # Sessions reflected on
+```
+
+### Category Evolution
+
+When facts don't fit well into existing categories:
+
+1. Log the categorization tension as `meta_observation`
+2. Cluster poorly-fitting facts during reflection
+3. If cluster size ≥ 3, propose new category
 
 ---
 
@@ -1126,6 +1525,18 @@ google/gemini-2.5-flash-lite,openai/gpt-oss-120b,anthropic/claude-haiku-4.5
 | `HEARTBEAT_COOLDOWN_HOURS` | `6.0` | Hours between heartbeats on same channel |
 | `HEARTBEAT_QUIET_HOURS` | `23:00-07:00` | UTC time range to skip heartbeats |
 
+### Reflection Engine Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REFLECTION_ENABLED` | `true` | Enable/disable reflection engine |
+| `REFLECTION_PERIODIC_HOURS` | `6.0` | Hours between periodic reflections |
+| `REFLECTION_POST_SESSION_MIN_TURNS` | `5` | Minimum turns before post-session reflection |
+| `REFLECTION_THRESHOLD_UNCATEGORIZED` | `20` | Uncategorized facts to trigger reflection |
+| `REFLECTION_THRESHOLD_GAPS_NO_CRITERIA` | `5` | Gaps without criteria to trigger reflection |
+| `REFLECTION_THRESHOLD_OPINIONS_NO_RESPONSE` | `10` | Opinions needing response to trigger |
+| `CAPABILITY_GAP_PROMOTION_THRESHOLD` | `3` | Triggers needed to promote gap to tool suggestion |
+
 ### MCP Server Keys
 
 | Variable | Description |
@@ -1168,7 +1579,8 @@ if-prototype-a1/
 │   ├── phase0-1-2-implementation.md
 │   ├── phase3-4-implementation.md
 │   ├── phase5-6-implementation.md
-│   └── phase6-implementation.md
+│   ├── phase6-implementation.md
+│   └── part10-readme-update.md  # Part10 implementation plan
 │
 └── src/                         # Source code
     ├── main.py                  # FastAPI app entry point
@@ -1194,11 +1606,22 @@ if-prototype-a1/
     ├── agent/                   # OpenHands agent integration
     │   ├── __init__.py
     │   ├── session.py           # Session management + operator context
+    │   ├── commands.py          # Metacognitive command handlers
     │   ├── tools.py             # Legacy memory tools
     │   ├── tools/               # Agent tool implementations
-    │   │   └── user_facts.py    # User facts tools (add/search/update/remove)
+    │   │   ├── user_facts.py    # User facts tools (add/search/update/remove)
+    │   │   ├── capability_tracker.py  # Capability gap logging
+    │   │   ├── opinion_tools.py       # Opinion pair tools
+    │   │   └── session_reflection.py  # Session reflection tools
     │   ├── sandbox.py           # Sandbox path resolution
     │   ├── condenser.py         # Context condensation
+    │   ├── reflection/          # Metacognitive analysis layer
+    │   │   ├── __init__.py
+    │   │   ├── engine.py        # Core reflection engine
+    │   │   ├── pattern_detector.py    # Pattern detection
+    │   │   ├── opinion_formation.py   # Opinion formation
+    │   │   ├── meta_analysis.py       # Store health analysis
+    │   │   └── growth_tracker.py      # Operator growth tracking
     │   └── prompts/
     │       ├── system_prompt.j2 # Jinja2 template for system prompt
     │       └── pondering_addendum.md  # Pondering mode instructions
@@ -1390,6 +1813,15 @@ The system produces structured log events for monitoring and debugging:
 [Cache] Pin set: abc123 → pondering
 [Cache] Pin released: abc123 (topic shift)
 [TopicShift] Heuristic skip: keyword overlap 0.62 > 0.40
+[Reflection] Cycle started: reason=post_session
+[Reflection] Patterns detected: 3 new, 2 updated
+[Reflection] Opinions formed: 1 new position
+[Reflection] Cycle complete: patterns=3 opinions=1 gaps_promoted=0
+[CapabilityGap] Logged: "Cannot send emails" (trigger_count=2)
+[CapabilityGap] Promoted to tool_suggestion: "email_mcp_server"
+[MetaAnalysis] Category health: fastest_growing=preference
+[GrowthTracker] Misconception repeated: "CIDR math"
+[PatternDetector] New pattern: temporal "AWS questions on Monday"
 ```
 
 ---
