@@ -34,6 +34,9 @@ from presets.loader import PresetManager
 from mcp_servers.config import resolve_mcp_config
 from agent.memory_tools import get_memory_tools
 from agent.tools.user_facts import get_user_facts_tools, set_session_context
+from agent.tools.capability_tracker import get_capability_tracker_tools
+from agent.tools.opinion_tools import get_opinion_tools
+from agent.tools.session_reflection import get_session_reflection_tools
 
 
 logger = logging.getLogger(__name__)
@@ -361,7 +364,13 @@ async def execute_agent(
         tools = get_memory_tools()
         # Get user facts tools
         tools.extend(get_user_facts_tools())
-        print(f"[Agent] Loaded memory tools and user facts tools")
+        # Get capability tracker tools
+        tools.extend(get_capability_tracker_tools())
+        # Get opinion tracking tools
+        tools.extend(get_opinion_tools())
+        # Get session reflection tools
+        tools.extend(get_session_reflection_tools())
+        print(f"[Agent] Loaded memory, user facts, capability, opinion, and reflection tools")
         # Create OpenHands Agent
         agent = Agent(
             llm=llm,

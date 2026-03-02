@@ -104,6 +104,23 @@ HEARTBEAT_QUIET_HOURS: str = os.getenv("HEARTBEAT_QUIET_HOURS", "23:00-07:00")  
 
 
 # ============================================================================
+# Reflection Engine Configuration (Phase4 - Part4 of plan.md)
+# ============================================================================
+
+REFLECTION_ENABLED: bool = os.getenv("REFLECTION_ENABLED", "true").lower() == "true"
+REFLECTION_PERIODIC_HOURS: float = float(os.getenv("REFLECTION_PERIODIC_HOURS", "6.0"))
+REFLECTION_POST_SESSION_MIN_TURNS: int = int(os.getenv("REFLECTION_POST_SESSION_MIN_TURNS", "5"))
+
+# Thresholds for triggering reflection
+REFLECTION_THRESHOLD_UNCATEGORIZED: int = int(os.getenv("REFLECTION_THRESHOLD_UNCATEGORIZED", "20"))
+REFLECTION_THRESHOLD_GAPS_NO_CRITERIA: int = int(os.getenv("REFLECTION_THRESHOLD_GAPS_NO_CRITERIA", "5"))
+REFLECTION_THRESHOLD_OPINIONS_NO_RESPONSE: int = int(os.getenv("REFLECTION_THRESHOLD_OPINIONS_NO_RESPONSE", "10"))
+
+# Capability Gap Promotion (Phase5 - Part5 of plan.md)
+CAPABILITY_GAP_PROMOTION_THRESHOLD: int = int(os.getenv("CAPABILITY_GAP_PROMOTION_THRESHOLD", "3"))
+
+
+# ============================================================================
 # OpenRouter API Configuration
 # ============================================================================
 

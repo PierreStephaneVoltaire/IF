@@ -236,6 +236,31 @@ async def process_chat_completion_internal(
         if cmd.action == CommandAction.NOOP:
             # Unknown command, return error message
             return cmd.response_text, []
+        
+        # Part8: Handle reflection/memory commands
+        if cmd.action in (CommandAction.REFLECT, CommandAction.GAPS,
+                          CommandAction.PATTERNS, CommandAction.OPINIONS,
+                          CommandAction.GROWTH, CommandAction.META,
+                          CommandAction.TOOLS):
+            try:
+                from memory.user_facts import get_user_fact_store
+                from agent.commands import get_command_handler
+                from agent.reflection import get_reflection_engine
+                
+                store = get_user_fact_store()
+                reflection_engine = get_reflection_engine()
+                handler = get_command_handler(store, reflection_engine)
+                
+                # Build command string with args
+                command_str = f"/{cmd.action.value}"
+                result = handler.handle(command_str, cmd.command_args)
+                return result, []
+            except ImportError as e:
+                logger.error(f"[Command] Required module not available: {e}")
+                return f"Command not available: {e}", []
+            except Exception as e:
+                logger.error(f"[Command] Error handling {cmd.action.value}: {e}")
+                return f"Error executing command: {e}", []
     
     # Step 1: Request Interception
     # Check if this is an OpenWebUI suggestion/title generation request

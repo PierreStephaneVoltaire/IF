@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse, PlainTextResponse
 
 from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR, STORAGE_DB_PATH
 from config import HEARTBEAT_ENABLED, HEARTBEAT_IDLE_HOURS, HEARTBEAT_COOLDOWN_HOURS
+from config import REFLECTION_ENABLED
 from api.models import router as models_router
 from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
@@ -32,6 +33,9 @@ http_client: Optional[httpx.AsyncClient] = None
 
 # Heartbeat runner (global for health check access)
 heartbeat_runner = None
+
+# Reflection engine (global for command access)
+reflection_engine = None
 
 
 async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
@@ -266,12 +270,47 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[Startup] WARNING: Heartbeat initialization failed: {e}")
     
+    # Initialize reflection engine
+    global reflection_engine
+    if REFLECTION_ENABLED:
+        try:
+            from agent.reflection import ReflectionEngine, get_reflection_engine
+            from agent.reflection.engine import _reflection_engine as reflection_engine_singleton
+            
+            # Get user facts store
+            try:
+                from .memory import get_user_fact_store
+                user_facts_store = get_user_fact_store()
+            except Exception as store_error:
+                print(f"[Startup] WARNING: Cannot init reflection engine - user facts store unavailable: {store_error}")
+                user_facts_store = None
+            
+            if user_facts_store:
+                reflection_engine = ReflectionEngine(
+                    store=user_facts_store,
+                    http_client=http_client,
+                )
+                reflection_engine.start()
+                
+                # Set global for command handlers
+                import agent.reflection.engine as re_module
+                re_module._reflection_engine = reflection_engine
+                
+                print(f"[Startup] Reflection engine started")
+        except Exception as e:
+            print(f"[Startup] WARNING: Reflection engine initialization failed: {e}")
+    
     print(f"[Startup] Server ready on {HOST}:{PORT}")
     
     yield
     
     # Shutdown
-    # Stop heartbeat runner first
+    # Stop reflection engine first
+    if reflection_engine:
+        reflection_engine.stop()
+        print("[Shutdown] Reflection engine stopped")
+    
+    # Stop heartbeat runner
     if heartbeat_runner:
         heartbeat_runner.stop()
         print("[Shutdown] Heartbeat runner stopped")

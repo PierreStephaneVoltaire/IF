@@ -71,9 +71,13 @@ def _user_facts_search(
     
     Args:
         query: The search query describing what you're looking for
-        category: Optional category filter (personal, preference, opinion,
-                  skill, life_event, future_direction, project_direction,
-                  mental_state, conversation_summary, topic_log, model_assessment)
+        category: Optional category filter. Categories include:
+                  - personal, preference, opinion, skill, life_event
+                  - future_direction, project_direction, mental_state
+                  - conversation_summary, topic_log, model_assessment
+                  - agent_identity, agent_opinion, agent_principle
+                  - capability_gap, tool_suggestion, opinion_pair
+                  - misconception, interest_area, session_reflection
         limit: Maximum number of results to return (default 5)
         
     Returns:
@@ -114,9 +118,13 @@ def _user_facts_add(
     
     Args:
         content: The fact content (be specific and clear)
-        category: One of: personal, preference, opinion, skill, life_event,
-                  future_direction, project_direction, mental_state,
-                  conversation_summary, topic_log, model_assessment
+        category: Category of the fact. Options include:
+                  - personal, preference, opinion, skill, life_event
+                  - future_direction, project_direction, mental_state
+                  - conversation_summary, topic_log, model_assessment
+                  - agent_identity, agent_opinion, agent_principle
+                  - capability_gap, tool_suggestion, opinion_pair
+                  - misconception, interest_area, session_reflection
         source: Source of the fact (user_stated, model_observed, model_assessed,
                 conversation_derived). Default: user_stated
         confidence: Confidence level 0.0-1.0 (default 0.8)
@@ -298,7 +306,11 @@ class UserFactsSearchAction(Action):
 class UserFactsAddAction(Action):
     content: str = Field(description="The fact content (be specific and clear)")
     category: str = Field(
-        description="Category of the fact: personal, preference, opinion, skill, life_event, future_direction, project_direction, mental_state, conversation_summary, topic_log, model_assessment"
+        description="Category of the fact: personal, preference, opinion, skill, life_event, "
+                    "future_direction, project_direction, mental_state, conversation_summary, "
+                    "topic_log, model_assessment, agent_identity, agent_opinion, agent_principle, "
+                    "capability_gap, tool_suggestion, opinion_pair, misconception, interest_area, "
+                    "session_reflection"
     )
     source: str = Field(default="user_stated", description="Source of the fact")
     confidence: float = Field(default=0.8, description="Confidence level 0.0-1.0")
