@@ -190,8 +190,7 @@ def get_most_capable_preset(preset_manager: PresetManager) -> str:
     # Prefer these presets in order of capability (fallback order)
     capability_order = [
         "architecture",  # Claude 3.5 Sonnet - most capable
-        "coding",        # Claude 3.5 Sonnet
-        "reasoning",     # o1-preview
+        "code",        # Claude 3.5 Sonnet
         "general",       # Default general-purpose
     ]
     

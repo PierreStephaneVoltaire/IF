@@ -9,6 +9,7 @@ This module implements Step 2 of the routing pipeline:
 from __future__ import annotations
 import asyncio
 import json
+import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
@@ -21,6 +22,8 @@ from config import (
     OPENROUTER_BASE_URL,
 )
 from presets.loader import PresetManager
+
+logger = logging.getLogger(__name__)
 
 
 def get_scorable_presets(preset_manager: PresetManager) -> Dict[str, str]:
@@ -318,18 +321,18 @@ async def score_conversation(
     
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            print(f"[Scorer] Exception from {SCORING_MODELS[i]}: {result}")
+            logger.warning(f"Exception from {SCORING_MODELS[i]}: {result}")
             continue
         
         if result.is_valid:
             valid_results.append(result)
         else:
-            print(f"[Scorer] Invalid result from {result.model}: {result.error}")
+            logger.warning(f"Invalid result from {result.model}: {result.error}")
     
     # Step 5: Aggregate scores
     if not valid_results:
         # All models failed - return empty scores
-        print("[Scorer] WARNING: All scoring models failed")
+        logger.warning("All scoring models failed")
         return AggregatedScores(
             preset_scores={},
             crisis_score=0.0,

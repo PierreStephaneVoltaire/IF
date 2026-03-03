@@ -69,3 +69,62 @@ def close_store() -> None:
         close_sqlite()
     _store = None
     logger.info("Storage backend closed")
+
+
+# ============================================================================
+# Directive Store
+# ============================================================================
+
+from config import (
+    DIRECTIVE_STORE_ENABLED,
+    DYNAMODB_DIRECTIVES_TABLE,
+    AWS_REGION,
+)
+
+# Global directive store instance
+_directive_store = None
+
+
+def init_directive_store() -> None:
+    """Initialize the directive store.
+    
+    Loads all active directives from DynamoDB and caches them.
+    If DIRECTIVE_STORE_ENABLED is False, this is a no-op.
+    """
+    global _directive_store
+    
+    if not DIRECTIVE_STORE_ENABLED:
+        logger.info("[DirectiveStore] Disabled via DIRECTIVE_STORE_ENABLED=false")
+        return
+    
+    from storage.directive_store import DirectiveStore
+    
+    _directive_store = DirectiveStore(
+        table_name=DYNAMODB_DIRECTIVES_TABLE,
+        region=AWS_REGION
+    )
+    _directive_store.load()
+    logger.info(
+        f"[Startup] Loaded {len(_directive_store._cache)} active directives "
+        f"from {DYNAMODB_DIRECTIVES_TABLE}"
+    )
+
+
+def get_directive_store():
+    """Get the global directive store instance.
+    
+    Returns:
+        The initialized DirectiveStore instance
+        
+    Raises:
+        RuntimeError: If store not initialized or disabled
+    """
+    if _directive_store is None:
+        if not DIRECTIVE_STORE_ENABLED:
+            raise RuntimeError(
+                "Directive store is disabled. Set DIRECTIVE_STORE_ENABLED=true."
+            )
+        raise RuntimeError(
+            "Directive store not initialized. Call init_directive_store()."
+        )
+    return _directive_store

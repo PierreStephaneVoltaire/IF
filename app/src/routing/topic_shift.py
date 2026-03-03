@@ -79,11 +79,11 @@ TOPIC_SHIFT_PROMPT = """You are a conversation topic classifier. Your ONLY job i
 {current_messages}
 
 ## RULES:
-- A topic shift means the user is now asking about something fundamentally different (e.g., coding → finance, architecture → health, debugging Python → discussing ETF performance).
+- A topic shift means the user is now asking about something fundamentally different (e.g., code → finance, architecture → health, debugging Python → discussing ETF performance).
 - NOT a shift: continuing the same topic with follow-ups, clarifications, or acknowledgments.
 - NOT a shift: social noise mid-conversation ("thanks", "ok", "got it", "nice", "lol").
 - NOT a shift: moving between sub-topics within the same domain (Python async → Python decorators, Terraform → CloudFormation).
-- IS a shift: moving between major domains (coding → powerlifting, architecture → mental health, finance → DevOps).
+- IS a shift: moving between major domains (code → powerlifting, architecture → mental health, finance → DevOps).
 - When in doubt, answer false. Unnecessary reclassification is worse than one stale turn.
 
 Respond with ONLY the word "true" or "false". Nothing else."""

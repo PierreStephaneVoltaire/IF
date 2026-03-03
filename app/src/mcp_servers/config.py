@@ -8,10 +8,13 @@ All MCP servers use uvx-based command execution for isolation and simplicity.
 """
 from __future__ import annotations
 import os
+import logging
 from typing import Dict, Any, Optional, Set
 from dataclasses import dataclass
 
 from config import SANDBOX_PATH, GOOGLE_SHEETS_CREDENTIALS, ALPHAVANTAGE_API_KEY
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -86,7 +89,7 @@ PRESET_MCP_MAP: Dict[str, list] = {
     
     # Preset-specific servers
     "architecture": ["aws_docs", "sandbox"],
-    "coding": ["sandbox"],
+    "code": ["sandbox"],
     "health": ["google_sheets"],
     "mental_health": [],  # No MCP servers for mental health
     "social": [],  # No MCP servers for social
@@ -112,14 +115,14 @@ def resolve_mcp_config(preset_slug: str, conversation_id: str = "") -> Dict[str,
     conversation_id is provided.
     
     Args:
-        preset_slug: The preset identifier (e.g., "coding", "architecture")
+        preset_slug: The preset identifier (e.g., "code", "architecture")
         conversation_id: Unique conversation identifier for sandbox scoping
         
     Returns:
         MCP config dict with "mcpServers" key containing server definitions
         
     Example:
-        >>> config = resolve_mcp_config("coding", "conv_abc123")
+        >>> config = resolve_mcp_config("code", "conv_abc123")
         >>> print(config["mcpServers"].keys())
         dict_keys(['time', 'sandbox'])
     """
@@ -148,7 +151,7 @@ def resolve_mcp_config(preset_slug: str, conversation_id: str = "") -> Dict[str,
             mcp_servers[key] = server_def
         else:
             # Log warning for undefined servers
-            print(f"[MCP] Warning: Server '{key}' referenced but not defined in MCP_SERVERS")
+            logger.warning(f"Server '{key}' referenced but not defined in MCP_SERVERS")
     
     # Return in the format expected by OpenHands SDK
     return {
@@ -261,7 +264,7 @@ def validate_mcp_config() -> bool:
     if not os.path.exists(SANDBOX_PATH):
         try:
             os.makedirs(SANDBOX_PATH, exist_ok=True)
-            print(f"[MCP] Created sandbox directory: {SANDBOX_PATH}")
+            logger.info(f"Created sandbox directory: {SANDBOX_PATH}")
         except Exception as e:
             errors.append(f"Cannot create SANDBOX_PATH '{SANDBOX_PATH}': {e}")
     

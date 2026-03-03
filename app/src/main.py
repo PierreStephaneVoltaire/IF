@@ -9,6 +9,7 @@ import uuid
 from typing import Optional
 from contextlib import asynccontextmanager
 from pathlib import Path
+import logging
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -21,12 +22,15 @@ from api.models import router as models_router
 from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
 from api.webhooks import router as webhooks_router
+from api.directives import router as directives_router
 from presets.loader import get_preset_manager
 from mcp_servers.config import validate_mcp_config
-from storage.factory import init_store, close_store, get_webhook_store
+from storage.factory import init_store, close_store, get_webhook_store, init_directive_store
 from channels.debounce import init_debounce
 from channels.manager import start_all_active, stop_all
+from logging_config import setup_logging, get_logger, RequestLoggingMiddleware
 
+logger = get_logger(__name__)
 
 # Shared HTTP client for connection pooling
 http_client: Optional[httpx.AsyncClient] = None
@@ -46,9 +50,6 @@ async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
         content: Message content
         attachments: List of attachments
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
     from channels.delivery import deliver_to_channel
     from channels.chunker import chunk_response
     
@@ -56,7 +57,7 @@ async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
     platform = webhook.platform
     channel_id = config.get("channel_id", webhook.conversation_id)
     
-    logger.info(f"[Heartbeat] Delivering to {webhook.label} (channel_id={channel_id})")
+    logger.info(f"Delivering heartbeat to {webhook.label} (channel_id={channel_id})")
     
     # Create a minimal channel reference based on platform
     if platform == "discord":
@@ -79,7 +80,7 @@ async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
                     )
                     return
         except Exception as e:
-            logger.warning(f"[Heartbeat] Discord delivery failed: {e}")
+            logger.warning(f"Discord heartbeat delivery failed: {e}")
             return
     
     elif platform == "openwebui":
@@ -94,7 +95,7 @@ async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
         )
         return
     
-    logger.warning(f"[Heartbeat] Unknown platform: {platform}")
+    logger.warning(f"Unknown platform for heartbeat: {platform}")
 
 
 @asynccontextmanager
@@ -102,6 +103,7 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown.
     
     Startup:
+    - Initialize logging
     - Initialize HTTP client
     - Load presets from OpenRouter
     - Create necessary directories
@@ -113,8 +115,11 @@ async def lifespan(app: FastAPI):
     """
     global http_client
     
+    # Initialize logging first
+    setup_logging()
+    
     # Startup
-    print("[Startup] Initializing IF Prototype A1...")
+    logger.info("Initializing IF Prototype A1...")
     
     # Initialize HTTP client
     http_client = httpx.AsyncClient(
@@ -126,37 +131,37 @@ async def lifespan(app: FastAPI):
         )
     )
     app.state.http_client = http_client
-    print(f"[Startup] HTTP client initialized")
+    logger.info("HTTP client initialized")
     
     # Load static presets
-    print("[Startup] Loading presets...")
+    logger.info("Loading presets...")
     preset_manager = get_preset_manager()
     try:
         preset_manager.load_presets()
     except RuntimeError as e:
-        print(f"[Startup] ERROR: {e}")
+        logger.error(f"Failed to load presets: {e}")
         raise
     
     # Create necessary directories
     sandbox_dir = get_sandbox_directory()
-    print(f"[Startup] Sandbox directory: {sandbox_dir}")
+    logger.info(f"Sandbox directory: {sandbox_dir}")
     
     # Create memory database directory
     memory_db_path = Path(MEMORY_DB_PATH)
     memory_db_path.mkdir(parents=True, exist_ok=True)
-    print(f"[Startup] Memory database directory: {memory_db_path}")
+    logger.info(f"Memory database directory: {memory_db_path}")
     
     # Create conversation persistence directory
     persistence_path = Path(PERSISTENCE_DIR)
     persistence_path.mkdir(parents=True, exist_ok=True)
-    print(f"[Startup] Conversation persistence directory: {persistence_path}")
+    logger.info(f"Conversation persistence directory: {persistence_path}")
     
     # Validate MCP configuration
     try:
         validate_mcp_config()
-        print(f"[Startup] MCP configuration validated")
+        logger.info("MCP configuration validated")
     except ValueError as e:
-        print(f"[Startup] WARNING: MCP configuration error: {e}")
+        logger.warning(f"MCP configuration error: {e}")
     
     # Initialize memory store (creates ChromaDB collection if needed)
     # Try new UserFactStore first, fall back to legacy MemoryStore
@@ -164,22 +169,22 @@ async def lifespan(app: FastAPI):
         from .memory import get_user_fact_store
         user_facts_store = get_user_fact_store()
         facts_count = user_facts_store.active_count
-        print(f"[Startup] User facts store initialized ({facts_count} active facts)")
+        logger.info(f"User facts store initialized ({facts_count} active facts)")
         
         # Warm up the embedding model to prevent runtime download delays
         # This triggers ChromaDB to load the ONNX embedding model
-        print(f"[Startup] Warming up embedding model...")
+        logger.info("Warming up embedding model...")
         try:
             # Perform a dummy search to trigger model loading
             user_facts_store.search("__warmup_query__", limit=1)
-            print(f"[Startup] Embedding model ready")
+            logger.info("Embedding model ready")
         except Exception as warmup_error:
-            print(f"[Startup] WARNING: Embedding model warmup failed: {warmup_error}")
+            logger.warning(f"Embedding model warmup failed: {warmup_error}")
     except ImportError as e:
-        print(f"[Startup] WARNING: User facts store not available: {e}")
-        print(f"[Startup] Install chromadb to enable user facts: pip install chromadb")
+        logger.warning(f"User facts store not available: {e}")
+        logger.warning("Install chromadb to enable user facts: pip install chromadb")
     except Exception as e:
-        print(f"[Startup] WARNING: User facts store initialization failed: {e}")
+        logger.warning(f"User facts store initialization failed: {e}")
     
     # Also initialize legacy memory store for backward compatibility
     try:
@@ -187,24 +192,24 @@ async def lifespan(app: FastAPI):
         if get_memory_store:
             memory_store = get_memory_store()
             memory_count = memory_store.count()
-            print(f"[Startup] Legacy memory store initialized ({memory_count} memories)")
+            logger.info(f"Legacy memory store initialized ({memory_count} memories)")
     except ImportError:
         pass  # Legacy store not available, that's OK
     except Exception as e:
-        print(f"[Startup] WARNING: Legacy memory store initialization failed: {e}")
+        logger.warning(f"Legacy memory store initialization failed: {e}")
     
     # Ensure NLTK stopwords are available for topic shift heuristic
     try:
         import nltk
         nltk.data.find("corpora/stopwords")
-        print(f"[Startup] NLTK stopwords corpus found")
+        logger.info("NLTK stopwords corpus found")
     except LookupError:
-        print(f"[Startup] Downloading NLTK stopwords corpus...")
+        logger.info("Downloading NLTK stopwords corpus...")
         import nltk
         nltk.download("stopwords", quiet=True)
-        print(f"[Startup] NLTK stopwords downloaded")
+        logger.info("NLTK stopwords downloaded")
     except ImportError:
-        print(f"[Startup] WARNING: nltk not installed, topic shift heuristic will use basic filtering")
+        logger.warning("nltk not installed, topic shift heuristic will use basic filtering")
     
     # Initialize storage backend (SQLite with WAL mode)
     try:
@@ -212,26 +217,33 @@ async def lifespan(app: FastAPI):
         storage_db_path = Path(STORAGE_DB_PATH)
         storage_db_path.parent.mkdir(parents=True, exist_ok=True)
         init_store()
-        print(f"[Startup] Storage backend initialized at {STORAGE_DB_PATH}")
+        logger.info(f"Storage backend initialized at {STORAGE_DB_PATH}")
     except Exception as e:
-        print(f"[Startup] ERROR: Storage initialization failed: {e}")
+        logger.error(f"Storage initialization failed: {e}")
         raise
+    
+    # Initialize directive store (DynamoDB-backed)
+    try:
+        init_directive_store()
+    except Exception as e:
+        logger.warning(f"Directive store initialization failed: {e}")
+        # Non-fatal - directives will be unavailable but server can start
     
     # Initialize debounce system for channel messages
     try:
         init_debounce(asyncio.get_running_loop())
-        print(f"[Startup] Debounce system initialized")
+        logger.info("Debounce system initialized")
     except Exception as e:
-        print(f"[Startup] WARNING: Debounce initialization failed: {e}")
+        logger.warning(f"Debounce initialization failed: {e}")
     
     # Resume active channel listeners from persisted state
     try:
         store = get_webhook_store()
         active_records = store.list_active()
         start_all_active(active_records)
-        print(f"[Startup] Resumed {len(active_records)} active channel listeners")
+        logger.info(f"Resumed {len(active_records)} active channel listeners")
     except Exception as e:
-        print(f"[Startup] WARNING: Failed to resume listeners: {e}")
+        logger.warning(f"Failed to resume listeners: {e}")
     
     # Initialize heartbeat system
     global heartbeat_runner
@@ -266,9 +278,9 @@ async def lifespan(app: FastAPI):
             heartbeat_runner.set_deliver_fn(_deliver_heartbeat)
             
             heartbeat_runner.start()
-            print(f"[Startup] Heartbeat system started (idle={HEARTBEAT_IDLE_HOURS}h, cooldown={HEARTBEAT_COOLDOWN_HOURS}h)")
+            logger.info(f"Heartbeat system started (idle={HEARTBEAT_IDLE_HOURS}h, cooldown={HEARTBEAT_COOLDOWN_HOURS}h)")
         except Exception as e:
-            print(f"[Startup] WARNING: Heartbeat initialization failed: {e}")
+            logger.warning(f"Heartbeat initialization failed: {e}")
     
     # Initialize reflection engine
     global reflection_engine
@@ -282,7 +294,7 @@ async def lifespan(app: FastAPI):
                 from .memory import get_user_fact_store
                 user_facts_store = get_user_fact_store()
             except Exception as store_error:
-                print(f"[Startup] WARNING: Cannot init reflection engine - user facts store unavailable: {store_error}")
+                logger.warning(f"Cannot init reflection engine - user facts store unavailable: {store_error}")
                 user_facts_store = None
             
             if user_facts_store:
@@ -296,11 +308,11 @@ async def lifespan(app: FastAPI):
                 import agent.reflection.engine as re_module
                 re_module._reflection_engine = reflection_engine
                 
-                print(f"[Startup] Reflection engine started")
+                logger.info("Reflection engine started")
         except Exception as e:
-            print(f"[Startup] WARNING: Reflection engine initialization failed: {e}")
+            logger.warning(f"Reflection engine initialization failed: {e}")
     
-    print(f"[Startup] Server ready on {HOST}:{PORT}")
+    logger.info(f"Server ready on {HOST}:{PORT}")
     
     yield
     
@@ -308,22 +320,22 @@ async def lifespan(app: FastAPI):
     # Stop reflection engine first
     if reflection_engine:
         reflection_engine.stop()
-        print("[Shutdown] Reflection engine stopped")
+        logger.info("Reflection engine stopped")
     
     # Stop heartbeat runner
     if heartbeat_runner:
         heartbeat_runner.stop()
-        print("[Shutdown] Heartbeat runner stopped")
+        logger.info("Heartbeat runner stopped")
     
     stop_all()
-    print("[Shutdown] All channel listeners stopped")
+    logger.info("All channel listeners stopped")
     
     close_store()
-    print("[Shutdown] Storage backend closed")
+    logger.info("Storage backend closed")
     
     if http_client:
         await http_client.aclose()
-        print("[Shutdown] HTTP client closed")
+        logger.info("HTTP client closed")
 
 
 # Create FastAPI app
@@ -333,6 +345,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Add request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
 
 
 # ============================================================================
@@ -344,6 +359,7 @@ app.include_router(models_router)
 app.include_router(completions_router)
 app.include_router(files_router)
 app.include_router(webhooks_router)
+app.include_router(directives_router)
 
 
 # ============================================================================

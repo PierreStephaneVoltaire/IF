@@ -23,6 +23,7 @@ Sources:
 - conversation_derived: Extracted from conversation context
 """
 from __future__ import annotations
+import json
 import os
 import uuid
 import logging
@@ -377,6 +378,35 @@ class UserFactStore:
             metadata={"description": "User facts store"}
         )
     
+    def _metadata_to_dict(self, metadata: dict) -> dict:
+        """Convert ChromaDB metadata back to format for UserFact.from_dict().
+        
+        ChromaDB only accepts primitive types in metadata, so we store
+        the nested metadata dict as a JSON string. This method converts
+        it back when reading.
+        
+        Args:
+            metadata: The metadata dict from ChromaDB
+            
+        Returns:
+            Dict suitable for spreading into UserFact.from_dict()
+        """
+        result = dict(metadata)
+        # Convert metadata_json back to metadata dict
+        if "metadata_json" in result:
+            try:
+                result["metadata"] = json.loads(result.get("metadata_json", "{}") or "{}")
+            except json.JSONDecodeError:
+                result["metadata"] = {}
+            del result["metadata_json"]
+        # Handle legacy "metadata" key for backward compatibility
+        elif "metadata" in result and isinstance(result["metadata"], str):
+            try:
+                result["metadata"] = json.loads(result["metadata"] or "{}")
+            except json.JSONDecodeError:
+                result["metadata"] = {}
+        return result
+    
     def add(self, fact: UserFact) -> UserFact:
         """Store a new user fact.
         
@@ -401,7 +431,7 @@ class UserFactStore:
             "updated_at": fact.updated_at,
             "superseded_by": fact.superseded_by or "",
             "active": fact.active,
-            "metadata": fact.metadata if fact.metadata else {},
+            "metadata_json": json.dumps(fact.metadata) if fact.metadata else "",
         }
         
         self.collection.add(
@@ -459,7 +489,7 @@ class UserFactStore:
                 facts.append(UserFact.from_dict({
                     "id": fact_id,
                     "content": content,
-                    **metadata
+                    **self._metadata_to_dict(metadata)
                 }))
         
         return facts
@@ -535,7 +565,7 @@ class UserFactStore:
         return UserFact.from_dict({
             "id": results["ids"][0],
             "content": results["documents"][0],
-            **results["metadatas"][0]
+            **self._metadata_to_dict(results["metadatas"][0])
         })
     
     def list_facts(
@@ -569,7 +599,7 @@ class UserFactStore:
                 facts.append(UserFact.from_dict({
                     "id": fact_id,
                     "content": results["documents"][i],
-                    **results["metadatas"][i]
+                    **self._metadata_to_dict(results["metadatas"][i])
                 }))
         
         return facts
@@ -752,7 +782,7 @@ class UserFactStore:
             "updated_at": fact.updated_at,
             "superseded_by": fact.superseded_by or "",
             "active": fact.active,
-            "metadata": fact.metadata if fact.metadata else {},
+            "metadata_json": json.dumps(fact.metadata) if fact.metadata else "",
         }
         self.collection.update(
             ids=[fact.id],

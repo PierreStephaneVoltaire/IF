@@ -6,6 +6,7 @@ This module implements Step 1 of the routing pipeline:
 - Calls the SUGGESTION_MODEL directly via OpenRouter
 """
 import json
+import logging
 from typing import List, Dict, Any, Optional
 import httpx
 
@@ -15,6 +16,8 @@ from config import (
     OPENROUTER_BASE_URL,
     OPENROUTER_HEADERS,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class InterceptorResult:
@@ -167,7 +170,7 @@ async def intercept_request(
         return InterceptorResult(is_suggestion_request=False)
     
     # This is a suggestion request - call model directly
-    print(f"[Interceptor] Detected OpenWebUI task, calling {SUGGESTION_MODEL} directly")
+    logger.info(f"Detected OpenWebUI task, calling {SUGGESTION_MODEL} directly")
     
     response = await call_suggestion_model(
         messages=messages,

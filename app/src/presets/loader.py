@@ -4,8 +4,11 @@ This module handles static preset definitions for routing.
 Presets are the core routing targets - each preset represents a configured model
 with specific behaviors and capabilities.
 """
+import logging
 from typing import Dict, List, Optional
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -249,7 +252,7 @@ class PresetManager:
         # Build preset map from static definitions
         for preset in STATIC_PRESETS:
             self.presets[preset.slug] = preset
-            print(f"[Presets] Loaded: {preset.slug} - {preset.description[:50]}...")
+            logger.info(f"Loaded preset: {preset.slug} - {preset.description[:50]}...")
         
         if not self.presets:
             raise RuntimeError(
@@ -257,7 +260,7 @@ class PresetManager:
             )
         
         self._initialized = True
-        print(f"[Presets] Successfully loaded {len(self.presets)} preset(s)")
+        logger.info(f"Successfully loaded {len(self.presets)} preset(s)")
     
     def get_preset(self, slug: str) -> Optional[Preset]:
         """Get a preset by slug.

@@ -37,6 +37,7 @@ from agent.tools.user_facts import get_user_facts_tools, set_session_context
 from agent.tools.capability_tracker import get_capability_tracker_tools
 from agent.tools.opinion_tools import get_opinion_tools
 from agent.tools.session_reflection import get_session_reflection_tools
+from agent.tools.directive_tools import get_directive_tools
 
 
 logger = logging.getLogger(__name__)
@@ -207,7 +208,8 @@ def assemble_system_prompt(
     1. Base system prompt from preset
     2. Operator context block (auto-retrieved from user facts)
     3. Memory context block (if provided)
-    4. Preset-specific instructions (sandbox rules, etc.)
+    4. Directives block (from DynamoDB directive store)
+    5. Preset-specific instructions (sandbox rules, etc.)
     
     Args:
         preset_slug: Preset identifier
@@ -232,6 +234,19 @@ def assemble_system_prompt(
     # Add operator context if provided (from user facts)
     if operator_context:
         prompt_parts.append(f"\n{operator_context}\n")
+    
+    # Add directives block from DirectiveStore
+    try:
+        from storage.factory import get_directive_store
+        store = get_directive_store()
+        directives_block = store.format_for_prompt()
+        if directives_block:
+            prompt_parts.append(f"\n══════════════════════════════════════════\nDIRECTIVES\n══════════════════════════════════════════\n{directives_block}")
+    except RuntimeError:
+        # Directive store not initialized or disabled
+        logger.debug("Directive store not available, skipping directives block")
+    except Exception as e:
+        logger.warning(f"Failed to get directives: {e}")
     
     # Add memory protocol
     memory_protocol = """
@@ -356,10 +371,10 @@ async def execute_agent(
             base_url=LLM_BASE_URL,
             api_key=SecretStr(LLM_API_KEY),
         )
-        print(f"[Agent] Using model: {model}")
+        logger.info(f"Using model: {model}")
         # Get MCP config for this preset
         mcp_config = resolve_mcp_config(session.preset_slug)
-        print(f"[Agent] Resolved MCP servers: {list(mcp_config.keys())}")
+        logger.info(f"Resolved MCP servers: {list(mcp_config.keys())}")
         # Get memory tools
         tools = get_memory_tools()
         # Get user facts tools
@@ -370,14 +385,16 @@ async def execute_agent(
         tools.extend(get_opinion_tools())
         # Get session reflection tools
         tools.extend(get_session_reflection_tools())
-        print(f"[Agent] Loaded memory, user facts, capability, opinion, and reflection tools")
+        # Get directive management tools
+        tools.extend(get_directive_tools())
+        logger.info("Loaded memory, user facts, capability, opinion, reflection, and directive tools")
         # Create OpenHands Agent
         agent = Agent(
             llm=llm,
             tools=tools,
             mcp_config=mcp_config,
         )
-        print("[Agent] Agent created with system prompt:")
+        logger.debug("Agent created with system prompt")
         # Create or restore Conversation for persistence
         # OpenHands Conversation expects a UUID object, not a string
         conversation_id_uuid = uuid.uuid4()
@@ -387,7 +404,7 @@ async def execute_agent(
             persistence_dir=PERSISTENCE_DIR,
             conversation_id=conversation_id_uuid,
         )
-        print(f"[Agent] Conversation initialized with ID: {session.session_id}")
+        logger.info(f"Conversation initialized with ID: {session.session_id}")
         # Format messages for the agent
         # OpenHands expects messages in a specific format
         # The system prompt is already included in session.system_prompt
@@ -412,7 +429,7 @@ async def execute_agent(
                 )
         # Scan sandbox for attachments
         attachments = scan_sandbox_for_attachments()
-        print(f"[Agent] Found attachments: {attachments}")
+        logger.debug(f"Found attachments: {attachments}")
         return AgentResponse(
             content=content,
             attachments=attachments,

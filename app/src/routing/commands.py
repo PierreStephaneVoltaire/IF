@@ -62,16 +62,16 @@ def parse_command(content: str, available_presets: list[str]) -> CommandResult |
         CommandResult if a command was found, None otherwise
         
     Examples:
-        >>> parse_command("/end_convo", ["coding", "architecture"])
+        >>> parse_command("/end_convo", ["code", "architecture"])
         CommandResult(action=CommandAction.RESET_CACHE, ...)
         
-        >>> parse_command("/coding", ["coding", "architecture"])
-        CommandResult(action=CommandAction.PIN_PRESET, preset="coding", ...)
+        >>> parse_command("/code", ["code", "architecture"])
+        CommandResult(action=CommandAction.PIN_PRESET, preset="code", ...)
         
-        >>> parse_command("/gaps 3", ["coding", "architecture"])
+        >>> parse_command("/gaps 3", ["code", "architecture"])
         CommandResult(action=CommandAction.GAPS, command_args="3", ...)
         
-        >>> parse_command("Hello", ["coding", "architecture"])
+        >>> parse_command("Hello", ["code", "architecture"])
         None
     """
     stripped = content.strip()

@@ -159,3 +159,24 @@ PRESET_MCP_MAP = {
     "finance": ["yahoo_finance", "alpha_vantage"],  # Finance preset gets stock data servers
 }
 
+
+# ============================================================================
+# Directive Store Configuration
+# ============================================================================
+
+DIRECTIVE_STORE_ENABLED: bool = os.getenv("DIRECTIVE_STORE_ENABLED", "true").lower() == "true"
+DYNAMODB_DIRECTIVES_TABLE = os.getenv("DYNAMODB_DIRECTIVES_TABLE", "if-directives")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+
+# Model for directive content rewriting (configurable via env var)
+# Examples: "anthropic/claude-opus-4", "anthropic/claude-3.5-sonnet", "openai/gpt-4o"
+DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "anthropic/claude-opus-4")
+
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_FILE = os.getenv("LOG_FILE", "./logs/app.log")
+
