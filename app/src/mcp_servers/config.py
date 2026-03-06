@@ -64,18 +64,9 @@ MCP_SERVERS: Dict[str, Dict[str, Any]] = {
             "ALPHAVANTAGE_API_KEY": ALPHAVANTAGE_API_KEY,
             "FASTMCP_LOG_LEVEL": "ERROR"
         }
-    },
-    "sandbox": {
-        "command": "uvx",
-        "args": [
-            "mcp-server-filesystem@latest",
-            "--root",
-            SANDBOX_PATH
-        ],
-        "env": {
-            "FASTMCP_LOG_LEVEL": "ERROR"
-        }
     }
+    # Note: sandbox MCP server removed in Part6 - terminal tools now provide file access
+    # The sandbox definition is no longer needed as terminal_execute handles file operations
 }
 
 
@@ -88,8 +79,9 @@ PRESET_MCP_MAP: Dict[str, list] = {
     "__all__": ["time"],  # Note: memory tools are registered separately, not via MCP
     
     # Preset-specific servers
-    "architecture": ["aws_docs", "sandbox"],
-    "code": ["sandbox"],
+    # Note: sandbox MCP server removed in Part6 - terminal tools now provide file access
+    "architecture": ["aws_docs"],
+    "code": [],  # Sandbox removed - use terminal_execute for file operations
     "health": ["google_sheets"],
     "mental_health": [],  # No MCP servers for mental health
     "social": [],  # No MCP servers for social
@@ -111,20 +103,20 @@ def resolve_mcp_config(preset_slug: str, conversation_id: str = "") -> Dict[str,
     Merges __all__ servers with preset-specific servers and formats
     into the structure OpenHands expects.
     
-    Sandbox server root is scoped to the conversation's directory when
-    conversation_id is provided.
+    Note: Sandbox MCP server was removed in Part6. Terminal tools now
+    provide file system access via persistent Docker containers.
     
     Args:
         preset_slug: The preset identifier (e.g., "code", "architecture")
-        conversation_id: Unique conversation identifier for sandbox scoping
+        conversation_id: Unique conversation identifier (unused, kept for API compat)
         
     Returns:
         MCP config dict with "mcpServers" key containing server definitions
         
     Example:
-        >>> config = resolve_mcp_config("code", "conv_abc123")
+        >>> config = resolve_mcp_config("architecture", "conv_abc123")
         >>> print(config["mcpServers"].keys())
-        dict_keys(['time', 'sandbox'])
+        dict_keys(['time', 'aws_docs'])
     """
     # Start with __all__ servers
     server_keys: Set[str] = set(PRESET_MCP_MAP.get("__all__", []))
@@ -137,17 +129,6 @@ def resolve_mcp_config(preset_slug: str, conversation_id: str = "") -> Dict[str,
     for key in server_keys:
         if key in MCP_SERVERS:
             server_def = dict(MCP_SERVERS[key])  # shallow copy
-            
-            # Scope sandbox to conversation directory
-            if key == "sandbox" and conversation_id:
-                from agent.sandbox import sandbox_path_for
-                scoped_path = sandbox_path_for(conversation_id)
-                server_def["args"] = [
-                    "mcp-server-filesystem@latest",
-                    "--root",
-                    scoped_path,
-                ]
-            
             mcp_servers[key] = server_def
         else:
             # Log warning for undefined servers
@@ -185,21 +166,26 @@ def get_preset_servers(preset_slug: str) -> list:
 def has_sandbox_access(preset_slug: str) -> bool:
     """Check if a preset has sandbox access.
     
+    DEPRECATED (Part6): Sandbox MCP server has been removed.
+    Terminal tools now provide file system access via persistent Docker containers.
+    This function always returns False.
+    
     Args:
         preset_slug: The preset identifier
         
     Returns:
-        True if the preset has sandbox MCP server access
+        Always False (sandbox removed)
     """
-    servers = get_preset_servers(preset_slug)
-    return "sandbox" in servers
+    # Sandbox MCP server removed in Part6
+    return False
 
 
 # ============================================================================
-# Sandbox Behavior Instructions
+# Sandbox Behavior Instructions (DEPRECATED)
 # ============================================================================
 
-SANDBOX_INSTRUCTION = """If your response includes code exceeding 5 lines, do not embed it in the message body. Write it to a file in the sandbox and reference the file path. The file will be delivered as an attachment.
+# DEPRECATED (Part6): Use terminal tools instead of sandbox MCP
+SANDBOX_INSTRUCTION = """DEPRECATED: Use terminal_execute for file operations instead.
 
 Sandbox path: {sandbox_path}
 
@@ -216,19 +202,17 @@ Supported file types:
 def get_sandbox_instruction(preset_slug: str, conversation_id: str = "") -> Optional[str]:
     """Get sandbox instruction for presets with sandbox access.
     
+    DEPRECATED (Part6): Sandbox MCP server has been removed.
+    Terminal tools now provide file system access. This function always returns None.
+    
     Args:
         preset_slug: The preset identifier
-        conversation_id: Unique conversation identifier for scoped sandbox path
+        conversation_id: Unique conversation identifier (unused)
         
     Returns:
-        Sandbox instruction string if preset has access, None otherwise
+        Always None (sandbox removed)
     """
-    if has_sandbox_access(preset_slug):
-        if conversation_id:
-            from agent.sandbox import sandbox_path_for
-            scoped_path = sandbox_path_for(conversation_id)
-            return SANDBOX_INSTRUCTION.format(sandbox_path=scoped_path)
-        return SANDBOX_INSTRUCTION.format(sandbox_path=SANDBOX_PATH)
+    # Sandbox MCP server removed in Part6
     return None
 
 

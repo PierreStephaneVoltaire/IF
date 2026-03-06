@@ -148,15 +148,24 @@ OPENWEBUI_TASK_MARKERS = [
 # MCP Server Configuration (Deprecated - use mcp_servers.config instead)
 # ============================================================================
 
-# This is kept for backward compatibility but should be imported from mcp_servers.config
+# Part6: This map is deprecated. Import from mcp_servers.config instead.
+# The actual PRESET_MCP_MAP is in src/mcp_servers/config.py which has been
+# updated to remove the sandbox MCP server.
+#
+# This is kept only for backward compatibility with any code that hasn't
+# been migrated yet. New code should use:
+#   from mcp_servers.config import PRESET_MCP_MAP, resolve_mcp_config
+#
+# Note: Sandbox MCP server removed - terminal tools now provide file access
 PRESET_MCP_MAP = {
     "__all__": ["time"],  # Memory tools are registered separately, not via MCP
-    "architecture": ["aws_docs", "sandbox"],
-    "coding": ["sandbox"],
+    "architecture": ["aws_docs"],  # sandbox removed (Part6)
+    "code": [],  # sandbox removed (Part6) - use terminal_execute
     "health": ["google_sheets"],
     "mental_health": [],  # No MCP servers for mental health
     "social": [],  # No MCP servers for social
     "finance": ["yahoo_finance", "alpha_vantage"],  # Finance preset gets stock data servers
+    "pondering": [],  # Only gets time via __all__
 }
 
 
@@ -171,6 +180,44 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 # Model for directive content rewriting (configurable via env var)
 # Examples: "anthropic/claude-opus-4", "anthropic/claude-3.5-sonnet", "openai/gpt-4o"
 DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "anthropic/claude-opus-4")
+
+
+# ============================================================================
+# Terminal Container Configuration (Phase 0-1)
+# ============================================================================
+
+TERMINAL_IMAGE = os.getenv("TERMINAL_IMAGE", "ghcr.io/open-webui/open-terminal:latest")
+TERMINAL_NETWORK = os.getenv("TERMINAL_NETWORK", "if-terminal-net")
+TERMINAL_MEM_LIMIT = os.getenv("TERMINAL_MEM_LIMIT", "512m")
+TERMINAL_CPU_QUOTA = int(os.getenv("TERMINAL_CPU_QUOTA", "50000"))
+TERMINAL_IDLE_TIMEOUT = int(os.getenv("TERMINAL_IDLE_TIMEOUT", "3600"))
+TERMINAL_STARTUP_TIMEOUT = float(os.getenv("TERMINAL_STARTUP_TIMEOUT", "30.0"))
+TERMINAL_MAX_CONTAINERS = int(os.getenv("TERMINAL_MAX_CONTAINERS", "20"))
+
+# Docker named volumes host root path (for file serving)
+# On standard Docker installs this is /var/lib/docker/volumes/
+# Set to empty string to disable direct host access (will use docker cp fallback)
+TERMINAL_VOLUME_HOST_ROOT = os.getenv("TERMINAL_VOLUME_HOST_ROOT", "/var/lib/docker/volumes")
+
+
+# ============================================================================
+# Orchestrator Configuration (Parts7-9)
+# ============================================================================
+
+# Model for plan execution subagents
+ORCHESTRATOR_SUBAGENT_MODEL = os.getenv("ORCHESTRATOR_SUBAGENT_MODEL", "anthropic/claude-sonnet-4")
+
+# Model for parallel analysis subagents (lighter weight for faster analysis)
+ORCHESTRATOR_ANALYSIS_MODEL = os.getenv("ORCHESTRATOR_ANALYSIS_MODEL", "anthropic/claude-haiku-4.5")
+
+# Model for synthesis of parallel analysis results
+ORCHESTRATOR_SYNTHESIS_MODEL = os.getenv("ORCHESTRATOR_SYNTHESIS_MODEL", "anthropic/claude-sonnet-4")
+
+# Maximum turns per subagent before timeout
+ORCHESTRATOR_MAX_TURNS = int(os.getenv("ORCHESTRATOR_MAX_TURNS", "15"))
+
+# Maximum turns for analysis subagents (usually need fewer)
+ORCHESTRATOR_ANALYSIS_MAX_TURNS = int(os.getenv("ORCHESTRATOR_ANALYSIS_MAX_TURNS", "10"))
 
 
 # ============================================================================

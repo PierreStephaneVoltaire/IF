@@ -18,26 +18,27 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import logging
 
+import httpx
 from pydantic import SecretStr
 
 from openhands.sdk import LLM, Agent, Conversation , MessageEvent, TextContent
 
 from config import (
-    PRESET_MCP_MAP,
-    SANDBOX_PATH,
     MEMORY_DB_PATH,
     PERSISTENCE_DIR,
     LLM_API_KEY,
     LLM_BASE_URL,
 )
 from presets.loader import PresetManager
-from mcp_servers.config import resolve_mcp_config
+from mcp_servers.config import resolve_mcp_config, get_preset_servers
 from agent.memory_tools import get_memory_tools
 from agent.tools.user_facts import get_user_facts_tools, set_session_context
 from agent.tools.capability_tracker import get_capability_tracker_tools
 from agent.tools.opinion_tools import get_opinion_tools
 from agent.tools.session_reflection import get_session_reflection_tools
 from agent.tools.directive_tools import get_directive_tools
+from agent.tools.terminal_tools import get_terminal_tools, get_terminal_system_prompt
+from orchestrator import get_orchestrator_tools, get_analyzer_tools
 
 
 logger = logging.getLogger(__name__)
@@ -106,7 +107,8 @@ class AgentResponse:
 def resolve_mcp_servers(preset_slug: str) -> List[str]:
     """Resolve MCP servers for a preset.
     
-    Merges __all__ servers with preset-specific servers.
+    Part6: Updated to use mcp_servers.config.get_preset_servers() instead of
+    the legacy PRESET_MCP_MAP from config.py.
     
     Args:
         preset_slug: Preset identifier
@@ -114,16 +116,7 @@ def resolve_mcp_servers(preset_slug: str) -> List[str]:
     Returns:
         List of MCP server keys
     """
-    # Get global servers
-    global_servers = PRESET_MCP_MAP.get("__all__", [])
-    
-    # Get preset-specific servers
-    preset_servers = PRESET_MCP_MAP.get(preset_slug, [])
-    
-    # Merge and deduplicate
-    all_servers = list(set(global_servers + preset_servers))
-    
-    return all_servers
+    return get_preset_servers(preset_slug)
 
 
 def get_operator_context(messages: List[Dict[str, Any]]) -> str:
@@ -296,19 +289,13 @@ DO NOT USE memory_add FOR:
             logger.info(f"[Session] Loaded pondering addendum ({len(pondering_addendum)} chars)")
             prompt_parts.append(f"\n{pondering_addendum}\n")
     
-    # Sandbox instructions for presets with sandbox access
-    if "sandbox" in mcp_servers:
-        sandbox_instruction = f"""
-SANDBOX FILE PROTOCOL:
-If your response includes code exceeding 5 lines, do not embed
-it in the message body. Write it to a file in the sandbox directory
-({SANDBOX_PATH}) and reference the file path. The file will be
-delivered as an attachment.
-
-File naming: Use descriptive names with timestamps if needed.
-Example: solution.py, config.json, architecture_diagram.md
-"""
-        prompt_parts.append(sandbox_instruction)
+    # Note: Sandbox MCP server removed in Part6
+    # Terminal tools now provide file system access via persistent Docker containers
+    
+    # Terminal environment instructions (Phase 3)
+    # All presets get access to the persistent terminal
+    terminal_instruction = get_terminal_system_prompt()
+    prompt_parts.append(f"\n{terminal_instruction}\n")
     
     return "\n".join(prompt_parts)
 
@@ -387,7 +374,15 @@ async def execute_agent(
         tools.extend(get_session_reflection_tools())
         # Get directive management tools
         tools.extend(get_directive_tools())
-        logger.info("Loaded memory, user facts, capability, opinion, reflection, and directive tools")
+        # Get terminal tools (Phase 3)
+        # Use session.session_id as chat_id for consistent terminal container scoping
+        tools.extend(get_terminal_tools(session.session_id))
+        # Create shared HTTP client for orchestrator tools (connection pooling)
+        shared_http_client = httpx.AsyncClient(timeout=120.0)
+        # Get orchestrator tools (Parts7-9) with shared HTTP client
+        tools.extend(get_orchestrator_tools(session.session_id, http_client=shared_http_client))
+        tools.extend(get_analyzer_tools(session.session_id, http_client=shared_http_client))
+        logger.info("Loaded memory, user facts, capability, opinion, reflection, directive, terminal, and orchestrator tools")
         # Create OpenHands Agent
         agent = Agent(
             llm=llm,
@@ -447,33 +442,21 @@ async def execute_agent(
 def scan_sandbox_for_attachments() -> List[str]:
     """Scan sandbox directory for new/modified files.
     
-    In a full implementation, this would:
-    1. Track request start time
-    2. Find files modified after request start
-    3. Return list of attachment paths
+    DEPRECATED (Part6): This function is deprecated.
     
-    For now, returns empty list (attachments not implemented).
+    File attachments are now handled via:
+    - FILES: metadata extraction (see src/terminal/files.py)
+    - Terminal workspace file serving (see /files/workspace/ endpoint)
+    
+    This function returns an empty list for backward compatibility.
+    The actual file references are extracted from the FILES: line in the
+    agent response via strip_files_line() in completions.py.
     
     Returns:
-        List of file paths (relative to sandbox)
+        Empty list (deprecated)
     """
-    # TODO: Implement attachment scanning
-    # This requires tracking request timestamps and file modification times
-    
-    if not os.path.exists(SANDBOX_PATH):
-        return []
-    
-    attachments = []
-    
-    # Walk sandbox directory
-    for root, dirs, files in os.walk(SANDBOX_PATH):
-        for file in files:
-            # Get relative path
-            full_path = os.path.join(root, file)
-            rel_path = os.path.relpath(full_path, SANDBOX_PATH)
-            attachments.append(rel_path)
-    
-    return attachments
+    # Part6: Sandbox scanning deprecated - use FILES: metadata instead
+    return []
 
 
 def create_session_id(conversation_id: str, preset_slug: str) -> str:

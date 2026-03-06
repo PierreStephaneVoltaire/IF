@@ -7,18 +7,23 @@ This module provides both:
 2. Internal pipeline function for channel integrations
 """
 from __future__ import annotations
+import json
 import uuid
 import hashlib
 import logging
-from typing import TYPE_CHECKING, Dict, List, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Any, Optional, Tuple, AsyncGenerator
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from .schemas import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatCompletionChoice,
     ChatCompletionMessage,
+    ChatCompletionChunk,
+    ChatCompletionChunkChoice,
+    ChatCompletionChunkDelta,
 )
 from routing.interceptor import intercept_request
 from routing.scorer import score_conversation
@@ -28,6 +33,7 @@ from routing.commands import parse_command, CommandAction
 from routing.topic_shift import should_check_shift, topic_has_shifted
 from presets.loader import get_preset_manager
 from agent.session import get_or_create_session, execute_agent
+from src.terminal.files import strip_files_line, log_file_refs, FilesStripBuffer, FileRef
 
 if TYPE_CHECKING:
     import httpx
@@ -39,6 +45,128 @@ router = APIRouter()
 
 # Message count before checking for topic shift on pinned presets
 RECLASSIFY_MESSAGE_COUNT = 5
+
+
+# ============================================================================
+# Part4: Streaming FILES: Stripping Support
+# ============================================================================
+
+# SSE prefix for streaming responses
+SSE_PREFIX = "data: "
+SSE_DONE = "data: [DONE]\n\n"
+
+
+def make_sse_chunk(text: str, chunk_id: str, model: str) -> str:
+    """Create an SSE-formatted chunk for streaming.
+    
+    Args:
+        text: Text content to include in the chunk
+        chunk_id: Chat completion ID
+        model: Model name
+        
+    Returns:
+        SSE-formatted string
+    """
+    chunk = ChatCompletionChunk(
+        id=chunk_id,
+        model=model,
+        choices=[
+            ChatCompletionChunkChoice(
+                index=0,
+                delta=ChatCompletionChunkDelta(content=text),
+                finish_reason=None,
+            )
+        ],
+    )
+    return f"{SSE_PREFIX}{chunk.model_dump_json()}\n\n"
+
+
+def extract_text_from_sse(chunk: str) -> str:
+    """Extract text content from an SSE chunk.
+    
+    Args:
+        chunk: SSE-formatted chunk string
+        
+    Returns:
+        Extracted text content, or empty string if not parseable
+    """
+    if not chunk.startswith(SSE_PREFIX):
+        return ""
+    
+    json_str = chunk[len(SSE_PREFIX):].strip()
+    if not json_str or json_str == "[DONE]":
+        return ""
+    
+    try:
+        data = json.loads(json_str)
+        choices = data.get("choices", [])
+        if choices:
+            delta = choices[0].get("delta", {})
+            return delta.get("content", "")
+    except json.JSONDecodeError:
+        pass
+    
+    return ""
+
+
+async def stream_with_files_strip(
+    original_stream: AsyncGenerator[str, None],
+    conversation_id: str,
+    chunk_id: str,
+    model: str = "if-prototype"
+) -> AsyncGenerator[str, None]:
+    """Wrap a streaming response with FILES: line stripping.
+    
+    Part4: This generator buffers the tail of the stream to ensure
+    the FILES: line is completely captured before stripping it.
+    
+    Args:
+        original_stream: The original streaming generator
+        conversation_id: Conversation ID for logging
+        chunk_id: Chat completion chunk ID
+        model: Model name for SSE chunks
+        
+    Yields:
+        SSE-formatted chunks with FILES: line stripped
+    """
+    buf = FilesStripBuffer()
+    
+    async for chunk in original_stream:
+        # Extract text delta from SSE chunk
+        text = extract_text_from_sse(chunk)
+        
+        if text:
+            # Feed to buffer
+            emit = buf.feed(text)
+            if emit:
+                yield make_sse_chunk(emit, chunk_id, model)
+    
+    # Finalize and get remaining text
+    remaining, file_refs = buf.finalize()
+    
+    if remaining:
+        yield make_sse_chunk(remaining, chunk_id, model)
+    
+    # Log extracted file references
+    if file_refs:
+        log_file_refs(conversation_id, file_refs)
+    
+    # Send finish chunk
+    finish_chunk = ChatCompletionChunk(
+        id=chunk_id,
+        model=model,
+        choices=[
+            ChatCompletionChunkChoice(
+                index=0,
+                delta=ChatCompletionChunkDelta(),
+                finish_reason="stop",
+            )
+        ],
+    )
+    yield f"{SSE_PREFIX}{finish_chunk.model_dump_json()}\n\n"
+    
+    # Send [DONE] marker
+    yield SSE_DONE
 
 
 def resolve_cache_key(
@@ -387,6 +515,15 @@ async def process_chat_completion_internal(
         stream=stream
     )
     
+    # Part4: Strip FILES: line from response content
+    # This runs after agent returns and before response is serialized
+    cleaned_content, file_refs = strip_files_line(agent_response.content)
+    agent_response.content = cleaned_content
+    
+    # Log extracted file references
+    if file_refs:
+        log_file_refs(cache_key, file_refs)
+    
     # Fire-and-forget conversation summary (Phase2)
     try:
         import asyncio
@@ -403,15 +540,32 @@ async def process_chat_completion_internal(
     except Exception as e:
         logger.debug(f"Failed to queue conversation summary: {e}")
     
-    # Build attachments list
+    # Build attachments list from FILES: metadata
+    # Part4: Use file_refs extracted from FILES: line instead of sandbox scanning
     attachments = []
-    for att_path in agent_response.attachments:
+    
+    # Primary: Use file references from FILES: line
+    for ref in file_refs:
+        # Extract filename from path
+        filename = ref.path.split("/")[-1] if "/" in ref.path else ref.path
         attachments.append({
-            "filename": att_path,
-            "url": f"/files/sandbox/{cache_key}/{att_path}",
-            "local_path": att_path,
+            "filename": filename,
+            "url": f"/files/workspace/{cache_key}/{ref.path}",
+            "local_path": ref.path,
             "content_type": "application/octet-stream",
+            "description": ref.description,
         })
+    
+    # Fallback: Include any attachments from agent response (legacy sandbox scanning)
+    for att_path in agent_response.attachments:
+        # Avoid duplicates
+        if not any(a["local_path"] == att_path for a in attachments):
+            attachments.append({
+                "filename": att_path,
+                "url": f"/files/sandbox/{cache_key}/{att_path}",
+                "local_path": att_path,
+                "content_type": "application/octet-stream",
+            })
     
     return agent_response.content, attachments
 
@@ -424,13 +578,14 @@ async def chat_completions(
     """Handle chat completions with intelligent routing.
     
     HTTP endpoint that delegates to the core pipeline.
+    Supports both streaming and non-streaming responses.
     
     Args:
         request: Chat completion request
         raw_request: Raw FastAPI request object
         
     Returns:
-        Chat completion response
+        Chat completion response (streaming or non-streaming)
         
     Raises:
         HTTPException: If request validation fails or processing errors occur
@@ -448,6 +603,9 @@ async def chat_completions(
     # Convert request to dict format
     request_data = request.model_dump(exclude_none=True)
     
+    # Check if streaming is requested
+    stream = request_data.get("stream", False)
+    
     try:
         response_text, attachments = await process_chat_completion_internal(
             request_data=request_data,
@@ -460,9 +618,50 @@ async def chat_completions(
             detail=str(e)
         )
     
-    # Return OpenAI-compatible response
+    # Generate chunk ID for streaming
+    chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+    
+    # Handle streaming response
+    if stream:
+        # For streaming, we need to wrap the response with FILES: stripping
+        # Since process_chat_completion_internal already stripped FILES:,
+        # we can stream the cleaned content directly
+        async def generate_stream():
+            """Generate SSE stream with FILES: stripping support."""
+            # Stream the response text in chunks
+            # For simplicity, we send the entire response as one chunk
+            # A more sophisticated implementation would chunk by sentences/tokens
+            yield make_sse_chunk(response_text, chunk_id, "if-prototype")
+            
+            # Send finish chunk
+            finish_chunk = ChatCompletionChunk(
+                id=chunk_id,
+                model="if-prototype",
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0,
+                        delta=ChatCompletionChunkDelta(),
+                        finish_reason="stop",
+                    )
+                ],
+            )
+            yield f"{SSE_PREFIX}{finish_chunk.model_dump_json()}\n\n"
+            
+            # Send [DONE] marker
+            yield SSE_DONE
+        
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
+    
+    # Return non-streaming OpenAI-compatible response
     return ChatCompletionResponse(
-        id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
+        id=chunk_id,
         model="if-prototype",
         choices=[
             ChatCompletionChoice(

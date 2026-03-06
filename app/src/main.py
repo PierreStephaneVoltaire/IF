@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse, PlainTextResponse
 from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR, STORAGE_DB_PATH
 from config import HEARTBEAT_ENABLED, HEARTBEAT_IDLE_HOURS, HEARTBEAT_COOLDOWN_HOURS
 from config import REFLECTION_ENABLED
+from config import TERMINAL_IDLE_TIMEOUT
 from api.models import router as models_router
 from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
@@ -40,6 +41,10 @@ heartbeat_runner = None
 
 # Reflection engine (global for command access)
 reflection_engine = None
+
+# Terminal lifecycle manager (global for terminal tools)
+terminal_manager = None
+terminal_cleanup_task = None
 
 
 async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
@@ -96,6 +101,27 @@ async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
         return
     
     logger.warning(f"Unknown platform for heartbeat: {platform}")
+
+
+async def _terminal_cleanup_loop():
+    """Periodically clean up idle terminal containers.
+    
+    This background task runs every 5 minutes and stops containers
+    that have been idle for longer than TERMINAL_IDLE_TIMEOUT.
+    """
+    global terminal_manager
+    
+    while True:
+        await asyncio.sleep(300)  # every 5 minutes
+        if terminal_manager:
+            try:
+                cleaned = await terminal_manager.cleanup_idle(
+                    max_idle_seconds=TERMINAL_IDLE_TIMEOUT
+                )
+                if cleaned:
+                    logger.info(f"[Terminal] Cleaned up {len(cleaned)} idle containers: {cleaned}")
+            except Exception as e:
+                logger.error(f"[Terminal] Cleanup error: {e}")
 
 
 @asynccontextmanager
@@ -312,11 +338,51 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Reflection engine initialization failed: {e}")
     
+    # Initialize terminal lifecycle manager
+    global terminal_manager, terminal_cleanup_task
+    try:
+        from terminal import TerminalConfig, TerminalLifecycleManager, init_lifecycle_manager
+        import docker
+        
+        docker_client = docker.from_env()
+        terminal_config = TerminalConfig.from_env()
+        terminal_manager = init_lifecycle_manager(docker_client, terminal_config)
+        
+        # Recover any existing containers from previous runs
+        recovered = await terminal_manager.recover_existing()
+        if recovered:
+            logger.info(f"[Terminal] Recovered {len(recovered)} existing containers")
+        
+        # Start cleanup background task
+        terminal_cleanup_task = asyncio.create_task(_terminal_cleanup_loop())
+        
+        logger.info(f"Terminal lifecycle manager initialized (max={terminal_config.max_containers}, idle_timeout={terminal_config.idle_timeout}s)")
+    except ImportError as e:
+        logger.warning(f"Terminal module not available: {e}")
+        logger.warning("Install docker package to enable terminal containers: pip install docker>=7.0.0")
+    except Exception as e:
+        logger.warning(f"Terminal lifecycle manager initialization failed: {e}")
+    
     logger.info(f"Server ready on {HOST}:{PORT}")
     
     yield
     
     # Shutdown
+    # Stop terminal cleanup task
+    if terminal_cleanup_task:
+        terminal_cleanup_task.cancel()
+        try:
+            await terminal_cleanup_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Terminal cleanup task cancelled")
+    
+    # Stop all terminal containers
+    if terminal_manager:
+        await terminal_manager.stop_all()
+        await terminal_manager.close()
+        logger.info("All terminal containers stopped")
+    
     # Stop reflection engine first
     if reflection_engine:
         reflection_engine.stop()

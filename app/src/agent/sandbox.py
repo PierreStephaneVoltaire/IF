@@ -1,9 +1,24 @@
 """Sandbox directory management for conversation-scoped file isolation.
 
-This module provides path resolution for sandbox directories scoped
-by conversation_id, preventing file cross-contamination between
-parallel sessions and channels.
+DEPRECATED (Part6 - Persistent Terminal System):
+This module is deprecated and will be removed in a future version.
+
+The sandbox MCP server has been replaced by the persistent terminal system
+which provides full Docker container-based file system access via:
+- Terminal tools (terminal_execute) for running commands and writing files
+- Docker named volumes for persistent workspace storage
+- FILES: metadata extraction for attachment handling
+
+See:
+- src/terminal/ - Container lifecycle and client
+- src/terminal/files.py - FILES: line stripping and FileRef extraction
+- src/api/files.py - /files/workspace/{chat_id}/ endpoint for serving files
+
+This module is kept for backward compatibility only.
 """
+# ============================================================================
+# DEPRECATED: Use terminal tools instead
+# ============================================================================
 from __future__ import annotations
 import os
 from typing import Optional
