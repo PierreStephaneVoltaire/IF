@@ -1,18 +1,4 @@
-"""Memory tools for OpenHands agent.
 
-These tools provide the agent with access to the persistent memory store.
-The model decides when to use them based on the memory protocol in the
-system prompt.
-
-Tools:
-- memory_search: Semantic search across stored memories
-- memory_add: Store a new memory entry
-- memory_remove: Delete a memory by ID (requires operator confirmation)
-- memory_list: List all stored memories
-
-Each tool is implemented as an OpenHands SDK ToolDefinition and registered
-via register_tool so the Agent can resolve them by name.
-"""
 from __future__ import annotations
 from typing import List, Optional, Dict, Any, Sequence
 
@@ -30,12 +16,9 @@ from openhands.sdk.tool import ToolExecutor
 from memory.store import get_memory_store
 
 
-# ============================================================================
-# Plain Python implementations (called by executors)
-# ============================================================================
 
 def memory_search(query: str, n_results: int = 5) -> str:
-    """Search the operator's memory store for relevant context."""
+
     try:
         store = get_memory_store()
         results = store.search(query, n_results)
@@ -61,7 +44,7 @@ def memory_search(query: str, n_results: int = 5) -> str:
 
 
 def memory_add(content: str, category: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-    """Store a new memory about the operator."""
+
     valid_categories = {
         "preference", "personal", "skill_level", "opinion",
         "life_event", "future_plan", "mental_state",
@@ -77,7 +60,7 @@ def memory_add(content: str, category: str, metadata: Optional[Dict[str, Any]] =
 
 
 def memory_remove(memory_id: str, operator_confirmed: bool = False) -> str:
-    """Remove a memory from the store. Requires explicit operator confirmation per Directive 0-1."""
+
     if not operator_confirmed:
         return (
             "PER DIRECTIVE 0-1: Memory deletion requires explicit operator confirmation.\n"
@@ -98,7 +81,7 @@ def memory_remove(memory_id: str, operator_confirmed: bool = False) -> str:
 
 
 def memory_list(category: Optional[str] = None, limit: int = 20) -> str:
-    """List all stored memories, optionally filtered by category."""
+
     try:
         store = get_memory_store()
         entries = store.list_all(category, limit)
@@ -114,9 +97,6 @@ def memory_list(category: Optional[str] = None, limit: int = 20) -> str:
         return f"Error listing memories: {str(e)}"
 
 
-# ============================================================================
-# Action classes
-# ============================================================================
 
 class MemorySearchAction(Action):
     query: str = Field(description="Semantic search query (e.g., 'programming language preference')")
@@ -147,9 +127,6 @@ class MemoryListAction(Action):
     limit: int = Field(default=20, description="Maximum number of memories to list")
 
 
-# ============================================================================
-# Observation classes
-# ============================================================================
 
 class MemorySearchObservation(Observation):
     pass
@@ -167,9 +144,6 @@ class MemoryListObservation(Observation):
     pass
 
 
-# ============================================================================
-# Executor classes
-# ============================================================================
 
 class MemorySearchExecutor(ToolExecutor[MemorySearchAction, MemorySearchObservation]):
     def __call__(self, action: MemorySearchAction, conversation=None) -> MemorySearchObservation:
@@ -195,9 +169,6 @@ class MemoryListExecutor(ToolExecutor[MemoryListAction, MemoryListObservation]):
         return MemoryListObservation.from_text(result)
 
 
-# ============================================================================
-# ToolDefinition classes
-# ============================================================================
 
 class MemorySearchTool(ToolDefinition[MemorySearchAction, MemorySearchObservation]):
     @classmethod
@@ -255,9 +226,6 @@ class MemoryListTool(ToolDefinition[MemoryListAction, MemoryListObservation]):
         )]
 
 
-# ============================================================================
-# Registration
-# ============================================================================
 
 register_tool("MemorySearchTool", MemorySearchTool)
 register_tool("MemoryAddTool", MemoryAddTool)
@@ -266,7 +234,7 @@ register_tool("MemoryListTool", MemoryListTool)
 
 
 def get_memory_tools() -> List[Tool]:
-    """Return Tool specs for all memory tools, for use in Agent construction."""
+
     return [
         Tool(name="MemorySearchTool"),
         Tool(name="MemoryAddTool"),
@@ -276,29 +244,12 @@ def get_memory_tools() -> List[Tool]:
 
 
 def execute_memory_tool(tool_name: str, **kwargs) -> str:
-    """Execute a memory tool by name with given parameters.
-    
-    This is a dispatcher function that routes tool calls to the appropriate
-    memory function. Useful for testing or direct invocation outside of
-    the OpenHands agent context.
-    
-    Args:
-        tool_name: Name of the memory tool to execute.
-                   One of: memory_search, memory_add, memory_remove, memory_list
-        **kwargs: Parameters to pass to the tool function
-    
-    Returns:
-        String result from the tool execution
-    
-    Raises:
-        ValueError: If tool_name is not recognized
-    """
+
     tool_map = {
         "memory_search": memory_search,
         "memory_add": memory_add,
         "memory_remove": memory_remove,
         "memory_list": memory_list,
-        # Also accept the ToolDefinition names
         "MemorySearchTool": memory_search,
         "MemoryAddTool": memory_add,
         "MemoryRemoveTool": memory_remove,

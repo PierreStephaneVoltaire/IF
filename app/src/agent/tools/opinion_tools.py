@@ -1,12 +1,4 @@
-"""Opinion and misconception tracking tools.
 
-These tools allow the agent to track operator opinions alongside
-agent responses, and log factual misunderstandings for growth tracking.
-
-Tools:
-- log_opinion_pair: Track user opinion + agent response
-- log_misconception: Log factual misunderstandings
-"""
 from __future__ import annotations
 from typing import List, Optional, Sequence
 
@@ -40,29 +32,13 @@ def _log_opinion_pair(
     agreement_level: str = "partial",
     confidence: float = 0.7
 ) -> str:
-    """Log an opinion pair: user's position vs agent's response.
-    
-    Use this when the operator expresses a strong position on a topic.
-    Record both their position and your assessment.
-    
-    Args:
-        topic: The subject of the opinion
-        user_position: What the operator believes/said
-        agent_position: Your position (agree/disagree/partial)
-        agent_reasoning: Why you hold this position
-        agreement_level: "agree" | "partial" | "disagree" | "insufficient_data"
-        confidence: Your confidence level 0.0-1.0
-        
-    Returns:
-        Confirmation with pair ID
-    """
+
     from datetime import datetime, timezone
     
     try:
         store = get_user_fact_store()
         now = datetime.now(timezone.utc).isoformat()
         
-        # Check for existing opinion on same topic
         existing = store.search(
             query=topic,
             category=FactCategory.OPINION_PAIR,
@@ -70,12 +46,10 @@ def _log_opinion_pair(
         )
         
         if existing:
-            # Update existing opinion pair
             old_fact = existing[0]
             pair_metadata = old_fact.metadata if hasattr(old_fact, 'metadata') else {}
             pair = OpinionPair.from_dict(pair_metadata)
             
-            # Add evolution entry
             pair.evolution = pair.evolution or []
             pair.evolution.append({
                 "previous_position": pair.agent_position,
@@ -89,12 +63,10 @@ def _log_opinion_pair(
             pair.agreement_level = agreement_level
             pair.updated_at = now
             
-            # Update fact
             old_fact.metadata = pair.to_dict()
             store._update_metadata(old_fact)
             return f"Opinion pair updated (ID: {old_fact.id})"
         
-        # Create new opinion pair
         pair = OpinionPair(
             topic=topic,
             user_position=user_position,
@@ -132,29 +104,13 @@ def _log_misconception(
     severity: str = "minor",
     suggested_resources: Optional[List[str]] = None
 ) -> str:
-    """Log a factual misunderstanding demonstrated by the operator.
-    
-    Use this when the operator demonstrates an objectively incorrect belief
-    about a technical, scientific, or factual matter (NOT opinions).
-    
-    Args:
-        topic: The subject area
-        what_they_said: What the operator incorrectly stated
-        what_is_correct: The correct information
-        domain: Domain (networking, programming, AWS, etc.)
-        severity: "minor" | "moderate" | "critical"
-        suggested_resources: Reading suggestions
-        
-    Returns:
-        Confirmation with misconception ID
-    """
+
     from datetime import datetime, timezone
     
     try:
         store = get_user_fact_store()
         now = datetime.now(timezone.utc).isoformat()
         
-        # Check for existing misconception on same topic
         existing = store.search(
             query=f"{topic} {what_they_said}",
             category=FactCategory.MISCONCEPTION,
@@ -162,7 +118,6 @@ def _log_misconception(
         )
         
         if existing:
-            # Increment recurrence
             old_fact = existing[0]
             misc_metadata = old_fact.metadata if hasattr(old_fact, 'metadata') else {}
             misc = Misconception.from_dict(misc_metadata)
@@ -173,7 +128,6 @@ def _log_misconception(
             store._update_metadata(old_fact)
             return f"Misconception recurrence logged (ID: {old_fact.id}, count: {misc.recurrence_count})"
         
-        # Create new misconception
         misc = Misconception(
             topic=topic,
             what_they_said=what_they_said,
@@ -205,9 +159,6 @@ def _log_misconception(
         return f"Error logging misconception: {str(e)}"
 
 
-# ============================================================================
-# Action classes
-# ============================================================================
 
 class LogOpinionPairAction(Action):
     topic: str = Field(description="The subject of the opinion")
@@ -227,9 +178,6 @@ class LogMisconceptionAction(Action):
     suggested_resources: Optional[List[str]] = Field(default=None, description="Reading suggestions")
 
 
-# ============================================================================
-# Observation classes
-# ============================================================================
 
 class LogOpinionPairObservation(Observation):
     pass
@@ -239,9 +187,6 @@ class LogMisconceptionObservation(Observation):
     pass
 
 
-# ============================================================================
-# Executor classes
-# ============================================================================
 
 class LogOpinionPairExecutor(ToolExecutor[LogOpinionPairAction, LogOpinionPairObservation]):
     def __call__(self, action: LogOpinionPairAction, conversation=None) -> LogOpinionPairObservation:
@@ -269,9 +214,6 @@ class LogMisconceptionExecutor(ToolExecutor[LogMisconceptionAction, LogMisconcep
         return LogMisconceptionObservation.from_text(result)
 
 
-# ============================================================================
-# ToolDefinition classes
-# ============================================================================
 
 class LogOpinionPairTool(ToolDefinition[LogOpinionPairAction, LogOpinionPairObservation]):
     @classmethod
@@ -302,16 +244,13 @@ class LogMisconceptionTool(ToolDefinition[LogMisconceptionAction, LogMisconcepti
         )]
 
 
-# ============================================================================
-# Registration
-# ============================================================================
 
 register_tool("LogOpinionPairTool", LogOpinionPairTool)
 register_tool("LogMisconceptionTool", LogMisconceptionTool)
 
 
 def get_opinion_tools() -> List[Tool]:
-    """Return Tool specs for opinion tracking tools."""
+
     return [
         Tool(name="LogOpinionPairTool"),
         Tool(name="LogMisconceptionTool"),

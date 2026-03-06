@@ -30,10 +30,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# Exceptions
-# ============================================================================
-
 class TerminalError(Exception):
     """Base exception for terminal container errors."""
     pass
@@ -67,11 +63,6 @@ class TerminalCapacityError(TerminalError):
         self.max_containers = max_containers
         super().__init__(f"Maximum container capacity ({max_containers}) reached")
 
-
-# ============================================================================
-# Data Models
-# ============================================================================
-
 @dataclass
 class TerminalContainer:
     """Metadata for a managed terminal container.
@@ -104,11 +95,6 @@ class TerminalContainer:
         """Seconds since last access."""
         return time.monotonic() - self.last_accessed
 
-
-# ============================================================================
-# Global Instance Management
-# ============================================================================
-
 _lifecycle_manager: Optional["TerminalLifecycleManager"] = None
 
 
@@ -137,11 +123,6 @@ def get_lifecycle_manager() -> Optional["TerminalLifecycleManager"]:
         TerminalLifecycleManager if initialized, None otherwise
     """
     return _lifecycle_manager
-
-
-# ============================================================================
-# Lifecycle Manager
-# ============================================================================
 
 class TerminalLifecycleManager:
     """Manages the lifecycle of per-chat terminal containers.

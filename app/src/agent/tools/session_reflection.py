@@ -1,11 +1,4 @@
-"""Session reflection tools for post-conversation learning.
 
-These tools allow the agent to store rich session reflections
-that capture what worked, what failed, and what was learned.
-
-Tools:
-- store_session_reflection: Store a rich reflection after substantive conversations
-"""
 from __future__ import annotations
 from typing import List, Optional, Sequence
 
@@ -44,35 +37,13 @@ def _store_session_reflection(
     preset_used: str,
     preset_fit_score: float
 ) -> str:
-    """Store a rich session reflection after a substantive conversation.
-    
-    This replaces shallow conversation summaries with structured reflections
-    that capture what was learned, what worked, and what failed.
-    
-    Args:
-        session_id: The conversation ID
-        summary: Brief summary of what happened
-        what_worked: List of approaches that produced good outcomes
-        what_failed: List of approaches that fell flat
-        operator_satisfaction: "positive" | "neutral" | "negative"
-        new_facts_stored: Count of facts captured this session
-        capability_gaps_hit: List of capability gap IDs triggered
-        misconceptions_found: List of misconception IDs corrected
-        open_threads: Unresolved questions or tasks
-        meta_notes: Free-form agent reflection
-        preset_used: Which routing preset handled this
-        preset_fit_score: Self-assessed routing accuracy 0.0-1.0
-        
-    Returns:
-        Confirmation with reflection ID
-    """
+
     from datetime import datetime, timezone
     
     try:
         store = get_user_fact_store()
         now = datetime.now(timezone.utc).isoformat()
         
-        # Check for existing reflection for this session
         existing = store.search(
             query=session_id,
             category=FactCategory.SESSION_REFLECTION,
@@ -80,12 +51,10 @@ def _store_session_reflection(
         )
         
         if existing:
-            # Update existing reflection
             old_fact = existing[0]
             reflection_metadata = old_fact.metadata if hasattr(old_fact, 'metadata') else {}
             reflection = SessionReflection.from_dict(reflection_metadata)
             
-            # Update fields
             reflection.summary = summary
             reflection.what_worked = what_worked
             reflection.what_failed = what_failed
@@ -102,7 +71,6 @@ def _store_session_reflection(
             store._update_metadata(old_fact)
             return f"Session reflection updated (ID: {old_fact.id})"
         
-        # Create new reflection
         reflection = SessionReflection(
             session_id=session_id,
             summary=summary,
@@ -137,9 +105,6 @@ def _store_session_reflection(
         return f"Error storing session reflection: {str(e)}"
 
 
-# ============================================================================
-# Action classes
-# ============================================================================
 
 class StoreSessionReflectionAction(Action):
     session_id: str = Field(description="The conversation ID")
@@ -156,17 +121,11 @@ class StoreSessionReflectionAction(Action):
     preset_fit_score: float = Field(default=0.0, description="Self-assessed routing fit 0.0-1.0")
 
 
-# ============================================================================
-# Observation classes
-# ============================================================================
 
 class StoreSessionReflectionObservation(Observation):
     pass
 
 
-# ============================================================================
-# Executor classes
-# ============================================================================
 
 class StoreSessionReflectionExecutor(ToolExecutor[StoreSessionReflectionAction, StoreSessionReflectionObservation]):
     def __call__(self, action: StoreSessionReflectionAction, conversation=None) -> StoreSessionReflectionObservation:
@@ -187,9 +146,6 @@ class StoreSessionReflectionExecutor(ToolExecutor[StoreSessionReflectionAction, 
         return StoreSessionReflectionObservation.from_text(result)
 
 
-# ============================================================================
-# ToolDefinition classes
-# ============================================================================
 
 class StoreSessionReflectionTool(ToolDefinition[StoreSessionReflectionAction, StoreSessionReflectionObservation]):
     @classmethod
@@ -205,15 +161,12 @@ class StoreSessionReflectionTool(ToolDefinition[StoreSessionReflectionAction, St
         )]
 
 
-# ============================================================================
-# Registration
-# ============================================================================
 
 register_tool("StoreSessionReflectionTool", StoreSessionReflectionTool)
 
 
 def get_session_reflection_tools() -> List[Tool]:
-    """Return Tool specs for session reflection tools."""
+
     return [
         Tool(name="StoreSessionReflectionTool"),
     ]

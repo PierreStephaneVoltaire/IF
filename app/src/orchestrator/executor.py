@@ -1,13 +1,4 @@
-"""Orchestrator executor for sequential plan execution.
 
-This module implements Part7 of plan.md - the execute_plan tool that allows
-the main agent to delegate multi-step tasks to focused subagents.
-
-Each subagent runs with terminal access to the same persistent workspace,
-allowing sequential steps to build on each other's filesystem state.
-
-Reference: plan.md Part7 - Orchestrator — Plan Execution (Sequential)
-"""
 from __future__ import annotations
 
 import json
@@ -30,20 +21,10 @@ from terminal import strip_files_line, FileRef, get_lifecycle_manager
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# Data Models
-# ============================================================================
 
 @dataclass
 class PlanStep:
-    """A single step in an execution plan.
-    
-    Attributes:
-        index: Step number (1-based)
-        title: Short title for the step
-        description: Detailed instructions for what to do
-        expected_outputs: List of file paths this step should produce
-    """
+
     index: int
     title: str
     description: str
@@ -52,13 +33,7 @@ class PlanStep:
 
 @dataclass
 class ExecutionPlan:
-    """A complete execution plan with multiple steps.
-    
-    Attributes:
-        goal: What the overall task achieves
-        context: Shared context all steps need (repo URL, language, constraints)
-        steps: List of PlanStep objects
-    """
+
     goal: str
     context: str = ""
     steps: List[PlanStep] = field(default_factory=list)
@@ -66,15 +41,7 @@ class ExecutionPlan:
 
 @dataclass
 class StepResult:
-    """Result from executing a single plan step.
-    
-    Attributes:
-        step_index: Index of the step that was executed
-        success: Whether the step completed successfully
-        summary: Brief summary of what was done
-        files: List of files created or modified
-        error: Error message if step failed
-    """
+
     step_index: int
     success: bool
     summary: str = ""
@@ -82,23 +49,15 @@ class StepResult:
     error: Optional[str] = None
 
 
-# ============================================================================
-# LLM Response Parsing
-# ============================================================================
 
 @dataclass
 class LLMResponse:
-    """Parsed LLM response.
-    
-    Attributes:
-        content: Text content of the response
-        tool_calls: List of tool calls if any
-    """
+
     content: str = ""
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
     
     def to_message(self) -> Dict[str, Any]:
-        """Convert to OpenAI message format."""
+
         if self.tool_calls:
             return {
                 "role": "assistant",
@@ -109,14 +68,7 @@ class LLMResponse:
 
 
 def parse_llm_response(data: Dict[str, Any]) -> LLMResponse:
-    """Parse OpenRouter/OpenAI response into LLMResponse.
-    
-    Args:
-        data: Raw JSON response from API
-        
-    Returns:
-        Parsed LLMResponse object
-    """
+
     choices = data.get("choices", [])
     if not choices:
         return LLMResponse()
@@ -127,7 +79,6 @@ def parse_llm_response(data: Dict[str, Any]) -> LLMResponse:
     content = message.get("content", "") or ""
     tool_calls = []
     
-    # Parse tool calls if present
     raw_tool_calls = message.get("tool_calls", [])
     for tc in raw_tool_calls:
         tool_calls.append({
@@ -142,9 +93,6 @@ def parse_llm_response(data: Dict[str, Any]) -> LLMResponse:
     return LLMResponse(content=content, tool_calls=tool_calls)
 
 
-# ============================================================================
-# OpenRouter API Client
-# ============================================================================
 
 async def call_openrouter(
     model: str,
@@ -152,21 +100,7 @@ async def call_openrouter(
     tools: Optional[List[Dict[str, Any]]] = None,
     http_client: Optional[httpx.AsyncClient] = None,
 ) -> LLMResponse:
-    """Make a non-streaming chat completion call to OpenRouter.
-    
-    Args:
-        model: Model identifier (e.g., "anthropic/claude-sonnet-4")
-        messages: List of message dicts in OpenAI format
-        tools: Optional list of tool schemas
-        http_client: Optional httpx AsyncClient (creates one if not provided)
-        
-    Returns:
-        Parsed LLMResponse
-        
-    Raises:
-        httpx.HTTPStatusError: On API errors
-        httpx.TimeoutException: On timeout
-    """
+
     body: Dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -200,11 +134,6 @@ async def call_openrouter(
             await http_client.aclose()
 
 
-# ============================================================================
-# Subagent Execution
-# ============================================================================
-
-# Tool schema for terminal_execute (simplified for subagent use)
 TERMINAL_EXECUTE_SCHEMA = {
     "name": "terminal_execute",
     "description": (
@@ -238,22 +167,7 @@ async def run_subagent(
     max_turns: int = ORCHESTRATOR_MAX_TURNS,
     http_client: Optional[httpx.AsyncClient] = None,
 ) -> StepResult:
-    """Run a subagent with terminal access.
-    
-    A subagent is a short-lived LLM conversation with tool access.
-    It can execute terminal commands and returns a StepResult.
-    
-    Args:
-        system_prompt: System prompt for the subagent
-        user_message: User message to start the conversation
-        chat_id: Chat ID for terminal container access
-        model: Model to use for the subagent
-        max_turns: Maximum number of turns before timeout
-        http_client: Optional httpx AsyncClient
-        
-    Returns:
-        StepResult with success status and any files created
-    """
+
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_message},
@@ -277,7 +191,6 @@ async def run_subagent(
             )
             
             if response.tool_calls:
-                # Append assistant message with tool calls
                 messages.append(response.to_message())
                 
                 for tc in response.tool_calls:
@@ -291,7 +204,6 @@ async def run_subagent(
                         except json.JSONDecodeError:
                             args = {}
                         
-                        # Execute terminal command
                         output = await _execute_terminal_command(
                             command=args.get("command", ""),
                             workdir=args.get("workdir", "/home/user/workspace"),
@@ -310,19 +222,17 @@ async def run_subagent(
                             "content": f"Unknown tool: {tool_name}"
                         })
             else:
-                # Agent finished - extract content and FILES:
                 content = response.content or ""
                 cleaned, files = strip_files_line(content)
                 
                 return StepResult(
-                    step_index=0,  # Set by caller
+                    step_index=0,
                     success=True,
-                    summary=cleaned[:500],  # Truncate summary
+                    summary=cleaned[:500],
                     files=files,
                     error=None,
                 )
         
-        # Exceeded max turns
         return StepResult(
             step_index=0,
             success=False,
@@ -351,17 +261,7 @@ async def _execute_terminal_command(
     chat_id: str,
     http_client: httpx.AsyncClient,
 ) -> str:
-    """Execute a terminal command for a subagent.
-    
-    Args:
-        command: Shell command to execute
-        workdir: Working directory
-        chat_id: Chat ID for container access
-        http_client: HTTP client for API calls
-        
-    Returns:
-        Command output or error message
-    """
+
     from agent.tools.terminal_tools import terminal_execute
     
     try:
@@ -373,26 +273,12 @@ async def _execute_terminal_command(
     except Exception as e:
         return f"ERROR: {type(e).__name__}: {e}"
 
-
-# ============================================================================
-# Subagent Prompt Builder
-# ============================================================================
-
 def build_subagent_prompt(
     plan: ExecutionPlan,
     step: PlanStep,
     previous: List[StepResult],
 ) -> str:
-    """Build the system prompt for a subagent.
-    
-    Args:
-        plan: The overall execution plan
-        step: The specific step this subagent should execute
-        previous: Results from previous steps
-        
-    Returns:
-        System prompt string
-    """
+
     parts = [
         "You are an autonomous execution agent. Complete the assigned task using the terminal.",
         "",
@@ -430,22 +316,8 @@ def build_subagent_prompt(
     
     return "\n".join(parts)
 
-
-# ============================================================================
-# Plan Parsing
-# ============================================================================
-
 def parse_plan(goal: str, context: str, steps: List[Dict[str, Any]]) -> ExecutionPlan:
-    """Parse plan data into ExecutionPlan object.
-    
-    Args:
-        goal: Overall goal string
-        context: Shared context string
-        steps: List of step dictionaries
-        
-    Returns:
-        ExecutionPlan object
-    """
+
     plan_steps = []
     for i, step_data in enumerate(steps, start=1):
         plan_steps.append(PlanStep(
@@ -461,10 +333,6 @@ def parse_plan(goal: str, context: str, steps: List[Dict[str, Any]]) -> Executio
         steps=plan_steps,
     )
 
-
-# ============================================================================
-# Main Tool: execute_plan
-# ============================================================================
 
 EXECUTE_PLAN_SCHEMA = {
     "name": "execute_plan",
@@ -520,18 +388,7 @@ async def execute_plan(
     chat_id: str,
     http_client: Optional[httpx.AsyncClient] = None,
 ) -> str:
-    """Execute a multi-step plan with sequential subagents.
-    
-    Args:
-        goal: What the overall task achieves
-        steps: List of step dictionaries with title, description, expected_outputs
-        context: Shared context for all steps
-        chat_id: Chat ID for terminal container access
-        http_client: Optional HTTP client for API calls
-        
-    Returns:
-        Summary string of plan execution results
-    """
+
     logger.info(f"[Orchestrator] Starting plan execution: {goal}")
     
     plan = parse_plan(goal, context, steps)
@@ -556,7 +413,6 @@ async def execute_plan(
                 http_client=http_client,
             )
             
-            # Set step index
             result.step_index = step.index
             results.append(result)
             
@@ -566,7 +422,6 @@ async def execute_plan(
             
             logger.info(f"[Orchestrator] Step {step.index} completed: {result.summary[:100]}")
         
-        # Format summary for main agent
         lines = [
             f"Plan execution: {len([r for r in results if r.success])}/{len(plan.steps)} steps completed."
         ]
@@ -590,31 +445,16 @@ async def execute_plan(
             await http_client.aclose()
 
 
-# ============================================================================
-# Tool Registration
-# ============================================================================
 
 def get_orchestrator_tools(
     chat_id: str,
     http_client: Optional[httpx.AsyncClient] = None,
 ) -> List[Tool]:
-    """Get orchestrator tools bound to a chat.
-    
-    This function creates tool instances with the chat_id
-    pre-bound for use in the OpenHands agent.
-    
-    Args:
-        chat_id: Unique chat identifier
-        http_client: Optional shared HTTP client for connection pooling
-        
-    Returns:
-        List of Tool instances for orchestrator operations
-    """
+
     from functools import partial
     
     tools = []
     
-    # execute_plan tool
     tools.append(Tool(
         name="execute_plan",
         description="""Submit a structured multi-step plan for autonomous execution.

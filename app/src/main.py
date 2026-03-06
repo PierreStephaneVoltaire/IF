@@ -1,8 +1,4 @@
-"""FastAPI main application for IF Prototype A1.
 
-This module implements the OpenAI-compatible API server with intelligent
-routing to OpenRouter presets based on conversation analysis.
-"""
 from __future__ import annotations
 import asyncio
 import uuid
@@ -33,28 +29,18 @@ from logging_config import setup_logging, get_logger, RequestLoggingMiddleware
 
 logger = get_logger(__name__)
 
-# Shared HTTP client for connection pooling
 http_client: Optional[httpx.AsyncClient] = None
 
-# Heartbeat runner (global for health check access)
 heartbeat_runner = None
 
-# Reflection engine (global for command access)
 reflection_engine = None
 
-# Terminal lifecycle manager (global for terminal tools)
 terminal_manager = None
 terminal_cleanup_task = None
 
 
 async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
-    """Deliver a heartbeat message to a channel.
-    
-    Args:
-        webhook: Target webhook record
-        content: Message content
-        attachments: List of attachments
-    """
+
     from channels.delivery import deliver_to_channel
     from channels.chunker import chunk_response
     
@@ -64,15 +50,11 @@ async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
     
     logger.info(f"Delivering heartbeat to {webhook.label} (channel_id={channel_id})")
     
-    # Create a minimal channel reference based on platform
     if platform == "discord":
-        # For Discord, we need to use the Discord client directly
-        # The channel_ref from Discord is a TextChannel object
         try:
             from channels.listeners.discord_listener import get_discord_client
             client = get_discord_client()
             if client:
-                # Find the channel by ID
                 import discord
                 channel = client.get_channel(int(channel_id))
                 if channel and isinstance(channel, discord.TextChannel):
@@ -89,7 +71,6 @@ async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
             return
     
     elif platform == "openwebui":
-        # For OpenWebUI, use the API URL from config
         from channels.delivery import deliver_to_openwebui
         chunks = chunk_response(content)
         await deliver_to_openwebui(
@@ -104,15 +85,11 @@ async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
 
 
 async def _terminal_cleanup_loop():
-    """Periodically clean up idle terminal containers.
-    
-    This background task runs every 5 minutes and stops containers
-    that have been idle for longer than TERMINAL_IDLE_TIMEOUT.
-    """
+
     global terminal_manager
     
     while True:
-        await asyncio.sleep(300)  # every 5 minutes
+        await asyncio.sleep(300)
         if terminal_manager:
             try:
                 cleaned = await terminal_manager.cleanup_idle(
@@ -126,28 +103,13 @@ async def _terminal_cleanup_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage application lifespan - startup and shutdown.
-    
-    Startup:
-    - Initialize logging
-    - Initialize HTTP client
-    - Load presets from OpenRouter
-    - Create necessary directories
-    - Validate MCP configuration
-    - Initialize memory store
-    
-    Shutdown:
-    - Close HTTP client
-    """
+
     global http_client
     
-    # Initialize logging first
     setup_logging()
     
-    # Startup
     logger.info("Initializing IF Prototype A1...")
     
-    # Initialize HTTP client
     http_client = httpx.AsyncClient(
         timeout=120.0,
         limits=httpx.Limits(
@@ -159,7 +121,6 @@ async def lifespan(app: FastAPI):
     app.state.http_client = http_client
     logger.info("HTTP client initialized")
     
-    # Load static presets
     logger.info("Loading presets...")
     preset_manager = get_preset_manager()
     try:
@@ -168,40 +129,31 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to load presets: {e}")
         raise
     
-    # Create necessary directories
     sandbox_dir = get_sandbox_directory()
     logger.info(f"Sandbox directory: {sandbox_dir}")
     
-    # Create memory database directory
     memory_db_path = Path(MEMORY_DB_PATH)
     memory_db_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Memory database directory: {memory_db_path}")
     
-    # Create conversation persistence directory
     persistence_path = Path(PERSISTENCE_DIR)
     persistence_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Conversation persistence directory: {persistence_path}")
     
-    # Validate MCP configuration
     try:
         validate_mcp_config()
         logger.info("MCP configuration validated")
     except ValueError as e:
         logger.warning(f"MCP configuration error: {e}")
     
-    # Initialize memory store (creates ChromaDB collection if needed)
-    # Try new UserFactStore first, fall back to legacy MemoryStore
     try:
         from .memory import get_user_fact_store
         user_facts_store = get_user_fact_store()
         facts_count = user_facts_store.active_count
         logger.info(f"User facts store initialized ({facts_count} active facts)")
         
-        # Warm up the embedding model to prevent runtime download delays
-        # This triggers ChromaDB to load the ONNX embedding model
         logger.info("Warming up embedding model...")
         try:
-            # Perform a dummy search to trigger model loading
             user_facts_store.search("__warmup_query__", limit=1)
             logger.info("Embedding model ready")
         except Exception as warmup_error:
@@ -212,7 +164,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"User facts store initialization failed: {e}")
     
-    # Also initialize legacy memory store for backward compatibility
     try:
         from .memory import get_memory_store
         if get_memory_store:
@@ -220,11 +171,10 @@ async def lifespan(app: FastAPI):
             memory_count = memory_store.count()
             logger.info(f"Legacy memory store initialized ({memory_count} memories)")
     except ImportError:
-        pass  # Legacy store not available, that's OK
+        pass
     except Exception as e:
         logger.warning(f"Legacy memory store initialization failed: {e}")
     
-    # Ensure NLTK stopwords are available for topic shift heuristic
     try:
         import nltk
         nltk.data.find("corpora/stopwords")
@@ -237,9 +187,7 @@ async def lifespan(app: FastAPI):
     except ImportError:
         logger.warning("nltk not installed, topic shift heuristic will use basic filtering")
     
-    # Initialize storage backend (SQLite with WAL mode)
     try:
-        # Ensure storage database directory exists
         storage_db_path = Path(STORAGE_DB_PATH)
         storage_db_path.parent.mkdir(parents=True, exist_ok=True)
         init_store()
@@ -248,21 +196,17 @@ async def lifespan(app: FastAPI):
         logger.error(f"Storage initialization failed: {e}")
         raise
     
-    # Initialize directive store (DynamoDB-backed)
     try:
         init_directive_store()
     except Exception as e:
         logger.warning(f"Directive store initialization failed: {e}")
-        # Non-fatal - directives will be unavailable but server can start
     
-    # Initialize debounce system for channel messages
     try:
         init_debounce(asyncio.get_running_loop())
         logger.info("Debounce system initialized")
     except Exception as e:
         logger.warning(f"Debounce initialization failed: {e}")
     
-    # Resume active channel listeners from persisted state
     try:
         store = get_webhook_store()
         active_records = store.list_active()
@@ -271,7 +215,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to resume listeners: {e}")
     
-    # Initialize heartbeat system
     global heartbeat_runner
     if HEARTBEAT_ENABLED:
         try:
@@ -281,14 +224,12 @@ async def lifespan(app: FastAPI):
             store = get_webhook_store()
             activity_tracker = ActivityTracker(store._backend)
             
-            # Get user facts store (may not be available if chromadb not installed)
             try:
                 from .memory import get_user_fact_store
                 user_facts_store = get_user_fact_store()
             except Exception:
                 user_facts_store = None
             
-            # Get conversation cache
             from routing.cache import get_cache
             conversation_cache = get_cache()
             
@@ -300,7 +241,6 @@ async def lifespan(app: FastAPI):
                 http_client=http_client,
             )
             
-            # Set delivery function for heartbeat messages
             heartbeat_runner.set_deliver_fn(_deliver_heartbeat)
             
             heartbeat_runner.start()
@@ -308,14 +248,12 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Heartbeat initialization failed: {e}")
     
-    # Initialize reflection engine
     global reflection_engine
     if REFLECTION_ENABLED:
         try:
             from agent.reflection import ReflectionEngine, get_reflection_engine
             from agent.reflection.engine import _reflection_engine as reflection_engine_singleton
             
-            # Get user facts store
             try:
                 from .memory import get_user_fact_store
                 user_facts_store = get_user_fact_store()
@@ -330,7 +268,6 @@ async def lifespan(app: FastAPI):
                 )
                 reflection_engine.start()
                 
-                # Set global for command handlers
                 import agent.reflection.engine as re_module
                 re_module._reflection_engine = reflection_engine
                 
@@ -338,7 +275,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Reflection engine initialization failed: {e}")
     
-    # Initialize terminal lifecycle manager
     global terminal_manager, terminal_cleanup_task
     try:
         from terminal import TerminalConfig, TerminalLifecycleManager, init_lifecycle_manager
@@ -348,12 +284,10 @@ async def lifespan(app: FastAPI):
         terminal_config = TerminalConfig.from_env()
         terminal_manager = init_lifecycle_manager(docker_client, terminal_config)
         
-        # Recover any existing containers from previous runs
         recovered = await terminal_manager.recover_existing()
         if recovered:
             logger.info(f"[Terminal] Recovered {len(recovered)} existing containers")
         
-        # Start cleanup background task
         terminal_cleanup_task = asyncio.create_task(_terminal_cleanup_loop())
         
         logger.info(f"Terminal lifecycle manager initialized (max={terminal_config.max_containers}, idle_timeout={terminal_config.idle_timeout}s)")
@@ -367,8 +301,6 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown
-    # Stop terminal cleanup task
     if terminal_cleanup_task:
         terminal_cleanup_task.cancel()
         try:
@@ -377,18 +309,15 @@ async def lifespan(app: FastAPI):
             pass
         logger.info("Terminal cleanup task cancelled")
     
-    # Stop all terminal containers
     if terminal_manager:
         await terminal_manager.stop_all()
         await terminal_manager.close()
         logger.info("All terminal containers stopped")
     
-    # Stop reflection engine first
     if reflection_engine:
         reflection_engine.stop()
         logger.info("Reflection engine stopped")
     
-    # Stop heartbeat runner
     if heartbeat_runner:
         heartbeat_runner.stop()
         logger.info("Heartbeat runner stopped")
@@ -404,7 +333,6 @@ async def lifespan(app: FastAPI):
         logger.info("HTTP client closed")
 
 
-# Create FastAPI app
 app = FastAPI(
     title="IF Prototype A1 - Agent API",
     description="OpenAI-compatible API with intelligent routing to OpenRouter presets",
@@ -412,15 +340,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add request logging middleware
 app.add_middleware(RequestLoggingMiddleware)
 
 
-# ============================================================================
-# Include Routers
-# ============================================================================
 
-# API endpoints
 app.include_router(models_router)
 app.include_router(completions_router)
 app.include_router(files_router)
@@ -428,16 +351,12 @@ app.include_router(webhooks_router)
 app.include_router(directives_router)
 
 
-# ============================================================================
-# Health Check
-# ============================================================================
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint with feature status."""
+
     preset_manager = get_preset_manager()
     
-    # Check user facts store status
     user_facts_status = "unavailable"
     user_facts_count = 0
     try:
@@ -448,7 +367,6 @@ async def health_check():
     except Exception:
         pass
     
-    # Check legacy memory store status
     memory_status = "unavailable"
     memory_count = 0
     try:
@@ -459,19 +377,16 @@ async def health_check():
     except Exception:
         pass
     
-    # Check channel system status
     from channels.manager import get_active_listener_count
     from channels.debounce import get_all_buffer_sizes
     active_listeners = get_active_listener_count()
     buffer_sizes = get_all_buffer_sizes()
     
-    # Check routing cache status
     from routing.cache import get_cache
     cache = get_cache()
     cached_conversations = len(cache._cache)
     pinned_conversations = sum(1 for v in cache._cache.values() if v.pinned)
     
-    # Check heartbeat status
     heartbeat_status = "inactive"
     if heartbeat_runner and heartbeat_runner._task:
         heartbeat_status = "active"
@@ -501,7 +416,7 @@ async def health_check():
 
 @app.get("/")
 async def root():
-    """Root endpoint with API information."""
+
     return {
         "name": "IF Prototype A1 - Agent API",
         "version": "0.1.0",
@@ -516,9 +431,6 @@ async def root():
     }
 
 
-# ============================================================================
-# Main Entry Point
-# ============================================================================
 
 if __name__ == "__main__":
     import uvicorn

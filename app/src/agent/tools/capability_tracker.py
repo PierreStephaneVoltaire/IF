@@ -1,12 +1,4 @@
-"""Capability gap tracking tools.
 
-These tools allow the agent to log when it cannot fulfill a request,
-building a pipeline for tool development suggestions.
-
-Tools:
-- log_capability_gap: Log when agent cannot fulfill a request
-- list_capability_gaps: List all logged capability gaps by priority
-"""
 from __future__ import annotations
 from typing import List, Optional, Sequence
 
@@ -27,33 +19,16 @@ from memory.user_facts import (
     get_user_fact_store
 )
 
-# Session context injection (set by session.py via user_facts module)
 from agent.tools.user_facts import _current_cache_key
 
 
-# ============================================================================
-# Plain Python implementations
-# ============================================================================
 
 def _log_capability_gap(
     content: str,
     context: str,
     workaround: Optional[str] = None
 ) -> str:
-    """Log a capability gap when agent cannot fulfill a request.
-    
-    Use this when you encounter a request you cannot fulfill natively —
-    mathematical computation, email sending, calendar access, web browsing,
-    real-time data beyond available MCP servers, or any other functional limitation.
-    
-    Args:
-        content: What the agent cannot do (e.g., "Cannot send emails")
-        context: The specific request that triggered this gap
-        workaround: Any workaround suggested to the operator (optional)
-        
-    Returns:
-        Confirmation with gap ID
-    """
+
     try:
         store = get_user_fact_store()
         gap_id = store.log_capability_gap(
@@ -68,16 +43,7 @@ def _log_capability_gap(
 
 
 def _list_capability_gaps(min_triggers: int = 1) -> str:
-    """List all capability gaps ranked by priority.
-    
-    Shows gaps that have been triggered at least min_triggers times.
-    
-    Args:
-        min_triggers: Minimum trigger count to include (default 1)
-        
-    Returns:
-        Formatted list of capability gaps
-    """
+
     try:
         store = get_user_fact_store()
         gaps = store.list_capability_gaps(min_triggers=min_triggers)
@@ -99,9 +65,6 @@ def _list_capability_gaps(min_triggers: int = 1) -> str:
         return f"Error listing gaps: {str(e)}"
 
 
-# ============================================================================
-# Action classes
-# ============================================================================
 
 class LogCapabilityGapAction(Action):
     content: str = Field(description="What the agent cannot do")
@@ -113,9 +76,6 @@ class ListCapabilityGapsAction(Action):
     min_triggers: int = Field(default=1, description="Minimum trigger count to include")
 
 
-# ============================================================================
-# Observation classes
-# ============================================================================
 
 class LogCapabilityGapObservation(Observation):
     pass
@@ -125,9 +85,6 @@ class ListCapabilityGapsObservation(Observation):
     pass
 
 
-# ============================================================================
-# Executor classes
-# ============================================================================
 
 class LogCapabilityGapExecutor(ToolExecutor[LogCapabilityGapAction, LogCapabilityGapObservation]):
     def __call__(self, action: LogCapabilityGapAction, conversation=None) -> LogCapabilityGapObservation:
@@ -141,9 +98,6 @@ class ListCapabilityGapsExecutor(ToolExecutor[ListCapabilityGapsAction, ListCapa
         return ListCapabilityGapsObservation.from_text(result)
 
 
-# ============================================================================
-# ToolDefinition classes
-# ============================================================================
 
 class LogCapabilityGapTool(ToolDefinition[LogCapabilityGapAction, LogCapabilityGapObservation]):
     @classmethod
@@ -174,16 +128,13 @@ class ListCapabilityGapsTool(ToolDefinition[ListCapabilityGapsAction, ListCapabi
         )]
 
 
-# ============================================================================
-# Registration
-# ============================================================================
 
 register_tool("LogCapabilityGapTool", LogCapabilityGapTool)
 register_tool("ListCapabilityGapsTool", ListCapabilityGapsTool)
 
 
 def get_capability_tracker_tools() -> List[Tool]:
-    """Return Tool specs for capability tracking tools."""
+
     return [
         Tool(name="LogCapabilityGapTool"),
         Tool(name="ListCapabilityGapsTool"),

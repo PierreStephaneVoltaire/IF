@@ -10,9 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-# ============================================================================
-# Required Environment Variables
-# ============================================================================
+
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 if not OPENROUTER_API_KEY:
@@ -21,9 +19,6 @@ if not OPENROUTER_API_KEY:
 LLM_API_KEY = os.getenv("LLM_API_KEY", OPENROUTER_API_KEY)  # Default to OPENROUTER_API_KEY
 
 
-# ============================================================================
-# Optional Environment Variables with Defaults
-# ============================================================================
 
 # LLM Configuration
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
@@ -49,9 +44,7 @@ SCORING_MODELS: List[str] = [
 
 MENTAL_HEALTH_PRESET = os.getenv("MENTAL_HEALTH_PRESET", "mental-health")
 
-# ============================================================================
-# MCP Server API Keys Configuration
-# ============================================================================
+
 
 # Google Sheets MCP server
 GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")
@@ -93,9 +86,7 @@ CHANNEL_DEBOUNCE_SECONDS = float(os.getenv("CHANNEL_DEBOUNCE_SECONDS", "30"))
 CHANNEL_MAX_CHUNK_CHARS = int(os.getenv("CHANNEL_MAX_CHUNK_CHARS", "1500"))
 OPENWEBUI_POLL_INTERVAL = float(os.getenv("OPENWEBUI_POLL_INTERVAL", "5.0"))
 
-# ============================================================================
-# Heartbeat Configuration (Phase 5)
-# ============================================================================
+
 
 HEARTBEAT_ENABLED: bool = os.getenv("HEARTBEAT_ENABLED", "true").lower() == "true"
 HEARTBEAT_IDLE_HOURS: float = float(os.getenv("HEARTBEAT_IDLE_HOURS", "6.0"))
@@ -103,9 +94,6 @@ HEARTBEAT_COOLDOWN_HOURS: float = float(os.getenv("HEARTBEAT_COOLDOWN_HOURS", "6
 HEARTBEAT_QUIET_HOURS: str = os.getenv("HEARTBEAT_QUIET_HOURS", "23:00-07:00")  # UTC
 
 
-# ============================================================================
-# Reflection Engine Configuration (Phase4 - Part4 of plan.md)
-# ============================================================================
 
 REFLECTION_ENABLED: bool = os.getenv("REFLECTION_ENABLED", "true").lower() == "true"
 REFLECTION_PERIODIC_HOURS: float = float(os.getenv("REFLECTION_PERIODIC_HOURS", "6.0"))
@@ -120,9 +108,6 @@ REFLECTION_THRESHOLD_OPINIONS_NO_RESPONSE: int = int(os.getenv("REFLECTION_THRES
 CAPABILITY_GAP_PROMOTION_THRESHOLD: int = int(os.getenv("CAPABILITY_GAP_PROMOTION_THRESHOLD", "3"))
 
 
-# ============================================================================
-# OpenRouter API Configuration
-# ============================================================================
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_HEADERS = {
@@ -133,20 +118,12 @@ OPENROUTER_HEADERS = {
 }
 
 
-# ============================================================================
-# OpenWebUI Task Detection
-# ============================================================================
-
 OPENWEBUI_TASK_MARKERS = [
     "### Task:\nSuggest 3-5 relevant follow-up",
     "### Task:\nGenerate a concise, 3-5 word title",
     "### Task:\nGenerate 1-3 broad tags",
 ]
 
-
-# ============================================================================
-# MCP Server Configuration (Deprecated - use mcp_servers.config instead)
-# ============================================================================
 
 # Part6: This map is deprecated. Import from mcp_servers.config instead.
 # The actual PRESET_MCP_MAP is in src/mcp_servers/config.py which has been
@@ -169,9 +146,6 @@ PRESET_MCP_MAP = {
 }
 
 
-# ============================================================================
-# Directive Store Configuration
-# ============================================================================
 
 DIRECTIVE_STORE_ENABLED: bool = os.getenv("DIRECTIVE_STORE_ENABLED", "true").lower() == "true"
 DYNAMODB_DIRECTIVES_TABLE = os.getenv("DYNAMODB_DIRECTIVES_TABLE", "if-directives")
@@ -181,10 +155,6 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 # Examples: "anthropic/claude-opus-4", "anthropic/claude-3.5-sonnet", "openai/gpt-4o"
 DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "anthropic/claude-opus-4")
 
-
-# ============================================================================
-# Terminal Container Configuration (Phase 0-1)
-# ============================================================================
 
 TERMINAL_IMAGE = os.getenv("TERMINAL_IMAGE", "ghcr.io/open-webui/open-terminal:latest")
 TERMINAL_NETWORK = os.getenv("TERMINAL_NETWORK", "if-terminal-net")
@@ -200,9 +170,6 @@ TERMINAL_MAX_CONTAINERS = int(os.getenv("TERMINAL_MAX_CONTAINERS", "20"))
 TERMINAL_VOLUME_HOST_ROOT = os.getenv("TERMINAL_VOLUME_HOST_ROOT", "/var/lib/docker/volumes")
 
 
-# ============================================================================
-# Orchestrator Configuration (Parts7-9)
-# ============================================================================
 
 # Model for plan execution subagents
 ORCHESTRATOR_SUBAGENT_MODEL = os.getenv("ORCHESTRATOR_SUBAGENT_MODEL", "anthropic/claude-sonnet-4")
@@ -219,10 +186,6 @@ ORCHESTRATOR_MAX_TURNS = int(os.getenv("ORCHESTRATOR_MAX_TURNS", "15"))
 # Maximum turns for analysis subagents (usually need fewer)
 ORCHESTRATOR_ANALYSIS_MAX_TURNS = int(os.getenv("ORCHESTRATOR_ANALYSIS_MAX_TURNS", "10"))
 
-
-# ============================================================================
-# Logging Configuration
-# ============================================================================
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_FILE = os.getenv("LOG_FILE", "./logs/app.log")

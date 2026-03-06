@@ -1,11 +1,4 @@
-"""Orchestrator analyzer for parallel code analysis.
 
-This module implements Part8 of plan.md - the analyze_parallel tool that
-spawns multiple subagents in parallel to analyze code from different
-perspectives, then synthesizes the findings.
-
-Reference: plan.md Part8 - Orchestrator — Parallel Analysis (Planning Mode)
-"""
 from __future__ import annotations
 
 import asyncio
@@ -28,9 +21,6 @@ from .executor import run_subagent, StepResult
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# Perspective Prompts
-# ============================================================================
 
 PERSPECTIVE_PROMPTS: Dict[str, str] = {
     "security": (
@@ -84,9 +74,6 @@ PERSPECTIVE_PROMPTS: Dict[str, str] = {
 }
 
 
-# ============================================================================
-# Tool Schema
-# ============================================================================
 
 ANALYZE_PARALLEL_SCHEMA = {
     "name": "analyze_parallel",
@@ -120,9 +107,6 @@ ANALYZE_PARALLEL_SCHEMA = {
 }
 
 
-# ============================================================================
-# Main Tool: analyze_parallel
-# ============================================================================
 
 async def analyze_parallel(
     context: str,
@@ -132,26 +116,10 @@ async def analyze_parallel(
     chat_id: str,
     http_client: Optional[httpx.AsyncClient] = None,
 ) -> str:
-    """Run parallel analysis from multiple perspectives.
-    
-    Spawns subagents for each perspective in parallel, then synthesizes
-    results into a single prioritized report.
-    
-    Args:
-        context: What to analyze and any specific concerns
-        target_paths: Optional list of paths to focus on
-        perspectives: List of perspectives (default: security, performance, architecture)
-        chat_id: Chat ID for terminal container access
-        http_client: Optional HTTP client for API calls
-        
-    Returns:
-        Summary string with path to synthesized report
-    """
-    # Default perspectives
+
     if perspectives is None:
         perspectives = ["security", "performance", "architecture"]
     
-    # Filter to valid perspectives
     valid_perspectives = [p for p in perspectives if p in PERSPECTIVE_PROMPTS]
     if not valid_perspectives:
         return "ERROR: No valid perspectives specified. Valid options: " + ", ".join(PERSPECTIVE_PROMPTS.keys())
@@ -164,15 +132,12 @@ async def analyze_parallel(
         should_close = True
     
     try:
-        # Ensure findings directory exists
         await _ensure_findings_dir(chat_id, http_client)
         
-        # Build full context with target paths
         full_context = context
         if target_paths:
             full_context += "\n\nTarget paths to focus on:\n" + "\n".join(f"- {p}" for p in target_paths)
         
-        # Launch all perspectives concurrently
         tasks = []
         for p in valid_perspectives:
             prompt = PERSPECTIVE_PROMPTS[p] + f"\n\n## Context\n{full_context}"
@@ -189,10 +154,8 @@ async def analyze_parallel(
                 )
             )
         
-        # Wait for all perspectives to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Count successes
         succeeded = 0
         for i, r in enumerate(results):
             if isinstance(r, Exception):
@@ -204,7 +167,6 @@ async def analyze_parallel(
                 error = r.error if isinstance(r, StepResult) else "Unknown error"
                 logger.warning(f"[Analyzer] Perspective {valid_perspectives[i]} failed: {error}")
         
-        # Run synthesizer
         logger.info("[Analyzer] Running synthesizer...")
         synth_result = await run_subagent(
             system_prompt=(
@@ -233,7 +195,6 @@ async def analyze_parallel(
             http_client=http_client,
         )
         
-        # Build result message
         lines = [
             f"Parallel analysis complete. {succeeded}/{len(valid_perspectives)} perspectives succeeded.",
             f"Synthesized report: /home/user/workspace/findings/synthesized.md",
@@ -255,12 +216,7 @@ async def analyze_parallel(
 
 
 async def _ensure_findings_dir(chat_id: str, http_client: httpx.AsyncClient) -> None:
-    """Ensure the findings directory exists.
-    
-    Args:
-        chat_id: Chat ID for terminal container access
-        http_client: HTTP client for API calls
-    """
+
     from agent.tools.terminal_tools import terminal_execute
     
     try:
@@ -273,31 +229,16 @@ async def _ensure_findings_dir(chat_id: str, http_client: httpx.AsyncClient) -> 
         logger.warning(f"[Analyzer] Failed to create findings dir: {e}")
 
 
-# ============================================================================
-# Tool Registration
-# ============================================================================
 
 def get_analyzer_tools(
     chat_id: str,
     http_client: Optional[httpx.AsyncClient] = None,
 ) -> List[Tool]:
-    """Get analyzer tools bound to a chat.
-    
-    This function creates tool instances with the chat_id
-    pre-bound for use in the OpenHands agent.
-    
-    Args:
-        chat_id: Unique chat identifier
-        http_client: Optional shared HTTP client for connection pooling
-        
-    Returns:
-        List of Tool instances for analyzer operations
-    """
+
     from functools import partial
     
     tools = []
     
-    # analyze_parallel tool
     tools.append(Tool(
         name="analyze_parallel",
         description="""Spawn parallel analysis subagents that each review code/context from different perspectives.
