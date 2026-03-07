@@ -379,7 +379,11 @@ After completing work that creates or modifies files, emit a single `FILES:` lin
 FILES: /home/user/workspace/output.csv (cleaned sales data), /home/user/workspace/chart.png (revenue by quarter)
 ```
 This line will be automatically processed and removed before display.
-Get the terminal environment system prompt section.
+"""
+
+
+def get_terminal_system_prompt() -> str:
+    """Get the terminal environment system prompt section.
     
     Returns:
         System prompt section describing terminal capabilities

@@ -26,7 +26,7 @@ from routing.commands import parse_command, CommandAction
 from routing.topic_shift import should_check_shift, topic_has_shifted
 from presets.loader import get_preset_manager
 from agent.session import get_or_create_session, execute_agent
-from src.terminal.files import strip_files_line, log_file_refs, FilesStripBuffer, FileRef
+from terminal.files import strip_files_line, log_file_refs, FilesStripBuffer, FileRef
 
 if TYPE_CHECKING:
     import httpx
