@@ -18,6 +18,7 @@ from config import (
     OPENROUTER_API_KEY,
     LLM_BASE_URL,
 )
+from agent.prompts.loader import render_template
 
 
 logger = logging.getLogger(__name__)
@@ -70,25 +71,6 @@ def _extract_keywords(text: str) -> set:
     return filtered if filtered else words
 
 
-TOPIC_SHIFT_PROMPT = """You are a conversation topic classifier. Your ONLY job is to determine whether the conversation topic has SIGNIFICANTLY changed.
-
-## PREVIOUS CONVERSATION CONTEXT (used to select the current specialist):
-{anchor_messages}
-
-## NEW MESSAGES (most recent):
-{current_messages}
-
-## RULES:
-- A topic shift means the user is now asking about something fundamentally different (e.g., code → finance, architecture → health, debugging Python → discussing ETF performance).
-- NOT a shift: continuing the same topic with follow-ups, clarifications, or acknowledgments.
-- NOT a shift: social noise mid-conversation ("thanks", "ok", "got it", "nice", "lol").
-- NOT a shift: moving between sub-topics within the same domain (Python async → Python decorators, Terraform → CloudFormation).
-- IS a shift: moving between major domains (code → powerlifting, architecture → mental health, finance → DevOps).
-- When in doubt, answer false. Unnecessary reclassification is worse than one stale turn.
-
-Respond with ONLY the word "true" or "false". Nothing else."""
-
-
 async def topic_has_shifted(
     anchor_messages: List[str],
     current_messages: List[str],
@@ -111,7 +93,8 @@ async def topic_has_shifted(
         f"- {msg}" for msg in current_messages
     )
 
-    prompt = TOPIC_SHIFT_PROMPT.format(
+    prompt = render_template(
+        "topic_shift.j2",
         anchor_messages=anchor_block,
         current_messages=current_block,
     )

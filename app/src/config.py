@@ -153,7 +153,19 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
 # Model for directive content rewriting (configurable via env var)
 # Examples: "anthropic/claude-opus-4", "anthropic/claude-3.5-sonnet", "openai/gpt-4o"
-DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "anthropic/claude-opus-4")
+DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "anthropic/claude-opus-4.6")
+
+# Model for conversation condensation (summarizing long conversations)
+CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "anthropic/claude-3-haiku")
+
+# Fallback model for heartbeat pondering (when pondering preset unavailable)
+HEARTBEAT_FALLBACK_MODEL = os.getenv("HEARTBEAT_FALLBACK_MODEL", "openai/gpt-4o-mini")
+
+# Fallback model for presets without defined models
+PRESET_FALLBACK_MODEL = os.getenv("PRESET_FALLBACK_MODEL", "anthropic/claude-3.5-sonnet")
+
+# Model for reflection engine and opinion formation
+REFLECTION_MODEL = os.getenv("REFLECTION_MODEL", "openrouter/@preset/general")
 
 
 TERMINAL_IMAGE = os.getenv("TERMINAL_IMAGE", "ghcr.io/open-webui/open-terminal:latest")

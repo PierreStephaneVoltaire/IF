@@ -24,6 +24,7 @@ from config import (
     MESSAGE_WINDOW,
     OPENROUTER_API_KEY,
     LLM_BASE_URL,
+    CONDENSER_MODEL,
 )
 
 
@@ -134,7 +135,7 @@ def extract_older_messages(
 async def condense_with_openrouter(
     messages: List[Dict[str, Any]],
     http_client: Any,
-    model: str = "anthropic/claude-3-haiku"
+    model: str = None
 ) -> str:
     """Condense conversation history using OpenRouter.
     
@@ -146,11 +147,15 @@ async def condense_with_openrouter(
     Args:
         messages: Messages to condense (older messages, not recent window)
         http_client: Async HTTP client for API calls
-        model: Model to use for condensation (default: fast/cheap model)
+        model: Model to use for condensation (default: from CONDENSER_MODEL env var)
         
     Returns:
         Condensed summary text
     """
+    # Use config default if no model specified
+    if model is None:
+        model = CONDENSER_MODEL
+    
     # Build conversation text for condensation
     conversation_text = ""
     for msg in messages:
@@ -218,7 +223,7 @@ Provide a concise summary that captures the essential information needed for con
 async def condense_conversation(
     messages: List[Dict[str, Any]],
     http_client: Any,
-    condensation_model: str = "anthropic/claude-3-haiku"
+    condensation_model: str = None
 ) -> CondensationResult:
     """Condense a conversation if it exceeds the token threshold.
     
@@ -231,11 +236,15 @@ async def condense_conversation(
     Args:
         messages: Full message list
         http_client: Async HTTP client for API calls
-        condensation_model: Model to use for condensation
+        condensation_model: Model to use for condensation (default: from CONDENSER_MODEL env var)
         
     Returns:
         CondensationResult with condensed messages
     """
+    # Use config default if no model specified
+    if condensation_model is None:
+        condensation_model = CONDENSER_MODEL
+    
     # Estimate original token count
     original_tokens = estimate_token_count(messages)
     

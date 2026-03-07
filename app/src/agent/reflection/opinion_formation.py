@@ -11,33 +11,14 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, List, Dict
 from dataclasses import dataclass
 
+from config import REFLECTION_MODEL
+from agent.prompts.loader import render_template
+
 if TYPE_CHECKING:
     from memory.user_facts import UserFactStore
     import httpx
 
 logger = logging.getLogger(__name__)
-
-
-# Prompt for opinion formation
-OPINION_FORMATION_PROMPT = """
-You are forming an opinion on a topic where the operator has expressed a position.
-
-Topic: {topic}
-Operator's Position: {user_position}
-
-Based on your knowledge and principles:
-1. Do you agree, partially agree, or disagree with this position?
-2. What is your reasoning?
-3. How confident are you (0.0-1.0)?
-
-Respond in JSON format:
-{{
-    "agreement_level": "agree" | "partial" | "disagree" | "insufficient_data",
-    "agent_position": "Your position in1-2 sentences",
-    "agent_reasoning": "Your reasoning in2-3 sentences",
-    "confidence": 0.0-1.0
-}}
-"""
 
 
 class OpinionFormer:
@@ -57,15 +38,19 @@ class OpinionFormer:
         self,
         store: "UserFactStore",
         http_client: "httpx.AsyncClient",
-        llm_model: str = "openrouter/@preset/general",
+        llm_model: str = None,
     ):
         """Initialize opinion former.
         
         Args:
             store: UserFactStore for reading/writing facts
             http_client: HTTP client for LLM calls
-            llm_model: Model to use for opinion formation
+            llm_model: Model to use for opinion formation (default: from REFLECTION_MODEL env var)
         """
+        # Use config default if no model specified
+        if llm_model is None:
+            llm_model = REFLECTION_MODEL
+        
         self.store = store
         self.http_client = http_client
         self.llm_model = llm_model
@@ -138,7 +123,8 @@ class OpinionFormer:
         
         try:
             # Call LLM to form opinion
-            prompt = OPINION_FORMATION_PROMPT.format(
+            prompt = render_template(
+                "opinion_formation.j2",
                 topic=topic,
                 user_position=user_position,
             )

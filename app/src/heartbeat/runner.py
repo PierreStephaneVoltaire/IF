@@ -15,6 +15,7 @@ from config import (
     HEARTBEAT_QUIET_HOURS,
     LLM_BASE_URL,
     LLM_API_KEY,
+    HEARTBEAT_FALLBACK_MODEL,
 )
 from memory.user_facts import FactCategory
 
@@ -285,7 +286,7 @@ class HeartbeatRunner:
             from presets.loader import get_preset_manager
             preset_manager = get_preset_manager()
             pondering_preset = preset_manager.get_preset("pondering")
-            model = pondering_preset.model if pondering_preset else "openai/gpt-4o-mini"
+            model = pondering_preset.model if pondering_preset else HEARTBEAT_FALLBACK_MODEL
             
             response = await call_llm(
                 model=model,

@@ -28,6 +28,7 @@ from config import (
     PERSISTENCE_DIR,
     LLM_API_KEY,
     LLM_BASE_URL,
+    PRESET_FALLBACK_MODEL,
 )
 from presets.loader import PresetManager
 from mcp_servers.config import resolve_mcp_config, get_preset_servers
@@ -313,7 +314,7 @@ def get_model_for_preset(preset_slug: str, preset_manager: PresetManager) -> str
     preset = preset_manager.get_preset(preset_slug)
     if not preset:
         # Fallback to a capable general model
-        return "anthropic/claude-3.5-sonnet"
+        return PRESET_FALLBACK_MODEL
     
     # Get model from preset
     model = preset.model
@@ -321,7 +322,7 @@ def get_model_for_preset(preset_slug: str, preset_manager: PresetManager) -> str
         return model
     
     # Fallback
-    return "anthropic/claude-3.5-sonnet"
+    return PRESET_FALLBACK_MODEL
 
 
 async def execute_agent(

@@ -29,7 +29,9 @@ from config import (
     REFLECTION_THRESHOLD_GAPS_NO_CRITERIA,
     REFLECTION_THRESHOLD_OPINIONS_NO_RESPONSE,
     CAPABILITY_GAP_PROMOTION_THRESHOLD,
+    REFLECTION_MODEL,
 )
+from agent.prompts.loader import load_prompt
 
 if TYPE_CHECKING:
     from memory.user_facts import UserFactStore
@@ -44,45 +46,6 @@ _reflection_engine: Optional["ReflectionEngine"] = None
 def get_reflection_engine() -> Optional["ReflectionEngine"]:
     """Get the global reflection engine instance."""
     return _reflection_engine
-
-
-# Reflection prompt template for LLM-assisted analysis
-REFLECTION_PROMPT = """
-You are performing a reflection analysis. You have access to:
-
-1. Recent conversation summaries
-2. Facts stored recently
-3. Existing patterns in the knowledge store
-4. Current capability gaps
-5. Recent misconceptions logged
-
-Produce a structured reflection with these sections:
-
-## What Worked
-- Approaches, framings, or strategies that produced good operator outcomes
-
-## What Failed
-- Approaches that fell flat, confused the operator, or were rejected
-
-## Capability Gaps
-- Things the operator needed that this system cannot currently do
-- For each: describe the need, frequency if known, and what a solution would look like
-
-## Misconceptions Detected
-- Any factual errors or misunderstandings the operator demonstrated
-- For each: the topic, what they got wrong, what's correct, suggested reading
-
-## Pattern Observations
-- Any recurring themes, temporal patterns, or behavioral signals
-- Connect to existing patterns if applicable
-
-## Opinion Formation
-- Any topics where the operator expressed a strong position
-- Your assessment: agree/disagree/partial, with reasoning
-
-## Meta Notes
-- Anything else worth logging for future sessions
-"""
 
 
 class ReflectionEngine:
@@ -105,15 +68,18 @@ class ReflectionEngine:
         self,
         store: "UserFactStore",
         http_client: "httpx.AsyncClient",
-        llm_model: str = "openrouter/@preset/general",
+        llm_model: str = None,
     ):
         """Initialize the reflection engine.
         
         Args:
             store: UserFactStore for reading/writing facts
             http_client: HTTP client for LLM calls
-            llm_model: Model to use for reflection analysis
+            llm_model: Model to use for reflection analysis (default: from REFLECTION_MODEL env var)
         """
+        # Use config default if no model specified
+        if llm_model is None:
+            llm_model = REFLECTION_MODEL
         self.store = store
         self.http_client = http_client
         self.llm_model = llm_model

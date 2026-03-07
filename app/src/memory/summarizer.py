@@ -9,6 +9,7 @@ from typing import List, Dict, Any, TYPE_CHECKING
 from datetime import datetime
 
 from config import LLM_BASE_URL, OPENROUTER_API_KEY, SUGGESTION_MODEL
+from agent.prompts.loader import render_template
 
 from .user_facts import (
     UserFact,
@@ -22,14 +23,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-SUMMARY_PROMPT = """Summarize this conversation exchange in 2-3 sentences.
-Focus on: what was discussed, any decisions made, and topics covered.
-
-Conversation:
-{conversation}
-
-Respond with only the summary, no preamble."""
 
 
 async def summarize_and_store(
@@ -73,7 +66,7 @@ async def summarize_and_store(
             conv_lines.append(f"{role}: {content}")
         
         conversation = "\n".join(conv_lines)
-        prompt = SUMMARY_PROMPT.format(conversation=conversation)
+        prompt = render_template("summary.j2", conversation=conversation)
         
         # Generate summary using cheap model
         resp = await http_client.post(

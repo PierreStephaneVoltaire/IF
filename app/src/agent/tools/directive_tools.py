@@ -19,28 +19,7 @@ from config import (
     DIRECTIVE_REWRITE_MODEL,
 )
 from storage.factory import get_directive_store
-
-
-REWRITE_PROMPT = """You are rewriting a directive for an AI agent's behavioral system.
-
-The directive system uses terse, imperative prose. No filler. No corporate warmth.
-Each directive reads like a standing order — clear conditions, clear behavior, 
-clear exceptions.
-
-Reference style (do not copy, match the voice):
----
-When the operator submits a message for review before sending,
-treat it as a critical verification task. Verify all factual
-claims against available knowledge and tools. Flag statements
-that are incorrect, misleading, or unsupported — even if the
-operator appears confident.
----
-
-Rewrite the following into a single directive in that voice. 
-Output the directive text only, no preamble, no explanation.
-
-Operator intent:
-{raw_content}"""
+from agent.prompts.loader import render_template
 
 
 def _rewrite_content_via_llm(raw_content: str) -> str:
@@ -65,10 +44,11 @@ def _rewrite_content_via_llm(raw_content: str) -> str:
         "Content-Type": "application/json",
     }
     
+    prompt = render_template("directive_rewrite.j2", raw_content=raw_content)
     payload = {
         "model": DIRECTIVE_REWRITE_MODEL,
         "messages": [
-            {"role": "user", "content": REWRITE_PROMPT.format(raw_content=raw_content)}
+            {"role": "user", "content": prompt}
         ],
         "max_tokens": 1000,
         "temperature": 0.3,
