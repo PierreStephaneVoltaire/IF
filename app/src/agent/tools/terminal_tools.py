@@ -1,38 +1,47 @@
+"""Terminal tools using OpenHands SDK ToolDefinition pattern.
 
+This module provides tools for executing commands in a persistent terminal environment.
+All tools are registered with the OpenHands SDK tool registry.
+"""
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, Optional, Self
 
 import httpx
+from pydantic import Field
+from rich.text import Text
+
+from openhands.sdk.tool.tool import (
+    Action,
+    Observation,
+    ToolAnnotations,
+    ToolDefinition,
+    ToolExecutor,
+)
+from openhands.sdk import register_tool
 
 from terminal import (
     CommandResult,
     create_terminal_client,
     get_lifecycle_manager,
-    TerminalContainer,
-    TerminalLifecycleManager,
 )
 
-from functools import partial
-
 if TYPE_CHECKING:
-    from openhands.sdk import Tool
+    from openhands.sdk.conversation.state import ConversationState
 
 logger = logging.getLogger(__name__)
 
 
-
+# Constants
 MAX_OUTPUT_LENGTH = 8000
-
 DEFAULT_WORKDIR = "/home/user/workspace"
-
 DEFAULT_TIMEOUT = 120.0
 
 
-
 def truncate_output(output: str, max_length: int = MAX_OUTPUT_LENGTH) -> str:
-
+    """Truncate output to max_length, showing beginning and end."""
     if len(output) <= max_length:
         return output
     
@@ -46,7 +55,7 @@ def truncate_output(output: str, max_length: int = MAX_OUTPUT_LENGTH) -> str:
 
 
 def format_command_result(result: CommandResult) -> str:
-
+    """Format a command result for display."""
     output_parts = []
     
     if result.stdout:
@@ -62,208 +71,11 @@ def format_command_result(result: CommandResult) -> str:
     return truncate_output(output)
 
 
+# =============================================================================
+# Terminal Execute Tool
+# =============================================================================
 
-async def terminal_execute(
-    command: str,
-    workdir: str = DEFAULT_WORKDIR,
-    timeout: float = DEFAULT_TIMEOUT,
-    *,
-    chat_id: str,
-    http_client: Optional[httpx.AsyncClient] = None,
-) -> str:
-
-    try:
-        lifecycle = get_lifecycle_manager()
-        if lifecycle is None:
-            return "ERROR: Terminal system not initialized"
-        
-        container = await lifecycle.get_or_create(chat_id)
-        
-        should_close = False
-        if http_client is None:
-            http_client = httpx.AsyncClient()
-            should_close = True
-        
-        try:
-            client = create_terminal_client(container, http_client)
-            
-            result = await client.execute_command(
-                command,
-                workdir=workdir,
-                timeout=timeout,
-            )
-            
-            return format_command_result(result)
-            
-        finally:
-            if should_close:
-                await http_client.aclose()
-            
-    except httpx.TimeoutException:
-        return f"ERROR: Command timed out after {timeout}s"
-    
-    except httpx.HTTPStatusError as e:
-        return f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
-    
-    except Exception as e:
-        logger.error(f"[terminal_execute] Error: {e}")
-        return f"ERROR: {type(e).__name__}: {e}"
-
-
-async def terminal_upload(
-    path: str,
-    content: str,
-    *,
-    chat_id: str,
-    http_client: Optional[httpx.AsyncClient] = None,
-) -> str:
-
-    try:
-        lifecycle = get_lifecycle_manager()
-        if lifecycle is None:
-            return "ERROR: Terminal system not initialized"
-        
-        container = await lifecycle.get_or_create(chat_id)
-        
-        if not path.startswith("/"):
-            path = f"{DEFAULT_WORKDIR}/{path}"
-        
-        should_close = False
-        if http_client is None:
-            http_client = httpx.AsyncClient()
-            should_close = True
-        
-        try:
-            client = create_terminal_client(container, http_client)
-            
-            await client.upload_text_file(path, content)
-            
-            return f"File uploaded successfully: {path}"
-            
-        finally:
-            if should_close:
-                await http_client.aclose()
-            
-    except httpx.HTTPStatusError as e:
-        return f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
-    
-    except Exception as e:
-        logger.error(f"[terminal_upload] Error: {e}")
-        return f"ERROR: {type(e).__name__}: {e}"
-
-
-async def terminal_list_files(
-    path: str = DEFAULT_WORKDIR,
-    *,
-    chat_id: str,
-    http_client: Optional[httpx.AsyncClient] = None,
-) -> str:
-
-    try:
-        lifecycle = get_lifecycle_manager()
-        if lifecycle is None:
-            return "ERROR: Terminal system not initialized"
-        
-        container = await lifecycle.get_or_create(chat_id)
-        
-        should_close = False
-        if http_client is None:
-            http_client = httpx.AsyncClient()
-            should_close = True
-        
-        try:
-            client = create_terminal_client(container, http_client)
-            
-            entries = await client.list_files(path)
-            
-            if not entries:
-                return f"Directory {path} is empty or does not exist."
-            
-            lines = [
-                "NAME".ljust(40) + "TYPE".ljust(8) + "SIZE".ljust(12) + "MODIFIED",
-            ]
-            
-            for entry in sorted(entries, key=lambda e: (not e.is_dir, e.name)):
-                entry_type = "DIR" if entry.is_dir else "FILE"
-                name = entry.name + "/" if entry.is_dir else entry.name
-                size = str(entry.size) if not entry.is_dir else "-"
-                modified_str = entry.modified[:19] if entry.modified else ""
-                lines.append(
-                    name[:40].ljust(40) +
-                    entry_type.ljust(8) +
-                    size.ljust(12) +
-                    modified_str
-                )
-            
-            return "\n".join(lines)
-            
-        finally:
-            if should_close:
-                await http_client.aclose()
-            
-    except httpx.HTTPStatusError as e:
-        return f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
-    
-    except Exception as e:
-        logger.error(f"[terminal_list_files] Error: {e}")
-        return f"ERROR: {type(e).__name__}: {e}"
-
-
-async def terminal_download(
-    path: str,
-    *,
-    chat_id: str,
-    http_client: Optional[httpx.AsyncClient] = None,
-) -> str:
-
-    try:
-        lifecycle = get_lifecycle_manager()
-        if lifecycle is None:
-            return "ERROR: Terminal system not initialized"
-        
-        container = await lifecycle.get_or_create(chat_id)
-        
-        if not path.startswith("/"):
-            path = f"{DEFAULT_WORKDIR}/{path}"
-        
-        should_close = False
-        if http_client is None:
-            http_client = httpx.AsyncClient()
-            should_close = True
-        
-        try:
-            client = create_terminal_client(container, http_client)
-            
-            content = await client.download_text_file(path)
-            
-            if len(content) > MAX_OUTPUT_LENGTH:
-                content = truncate_output(content)
-                content = f"[File truncated - {len(content)} chars shown]\n\n{content}"
-            
-            return content
-            
-        finally:
-            if should_close:
-                await http_client.aclose()
-            
-    except httpx.HTTPStatusError as e:
-        return f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
-    
-    except Exception as e:
-        logger.error(f"[terminal_download] Error: {e}")
-        return f"ERROR: {type(e).__name__}: {e}"
-
-
-
-def get_terminal_tools(chat_id: str) -> List[Tool]:
-
-    from openhands.sdk import Tool
-    
-    tools = []
-    
-    tools.append(Tool(
-        name="terminal_execute",
-        description="""Execute a shell command in the persistent terminal environment.
+TERMINAL_EXECUTE_DESCRIPTION = """Execute a shell command in the persistent terminal environment.
 
 The terminal preserves state across calls (installed packages, environment variables, running processes). Working directory is /home/user/workspace by default.
 
@@ -275,90 +87,575 @@ Use this for:
 - Build commands and test suites
 - Data processing
 
-After completing work that creates or modifies files, remember to list them with terminal_list_files.""",
-        parameters={
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The shell command to execute. Can be a single command or a multi-line script. Supports pipes, redirects, and chaining (&&, ||, ;)."
-                },
-                "workdir": {
-                    "type": "string",
-                    "description": "Working directory for the command. Defaults to /home/user/workspace.",
-                    "default": "/home/user/workspace"
-                },
-                "timeout": {
-                    "type": "number",
-                    "description": "Maximum execution time in seconds. Defaults to 120.",
-                    "default": 120
-                }
-            },
-            "required": ["command"]
-        },
-        function=partial(terminal_execute, chat_id=chat_id),
-    ))
-    
-    tools.append(Tool(
-        name="terminal_upload",
-        description="""Upload a file to the terminal workspace.
+After completing work that creates or modifies files, remember to list them with terminal_list_files."""
 
-Use this to provide data files, scripts, or configuration that the terminal needs. For text files only.""",
-        parameters={
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Destination path inside the terminal. Relative paths are resolved from /home/user/workspace."
-                },
-                "content": {
-                    "type": "string",
-                    "description": "File content as a string."
-                }
-            },
-            "required": ["path", "content"]
-        },
-        function=partial(terminal_upload, chat_id=chat_id),
-    ))
-    
-    tools.append(Tool(
-        name="terminal_list_files",
-        description="""List files and directories in the terminal workspace.
 
-Returns names, sizes, and modification times. Use this to explore the workspace and find files created by commands.""",
-        parameters={
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Directory to list. Defaults to /home/user/workspace.",
-                    "default": "/home/user/workspace"
-                }
-            }
-        },
-        function=partial(terminal_list_files, chat_id=chat_id),
-    ))
+class TerminalExecuteAction(Action):
+    """Action for executing a terminal command."""
     
-    tools.append(Tool(
-        name="terminal_download",
-        description="""Download a file from the terminal workspace.
-
-Use this to retrieve file contents. For text files only. For large files, consider using terminal_execute with head/tail.""",
-        parameters={
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file inside the terminal. Relative paths are resolved from /home/user/workspace."
-                }
-            },
-            "required": ["path"]
-        },
-        function=partial(terminal_download, chat_id=chat_id),
-    ))
+    command: str = Field(
+        description="The shell command to execute. Can be a single command or a multi-line script. Supports pipes, redirects, and chaining (&&, ||, ;)."
+    )
+    workdir: str = Field(
+        default=DEFAULT_WORKDIR,
+        description="Working directory for the command. Defaults to /home/user/workspace.",
+    )
+    timeout: float = Field(
+        default=DEFAULT_TIMEOUT,
+        description="Maximum execution time in seconds. Defaults to 120.",
+    )
     
-    return tools
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this action."""
+        content = Text()
+        content.append("Execute command:\n", style="bold blue")
+        content.append(f"$ {self.command}\n", style="green")
+        content.append(f"Working dir: {self.workdir}", style="dim")
+        return content
 
+
+class TerminalExecuteObservation(Observation):
+    """Observation from terminal command execution."""
+    
+    output: str = Field(default="", description="The command output (stdout/stderr)")
+    exit_code: int = Field(default=0, description="The command exit code")
+    
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this observation."""
+        content = Text()
+        content.append("Command output:\n", style="bold blue")
+        content.append(self.output)
+        return content
+
+
+class TerminalExecuteExecutor(ToolExecutor):
+    """Executor for terminal commands."""
+    
+    def __init__(self, chat_id: str):
+        self.chat_id = chat_id
+    
+    def __call__(
+        self,
+        action: TerminalExecuteAction,
+        conversation: Any = None,
+    ) -> TerminalExecuteObservation:
+        """Execute the terminal command."""
+        import asyncio
+        
+        # Run the async function in the event loop
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        
+        async def _execute():
+            try:
+                lifecycle = get_lifecycle_manager()
+                if lifecycle is None:
+                    return TerminalExecuteObservation(
+                        output="ERROR: Terminal system not initialized",
+                        exit_code=-1
+                    )
+                
+                container = await lifecycle.get_or_create(self.chat_id)
+                
+                async with httpx.AsyncClient() as http_client:
+                    client = create_terminal_client(container, http_client)
+                    
+                    result = await client.execute_command(
+                        action.command,
+                        workdir=action.workdir,
+                        timeout=action.timeout,
+                    )
+                    
+                    return TerminalExecuteObservation(
+                        output=format_command_result(result),
+                        exit_code=result.exit_code
+                    )
+                    
+            except httpx.TimeoutException:
+                return TerminalExecuteObservation(
+                    output=f"ERROR: Command timed out after {action.timeout}s",
+                    exit_code=-1
+                )
+            
+            except httpx.HTTPStatusError as e:
+                return TerminalExecuteObservation(
+                    output=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}",
+                    exit_code=-1
+                )
+            
+            except Exception as e:
+                logger.error(f"[terminal_execute] Error: {e}")
+                return TerminalExecuteObservation(
+                    output=f"ERROR: {type(e).__name__}: {e}",
+                    exit_code=-1
+                )
+        
+        if loop and loop.is_running():
+            # We're in an async context, create a task
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _execute())
+                return future.result()
+        else:
+            return asyncio.run(_execute())
+
+
+class TerminalExecuteTool(ToolDefinition[TerminalExecuteAction, TerminalExecuteObservation]):
+    """Tool for executing shell commands in a persistent terminal."""
+    
+    @classmethod
+    def create(
+        cls,
+        conv_state: "ConversationState | None" = None,
+        chat_id: str = "",
+        **params,
+    ) -> Sequence[Self]:
+        """Create TerminalExecuteTool instance."""
+        if params:
+            raise ValueError(f"TerminalExecuteTool doesn't accept parameters: {params}")
+        return [
+            cls(
+                action_type=TerminalExecuteAction,
+                observation_type=TerminalExecuteObservation,
+                description=TERMINAL_EXECUTE_DESCRIPTION,
+                executor=TerminalExecuteExecutor(chat_id=chat_id),
+                annotations=ToolAnnotations(
+                    title="terminal_execute",
+                    readOnlyHint=False,
+                    destructiveHint=True,
+                    idempotentHint=False,
+                    openWorldHint=True,
+                ),
+            )
+        ]
+
+
+# =============================================================================
+# Terminal Upload Tool
+# =============================================================================
+
+TERMINAL_UPLOAD_DESCRIPTION = """Upload a file to the terminal workspace.
+
+Use this to provide data files, scripts, or configuration that the terminal needs. For text files only."""
+
+
+class TerminalUploadAction(Action):
+    """Action for uploading a file to the terminal."""
+    
+    path: str = Field(
+        description="Destination path inside the terminal. Relative paths are resolved from /home/user/workspace."
+    )
+    content: str = Field(
+        description="File content as a string."
+    )
+    
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this action."""
+        content = Text()
+        content.append("Upload file:\n", style="bold blue")
+        content.append(f"Path: {self.path}\n", style="green")
+        content.append(f"Size: {len(self.content)} chars", style="dim")
+        return content
+
+
+class TerminalUploadObservation(Observation):
+    """Observation from file upload."""
+    
+    message: str = Field(default="", description="Upload result message")
+    
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this observation."""
+        content = Text()
+        content.append("Upload result: ", style="bold blue")
+        content.append(self.message)
+        return content
+
+
+class TerminalUploadExecutor(ToolExecutor):
+    """Executor for uploading files to terminal."""
+    
+    def __init__(self, chat_id: str):
+        self.chat_id = chat_id
+    
+    def __call__(
+        self,
+        action: TerminalUploadAction,
+        conversation: Any = None,
+    ) -> TerminalUploadObservation:
+        """Execute the file upload."""
+        import asyncio
+        
+        async def _execute():
+            try:
+                lifecycle = get_lifecycle_manager()
+                if lifecycle is None:
+                    return TerminalUploadObservation(message="ERROR: Terminal system not initialized")
+                
+                container = await lifecycle.get_or_create(self.chat_id)
+                
+                path = action.path
+                if not path.startswith("/"):
+                    path = f"{DEFAULT_WORKDIR}/{path}"
+                
+                async with httpx.AsyncClient() as http_client:
+                    client = create_terminal_client(container, http_client)
+                    await client.upload_text_file(path, action.content)
+                    
+                    return TerminalUploadObservation(message=f"File uploaded successfully: {path}")
+                    
+            except httpx.HTTPStatusError as e:
+                return TerminalUploadObservation(
+                    message=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
+                )
+            
+            except Exception as e:
+                logger.error(f"[terminal_upload] Error: {e}")
+                return TerminalUploadObservation(message=f"ERROR: {type(e).__name__}: {e}")
+        
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _execute())
+                return future.result()
+        else:
+            return asyncio.run(_execute())
+
+
+class TerminalUploadTool(ToolDefinition[TerminalUploadAction, TerminalUploadObservation]):
+    """Tool for uploading files to the terminal workspace."""
+    
+    @classmethod
+    def create(
+        cls,
+        conv_state: "ConversationState | None" = None,
+        chat_id: str = "",
+        **params,
+    ) -> Sequence[Self]:
+        """Create TerminalUploadTool instance."""
+        if params:
+            raise ValueError(f"TerminalUploadTool doesn't accept parameters: {params}")
+        return [
+            cls(
+                action_type=TerminalUploadAction,
+                observation_type=TerminalUploadObservation,
+                description=TERMINAL_UPLOAD_DESCRIPTION,
+                executor=TerminalUploadExecutor(chat_id=chat_id),
+                annotations=ToolAnnotations(
+                    title="terminal_upload",
+                    readOnlyHint=False,
+                    destructiveHint=False,
+                    idempotentHint=False,
+                    openWorldHint=False,
+                ),
+            )
+        ]
+
+
+# =============================================================================
+# Terminal List Files Tool
+# =============================================================================
+
+TERMINAL_LIST_DESCRIPTION = """List files and directories in the terminal workspace.
+
+Returns names, sizes, and modification times. Use this to explore the workspace and find files created by commands."""
+
+
+class TerminalListAction(Action):
+    """Action for listing files in the terminal."""
+    
+    path: str = Field(
+        default=DEFAULT_WORKDIR,
+        description="Directory to list. Defaults to /home/user/workspace.",
+    )
+    
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this action."""
+        content = Text()
+        content.append("List files:\n", style="bold blue")
+        content.append(f"Path: {self.path}", style="green")
+        return content
+
+
+class TerminalListObservation(Observation):
+    """Observation from listing files."""
+    
+    output: str = Field(default="", description="Directory listing output")
+    
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this observation."""
+        content = Text()
+        content.append("Files:\n", style="bold blue")
+        content.append(self.output)
+        return content
+
+
+class TerminalListExecutor(ToolExecutor):
+    """Executor for listing files in terminal."""
+    
+    def __init__(self, chat_id: str):
+        self.chat_id = chat_id
+    
+    def __call__(
+        self,
+        action: TerminalListAction,
+        conversation: Any = None,
+    ) -> TerminalListObservation:
+        """Execute the file listing."""
+        import asyncio
+        
+        async def _execute():
+            try:
+                lifecycle = get_lifecycle_manager()
+                if lifecycle is None:
+                    return TerminalListObservation(output="ERROR: Terminal system not initialized")
+                
+                container = await lifecycle.get_or_create(self.chat_id)
+                
+                async with httpx.AsyncClient() as http_client:
+                    client = create_terminal_client(container, http_client)
+                    result = await client.list_files(action.path)
+                    
+                    # Format the listing
+                    if not result:
+                        return TerminalListObservation(output="(empty directory)")
+                    
+                    lines = []
+                    for item in result:
+                        lines.append(f"{item.name}\t{item.size} bytes\t{item.modified}")
+                    
+                    return TerminalListObservation(output="\n".join(lines))
+                    
+            except httpx.HTTPStatusError as e:
+                return TerminalListObservation(
+                    output=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
+                )
+            
+            except Exception as e:
+                logger.error(f"[terminal_list_files] Error: {e}")
+                return TerminalListObservation(output=f"ERROR: {type(e).__name__}: {e}")
+        
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _execute())
+                return future.result()
+        else:
+            return asyncio.run(_execute())
+
+
+class TerminalListTool(ToolDefinition[TerminalListAction, TerminalListObservation]):
+    """Tool for listing files in the terminal workspace."""
+    
+    @classmethod
+    def create(
+        cls,
+        conv_state: "ConversationState | None" = None,
+        chat_id: str = "",
+        **params,
+    ) -> Sequence[Self]:
+        """Create TerminalListTool instance."""
+        if params:
+            raise ValueError(f"TerminalListTool doesn't accept parameters: {params}")
+        return [
+            cls(
+                action_type=TerminalListAction,
+                observation_type=TerminalListObservation,
+                description=TERMINAL_LIST_DESCRIPTION,
+                executor=TerminalListExecutor(chat_id=chat_id),
+                annotations=ToolAnnotations(
+                    title="terminal_list_files",
+                    readOnlyHint=True,
+                    destructiveHint=False,
+                    idempotentHint=True,
+                    openWorldHint=False,
+                ),
+            )
+        ]
+
+
+# =============================================================================
+# Terminal Download Tool
+# =============================================================================
+
+TERMINAL_DOWNLOAD_DESCRIPTION = """Download a file from the terminal workspace.
+
+Use this to retrieve file contents. For text files only. For large files, consider using terminal_execute with head/tail."""
+
+
+class TerminalDownloadAction(Action):
+    """Action for downloading a file from the terminal."""
+    
+    path: str = Field(
+        description="Path to the file inside the terminal. Relative paths are resolved from /home/user/workspace."
+    )
+    
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this action."""
+        content = Text()
+        content.append("Download file:\n", style="bold blue")
+        content.append(f"Path: {self.path}", style="green")
+        return content
+
+
+class TerminalDownloadObservation(Observation):
+    """Observation from file download."""
+    
+    content: str = Field(default="", description="File content")
+    
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this observation."""
+        text = Text()
+        text.append("File content:\n", style="bold blue")
+        text.append(self.content[:500])
+        if len(self.content) > 500:
+            text.append(f"\n... ({len(self.content) - 500} more chars)", style="dim")
+        return text
+
+
+class TerminalDownloadExecutor(ToolExecutor):
+    """Executor for downloading files from terminal."""
+    
+    def __init__(self, chat_id: str):
+        self.chat_id = chat_id
+    
+    def __call__(
+        self,
+        action: TerminalDownloadAction,
+        conversation: Any = None,
+    ) -> TerminalDownloadObservation:
+        """Execute the file download."""
+        import asyncio
+        
+        async def _execute():
+            try:
+                lifecycle = get_lifecycle_manager()
+                if lifecycle is None:
+                    return TerminalDownloadObservation(content="ERROR: Terminal system not initialized")
+                
+                container = await lifecycle.get_or_create(self.chat_id)
+                
+                path = action.path
+                if not path.startswith("/"):
+                    path = f"{DEFAULT_WORKDIR}/{path}"
+                
+                async with httpx.AsyncClient() as http_client:
+                    client = create_terminal_client(container, http_client)
+                    content = await client.download_text_file(path)
+                    
+                    if len(content) > MAX_OUTPUT_LENGTH:
+                        content = truncate_output(content)
+                        content = f"[File truncated - {len(content)} chars shown]\n\n{content}"
+                    
+                    return TerminalDownloadObservation(content=content)
+                    
+            except httpx.HTTPStatusError as e:
+                return TerminalDownloadObservation(
+                    content=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
+                )
+            
+            except Exception as e:
+                logger.error(f"[terminal_download] Error: {e}")
+                return TerminalDownloadObservation(content=f"ERROR: {type(e).__name__}: {e}")
+        
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _execute())
+                return future.result()
+        else:
+            return asyncio.run(_execute())
+
+
+class TerminalDownloadTool(ToolDefinition[TerminalDownloadAction, TerminalDownloadObservation]):
+    """Tool for downloading files from the terminal workspace."""
+    
+    @classmethod
+    def create(
+        cls,
+        conv_state: "ConversationState | None" = None,
+        chat_id: str = "",
+        **params,
+    ) -> Sequence[Self]:
+        """Create TerminalDownloadTool instance."""
+        if params:
+            raise ValueError(f"TerminalDownloadTool doesn't accept parameters: {params}")
+        return [
+            cls(
+                action_type=TerminalDownloadAction,
+                observation_type=TerminalDownloadObservation,
+                description=TERMINAL_DOWNLOAD_DESCRIPTION,
+                executor=TerminalDownloadExecutor(chat_id=chat_id),
+                annotations=ToolAnnotations(
+                    title="terminal_download",
+                    readOnlyHint=True,
+                    destructiveHint=False,
+                    idempotentHint=True,
+                    openWorldHint=False,
+                ),
+            )
+        ]
+
+
+# =============================================================================
+# Tool Registration
+# =============================================================================
+
+# Register all terminal tools with the OpenHands SDK
+register_tool("terminal_execute", TerminalExecuteTool)
+register_tool("terminal_upload", TerminalUploadTool)
+register_tool("terminal_list_files", TerminalListTool)
+register_tool("terminal_download", TerminalDownloadTool)
+
+
+# =============================================================================
+# Helper Functions for Session Integration
+# =============================================================================
+
+def get_terminal_tools(chat_id: str):
+    """Get terminal tool specifications for Agent initialization.
+    
+    This returns Tool specs that reference the registered tools.
+    The actual tool instances are created by the ToolDefinition.create() method.
+    
+    Args:
+        chat_id: Chat/session ID for terminal container scoping
+        
+    Returns:
+        List of Tool specs for Agent initialization
+    """
+    from openhands.sdk import Tool
+    
+    return [
+        Tool(name="terminal_execute", params={"chat_id": chat_id}),
+        Tool(name="terminal_upload", params={"chat_id": chat_id}),
+        Tool(name="terminal_list_files", params={"chat_id": chat_id}),
+        Tool(name="terminal_download", params={"chat_id": chat_id}),
+    ]
 
 
 TERMINAL_SYSTEM_PROMPT = """
