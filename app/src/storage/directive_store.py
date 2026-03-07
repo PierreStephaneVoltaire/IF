@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from num2words import num2words
 
 from storage.directive_model import Directive
 
@@ -45,7 +46,7 @@ class DirectiveStore:
         _region: AWS region
     """
     
-    def __init__(self, table_name: str = "if-directives", region: str = "us-east-1"):
+    def __init__(self, table_name: str = "if-directives", region: str = "ca-central-1"):
         """Initialize the directive store.
         
         Args:
@@ -124,10 +125,9 @@ class DirectiveStore:
         lines = []
         for d in self._cache:
             # Convert numeric to text for directive reference
-            alpha_text = self._alpha_to_text(d.alpha)
             lines.append(
                 f"{d.alpha}-{d.beta}  {d.label} "
-                f"(Directive {alpha_text}-{self._beta_to_text(d.beta)})"
+                f"(Directive {self._number_to_text(d.alpha)}-{self._number_to_text(d.beta)})"
             )
             lines.append(d.content)
             lines.append("")  # Blank line between directives
@@ -135,42 +135,16 @@ class DirectiveStore:
         return "\n".join(lines)
     
     @staticmethod
-    def _alpha_to_text(alpha: int) -> str:
-        """Convert alpha number to text.
+    def _number_to_text(n: int) -> str:
+        """Convert number to text.
         
         Args:
-            alpha: Alpha number (0-5)
+            n: Number to convert
             
         Returns:
-            Text representation (e.g., "Zero", "One", etc.)
+            Text representation (e.g., "Zero", "One", "Twenty-One", etc.)
         """
-        mapping = {
-            0: "Zero", 1: "One", 2: "Two", 
-            3: "Three", 4: "Four", 5: "Five"
-        }
-        return mapping.get(alpha, str(alpha))
-    
-    @staticmethod
-    def _beta_to_text(beta: int) -> str:
-        """Convert beta number to text.
-        
-        Args:
-            beta: Beta number
-            
-        Returns:
-            Text representation (e.g., "One", "Two", etc.) or str for > 20
-        """
-        # For beta > 20, just use the number
-        if beta > 20:
-            return str(beta)
-        mapping = {
-            1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five",
-            6: "Six", 7: "Seven", 8: "Eight", 9: "Nine", 10: "Ten",
-            11: "Eleven", 12: "Twelve", 13: "Thirteen", 14: "Fourteen",
-            15: "Fifteen", 16: "Sixteen", 17: "Seventeen", 18: "Eighteen",
-            19: "Nineteen", 20: "Twenty"
-        }
-        return mapping.get(beta, str(beta))
+        return num2words(n).title()
     
     def next_beta(self, alpha: int) -> int:
         """Return max(beta) + 1 for given alpha tier from cache.
