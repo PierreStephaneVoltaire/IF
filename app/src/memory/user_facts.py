@@ -582,14 +582,23 @@ class UserFactStore:
         Returns:
             List of UserFact objects
         """
-        where = {}
+        # Build where clause - ChromaDB requires $and for multiple conditions
+        where = None
+        where_conditions = []
+        
         if not include_history:
-            where["active"] = True
+            where_conditions.append({"active": True})
         if category:
-            where["category"] = category.value
+            where_conditions.append({"category": category.value})
+        
+        # ChromaDB requires $and operator when combining multiple conditions
+        if len(where_conditions) == 1:
+            where = where_conditions[0]
+        elif len(where_conditions) > 1:
+            where = {"$and": where_conditions}
         
         results = self.collection.get(
-            where=where if where else None,
+            where=where,
             include=["documents", "metadatas"]
         )
         
