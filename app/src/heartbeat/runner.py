@@ -292,7 +292,6 @@ class HeartbeatRunner:
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 system_prompt=load_base_system_prompt(),
-                max_tokens=200,
                 http_client=self.http_client,
             )
             return response.content
