@@ -78,7 +78,7 @@ class DirectiveStore:
             List of active Directive objects (highest version only), sorted by alpha then beta
         """
         response = self.table.query(
-            KeyConditionExpression=Key("PK").eq("DIR")
+            KeyConditionExpression=Key("pk").eq("DIR")
         )
         
         # Group by alpha/beta, find highest active version for each
@@ -179,7 +179,7 @@ class DirectiveStore:
         base_key = f"{alpha:02d}#{beta:02d}"
         response = self.table.query(
             KeyConditionExpression=(
-                Key("PK").eq("DIR") & Key("SK").begins_with(base_key)
+                Key("pk").eq("DIR") & Key("sk").begins_with(base_key)
             )
         )
         
@@ -266,7 +266,7 @@ class DirectiveStore:
         
         # Mark old version as superseded
         self.table.update_item(
-            Key={"PK": "DIR", "SK": existing.sort_key},
+            Key={"pk": "DIR", "sk": existing.sort_key},
             UpdateExpression=(
                 "SET active = :inactive, superseded_at = :superseded"
             ),
@@ -329,7 +329,7 @@ class DirectiveStore:
         
         now = datetime.now(timezone.utc).isoformat()
         self.table.update_item(
-            Key={"PK": "DIR", "SK": existing.sort_key},
+            Key={"pk": "DIR", "sk": existing.sort_key},
             UpdateExpression=(
                 "SET active = :inactive, superseded_at = :superseded"
             ),
@@ -384,7 +384,7 @@ class DirectiveStore:
         base_key = f"{alpha:02d}#{beta:02d}"
         response = self.table.query(
             KeyConditionExpression=(
-                Key("PK").eq("DIR") & Key("SK").begins_with(base_key)
+                Key("pk").eq("DIR") & Key("sk").begins_with(base_key)
             )
         )
         
