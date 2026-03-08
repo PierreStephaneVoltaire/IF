@@ -70,7 +70,7 @@ class Directive:
         Raises:
             ValueError: If SK format is invalid
         """
-        sk = item["SK"]
+        sk = item["sk"]
         match = re.match(r"(\d{2})#(\d{2})#v(\d{3})", sk)
         if not match:
             raise ValueError(f"Invalid SK format: {sk}")
@@ -98,8 +98,8 @@ class Directive:
             Dict suitable for DynamoDB put_item
         """
         item = {
-            "PK": "DIR",
-            "SK": self.sort_key,
+            "pk": "DIR",
+            "sk": self.sort_key,
             "alpha": self.alpha,
             "beta": self.beta,
             "version": self.version,
