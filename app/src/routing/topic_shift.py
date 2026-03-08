@@ -10,6 +10,7 @@ Cold cache always runs the full scoring pipeline.
 from __future__ import annotations
 import logging
 from typing import List
+from nltk.corpus import stopwords
 
 import httpx
 
@@ -61,7 +62,6 @@ def should_check_shift(anchor_msgs: List[str], current_msgs: List[str]) -> bool:
 def _extract_keywords(text: str) -> set:
     """Extract keywords using NLTK stopwords. Fallback to no filtering if unavailable."""
     try:
-        from nltk.corpus import stopwords
         stop = set(stopwords.words("english"))
     except (ImportError, LookupError):
         stop = set()

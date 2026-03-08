@@ -4,7 +4,7 @@ Provides CRUD operations for directives with versioning support.
 All active directives are cached in memory for fast prompt assembly.
 
 Usage:
-    store = DirectiveStore(table_name="if-directives")
+    store = DirectiveStore(table_name="if-core")
     store.load()  # Load and cache all active directives
     
     # Get formatted block for system prompt
@@ -46,7 +46,7 @@ class DirectiveStore:
         _region: AWS region
     """
     
-    def __init__(self, table_name: str = "if-directives", region: str = "ca-central-1"):
+    def __init__(self, table_name: str = "if-core", region: str = "ca-central-1"):
         """Initialize the directive store.
         
         Args:

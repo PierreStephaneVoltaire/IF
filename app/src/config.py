@@ -148,7 +148,7 @@ PRESET_MCP_MAP = {
 
 
 DIRECTIVE_STORE_ENABLED: bool = os.getenv("DIRECTIVE_STORE_ENABLED", "true").lower() == "true"
-DYNAMODB_DIRECTIVES_TABLE = os.getenv("DYNAMODB_DIRECTIVES_TABLE", "if-directives")
+DYNAMODB_DIRECTIVES_TABLE = os.getenv("DYNAMODB_DIRECTIVES_TABLE", "if-core")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
 # Model for directive content rewriting (configurable via env var)
@@ -197,6 +197,24 @@ ORCHESTRATOR_MAX_TURNS = int(os.getenv("ORCHESTRATOR_MAX_TURNS", "15"))
 
 # Maximum turns for analysis subagents (usually need fewer)
 ORCHESTRATOR_ANALYSIS_MAX_TURNS = int(os.getenv("ORCHESTRATOR_ANALYSIS_MAX_TURNS", "10"))
+
+
+# =============================================================================
+# Health Module Configuration
+# =============================================================================
+
+# DynamoDB table name for health program storage
+# Note: IF_HEALTH_TABLE_NAME is defined at line 8 in .env.example
+IF_HEALTH_TABLE_NAME = os.getenv("IF_HEALTH_TABLE_NAME", "if-health")
+
+# Partition key value for health program storage
+HEALTH_PROGRAM_PK = os.getenv("HEALTH_PROGRAM_PK", "operator")
+
+# Directory containing health PDF documents for RAG
+HEALTH_DOCS_DIR = os.getenv("HEALTH_DOCS_DIR", "docs/health")
+
+# Model for research agent spawned by health tools
+RESEARCH_AGENT_MODEL = os.getenv("RESEARCH_AGENT_MODEL", "anthropic/claude-opus-4-5")
 
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

@@ -147,7 +147,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"MCP configuration error: {e}")
     
     try:
-        from .memory import get_user_fact_store
+        from memory import get_user_fact_store
         user_facts_store = get_user_fact_store()
         facts_count = user_facts_store.active_count
         logger.info(f"User facts store initialized ({facts_count} active facts)")
@@ -225,7 +225,7 @@ async def lifespan(app: FastAPI):
             activity_tracker = ActivityTracker(store._backend)
             
             try:
-                from .memory import get_user_fact_store
+                from memory import get_user_fact_store
                 user_facts_store = get_user_fact_store()
             except Exception:
                 user_facts_store = None
@@ -255,7 +255,7 @@ async def lifespan(app: FastAPI):
             from agent.reflection.engine import _reflection_engine as reflection_engine_singleton
             
             try:
-                from .memory import get_user_fact_store
+                from memory import get_user_fact_store
                 user_facts_store = get_user_fact_store()
             except Exception as store_error:
                 logger.warning(f"Cannot init reflection engine - user facts store unavailable: {store_error}")
@@ -360,7 +360,7 @@ async def health_check():
     user_facts_status = "unavailable"
     user_facts_count = 0
     try:
-        from .memory import get_user_fact_store
+        from memory import get_user_fact_store
         store = get_user_fact_store()
         user_facts_status = "active"
         user_facts_count = store.active_count
@@ -370,7 +370,7 @@ async def health_check():
     memory_status = "unavailable"
     memory_count = 0
     try:
-        from .memory import get_memory_store
+        from memory import get_memory_store
         store = get_memory_store()
         memory_status = "active"
         memory_count = store.count()
