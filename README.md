@@ -21,15 +21,19 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
 - [Opinion Formation](#opinion-formation)
 - [Operator Growth Tracking](#operator-growth-tracking)
 - [Meta-Analysis](#meta-analysis)
+- [Directive System](#directive-system)
 - [Pondering Preset](#pondering-preset)
 - [Heartbeat System](#heartbeat-system)
 - [Channel System](#channel-system)
+- [Terminal System](#terminal-system)
+- [Orchestrator System](#orchestrator-system)
 - [Storage Layer](#storage-layer)
 - [MCP Server Configuration](#mcp-server-configuration)
 - [Preset System](#preset-system)
 - [Environment Variables](#environment-variables)
 - [Project Structure](#project-structure)
 - [Startup Sequence](#startup-sequence)
+- [Future Improvements](#future-improvements)
 - [Quick Start](#quick-start)
 
 ---
@@ -529,7 +533,7 @@ Selects the final preset based on aggregated scores.
 ```python
 capability_ranking = {
     "architecture": 100,  # Claude 3.5 Sonnet
-    "coding": 95,         # Claude 3.5 Sonnet
+    "code": 95,         # Claude 3.5 Sonnet
     "reasoning": 90,      # o1-preview
     "general": 50,
     "social": 40,
@@ -571,7 +575,7 @@ async def topic_has_shifted(
 
 - Uses `TOPIC_SHIFT_MODEL` (default: `z-ai/glm-4.7-flash`)
 - 5-second timeout, defaults to `False` on failure
-- Returns `True` only for major domain shifts (coding → finance)
+- Returns `True` only for major domain shifts (code → finance)
 - Ignores sub-topic shifts (Python → Terraform)
 - Ignores social noise ("thanks", "ok")
 
@@ -1077,6 +1081,219 @@ When facts don't fit well into existing categories:
 
 ---
 
+## Directive System
+
+The directive system provides versioned behavioral directives backed by DynamoDB. Directives define standing orders and behavioral rules that the agent follows across all conversations.
+
+**Modules:**
+- [`src/storage/directive_model.py`](src/storage/directive_model.py) — Directive data model
+- [`src/storage/directive_store.py`](src/storage/directive_store.py) — DynamoDB backend with caching
+- [`src/agent/tools/directive_tools.py`](src/agent/tools/directive_tools.py) — Agent tools for directive CRUD
+- [`src/api/directives.py`](src/api/directives.py) — REST API endpoints
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    DIRECTIVE SYSTEM                               │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    DynamoDB Backend                       │    │
+│  │                                                           │    │
+│  │  PK=DIR, SK={alpha}-{beta}-{version}                     │    │
+│  │  - All directives stored with versioning                 │    │
+│  │  - Immutable history (revisions create new versions)     │    │
+│  │  - Active flag for soft-delete                           │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                    │
+│                             ▼                                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    In-Memory Cache                        │    │
+│  │                                                           │    │
+│  │  - Loads all active directives at startup                │    │
+│  │  - Only highest version per alpha/beta is cached         │    │
+│  │  - Fast access for system prompt assembly                │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                    │
+│              ┌──────────────┴──────────────┐                    │
+│              ▼                             ▼                    │
+│  ┌────────────────────┐        ┌────────────────────┐          │
+│  │   Agent Tools      │        │    REST API        │          │
+│  │                    │        │                    │          │
+│  │  directive_add     │        │  GET /directives   │          │
+│  │  directive_revise  │        │  GET /{a}/{b}      │          │
+│  │  directive_deact-  │        │  GET /{a}/{b}/     │          │
+│  │    ivate           │        │    history         │          │
+│  │  directive_list    │        │  POST /reload      │          │
+│  └────────────────────┘        └────────────────────┘          │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Directive Schema
+
+```python
+@dataclass
+class Directive:
+    alpha: int              # Tier number (0-5)
+    beta: int               # Directive number within tier
+    version: int            # Version number (auto-incremented)
+    label: str              # Short label (e.g., "VERIFY_CLAIMS")
+    content: str            # Full directive text
+    active: bool            # Soft-delete flag
+    created_by: str         # "agent" or "operator"
+    created_at: str         # ISO timestamp
+```
+
+### Alpha Tiers
+
+| Alpha | Description | Protection |
+|-------|-------------|------------|
+| 0 | Core Identity | Protected - cannot be modified via agent tools |
+| 1 | Fundamental Rules | Protected - cannot be modified via agent tools |
+| 2 | Behavioral Guidelines | Modifiable via agent tools |
+| 3 | Task-Specific Rules | Modifiable via agent tools |
+| 4 | Context-Specific Rules | Modifiable via agent tools |
+| 5 | Temporary/Session Rules | Modifiable via agent tools |
+
+### Content Rewriting
+
+All directive content is rewritten through an LLM before storage to ensure consistent voice and style:
+
+```
+Raw Operator Intent → LLM Rewriter → Directive Voice
+```
+
+**Rewriting Prompt:**
+```
+The directive system uses terse, imperative prose. No filler. No corporate warmth.
+Each directive reads like a standing order — clear conditions, clear behavior, 
+clear exceptions.
+
+Rewrite the following into a single directive in that voice.
+```
+
+The rewrite model is configurable via `DIRECTIVE_REWRITE_MODEL` (default: `anthropic/claude-opus-4`).
+
+### Agent Tools
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `directive_add` | `alpha`, `label`, `content`, `created_by` | Add new directive (alpha 2-5 only) |
+| `directive_revise` | `alpha`, `beta`, `content` | Create new version of existing directive |
+| `directive_deactivate` | `alpha`, `beta` | Soft-delete a directive |
+| `directive_list` | `alpha?` | List all directives (optionally filtered) |
+
+### REST API Endpoints
+
+#### `GET /v1/directives/`
+
+List all active directives.
+
+**Query Parameters:**
+- `alpha` (optional): Filter by alpha tier
+
+**Response:**
+```json
+{
+  "directives": [
+    {
+      "alpha": 2,
+      "beta": 1,
+      "version": 3,
+      "label": "VERIFY_CLAIMS",
+      "content": "When the operator submits a message for review...",
+      "created_by": "operator",
+      "created_at": "2026-03-01T12:00:00Z"
+    }
+  ]
+}
+```
+
+#### `GET /v1/directives/{alpha}/{beta}`
+
+Get a specific directive.
+
+**Response:**
+```json
+{
+  "alpha": 2,
+  "beta": 1,
+  "version": 3,
+  "label": "VERIFY_CLAIMS",
+  "content": "...",
+  "created_by": "operator",
+  "created_at": "2026-03-01T12:00:00Z"
+}
+```
+
+#### `GET /v1/directives/{alpha}/{beta}/history`
+
+Get version history for a directive.
+
+**Response:**
+```json
+{
+  "alpha": 2,
+  "beta": 1,
+  "versions": [
+    {
+      "version": 3,
+      "content": "...",
+      "created_at": "2026-03-01T12:00:00Z"
+    },
+    {
+      "version": 2,
+      "content": "...",
+      "created_at": "2026-02-15T08:30:00Z"
+    }
+  ]
+}
+```
+
+#### `POST /v1/directives/reload`
+
+Force reload of directives from DynamoDB. Useful after manual DynamoDB edits.
+
+**Response:**
+```json
+{
+  "status": "reloaded",
+  "active_count": 12
+}
+```
+
+### DynamoDB Table Schema
+
+```sql
+CREATE TABLE if-core (
+    PK STRING,          -- Always "DIR"
+    SK STRING,          -- "{alpha}-{beta}-{version}"
+    label STRING,
+    content STRING,
+    active BOOLEAN,
+    created_by STRING,
+    created_at STRING,
+    PRIMARY KEY (PK, SK)
+);
+```
+
+### Prompt Assembly
+
+Directives are formatted and injected into the system prompt:
+
+```python
+def format_for_prompt(self, alpha: int = None) -> str:
+    """Format directives for system prompt injection."""
+    lines = ["## Directives\n"]
+    for d in self.get_all(alpha=alpha):
+        lines.append(f"### {d.alpha}-{d.beta}: {d.label}")
+        lines.append(d.content)
+        lines.append("")
+    return "\n".join(lines)
+```
+
+---
+
 ## Pondering Preset
 
 The pondering preset is a special mode for operator profiling and engagement. Unlike other presets, it is **never auto-selected by the router** — it must be explicitly activated via `/pondering` command or the heartbeat system.
@@ -1325,6 +1542,167 @@ Platform-specific response delivery.
 
 ---
 
+## Terminal System
+
+The terminal system provides persistent Docker containers for command execution and file operations. It replaces the previous sandbox MCP server approach with full shell access.
+
+**Modules:**
+- [`src/terminal/__init__.py`](src/terminal/__init__.py) — Module exports
+- [`src/terminal/config.py`](src/terminal/config.py) — Configuration dataclass
+- [`src/terminal/lifecycle.py`](src/terminal/lifecycle.py) — Container lifecycle management
+- [`src/terminal/client.py`](src/terminal/client.py) — HTTP client for terminal API
+- [`src/terminal/files.py`](src/terminal/files.py) — File reference handling
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    TERMINAL SYSTEM                                │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │               TerminalLifecycleManager                    │    │
+│  │                                                           │    │
+│  │  - Per-chat Docker containers (open-webui/open-terminal) │    │
+│  │  - Named volumes for persistent filesystems               │    │
+│  │  - Idle cleanup with configurable timeout                 │    │
+│  │  - Container recovery on restart                          │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                    │
+│                             ▼                                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                   TerminalClient                          │    │
+│  │                                                           │    │
+│  │  - HTTP API to container exec endpoint                    │    │
+│  │  - Command execution with timeout                         │    │
+│  │  - File listing and reading operations                    │    │
+│  │  - Output truncation for large responses                  │    │
+│  └──────────────────────────┬──────────────────────────────┘    │
+│                             │                                    │
+│              ┌──────────────┴──────────────┐                    │
+│              ▼                             ▼                    │
+│  ┌────────────────────┐        ┌────────────────────┐          │
+│  │  Terminal Tools    │        │   Files Handling   │          │
+│  │                    │        │                    │          │
+│  │  terminal_execute  │        │  strip_files_line  │          │
+│  │  terminal_list_    │        │  FilesStripBuffer  │          │
+│  │    files           │        │  FileRef           │          │
+│  │  terminal_read_    │        │  log_file_refs     │          │
+│  │    file            │        │                    │          │
+│  │  terminal_write_   │        │                    │          │
+│  │    file            │        │                    │          │
+│  └────────────────────┘        └────────────────────┘          │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Container Lifecycle
+
+Containers are managed per-chat with persistent volumes:
+
+1. **Creation**: On first `terminal_execute` for a chat
+2. **Volume**: Named Docker volume at `/home/user` persists data
+3. **Cleanup**: After `TERMINAL_IDLE_TIMEOUT` seconds of inactivity
+4. **Recovery**: Existing containers are recovered on server restart
+
+### Terminal Tools
+
+**Module:** [`src/agent/tools/terminal_tools.py`](src/agent/tools/terminal_tools.py)
+
+| Tool | Description |
+|------|-------------|
+| `terminal_execute` | Execute shell command with optional timeout and working directory |
+| `terminal_list_files` | List files in a directory |
+| `terminal_read_file` | Read file contents |
+| `terminal_write_file` | Write content to a file |
+
+### FILES: Line Handling
+
+The terminal system includes special handling for file references in agent output:
+
+- `FILES:` lines in responses are stripped from visible output
+- File references are logged for tracking generated artifacts
+- `FilesStripBuffer` class handles streaming output
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TERMINAL_IMAGE` | `ghcr.io/open-webui/open-terminal:latest` | Docker image for terminals |
+| `TERMINAL_NETWORK` | `if-terminal-net` | Docker network name |
+| `TERMINAL_MEM_LIMIT` | `512m` | Memory limit per container |
+| `TERMINAL_CPU_QUOTA` | `50000` | CPU quota (50% of one CPU) |
+| `TERMINAL_IDLE_TIMEOUT` | `3600` | Seconds before idle cleanup |
+| `TERMINAL_STARTUP_TIMEOUT` | `30.0` | Seconds to wait for container startup |
+| `TERMINAL_MAX_CONTAINERS` | `20` | Maximum concurrent containers |
+| `TERMINAL_VOLUME_HOST_ROOT` | `/var/lib/docker/volumes` | Docker volumes host path |
+
+---
+
+## Orchestrator System
+
+The orchestrator system provides multi-step task execution and parallel analysis capabilities through subagent delegation.
+
+**Modules:**
+- [`src/orchestrator/__init__.py`](src/orchestrator/__init__.py) — Module exports
+- [`src/orchestrator/executor.py`](src/orchestrator/executor.py) — Plan execution engine
+- [`src/orchestrator/analyzer.py`](src/orchestrator/analyzer.py) — Parallel analysis
+
+### Key Features
+
+1. **Plan Execution**: Sequential multi-step task execution with subagents
+2. **Parallel Analysis**: Code analysis from multiple perspectives simultaneously
+3. **Subagent Delegation**: Main agent can delegate complex work to specialized subagents
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `execute_plan` | Execute a multi-step plan with sequential subagent calls |
+| `analyze_parallel` | Analyze code from multiple perspectives in parallel |
+
+### Data Models
+
+```python
+@dataclass
+class PlanStep:
+    description: str          # What this step accomplishes
+    tool: str                 # Tool or approach to use
+    expected_output: str      # Expected result
+
+@dataclass
+class ExecutionPlan:
+    goal: str                 # Overall objective
+    steps: List[PlanStep]     # Sequential steps
+
+@dataclass
+class StepResult:
+    step: PlanStep
+    success: bool
+    output: str
+    error: Optional[str]
+```
+
+### Pre-defined Analysis Perspectives
+
+The `analyze_parallel` tool includes pre-defined perspectives:
+
+- **Security**: Vulnerability assessment, attack surface analysis
+- **Performance**: Bottlenecks, optimization opportunities
+- **Architecture**: Design patterns, modularity, extensibility
+- **Code Quality**: Readability, maintainability, best practices
+- **Testing**: Coverage gaps, test quality
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ORCHESTRATOR_SUBAGENT_MODEL` | `anthropic/claude-sonnet-4` | Model for plan execution subagents |
+| `ORCHESTRATOR_ANALYSIS_MODEL` | `anthropic/claude-haiku-4.5` | Model for parallel analysis |
+| `ORCHESTRATOR_SYNTHESIS_MODEL` | `anthropic/claude-sonnet-4` | Model for synthesizing analysis results |
+| `ORCHESTRATOR_MAX_TURNS` | `15` | Maximum turns per subagent |
+| `ORCHESTRATOR_ANALYSIS_MAX_TURNS` | `10` | Maximum turns for analysis subagents |
+
+---
+
 ## Storage Layer
 
 The storage layer provides an abstract interface for webhook persistence with pluggable backends.
@@ -1368,21 +1746,49 @@ class WebhookRecord(SQLModel, table=True):
 - WAL mode for concurrent read/write safety
 - Thread-safe for listener + API access
 
+### DynamoDB Backend (Stub)
+
+**File:** [`src/storage/dynamodb_backend.py`](src/storage/dynamodb_backend.py)
+
+> **Note:** The DynamoDB webhook backend is a stub implementation. It raises `NotImplementedError` for all methods. Use the SQLite backend for webhook storage. DynamoDB is only used for the directive store.
+
 ### Factory
 
 **File:** [`src/storage/factory.py`](src/storage/factory.py)
 
 ```python
-def init_store() -> None       # Called at startup
+def init_store() -> None              # Called at startup
+def init_directive_store() -> None    # Initialize DynamoDB directive store
 def get_webhook_store() -> WebhookStore
-def close_store() -> None      # Called at shutdown
+def close_store() -> None             # Called at shutdown
 ```
 
 **Configuration:**
-- `STORE_BACKEND`: Backend type (default: `sqlite`)
+- `STORE_BACKEND`: Backend type (default: `sqlite`, `dynamodb` is stub)
 - `STORAGE_DB_PATH`: SQLite file path (default: `./data/store.db`)
 
-**Future:** DynamoDB backend planned for AWS deployment.
+### Directive Store
+
+**File:** [`src/storage/directive_store.py`](src/storage/directive_store.py)
+
+The directive store uses DynamoDB for behavioral directive persistence:
+
+```python
+class DirectiveStore:
+    def load() -> List[Directive]         # Load and cache all active directives
+    def get(alpha: int, beta: int)        # Get specific directive
+    def get_all(alpha: int = None)        # Get all (optionally filtered)
+    def add(alpha, label, content, ...)   # Add new directive
+    def revise(alpha, beta, content)      # Create new version
+    def deactivate(alpha, beta)           # Soft-delete
+    def format_for_prompt(alpha=None)     # Format for system prompt
+```
+
+**Configuration:**
+- `DIRECTIVE_STORE_ENABLED`: Enable directive store (default: `true`)
+- `DYNAMODB_DIRECTIVES_TABLE`: DynamoDB table name (default: `if-core`)
+- `AWS_REGION`: AWS region (default: `us-east-1`)
+- `DIRECTIVE_REWRITE_MODEL`: Model for content rewriting (default: `anthropic/claude-opus-4`)
 
 ---
 
@@ -1401,32 +1807,30 @@ MCP servers provide extended capabilities to the agent.
 | `google_sheets` | `mcp-server-google-sheets@latest` | Spreadsheet access |
 | `yahoo_finance` | `mcp-yahoo-finance` | Stock quotes and data |
 | `alpha_vantage` | `alphavantage-mcp` | Financial indicators |
-| `sandbox` | `mcp-server-filesystem@latest` | File system access |
+
+> **Note:** The `sandbox` MCP server has been removed. File system access is now provided through the Terminal System (see below), which offers persistent Docker containers with full shell access.
 
 ### Preset Mapping
 
 ```python
 PRESET_MCP_MAP = {
     "__all__": ["time"],
-    "architecture": ["aws_docs", "sandbox"],
-    "coding": ["sandbox"],
+    "architecture": ["aws_docs"],
+    "code": [],  # Uses terminal tools for file access
     "health": ["google_sheets"],
     "mental_health": [],
     "social": [],
     "finance": ["yahoo_finance", "alpha_vantage"],
+    "pondering": [],  # Only gets time via __all__
 }
 ```
 
-### Sandbox Scoping
-
-The sandbox server is scoped per-conversation:
+### MCP Config Resolution
 
 ```python
-def resolve_mcp_config(preset_slug: str, conversation_id: str) -> Dict[str, Any]:
-    # Sandbox root becomes: {SANDBOX_PATH}/{conversation_id}/
+def resolve_mcp_config(preset_slug: str, conversation_id: str = "") -> Dict[str, Any]:
+    # Returns mcpServers dict for the preset
 ```
-
-This prevents file cross-contamination between parallel sessions.
 
 ---
 
@@ -1441,12 +1845,13 @@ Presets are static definitions that define routing targets.
 | Preset | Model | Description |
 |--------|-------|-------------|
 | `architecture` | `@preset/architecture` | System design, infrastructure planning |
-| `coding` | `@preset/coding` | Writing, modifying, debugging code |
+| `code` | `@preset/code` | Writing, modifying, debugging code |
 | `shell` | `@preset/shell` | CLI commands, one-liners |
 | `security` | `@preset/security` | Threat modeling, compliance |
 | `health` | `@preset/health` | Fitness, nutrition, sports |
 | `mental_health` | `@preset/mental_health` | Emotional support, crisis routing |
 | `finance` | `@preset/finance` | Market data, investing |
+| `proofreader` | `@preset/proofreader` | Proofreading, editing, rewriting non-code text |
 | `social` | `@preset/social` | Casual conversation |
 | `general` | `@preset/general` | General-purpose fallback |
 | `pondering` | `@preset/pondering` | Operator profiling (manual/heartbeat only) |
@@ -1508,6 +1913,15 @@ google/gemini-2.5-flash-lite,openai/gpt-oss-120b,anthropic/claude-haiku-4.5
 | `MEMORY_DB_PATH` | `./data/memory_db` | ChromaDB path |
 | `PERSISTENCE_DIR` | `./data/conversations` | Conversation persistence |
 
+### Directive Store Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DIRECTIVE_STORE_ENABLED` | `true` | Enable directive store |
+| `DYNAMODB_DIRECTIVES_TABLE` | `if-core` | DynamoDB table for directives |
+| `AWS_REGION` | `us-east-1` | AWS region for DynamoDB |
+| `DIRECTIVE_REWRITE_MODEL` | `anthropic/claude-opus-4` | Model for content rewriting |
+
 ### Channel Configuration
 
 | Variable | Default | Description |
@@ -1543,6 +1957,29 @@ google/gemini-2.5-flash-lite,openai/gpt-oss-120b,anthropic/claude-haiku-4.5
 |----------|-------------|
 | `GOOGLE_SHEETS_CREDENTIALS` | Base64-encoded JSON credentials |
 | `ALPHAVANTAGE_API_KEY` | Alpha Vantage API key |
+
+### Terminal Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TERMINAL_IMAGE` | `ghcr.io/open-webui/open-terminal:latest` | Docker image for terminals |
+| `TERMINAL_NETWORK` | `if-terminal-net` | Docker network name |
+| `TERMINAL_MEM_LIMIT` | `512m` | Memory limit per container |
+| `TERMINAL_CPU_QUOTA` | `50000` | CPU quota (50% of one CPU) |
+| `TERMINAL_IDLE_TIMEOUT` | `3600` | Seconds before idle cleanup |
+| `TERMINAL_STARTUP_TIMEOUT` | `30.0` | Seconds to wait for container startup |
+| `TERMINAL_MAX_CONTAINERS` | `20` | Maximum concurrent containers |
+| `TERMINAL_VOLUME_HOST_ROOT` | `/var/lib/docker/volumes` | Docker volumes host path |
+
+### Orchestrator Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ORCHESTRATOR_SUBAGENT_MODEL` | `anthropic/claude-sonnet-4` | Model for plan execution subagents |
+| `ORCHESTRATOR_ANALYSIS_MODEL` | `anthropic/claude-haiku-4.5` | Model for parallel analysis subagents |
+| `ORCHESTRATOR_SYNTHESIS_MODEL` | `anthropic/claude-sonnet-4` | Model for synthesis of analysis results |
+| `ORCHESTRATOR_MAX_TURNS` | `15` | Maximum turns per subagent |
+| `ORCHESTRATOR_ANALYSIS_MAX_TURNS` | `10` | Maximum turns for analysis subagents |
 
 ### Server Configuration
 
@@ -1592,6 +2029,7 @@ if-prototype-a1/
     │   ├── completions.py       # /v1/chat/completions endpoint
     │   ├── files.py             # /files/sandbox/* endpoint
     │   ├── webhooks.py          # /v1/webhooks/* endpoints
+    │   ├── directives.py        # /v1/directives/* endpoints
     │   └── schemas.py           # Pydantic request/response models
     │
     ├── routing/                 # Routing pipeline
@@ -1612,7 +2050,8 @@ if-prototype-a1/
     │   │   ├── user_facts.py    # User facts tools (add/search/update/remove)
     │   │   ├── capability_tracker.py  # Capability gap logging
     │   │   ├── opinion_tools.py       # Opinion pair tools
-    │   │   └── session_reflection.py  # Session reflection tools
+    │   │   ├── session_reflection.py  # Session reflection tools
+    │   │   └── directive_tools.py     # Directive management tools
     │   ├── sandbox.py           # Sandbox path resolution
     │   ├── condenser.py         # Context condensation
     │   ├── reflection/          # Metacognitive analysis layer
@@ -1648,7 +2087,9 @@ if-prototype-a1/
     │   ├── models.py            # WebhookRecord + ActivityLogEntry models
     │   ├── factory.py           # Backend factory
     │   ├── sqlite_backend.py    # SQLite implementation
-    │   └── dynamodb_backend.py  # Future AWS implementation
+    │   ├── dynamodb_backend.py  # DynamoDB webhook backend (future)
+    │   ├── directive_model.py   # Directive data model
+    │   └── directive_store.py   # DynamoDB directive store
     │
     ├── memory/                  # Memory store
     │   ├── __init__.py
@@ -1659,6 +2100,18 @@ if-prototype-a1/
     │   ├── __init__.py
     │   ├── activity.py          # Activity tracker
     │   └── runner.py            # Background heartbeat runner
+    │
+    ├── terminal/                # Terminal system
+    │   ├── __init__.py
+    │   ├── config.py            # Terminal configuration
+    │   ├── lifecycle.py         # Docker container lifecycle
+    │   ├── client.py            # HTTP client for terminal API
+    │   └── files.py             # File reference handling
+    │
+    ├── orchestrator/            # Orchestrator system
+    │   ├── __init__.py
+    │   ├── executor.py          # Plan execution engine
+    │   └── analyzer.py          # Parallel analysis
     │
     ├── mcp_servers/             # MCP configuration
     │   ├── __init__.py
@@ -1731,97 +2184,6 @@ sequenceDiagram
 [Startup] Debounce system initialized (window=30.0s)
 [Startup] Resumed 0 active channel listeners
 [Startup] Server ready on 0.0.0.0:8000
-```
-
----
-
-## Quick Start
-
-### 1. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure Environment
-
-```bash
-cp .env.example .env
-# Edit .env and add your OPENROUTER_API_KEY
-```
-
-### 3. Run the Server
-
-```bash
-# From the app directory
-python -m src.main
-
-# Or with uvicorn directly
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### 4. Test the API
-
-```bash
-# List models
-curl http://localhost:8000/v1/models
-
-# Chat completion
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "if-prototype",
-    "messages": [
-      {"role": "user", "content": "Hello"}
-    ]
-  }'
-
-# Health check
-curl http://localhost:8000/health
-```
-
-### 5. Register a Discord Channel
-
-```bash
-curl -X POST http://localhost:8000/v1/webhooks/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform": "discord",
-    "label": "My Channel",
-    "discord": {
-      "bot_token": "your-bot-token",
-      "channel_id": "123456789"
-    }
-  }'
-```
-
----
-
-## Structured Logging
-
-The system produces structured log events for monitoring and debugging:
-
-```
-[UserFacts] Added: category=project_direction source=user_stated cache_key=abc123
-[UserFacts] Superseded: old=fact_xyz → new=fact_abc reason="Operator changed direction"
-[UserFacts] Assessment: category=model_assessment content="Networking knowledge gap..."
-[Command] /end_convo executed for cache_key=abc123
-[Command] /coding pinned for cache_key=abc123
-[Heartbeat] Tick: 3 active webhooks, 1 idle, 0 on cooldown
-[Heartbeat] Pondering initiated on "Discord #dev-chat" (channel_id=123456)
-[Heartbeat] Skipped channel_id=789: on cooldown (2.3h since last)
-[Cache] Pin set: abc123 → pondering
-[Cache] Pin released: abc123 (topic shift)
-[TopicShift] Heuristic skip: keyword overlap 0.62 > 0.40
-[Reflection] Cycle started: reason=post_session
-[Reflection] Patterns detected: 3 new, 2 updated
-[Reflection] Opinions formed: 1 new position
-[Reflection] Cycle complete: patterns=3 opinions=1 gaps_promoted=0
-[CapabilityGap] Logged: "Cannot send emails" (trigger_count=2)
-[CapabilityGap] Promoted to tool_suggestion: "email_mcp_server"
-[MetaAnalysis] Category health: fastest_growing=preference
-[GrowthTracker] Misconception repeated: "CIDR math"
-[PatternDetector] New pattern: temporal "AWS questions on Monday"
 ```
 
 ---
