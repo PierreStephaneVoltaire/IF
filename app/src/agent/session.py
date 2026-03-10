@@ -39,6 +39,7 @@ from agent.tools.opinion_tools import get_opinion_tools
 from agent.tools.session_reflection import get_session_reflection_tools
 from agent.tools.directive_tools import get_directive_tools
 from agent.tools.terminal_tools import get_terminal_tools, get_terminal_system_prompt
+from agent.tools.health_tools import get_health_tools
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
 
 
@@ -47,6 +48,23 @@ logger = logging.getLogger(__name__)
 
 # Path to pondering addendum file
 PONDERING_ADDENDUM_PATH = Path(__file__).parent / "prompts" / "pondering_addendum.md"
+
+# Path to main system prompt (personality/speech patterns)
+MAIN_SYSTEM_PROMPT_PATH = Path(__file__).parent.parent.parent / "main_system_prompt.txt"
+
+
+def load_main_system_prompt() -> str:
+    """Load the main system prompt with personality and speech patterns.
+
+    Returns:
+        Content of main_system_prompt.txt or empty string if not found
+    """
+    try:
+        if MAIN_SYSTEM_PROMPT_PATH.exists():
+            return MAIN_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to load main system prompt: {e}")
+    return ""
 
 
 def load_pondering_addendum() -> str:
@@ -192,36 +210,32 @@ def get_operator_context(messages: List[Dict[str, Any]]) -> str:
 
 def assemble_system_prompt(
     preset_slug: str,
-    preset_manager: PresetManager,
     memory_context: Optional[str] = None,
     operator_context: Optional[str] = None
 ) -> str:
     """Assemble the complete system prompt for a preset.
-    
+
     Combines:
-    1. Base system prompt from preset
+    1. Base system prompt (personality/speech patterns from main_system_prompt.txt)
     2. Operator context block (auto-retrieved from user facts)
     3. Memory context block (if provided)
     4. Directives block (from DynamoDB directive store)
     5. Preset-specific instructions (sandbox rules, etc.)
-    
+
     Args:
         preset_slug: Preset identifier
-        preset_manager: Manager with preset data
         memory_context: Optional memory context to inject
         operator_context: Optional operator context from user facts
-        
+
     Returns:
         Complete system prompt string
     """
-    # Get preset data
-    preset = preset_manager.get_preset(preset_slug)
-    if not preset:
-        logger.warning(f"Preset not found: {preset_slug}, using default")
+    # Load the main system prompt (personality/speech patterns)
+    base_prompt = load_main_system_prompt()
+    if not base_prompt:
+        logger.warning("Failed to load main_system_prompt.txt, using fallback")
         base_prompt = "You are a helpful AI assistant."
-    else:
-        base_prompt = preset.description
-    
+
     # Start with base prompt
     prompt_parts = [base_prompt]
     
@@ -235,12 +249,16 @@ def assemble_system_prompt(
         store = get_directive_store()
         directives_block = store.format_for_prompt()
         if directives_block:
+            directive_count = len(store._cache)
+            logger.info(f"[Session] Injecting {directive_count} directives into system prompt for preset '{preset_slug}'")
             prompt_parts.append(f"\n══════════════════════════════════════════\nDIRECTIVES\n══════════════════════════════════════════\n{directives_block}")
-    except RuntimeError:
+        else:
+            logger.warning(f"[Session] No directives available for system prompt (preset: '{preset_slug}') - check DirectiveStore initialization")
+    except RuntimeError as e:
         # Directive store not initialized or disabled
-        logger.debug("Directive store not available, skipping directives block")
+        logger.warning(f"[Session] Directive store not available for preset '{preset_slug}': {e}")
     except Exception as e:
-        logger.warning(f"Failed to get directives: {e}")
+        logger.error(f"[Session] Failed to get directives for preset '{preset_slug}': {e}")
     
     # Add memory protocol
     memory_protocol = """
@@ -378,6 +396,8 @@ async def execute_agent(
         # Get terminal tools (Phase 3)
         # Use session.session_id as chat_id for consistent terminal container scoping
         tools.extend(get_terminal_tools(session.session_id))
+        # Get health tools
+        tools.extend(get_health_tools())
         # Create shared HTTP client for orchestrator tools (connection pooling)
         shared_http_client = httpx.AsyncClient(timeout=120.0)
         # Get orchestrator tools (Parts7-9) with shared HTTP client
@@ -385,10 +405,15 @@ async def execute_agent(
         tools.extend(get_analyzer_tools(session.session_id, http_client=shared_http_client))
         logger.info("Loaded memory, user facts, capability, opinion, reflection, directive, terminal, and orchestrator tools")
         # Create OpenHands Agent
+        # Pass the assembled system prompt (which includes directives) to the Agent
+        # Use the custom system_prompt.j2 template that renders {{ system_prompt }}
+        custom_template_path = Path(__file__).parent / "prompts" / "system_prompt.j2"
         agent = Agent(
             llm=llm,
             tools=tools,
             mcp_config=mcp_config,
+            system_prompt_filename=str(custom_template_path),
+            system_prompt_kwargs={"system_prompt": session.system_prompt},
         )
         logger.debug("Agent created with system prompt")
         # Create or restore Conversation for persistence
@@ -515,8 +540,7 @@ def get_or_create_session(
     session_id = create_session_id(conversation_id, preset_slug)
     model = get_model_for_preset(preset_slug, preset_manager)
     system_prompt = assemble_system_prompt(
-        preset_slug, 
-        preset_manager, 
+        preset_slug,
         memory_context,
         operator_context
     )

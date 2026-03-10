@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 
 logger = logging.getLogger(__name__)
 
@@ -27,33 +27,44 @@ class ProgramNotFoundError(Exception):
 
 class ProgramStore:
     """DynamoDB-backed store for training programs with versioning support.
-    
+
     Schema:
         - Pointer item: pk=HEALTH_PROGRAM_PK, sk="program#current"
           -> {version: int, ref_sk: str, updated_at: ISO8601}
         - Program item: pk=HEALTH_PROGRAM_PK, sk="program#v{version:03d}"
           -> full program JSON as DynamoDB map
-    
+
     All operations are cached in memory for performance.
     """
-    
+
     POINTER_SK = "program#current"
     PROGRAM_SK_PREFIX = "program#v"
-    
-    def __init__(self, table_name: str, pk: str = "operator"):
+
+    def __init__(self, table_name: str, pk: str = "operator", region: str = "ca-central-1"):
         """Initialize the program store.
-        
+
         Args:
             table_name: Name of the DynamoDB table
             pk: Partition key value (default: "operator")
+            region: AWS region (default: "ca-central-1")
         """
         self._table_name = table_name
         self._pk = pk
-        self._table = boto3.resource("dynamodb").Table(table_name)
+        self._region = region
+        self._table = None  # Lazy-loaded via property
         self._cache: Optional[dict] = None
         self._cache_version: Optional[int] = None
-        
-        logger.debug(f"[ProgramStore] Initialized with table={table_name}, pk={pk}")
+
+        logger.debug(f"[ProgramStore] Initialized with table={table_name}, pk={pk}, region={region}")
+
+    @property
+    def table(self):
+        """Lazy-load DynamoDB table resource."""
+        if self._table is None:
+            self._table = boto3.resource(
+                "dynamodb", region_name=self._region
+            ).Table(self._table_name)
+        return self._table
     
     def invalidate_cache(self) -> None:
         """Clear the in-memory cache."""
@@ -91,33 +102,89 @@ class ProgramStore:
         except ProgramNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"[ProgramStore] Failed to load program: {e}")
+            import traceback
+            logger.error(f"[ProgramStore] Failed to load program: {e}\n{traceback.format_exc()}")
             raise RuntimeError(f"Failed to load program from DynamoDB: {e}")
     
     def _load_program_sync(self) -> dict:
         """Synchronous program loading logic."""
         # Read pointer item
-        logger.debug(f"[ProgramStore] Reading pointer: pk={self._pk}, sk={self.POINTER_SK}")
-        pointer_resp = self._table.get_item(
+        logger.info(f"[ProgramStore] Reading pointer from table='{self._table_name}' region='{self._region}': pk={self._pk}, sk={self.POINTER_SK}")
+        pointer_resp = self.table.get_item(
             Key={"pk": self._pk, "sk": self.POINTER_SK}
         )
-        
+
         if "Item" not in pointer_resp:
-            logger.warning(f"[ProgramStore] Pointer item not found: pk={self._pk}")
-            raise ProgramNotFoundError(
-                f"No program pointer found for pk={self._pk}. "
-                "Create a program using new_version() first."
-            )
+            # No pointer found - try to auto-create from existing program versions
+            logger.info(f"[ProgramStore] Pointer not found, scanning for existing program versions...")
+            try:
+                scan_result = self.table.scan(
+                    FilterExpression=Attr("pk").eq(self._pk) & Attr("sk").begins_with(self.PROGRAM_SK_PREFIX)
+                )
+                items = scan_result.get("Items", [])
+
+                if not items:
+                    raise ProgramNotFoundError(
+                        f"No program or pointer found for pk={self._pk}. "
+                        "Create a program using new_version() first."
+                    )
+
+                # Find highest version number
+                latest_version = 0
+                latest_sk = None
+                for item in items:
+                    sk = item.get("sk", "")
+                    if sk.startswith(self.PROGRAM_SK_PREFIX):
+                        try:
+                            version_str = sk[len(self.PROGRAM_SK_PREFIX):]
+                            version = int(version_str)
+                            if version > latest_version:
+                                latest_version = version
+                                latest_sk = sk
+                        except ValueError:
+                            continue
+
+                if not latest_sk:
+                    raise ProgramNotFoundError(
+                        f"No valid program versions found for pk={self._pk}. "
+                        "Create a program using new_version() first."
+                    )
+
+                # Auto-create pointer
+                now = datetime.now(timezone.utc).isoformat()
+                pointer_item = {
+                    "pk": self._pk,
+                    "sk": self.POINTER_SK,
+                    "version": latest_version,
+                    "ref_sk": latest_sk,
+                    "updated_at": now,
+                }
+                self.table.put_item(Item=pointer_item)
+                logger.info(f"[ProgramStore] Auto-created pointer to version {latest_version} ({latest_sk})")
+
+                # Re-read pointer
+                pointer_resp = self.table.get_item(
+                    Key={"pk": self._pk, "sk": self.POINTER_SK}
+                )
+
+            except ProgramNotFoundError:
+                raise
+            except Exception as scan_err:
+                logger.error(f"[ProgramStore] Failed to scan for programs: {scan_err}")
+                raise ProgramNotFoundError(
+                    f"No program pointer found for pk={self._pk}. "
+                    "Create a program using new_version() first."
+                )
         
         pointer = pointer_resp["Item"]
-        version = pointer.get("version", 0)
+        version = int(pointer.get("version", 0))
         ref_sk = pointer.get("ref_sk", f"{self.PROGRAM_SK_PREFIX}{version:03d}")
         
         logger.debug(f"[ProgramStore] Pointer points to version={version}, ref_sk={ref_sk}")
         
         # Read program item
         logger.debug(f"[ProgramStore] Reading program: pk={self._pk}, sk={ref_sk}")
-        program_resp = self._table.get_item(
+        program_resp = self.table.get_item(
             Key={"pk": self._pk, "sk": ref_sk}
         )
         
@@ -320,12 +387,12 @@ class ProgramStore:
         
         # Get current version from pointer
         logger.debug(f"[ProgramStore] Reading current pointer for version increment")
-        pointer_resp = self._table.get_item(
+        pointer_resp = self.table.get_item(
             Key={"pk": self._pk, "sk": self.POINTER_SK}
         )
         
         if "Item" in pointer_resp:
-            current_version = pointer_resp["Item"].get("version", 0)
+            current_version = int(pointer_resp["Item"].get("version", 0))
         else:
             current_version = 0
         
@@ -359,7 +426,7 @@ class ProgramStore:
         }
         
         logger.debug(f"[ProgramStore] Writing new program version: sk={new_sk}, label={new_label}")
-        self._table.put_item(Item=program_item)
+        self.table.put_item(Item=program_item)
         
         # Update pointer
         pointer_item = {
@@ -371,7 +438,7 @@ class ProgramStore:
         }
         
         logger.debug(f"[ProgramStore] Updating pointer to version={new_version_int}")
-        self._table.put_item(Item=pointer_item)
+        self.table.put_item(Item=pointer_item)
         
         # Update cache
         self._cache = program

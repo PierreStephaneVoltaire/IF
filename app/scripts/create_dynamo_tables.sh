@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+REGION="${AWS_DEFAULT_REGION:-ca-central-1}"
 BILLING="PAY_PER_REQUEST"
 
 while [[ $# -gt 0 ]]; do
@@ -21,7 +21,7 @@ done
 # PK: entity type + ID  (e.g. "webhook#abc123", "directive#Zero-One")
 # SK: sub-type or timestamp (e.g. "record", "2024-01-01T00:00:00Z")
 
-IF_CORE_TABLE="${IF_CORE_TABLE_NAME:-if-core-store}"
+IF_CORE_TABLE="${IF_CORE_TABLE_NAME:-if-core}"
 
 echo "[1/2] Creating table: ${IF_CORE_TABLE}"
 
@@ -58,7 +58,7 @@ echo "[1/2] Done."
 #
 # TTL not enabled — programs are permanent versioned records.
 
-IF_HEALTH_TABLE="${IF_HEALTH_TABLE_NAME:-if-health-store}"
+IF_HEALTH_TABLE="${IF_HEALTH_TABLE_NAME:-if-health}"
 
 echo "[2/2] Creating table: ${IF_HEALTH_TABLE}"
 

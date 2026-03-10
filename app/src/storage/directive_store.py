@@ -76,19 +76,34 @@ class DirectiveStore:
         
         Returns:
             List of active Directive objects (highest version only), sorted by alpha then beta
+            
+        Raises:
+            Exception: If DynamoDB query fails (connection error, permission denied, etc.)
         """
-        response = self.table.query(
-            KeyConditionExpression=Key("pk").eq("DIR")
-        )
+        try:
+            logger.info(f"[DirectiveStore] Loading directives from {self.table_name}...")
+            response = self.table.query(
+                KeyConditionExpression=Key("pk").eq("DIR")
+            )
+            items = response.get("Items", [])
+            logger.info(f"[DirectiveStore] Retrieved {len(items)} raw items from DynamoDB")
+        except Exception as e:
+            logger.error(f"[DirectiveStore] FAILED to query DynamoDB: {type(e).__name__}: {e}")
+            raise RuntimeError(f"DirectiveStore failed to load from DynamoDB: {e}") from e
         
         # Group by alpha/beta, find highest active version for each
         by_alpha_beta: Dict[str, List[Directive]] = defaultdict(list)
-        for item in response.get("Items", []):
+        skipped_count = 0
+        for item in items:
             try:
                 directive = Directive.from_dynamodb_item(item)
                 by_alpha_beta[directive.base_key].append(directive)
             except ValueError as e:
                 logger.warning(f"Skipping invalid directive item: {e}")
+                skipped_count += 1
+        
+        if skipped_count > 0:
+            logger.warning(f"[DirectiveStore] Skipped {skipped_count} invalid directive items")
         
         # For each alpha/beta, get the highest-versioned active directive
         directives = []
@@ -103,7 +118,18 @@ class DirectiveStore:
         directives.sort(key=lambda d: (d.alpha, d.beta))
         self._cache = directives
         
-        logger.info(f"[DirectiveStore] Loaded {len(directives)} active directives")
+        # Build summary by alpha tier
+        by_alpha = {}
+        for d in directives:
+            by_alpha.setdefault(d.alpha, 0)
+            by_alpha[d.alpha] += 1
+        
+        alpha_summary = ", ".join([f"alpha {a}: {c}" for a, c in sorted(by_alpha.items())])
+        logger.info(f"[DirectiveStore] Loaded {len(directives)} active directives ({alpha_summary})")
+        
+        if len(directives) == 0:
+            logger.warning(f"[DirectiveStore] NO directives loaded from {self.table_name} - table may be empty or all directives are inactive")
+        
         return directives
     
     def format_for_prompt(self) -> str:

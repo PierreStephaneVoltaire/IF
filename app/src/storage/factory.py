@@ -59,24 +59,35 @@ _directive_store = None
 
 
 def init_directive_store() -> None:
-
+    """Initialize the directive store and load directives from DynamoDB.
+    
+    Raises:
+        RuntimeError: If directive store fails to initialize or load from DynamoDB
+    """
     global _directive_store
     
     if not DIRECTIVE_STORE_ENABLED:
         logger.info("[DirectiveStore] Disabled via DIRECTIVE_STORE_ENABLED=false")
         return
     
-    from storage.directive_store import DirectiveStore
+    logger.info(f"[DirectiveStore] Initializing with table={DYNAMODB_DIRECTIVES_TABLE}, region={AWS_REGION}")
     
-    _directive_store = DirectiveStore(
-        table_name=DYNAMODB_DIRECTIVES_TABLE,
-        region=AWS_REGION
-    )
-    _directive_store.load()
-    logger.info(
-        f"[Startup] Loaded {len(_directive_store._cache)} active directives "
-        f"from {DYNAMODB_DIRECTIVES_TABLE}"
-    )
+    try:
+        from storage.directive_store import DirectiveStore
+        
+        _directive_store = DirectiveStore(
+            table_name=DYNAMODB_DIRECTIVES_TABLE,
+            region=AWS_REGION
+        )
+        _directive_store.load()
+        logger.info(
+            f"[DirectiveStore] Successfully initialized with {len(_directive_store._cache)} active directives "
+            f"from table {DYNAMODB_DIRECTIVES_TABLE}"
+        )
+    except Exception as e:
+        logger.error(f"[DirectiveStore] FAILED to initialize: {type(e).__name__}: {e}")
+        logger.error(f"[DirectiveStore] Check AWS credentials, DynamoDB table exists, and network connectivity")
+        raise RuntimeError(f"DirectiveStore initialization failed: {e}") from e
 
 
 def get_directive_store():

@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 import asyncio
+import os
 import uuid
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -174,6 +175,48 @@ async def lifespan(app: FastAPI):
         pass
     except Exception as e:
         logger.warning(f"Legacy memory store initialization failed: {e}")
+
+    # Health module initialization
+    try:
+        from health import ProgramStore, HealthDocsRAG, init_tools, ProgramNotFoundError
+
+        program_store = ProgramStore(
+            table_name=os.environ.get("IF_HEALTH_TABLE_NAME", "if-health"),
+            pk=os.environ.get("HEALTH_PROGRAM_PK", "operator"),
+            region=os.environ.get("AWS_REGION", "ca-central-1")
+        )
+
+        # Get existing ChromaDB client from user facts store
+        chroma_client = None
+        try:
+            from memory import get_user_fact_store
+            user_facts_store = get_user_fact_store()
+            chroma_client = user_facts_store._client if user_facts_store else None
+        except Exception:
+            pass
+
+        health_rag = HealthDocsRAG(
+            docs_dir=os.environ.get("HEALTH_DOCS_DIR", "docs/health"),
+            chroma_client=chroma_client
+        )
+
+        init_tools(program_store, health_rag)
+
+        # Index docs in background
+        asyncio.create_task(health_rag.index_docs())
+
+        # Pre-warm program cache
+        try:
+            await program_store.get_program()
+            logger.info("[Startup] Health program cache warmed")
+        except ProgramNotFoundError:
+            logger.info("[Startup] No health program found - create via health_new_version")
+
+        logger.info("Health module initialized")
+    except ImportError as e:
+        logger.warning(f"Health module not available: {e}")
+    except Exception as e:
+        logger.warning(f"Health module initialization failed: {e}")
     
     try:
         import nltk
@@ -198,8 +241,12 @@ async def lifespan(app: FastAPI):
     
     try:
         init_directive_store()
+        logger.info("Directive store initialized successfully")
     except Exception as e:
-        logger.warning(f"Directive store initialization failed: {e}")
+        logger.error(f"CRITICAL: Directive store initialization failed: {e}")
+        logger.error("The server will continue but directives will NOT be available in system prompts")
+        # Optionally raise here if directives are critical:
+        # raise
     
     try:
         init_debounce(asyncio.get_running_loop())
