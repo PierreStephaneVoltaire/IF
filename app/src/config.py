@@ -73,6 +73,37 @@ TOPIC_SHIFT_MODEL = os.getenv("TOPIC_SHIFT_MODEL", "z-ai/glm-4.7-flash")
 # Context Condensation
 CONTEXT_CONDENSE_THRESHOLD = int(os.getenv("CONTEXT_CONDENSE_THRESHOLD", "250000"))
 
+# =============================================================================
+# Tier System Configuration (Phase 3)
+# =============================================================================
+
+# Tier upgrade threshold (fraction of context limit before upgrade)
+TIER_UPGRADE_THRESHOLD = float(os.getenv("TIER_UPGRADE_THRESHOLD", "0.65"))
+
+# Context limits per tier (in tokens)
+TIER_AIR_LIMIT = int(os.getenv("TIER_AIR_LIMIT", "30000"))
+TIER_STANDARD_LIMIT = int(os.getenv("TIER_STANDARD_LIMIT", "120000"))
+TIER_HEAVY_LIMIT = int(os.getenv("TIER_HEAVY_LIMIT", "200000"))
+
+# OpenRouter presets per tier
+TIER_AIR_PRESET = os.getenv("TIER_AIR_PRESET", "@preset/air")
+TIER_STANDARD_PRESET = os.getenv("TIER_STANDARD_PRESET", "@preset/standard")
+TIER_HEAVY_PRESET = os.getenv("TIER_HEAVY_PRESET", "@preset/heavy")
+
+# =============================================================================
+# Specialist Subagent Configuration (Phase 4)
+# =============================================================================
+
+# Default preset for specialist subagents
+SPECIALIST_PRESET = os.getenv("SPECIALIST_PRESET", "@preset/standard")
+
+# Maximum turns per specialist subagent
+SPECIALIST_MAX_TURNS = int(os.getenv("SPECIALIST_MAX_TURNS", "15"))
+
+# Deep thinker (pondering) configuration
+THINKING_PRESET = os.getenv("THINKING_PRESET", "@preset/general")
+THINKING_MAX_TURNS = int(os.getenv("THINKING_MAX_TURNS", "20"))
+
 # Cache Configuration
 CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # 1 hour
 MAX_CACHE_SIZE = int(os.getenv("MAX_CACHE_SIZE", "1000"))  # Max conversations in cache

@@ -19,13 +19,16 @@ from .schemas import (
     ChatCompletionChunkDelta,
 )
 from routing.interceptor import intercept_request
-from routing.scorer import score_conversation
-from routing.decision import select_preset
-from routing.cache import get_cache, ConversationState
+from routing.cache import get_cache
 from routing.commands import parse_command, CommandAction
-from routing.topic_shift import should_check_shift, topic_has_shifted
 from presets.loader import get_preset_manager
 from agent.session import get_or_create_session, execute_agent
+from agent.tiering import (
+    estimate_context_tokens,
+    check_tier,
+    get_preset_for_tier,
+    get_tier_for_context,
+)
 from terminal.files import strip_files_line, log_file_refs, FilesStripBuffer, FileRef
 
 if TYPE_CHECKING:
@@ -35,8 +38,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-RECLASSIFY_MESSAGE_COUNT = 5
 
 
 
@@ -226,17 +227,17 @@ async def process_chat_completion_internal(
             return cmd.response_text, []
         
         if cmd.action == CommandAction.PIN_PRESET:
-            cached_state = cache.get(cache_key)
-            if cached_state:
-                cache.pin(cache_key, cmd.preset)
-            else:
-                new_state = ConversationState(
-                    cache_key=cache_key,
-                    active_preset=cmd.preset,
-                    pinned=True,
-                    pin_message_count=0,
-                )
-                cache.set(cache_key, new_state)
+            # Pin to specific tier (pondering mode uses tier 2/heavy)
+            cached_state = cache.get_or_create(cache_key)
+            # Map preset names to tiers
+            tier_map = {
+                "pondering": 2,  # Heavy tier for pondering
+                "heavy": 2,
+                "standard": 1,
+                "air": 0,
+            }
+            tier = tier_map.get(cmd.preset, cached_state.current_tier)
+            cache.pin(cache_key, tier)
             try:
                 from storage.factory import get_webhook_store
                 store = get_webhook_store()
@@ -244,7 +245,7 @@ async def process_chat_completion_internal(
                     await cache.persist_entry(cache_key, store._backend)
             except Exception as e:
                 logger.warning(f"[Cache] Failed to persist pin: {e}")
-            logger.info(f"[Cache] Pinned preset '{cmd.preset}' for key: {cache_key}")
+            logger.info(f"[Cache] Pinned tier {tier} for key: {cache_key}")
             return cmd.response_text, []
         
         if cmd.action == CommandAction.NOOP:
@@ -289,84 +290,50 @@ async def process_chat_completion_internal(
                 content = choices[0].get("message", {}).get("content", "")
                 return content, []
         return str(response), []
-    
-    cached_state = cache.get(cache_key)
-    selected_preset = None
-    
-    if cached_state and cached_state.pinned:
-        if cached_state.active_preset == "pondering":
-            selected_preset = cached_state.active_preset
-            logger.info(f"[Cache] Pondering mode active, skipping topic shift")
+
+    # Get or create cached state for tier tracking
+    cached_state = cache.get_or_create(cache_key)
+
+    # Check for pinned tier (e.g., pondering mode)
+    if cached_state.pinned and cached_state.pinned_tier is not None:
+        # Use pinned tier
+        selected_preset = get_preset_for_tier(cached_state.pinned_tier)
+        logger.info(f"[Tiering] Using pinned tier {cached_state.pinned_tier}: {selected_preset}")
+    else:
+        # Estimate context tokens
+        # Get system prompt estimate from session
+        system_prompt = "general"  # Base system prompt, will be assembled by session
+        context_tokens = estimate_context_tokens(system_prompt, messages, tool_overhead=5000)
+
+        # Check tier based on context
+        try_condensation, upgrade_tier = check_tier(context_tokens, cached_state.current_tier)
+
+        if try_condensation:
+            # Context exceeds current tier limit - could trigger condensation here
+            # For now, log and continue with current tier
+            logger.info(f"[Tiering] Context ({context_tokens} tokens) exceeds current tier limit, condensation may be needed")
+
+        if upgrade_tier is not None:
+            # Upgrade tier
+            cached_state.current_tier = upgrade_tier
+            cached_state.context_tokens = context_tokens
+            logger.info(f"[Tiering] Upgraded to tier {upgrade_tier}")
         else:
-            cached_state.pin_message_count += 1
-            
-            if cached_state.pin_message_count >= RECLASSIFY_MESSAGE_COUNT:
-                current_window = extract_message_window(messages)
-                
-                if should_check_shift(cached_state.anchor_window, current_window):
-                    shifted = await topic_has_shifted(
-                        cached_state.anchor_window,
-                        current_window,
-                        http_client
-                    )
-                    
-                    if shifted:
-                        cached_state.pinned = False
-                        cached_state.pin_message_count = 0
-                        logger.info(f"[Cache] Topic shifted, releasing pin")
-                    else:
-                        selected_preset = cached_state.active_preset
-                else:
-                    selected_preset = cached_state.active_preset
-            else:
-                selected_preset = cached_state.active_preset
-    
-    elif cached_state:
-        should_reclassify = cached_state.should_reclassify(last_user_message)
-        
-        if not should_reclassify:
-            logger.info(f"[Cache] Reusing cached preset: {cached_state.active_preset}")
-            selected_preset = cached_state.active_preset
-    
-    if selected_preset is None:
-        scores = await score_conversation(
-            messages=messages,
-            preset_manager=preset_manager,
-            http_client=http_client
-        )
-        
-        decision = select_preset(
-            scores=scores,
-            preset_manager=preset_manager
-        )
-        
-        logger.info(decision.log_message)
-        selected_preset = decision.selected_preset
-        
-        current_window = extract_message_window(messages)
-        
-        if cached_state:
-            cached_state.update(decision, scores, current_window)
-            logger.info(f"[Cache] Updated preset: {decision.selected_preset}")
-        else:
-            new_state = ConversationState(
-                cache_key=cache_key,
-                active_preset=decision.selected_preset,
-                anchor_window=current_window,
-                last_scores=scores,
-                last_decision=decision
-            )
-            cache.set(cache_key, new_state)
-            logger.info(f"[Cache] Created new state with preset: {decision.selected_preset}")
-        
-        try:
-            from storage.factory import get_webhook_store
-            store = get_webhook_store()
-            if store:
-                await cache.persist_entry(cache_key, store._backend)
-        except Exception as e:
-            logger.warning(f"[Cache] Failed to persist entry: {e}")
-    
+            cached_state.context_tokens = context_tokens
+
+        # Get preset for current tier (always use general preset as main agent)
+        selected_preset = "general"
+        logger.info(f"[Tiering] Using preset: {selected_preset} (tier {cached_state.current_tier})")
+
+    # Persist cache state
+    try:
+        from storage.factory import get_webhook_store
+        store = get_webhook_store()
+        if store:
+            await cache.persist_entry(cache_key, store._backend)
+    except Exception as e:
+        logger.warning(f"[Cache] Failed to persist entry: {e}")
+
     session = get_or_create_session(
         conversation_id=cache_key,
         preset_slug=selected_preset,

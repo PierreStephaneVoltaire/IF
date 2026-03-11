@@ -61,39 +61,47 @@ def _rewrite_content_via_llm(raw_content: str) -> str:
     return data["choices"][0]["message"]["content"].strip()
 
 
-def _add_directive(alpha: int, label: str, raw_content: str) -> str:
+def _add_directive(alpha: int, label: str, raw_content: str, types: List[str]) -> str:
     """Add a new directive.
-    
+
     Alpha 0-1 are blocked. Content is rewritten through configured LLM before storage.
     Beta is auto-assigned.
-    
+
     Args:
         alpha: Alpha tier (2-5 only)
         label: Directive label (UPPER_SNAKE_CASE)
         raw_content: Raw operator intent to be rewritten
-        
+        types: Domain types for this directive (e.g., ["code", "security"])
+
     Returns:
         Confirmation message with assigned directive ID
     """
     # Block alpha 0-1
     if alpha in (0, 1):
         return f"Error: Cannot add directives to alpha tier {alpha}. Tiers 0-1 are protected."
-    
+
+    # Validate types
+    valid_types = {"core", "code", "architecture", "security", "health", "competition", "finance", "communication", "personality", "metacognition", "memory", "tool"}
+    for t in types:
+        if t not in valid_types:
+            return f"Error: Invalid type '{t}'. Valid types: {sorted(valid_types)}"
+
     try:
         # Rewrite content through LLM
         rewritten_content = _rewrite_content_via_llm(raw_content)
-        
+
         # Store the directive
         store = get_directive_store()
         directive = store.add(
             alpha=alpha,
             label=label,
             content=rewritten_content,
+            types=types,
             created_by="operator"
         )
-        
-        return f"Directive {directive.alpha}-{directive.beta} added: {label}\n\nContent: {rewritten_content}"
-        
+
+        return f"Directive {directive.alpha}-{directive.beta} added: {label}\nTypes: {', '.join(types)}\n\nContent: {rewritten_content}"
+
     except Exception as e:
         return f"Error adding directive: {str(e)}"
 
@@ -224,6 +232,7 @@ class DirectiveAddAction(Action):
     alpha: int = Field(description="Alpha tier (2-5 only, 0-1 are protected)")
     label: str = Field(description="Directive label in UPPER_SNAKE_CASE")
     raw_content: str = Field(description="Raw operator intent to be rewritten into directive voice")
+    types: List[str] = Field(description="Domain types (e.g., ['code', 'security']). Valid: core, code, architecture, security, health, competition, finance, communication, personality, metacognition, memory, tool")
 
 
 class DirectiveAddObservation(Observation):
@@ -235,7 +244,8 @@ class DirectiveAddExecutor(ToolExecutor[DirectiveAddAction, DirectiveAddObservat
         result = _add_directive(
             alpha=action.alpha,
             label=action.label,
-            raw_content=action.raw_content
+            raw_content=action.raw_content,
+            types=action.types
         )
         return DirectiveAddObservation.from_text(result)
 
@@ -247,7 +257,9 @@ class DirectiveAddTool(ToolDefinition[DirectiveAddAction, DirectiveAddObservatio
             description=(
                 "Add a new behavioral directive. Alpha tiers 0-1 are protected. "
                 "Content is automatically rewritten into directive voice via LLM. "
-                "Beta number is auto-assigned."
+                "Beta number is auto-assigned. "
+                "Types: Domain types for directive applies to (e.g., code, security, health). "
+                "At least one type required."
             ),
             action_type=DirectiveAddAction,
             observation_type=DirectiveAddObservation,

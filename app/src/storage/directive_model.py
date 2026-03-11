@@ -18,12 +18,13 @@ import re
 @dataclass
 class Directive:
     """A behavioral directive for the agent.
-    
+
     Attributes:
         alpha: Priority tier (0-5, lower is higher priority)
         beta: Order within alpha tier
         label: Human-readable label (UPPER_SNAKE_CASE)
         content: Full directive text
+        types: Domain types this directive applies to (e.g., ["core", "code", "security"])
         version: Version number (starts at 1, increments on revision)
         created_by: Who created this directive ("operator", "agent", "reflection")
         active: Whether this directive is active
@@ -34,22 +35,23 @@ class Directive:
     beta: int
     label: str
     content: str
+    types: list[str] = field(default_factory=lambda: ["core"])
     version: int = 1
     created_by: str = "operator"
     active: bool = True
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     superseded_at: Optional[str] = None
-    
+
     @property
     def sort_key(self) -> str:
         """DynamoDB SK: {alpha:02d}#{beta:02d}#v{version:03d}"""
         return f"{self.alpha:02d}#{self.beta:02d}#v{self.version:03d}"
-    
+
     @property
     def display_id(self) -> str:
         """Human-readable ID: alpha-beta"""
         return f"{self.alpha}-{self.beta}"
-    
+
     @property
     def base_key(self) -> str:
         """Base key without version: {alpha:02d}#{beta:02d}"""
@@ -79,12 +81,22 @@ class Directive:
         beta = int(match.group(2))
         version = int(match.group(3))
         
+        # Parse dtype (StringSet) - handle missing gracefully
+        dtype_raw = item.get("dtype")
+        if isinstance(dtype_raw, set):
+            types = list(dtype_raw)
+        elif isinstance(dtype_raw, list):
+            types = dtype_raw
+        else:
+            types = ["core"]  # Default fallback
+
         return cls(
             alpha=alpha,
             beta=beta,
             version=version,
             label=item.get("label", ""),
             content=item.get("content", ""),
+            types=types,
             active=item.get("active", True),
             created_by=item.get("created_by", "operator"),
             created_at=item.get("created_at", datetime.now(timezone.utc).isoformat()),
@@ -93,7 +105,7 @@ class Directive:
     
     def to_dynamodb_item(self) -> dict:
         """Convert to DynamoDB item format.
-        
+
         Returns:
             Dict suitable for DynamoDB put_item
         """
@@ -105,6 +117,7 @@ class Directive:
             "version": self.version,
             "label": self.label,
             "content": self.content,
+            "dtype": set(self.types),  # StringSet for types
             "active": self.active,
             "created_by": self.created_by,
             "created_at": self.created_at,

@@ -40,6 +40,7 @@ from agent.tools.session_reflection import get_session_reflection_tools
 from agent.tools.directive_tools import get_directive_tools
 from agent.tools.terminal_tools import get_terminal_tools, get_terminal_system_prompt
 from agent.tools.health_tools import get_health_tools
+from agent.tools.subagents import get_subagent_tools
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
 
 
@@ -398,6 +399,8 @@ async def execute_agent(
         tools.extend(get_terminal_tools(session.session_id))
         # Get health tools
         tools.extend(get_health_tools())
+        # Get subagent tools (specialist spawning, deep thinking)
+        tools.extend(get_subagent_tools(session.session_id))
         # Create shared HTTP client for orchestrator tools (connection pooling)
         shared_http_client = httpx.AsyncClient(timeout=120.0)
         # Get orchestrator tools (Parts7-9) with shared HTTP client

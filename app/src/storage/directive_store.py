@@ -220,32 +220,35 @@ class DirectiveStore:
         return versions[0]
     
     def add(
-        self, 
-        alpha: int, 
-        label: str, 
-        content: str, 
+        self,
+        alpha: int,
+        label: str,
+        content: str,
+        types: List[str],
         created_by: str
     ) -> Directive:
         """Create new directive with version=1. Auto-assign beta via next_beta().
-        
+
         Args:
             alpha: Alpha tier (0-5)
             label: Directive label (UPPER_SNAKE_CASE)
             content: Full directive text
+            types: Domain types for this directive (e.g., ["core", "code"])
             created_by: "operator", "agent", or "reflection"
-            
+
         Returns:
             The created Directive with assigned beta
         """
         beta = self.next_beta(alpha)
         now = datetime.now(timezone.utc).isoformat()
-        
+
         directive = Directive(
             alpha=alpha,
             beta=beta,
             version=1,  # New directives always start at version 1
             label=label,
             content=content,
+            types=types,
             created_by=created_by,
             active=True,
             created_at=now,
@@ -261,10 +264,11 @@ class DirectiveStore:
         return directive
     
     def revise(
-        self, 
-        alpha: int, 
-        beta: int, 
-        content: str, 
+        self,
+        alpha: int,
+        beta: int,
+        content: str,
+        types: Optional[List[str]] = None,
         label: Optional[str] = None,
         created_by: str = "agent"
     ) -> Optional[Directive]:
@@ -420,3 +424,93 @@ class DirectiveStore:
         ]
         versions.sort(key=lambda d: d.version, reverse=True)
         return versions
+
+
+# =========================================================================
+# Type-based filtering methods for subagent directive injection
+# =========================================================================
+
+# Types that should be excluded from subagent auto-injection
+MAIN_AGENT_ONLY_TYPES = {"tool", "memory", "metacognition"}
+
+def get_by_types(self, types: List[str]) -> List[Directive]:
+    """Return all active cached directives that have ANY of the given types.
+
+    Union logic -- types=["code", "security"] returns directives tagged
+    code OR security (or both).
+    """
+    result = []
+    type_set = set(types)
+    for d in self._cache:
+        if not d.active:
+            continue
+        d_types = set(d.types)
+        if d_types & type_set:
+            result.append(d)
+    result.sort(key=lambda d: (d.alpha, d.beta))
+    return result
+
+def get_for_subagent(self, types: List[str]) -> List[Directive]:
+    """Build directive set for a subagent.
+
+    1. All tier 0 directives (always included for safety)
+    2. All directives matching any of the given types
+    3. Exclude directives whose ONLY types are in main-agent-only set:
+       (tool, memory, metacognition)
+    4. Deduplicate by alpha-beta
+
+    Args:
+        types: List of directive types to include (e.g., ["code", "architecture"])
+
+    Returns:
+        List of Directive objects sorted by alpha then beta
+    """
+    result_by_key = {}  # Use dict for deduplication
+
+    type_set = set(types) if types else set()
+
+    for d in self._cache:
+        if not d.active:
+            continue
+
+        d_types = set(d.types)
+
+        # Always include tier 0 directives
+        if d.alpha == 0:
+            result_by_key[(d.alpha, d.beta)] = d
+            continue
+
+        # Skip main-agent-only directives (those with ONLY tool/memory/metacognition)
+        if d_types & d_types.issubset(self.MAIN_AGENT_ONLY_TYPES):
+            continue
+
+        # Include if any type matches
+        if d_types & type_set:
+            result_by_key[(d.alpha, d.beta)] = d
+
+    result = list(result_by_key.values())
+    result.sort(key=lambda d: (d.alpha, d.beta))
+    return result
+
+def format_directives(self, directives: List[Directive]) -> str:
+    """Format a list of directives for injection into a subagent prompt.
+
+    Args:
+        directives: List of Directive objects to format
+
+    Returns:
+        Formatted directive block string
+    """
+    if not directives:
+        return ""
+
+    lines = []
+    for d in directives:
+        lines.append(
+            f"{d.alpha}-{d.beta}  {d.label} "
+            f"(Directive {self._number_to_text(d.alpha)}-{self._number_to_text(d.beta)})"
+        )
+        lines.append(d.content)
+        lines.append("")  # Blank line between directives
+
+    return "\n".join(lines)

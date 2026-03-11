@@ -1,0 +1,173 @@
+"""Specialist subagent registry and configuration.
+
+This module defines the specialist subagents that can be spawned by the
+main agent for deep domain expertise. Each specialist has:
+- A specific domain focus (debugger, architect, secops, etc.)
+- Filtered directives relevant to their domain
+- Custom prompt templates
+- Optional MCP servers and tools
+
+Specialists are spawned via the spawn_specialist tool in subagents.py.
+"""
+from __future__ import annotations
+import logging
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
+from config import SPECIALIST_PRESET, SPECIALIST_MAX_TURNS
+from agent.prompts.loader import render_template
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SpecialistConfig:
+    """Configuration for a specialist subagent.
+
+    Attributes:
+        slug: URL-safe identifier (e.g., "debugger", "architect")
+        description: Human-readable description for tool UI
+        template: Jinja2 template name (e.g., "specialists/debugger.j2")
+        tools: List of tool names this specialist can use
+        mcp_servers: List of MCP server slugs to attach
+        directive_types: Types of directives to inject (e.g., ["code", "security"])
+        preset: OpenRouter preset to use
+        max_turns: Maximum turns before timeout
+    """
+    slug: str
+    description: str
+    template: str
+    tools: List[str] = field(default_factory=list)
+    mcp_servers: List[str] = field(default_factory=list)
+    directive_types: List[str] = field(default_factory=lambda: ["core"])
+    preset: str = SPECIALIST_PRESET
+    max_turns: int = SPECIALIST_MAX_TURNS
+
+
+# =============================================================================
+# Specialist Registry
+# =============================================================================
+
+SPECIALISTS: Dict[str, SpecialistConfig] = {
+    "debugger": SpecialistConfig(
+        slug="debugger",
+        description="Deep code debugging and error analysis specialist",
+        template="specialists/debugger.j2",
+        tools=["terminal_execute", "read_file", "write_file", "search_files"],
+        mcp_servers=[],
+        directive_types=["code", "architecture"],
+    ),
+    "architect": SpecialistConfig(
+        slug="architect",
+        description="System architecture and design patterns specialist",
+        template="specialists/architect.j2",
+        tools=["read_file", "write_file", "search_files"],
+        mcp_servers=["aws_docs"],
+        directive_types=["architecture", "code"],
+    ),
+    "secops": SpecialistConfig(
+        slug="secops",
+        description="Security operations and vulnerability analysis specialist",
+        template="specialists/secops.j2",
+        tools=["terminal_execute", "read_file", "search_files"],
+        mcp_servers=[],
+        directive_types=["security", "code"],
+    ),
+    "devops": SpecialistConfig(
+        slug="devops",
+        description="Infrastructure and deployment automation specialist",
+        template="specialists/devops.j2",
+        tools=["terminal_execute", "read_file", "write_file"],
+        mcp_servers=[],
+        directive_types=["code", "architecture"],
+    ),
+    "financial_analyst": SpecialistConfig(
+        slug="financial_analyst",
+        description="Financial data analysis and market research specialist",
+        template="specialists/financial_analyst.j2",
+        tools=["read_file"],
+        mcp_servers=["yahoo_finance", "alpha_vantage"],
+        directive_types=["finance", "competition"],
+    ),
+    "health_coach": SpecialistConfig(
+        slug="health_coach",
+        description="Health program analysis and personalized coaching specialist",
+        template="specialists/health_coach.j2",
+        tools=["read_file"],
+        mcp_servers=["google_sheets"],
+        directive_types=["health"],
+    ),
+    "web_researcher": SpecialistConfig(
+        slug="web_researcher",
+        description="Web research and information synthesis specialist",
+        template="specialists/web_researcher.j2",
+        tools=["read_file", "write_file"],
+        mcp_servers=[],
+        directive_types=["core", "competition"],
+    ),
+}
+
+
+# =============================================================================
+# Skills (mode modifiers for specialists)
+# =============================================================================
+
+SKILLS: List[str] = [
+    "red_team",   # Adversarial/attack perspective
+    "blue_team",  # Defensive/protection perspective
+    "pro_con",    # Pros and cons analysis
+]
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def get_specialist(slug: str) -> Optional[SpecialistConfig]:
+    """Get specialist configuration by slug.
+
+    Args:
+        slug: Specialist identifier (e.g., "debugger")
+
+    Returns:
+        SpecialistConfig if found, None otherwise
+    """
+    return SPECIALISTS.get(slug)
+
+
+def list_specialists() -> List[SpecialistConfig]:
+    """Get all available specialist configurations.
+
+    Returns:
+        List of all SpecialistConfig objects
+    """
+    return list(SPECIALISTS.values())
+
+
+def render_specialist_prompt(
+    specialist: SpecialistConfig,
+    task: str,
+    context: Optional[str] = None,
+    directives: Optional[str] = None,
+    skill: Optional[str] = None
+) -> str:
+    """Render a specialist's prompt template.
+
+    Args:
+        specialist: SpecialistConfig object
+        task: The task description for the specialist
+        context: Optional context/background information
+        directives: Optional formatted directives block
+        skill: Optional skill mode (red_team, blue_team, pro_con)
+
+    Returns:
+        Rendered prompt string
+    """
+    return render_template(
+        specialist.template,
+        task=task,
+        context=context or "",
+        directives=directives or "",
+        skill=skill,
+    )
