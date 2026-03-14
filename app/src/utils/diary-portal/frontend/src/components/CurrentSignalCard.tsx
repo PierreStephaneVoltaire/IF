@@ -64,7 +64,7 @@ export function CurrentSignalCard() {
             Themes
           </div>
           <div className="flex flex-wrap gap-2">
-            {currentSignal.themes.map((theme, index) => (
+            {currentSignal.themes.map((theme: string, index: number) => (
               <span
                 key={index}
                 className="px-2 py-1 bg-gray-800 text-gray-300 rounded text-sm"

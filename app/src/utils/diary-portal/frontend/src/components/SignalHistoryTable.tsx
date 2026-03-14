@@ -78,7 +78,7 @@ export function SignalHistoryTable() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
-                    {signal.themes.slice(0, 3).map((theme, i) => (
+                    {signal.themes.slice(0, 3).map((theme: string, i: number) => (
                       <span
                         key={i}
                         className="px-2 py-0.5 bg-gray-800 text-gray-400 rounded text-xs"

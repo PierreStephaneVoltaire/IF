@@ -14,10 +14,10 @@ export function WritePanel() {
   const handleSubmit = async () => {
     if (!content.trim() || isOverLimit) return
 
-    await submitEntry(content.trim())
+    const result = await submitEntry(content.trim())
 
     // Clear on success
-    if (!error) {
+    if (result.ok) {
       setContent('')
     }
   }

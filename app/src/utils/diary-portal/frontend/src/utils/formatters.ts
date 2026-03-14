@@ -1,6 +1,9 @@
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import type { SignalTrend, LifeLoad, SocialBattery } from '@diary-portal/types'
 
+// Re-export types for convenience
+export type { SignalTrend, LifeLoad, SocialBattery } from '@diary-portal/types'
+
 /**
  * Format ISO date string to readable date
  */
