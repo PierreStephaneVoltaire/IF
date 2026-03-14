@@ -36,7 +36,7 @@ SUGGESTION_MODEL = os.getenv("SUGGESTION_MODEL", "mistralai/mistral-nemo")
 # Parse comma-separated scoring models
 SCORING_MODELS_STR = os.getenv(
     "SCORING_MODELS",
-    "google/gemini-2.5-flash-lite,openai/gpt-oss-120b,anthropic/claude-haiku-4.5"
+    "google/gemini-2.5-flash-lite,qwen/qwen3-32b,z-ai/glm-4.7-flash"
 )
 SCORING_MODELS: List[str] = [
     model.strip() for model in SCORING_MODELS_STR.split(",") if model.strip()
@@ -59,6 +59,10 @@ ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY", "")
 SANDBOX_PATH = os.getenv("SANDBOX_PATH", "./sandbox")
 MEMORY_DB_PATH = os.getenv("MEMORY_DB_PATH", "./data/memory_db")
 PERSISTENCE_DIR = os.getenv("PERSISTENCE_DIR", "./data/conversations")
+
+# LanceDB Configuration (for user facts storage)
+FACTS_BASE_PATH = os.getenv("FACTS_BASE_PATH", "./data/facts")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 # Storage Configuration (Phase 2)
 STORAGE_DB_PATH = os.getenv("STORAGE_DB_PATH", "./data/store.db")
@@ -182,18 +186,27 @@ DIRECTIVE_STORE_ENABLED: bool = os.getenv("DIRECTIVE_STORE_ENABLED", "true").low
 DYNAMODB_DIRECTIVES_TABLE = os.getenv("DYNAMODB_DIRECTIVES_TABLE", "if-core")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
-# Model for directive content rewriting (configurable via env var)
-# Examples: "anthropic/claude-opus-4", "anthropic/claude-3.5-sonnet", "openai/gpt-4o"
-DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "anthropic/claude-opus-4.6")
+# =============================================================================
+# Model Configuration (all configurable via env vars, defaults use presets)
+# =============================================================================
+
+# API model identifier (for external clients connecting to this API)
+API_MODEL_NAME = os.getenv("API_MODEL_NAME", "if-prototype")
+
+# Tokenizer model for tiktoken (not LLM calls, just token counting)
+TOKENIZER_MODEL = os.getenv("TOKENIZER_MODEL", "gpt-4")
+
+# Model for directive content rewriting
+DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "openrouter/@preset/heavy")
 
 # Model for conversation condensation (summarizing long conversations)
-CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "anthropic/claude-3-haiku")
+CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "openrouter/@preset/general")
 
 # Fallback model for heartbeat pondering (when pondering preset unavailable)
-HEARTBEAT_FALLBACK_MODEL = os.getenv("HEARTBEAT_FALLBACK_MODEL", "openai/gpt-4o-mini")
+HEARTBEAT_FALLBACK_MODEL = os.getenv("HEARTBEAT_FALLBACK_MODEL", "openrouter/@preset/general")
 
 # Fallback model for presets without defined models
-PRESET_FALLBACK_MODEL = os.getenv("PRESET_FALLBACK_MODEL", "anthropic/claude-3.5-sonnet")
+PRESET_FALLBACK_MODEL = os.getenv("PRESET_FALLBACK_MODEL", "openrouter/@preset/general")
 
 # Model for reflection engine and opinion formation
 REFLECTION_MODEL = os.getenv("REFLECTION_MODEL", "openrouter/@preset/general")
@@ -215,13 +228,13 @@ TERMINAL_VOLUME_HOST_ROOT = os.getenv("TERMINAL_VOLUME_HOST_ROOT", "/var/lib/doc
 
 
 # Model for plan execution subagents
-ORCHESTRATOR_SUBAGENT_MODEL = os.getenv("ORCHESTRATOR_SUBAGENT_MODEL", "anthropic/claude-sonnet-4")
+ORCHESTRATOR_SUBAGENT_MODEL = os.getenv("ORCHESTRATOR_SUBAGENT_MODEL", "openrouter/@preset/standard")
 
 # Model for parallel analysis subagents (lighter weight for faster analysis)
-ORCHESTRATOR_ANALYSIS_MODEL = os.getenv("ORCHESTRATOR_ANALYSIS_MODEL", "anthropic/claude-haiku-4.5")
+ORCHESTRATOR_ANALYSIS_MODEL = os.getenv("ORCHESTRATOR_ANALYSIS_MODEL", "openrouter/@preset/air")
 
 # Model for synthesis of parallel analysis results
-ORCHESTRATOR_SYNTHESIS_MODEL = os.getenv("ORCHESTRATOR_SYNTHESIS_MODEL", "anthropic/claude-sonnet-4")
+ORCHESTRATOR_SYNTHESIS_MODEL = os.getenv("ORCHESTRATOR_SYNTHESIS_MODEL", "openrouter/@preset/standard")
 
 # Maximum turns per subagent before timeout
 ORCHESTRATOR_MAX_TURNS = int(os.getenv("ORCHESTRATOR_MAX_TURNS", "15"))
@@ -241,11 +254,43 @@ IF_HEALTH_TABLE_NAME = os.getenv("IF_HEALTH_TABLE_NAME", "if-health")
 # Partition key value for health program storage
 HEALTH_PROGRAM_PK = os.getenv("HEALTH_PROGRAM_PK", "operator")
 
+# =============================================================================
+# Infrastructure Tables Configuration
+# =============================================================================
+
+# Finance table - versioned financial profile storage
+IF_FINANCE_TABLE_NAME = os.getenv("IF_FINANCE_TABLE_NAME", "if-finance")
+
+# Diary entries table - TTL-enabled write-only entries
+IF_DIARY_ENTRIES_TABLE_NAME = os.getenv("IF_DIARY_ENTRIES_TABLE_NAME", "if-diary-entries")
+
+# Diary signals table - distilled signals for charting/injection
+IF_DIARY_SIGNALS_TABLE_NAME = os.getenv("IF_DIARY_SIGNALS_TABLE_NAME", "if-diary-signals")
+
+# Proposals table - agent-proposed directives/tools
+IF_PROPOSALS_TABLE_NAME = os.getenv("IF_PROPOSALS_TABLE_NAME", "if-proposals")
+
+# Default user PK for all infrastructure tables
+IF_USER_PK = os.getenv("IF_USER_PK", "operator")
+
+# =============================================================================
+# Diary Configuration
+# =============================================================================
+
+# TTL for diary entries in days
+DIARY_TTL_DAYS = int(os.getenv("DIARY_TTL_DAYS", "3"))
+
+# Interval for automatic signal computation (hours)
+DIARY_SIGNAL_COMPUTE_INTERVAL_HOURS = float(os.getenv("DIARY_SIGNAL_COMPUTE_INTERVAL_HOURS", "6.0"))
+
+# Model for diary signal computation
+DIARY_SIGNAL_MODEL = os.getenv("DIARY_SIGNAL_MODEL", "openrouter/@preset/air")
+
 # Directory containing health PDF documents for RAG
 HEALTH_DOCS_DIR = os.getenv("HEALTH_DOCS_DIR", "docs/health")
 
 # Model for research agent spawned by health tools
-RESEARCH_AGENT_MODEL = os.getenv("RESEARCH_AGENT_MODEL", "anthropic/claude-opus-4-5")
+RESEARCH_AGENT_MODEL = os.getenv("RESEARCH_AGENT_MODEL", "openrouter/@preset/heavy")
 
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

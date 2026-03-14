@@ -14,13 +14,12 @@ from openhands.sdk import (
 from openhands.sdk.tool import ToolExecutor
 
 from memory.user_facts import (
-    UserFact,
     FactCategory,
     FactSource,
     SessionReflection,
     get_user_fact_store
 )
-from agent.tools.user_facts import _current_cache_key
+from agent.tools.user_facts import _current_cache_key, get_current_context_id
 
 
 def _store_session_reflection(
@@ -39,22 +38,27 @@ def _store_session_reflection(
 ) -> str:
 
     from datetime import datetime, timezone
-    
+
+    context_id = get_current_context_id()
+    if not context_id:
+        return "Error: No context ID set for this session."
+
     try:
         store = get_user_fact_store()
         now = datetime.now(timezone.utc).isoformat()
-        
+
         existing = store.search(
+            context_id=context_id,
             query=session_id,
             category=FactCategory.SESSION_REFLECTION,
             limit=1,
         )
-        
+
         if existing:
             old_fact = existing[0]
             reflection_metadata = old_fact.metadata if hasattr(old_fact, 'metadata') else {}
             reflection = SessionReflection.from_dict(reflection_metadata)
-            
+
             reflection.summary = summary
             reflection.what_worked = what_worked
             reflection.what_failed = what_failed
@@ -66,11 +70,17 @@ def _store_session_reflection(
             reflection.meta_notes = meta_notes
             reflection.preset_used = preset_used
             reflection.preset_fit_score = preset_fit_score
-            
-            old_fact.metadata = reflection.to_dict()
-            store._update_metadata(old_fact)
-            return f"Session reflection updated (ID: {old_fact.id})"
-        
+
+            # Update by superseding the old fact
+            new_fact = store.supersede(
+                context_id=context_id,
+                old_fact_id=old_fact.id,
+                new_content=f"Session reflection: {summary[:100]}",
+                reason="Session reflection update",
+                cache_key=_current_cache_key,
+            )
+            return f"Session reflection updated (ID: {new_fact.id})"
+
         reflection = SessionReflection(
             session_id=session_id,
             summary=summary,
@@ -86,21 +96,18 @@ def _store_session_reflection(
             preset_fit_score=preset_fit_score,
             created_at=now,
         )
-        
-        fact = UserFact(
+
+        store.add(
+            context_id=context_id,
             content=f"Session reflection: {summary[:100]}",
             category=FactCategory.SESSION_REFLECTION,
             source=FactSource.MODEL_OBSERVED,
             confidence=0.8,
             cache_key=_current_cache_key,
-            created_at=now,
-            updated_at=now,
+            metadata=reflection.to_dict(),
         )
-        fact.metadata = reflection.to_dict()
-        
-        store.add(fact)
-        return f"Session reflection stored (ID: {fact.id})"
-        
+        return f"Session reflection stored"
+
     except Exception as e:
         return f"Error storing session reflection: {str(e)}"
 

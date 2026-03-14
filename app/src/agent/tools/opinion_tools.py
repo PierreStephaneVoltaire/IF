@@ -14,14 +14,13 @@ from openhands.sdk import (
 from openhands.sdk.tool import ToolExecutor
 
 from memory.user_facts import (
-    UserFact,
     FactCategory,
     FactSource,
     OpinionPair,
     Misconception,
     get_user_fact_store
 )
-from agent.tools.user_facts import _current_cache_key
+from agent.tools.user_facts import _current_cache_key, get_current_context_id
 
 
 def _log_opinion_pair(
@@ -34,22 +33,27 @@ def _log_opinion_pair(
 ) -> str:
 
     from datetime import datetime, timezone
-    
+
+    context_id = get_current_context_id()
+    if not context_id:
+        return "Error: No context ID set for this session."
+
     try:
         store = get_user_fact_store()
         now = datetime.now(timezone.utc).isoformat()
-        
+
         existing = store.search(
+            context_id=context_id,
             query=topic,
             category=FactCategory.OPINION_PAIR,
             limit=1,
         )
-        
+
         if existing:
             old_fact = existing[0]
             pair_metadata = old_fact.metadata if hasattr(old_fact, 'metadata') else {}
             pair = OpinionPair.from_dict(pair_metadata)
-            
+
             pair.evolution = pair.evolution or []
             pair.evolution.append({
                 "previous_position": pair.agent_position,
@@ -62,11 +66,17 @@ def _log_opinion_pair(
             pair.agent_confidence = confidence
             pair.agreement_level = agreement_level
             pair.updated_at = now
-            
-            old_fact.metadata = pair.to_dict()
-            store._update_metadata(old_fact)
-            return f"Opinion pair updated (ID: {old_fact.id})"
-        
+
+            # Update by superseding
+            new_fact = store.supersede(
+                context_id=context_id,
+                old_fact_id=old_fact.id,
+                new_content=f"Opinion: {topic}",
+                reason="Opinion evolution update",
+                cache_key=_current_cache_key,
+            )
+            return f"Opinion pair updated (ID: {new_fact.id})"
+
         pair = OpinionPair(
             topic=topic,
             user_position=user_position,
@@ -77,21 +87,18 @@ def _log_opinion_pair(
             created_at=now,
             updated_at=now,
         )
-        
-        fact = UserFact(
+
+        store.add(
+            context_id=context_id,
             content=f"Opinion: {topic}",
             category=FactCategory.OPINION_PAIR,
             source=FactSource.MODEL_OBSERVED,
             confidence=confidence,
             cache_key=_current_cache_key,
-            created_at=now,
-            updated_at=now,
+            metadata=pair.to_dict(),
         )
-        fact.metadata = pair.to_dict()
-        
-        store.add(fact)
-        return f"Opinion pair logged (ID: {fact.id})"
-        
+        return f"Opinion pair logged"
+
     except Exception as e:
         return f"Error logging opinion pair: {str(e)}"
 
@@ -106,28 +113,39 @@ def _log_misconception(
 ) -> str:
 
     from datetime import datetime, timezone
-    
+
+    context_id = get_current_context_id()
+    if not context_id:
+        return "Error: No context ID set for this session."
+
     try:
         store = get_user_fact_store()
         now = datetime.now(timezone.utc).isoformat()
-        
+
         existing = store.search(
+            context_id=context_id,
             query=f"{topic} {what_they_said}",
             category=FactCategory.MISCONCEPTION,
             limit=1,
         )
-        
+
         if existing:
             old_fact = existing[0]
             misc_metadata = old_fact.metadata if hasattr(old_fact, 'metadata') else {}
             misc = Misconception.from_dict(misc_metadata)
             misc.recurrence_count += 1
             misc.last_seen = now
-            
-            old_fact.metadata = misc.to_dict()
-            store._update_metadata(old_fact)
-            return f"Misconception recurrence logged (ID: {old_fact.id}, count: {misc.recurrence_count})"
-        
+
+            # Update by superseding
+            store.supersede(
+                context_id=context_id,
+                old_fact_id=old_fact.id,
+                new_content=f"Misconception: {topic} - {what_they_said[:50]}",
+                reason="Misconception recurrence",
+                cache_key=_current_cache_key,
+            )
+            return f"Misconception recurrence logged (count: {misc.recurrence_count})"
+
         misc = Misconception(
             topic=topic,
             what_they_said=what_they_said,
@@ -140,21 +158,18 @@ def _log_misconception(
             created_at=now,
             last_seen=now,
         )
-        
-        fact = UserFact(
+
+        store.add(
+            context_id=context_id,
             content=f"Misconception: {topic} - {what_they_said[:50]}",
             category=FactCategory.MISCONCEPTION,
             source=FactSource.MODEL_OBSERVED,
             confidence=0.9,
             cache_key=_current_cache_key,
-            created_at=now,
-            updated_at=now,
+            metadata=misc.to_dict(),
         )
-        fact.metadata = misc.to_dict()
-        
-        store.add(fact)
-        return f"Misconception logged (ID: {fact.id})"
-        
+        return f"Misconception logged"
+
     except Exception as e:
         return f"Error logging misconception: {str(e)}"
 

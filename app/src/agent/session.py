@@ -139,15 +139,16 @@ def resolve_mcp_servers(preset_slug: str) -> List[str]:
     return get_preset_servers(preset_slug)
 
 
-def get_operator_context(messages: List[Dict[str, Any]]) -> str:
+def get_operator_context(messages: List[Dict[str, Any]], context_id: Optional[str] = None) -> str:
     """Retrieve relevant operator context for system prompt.
-    
+
     Searches user facts based on the last user message.
-    This runs synchronously - ChromaDB is local and fast.
-    
+    This runs synchronously - LanceDB is local/cloud and fast.
+
     Args:
         messages: Conversation messages
-        
+        context_id: Optional context ID for LanceDB storage
+
     Returns:
         Formatted operator context block, or empty string if no matches
     """
@@ -156,7 +157,7 @@ def get_operator_context(messages: List[Dict[str, Any]]) -> str:
         FactSource,
         get_user_fact_store
     )
-    
+
     # Extract last user message
     last_user_msg = None
     for msg in reversed(messages):
@@ -171,29 +172,34 @@ def get_operator_context(messages: List[Dict[str, Any]]) -> str:
             else:
                 last_user_msg = content
             break
-    
+
     if not last_user_msg:
         return ""
-    
+
+    if not context_id:
+        logger.debug("No context_id provided, skipping operator context retrieval")
+        return ""
+
     try:
         store = get_user_fact_store()
-        
+
         # Search for relevant facts
-        facts = store.search(last_user_msg, limit=5)
-        
+        facts = store.search(context_id, last_user_msg, limit=5)
+
         # Search for model assessments separately
         assessments = store.search(
+            context_id,
             last_user_msg,
             category=FactCategory.MODEL_ASSESSMENT,
             limit=3
         )
-        
+
         # Deduplicate by ID
         all_facts = {f.id: f for f in facts + assessments}.values()
-        
+
         if not all_facts:
             return ""
-        
+
         # Format context block
         lines = ["═══ OPERATOR CONTEXT ═══"]
         for f in all_facts:
@@ -203,7 +209,7 @@ def get_operator_context(messages: List[Dict[str, Any]]) -> str:
             lines.append(f"- [{f.category.value}] [{source_tag}] {f.content} ({f.updated_at[:10]})")
         lines.append("══════════════════════")
         return "\n".join(lines)
-        
+
     except Exception as e:
         logger.warning(f"Failed to get operator context: {e}")
         return ""
@@ -212,21 +218,24 @@ def get_operator_context(messages: List[Dict[str, Any]]) -> str:
 def assemble_system_prompt(
     preset_slug: str,
     memory_context: Optional[str] = None,
-    operator_context: Optional[str] = None
+    operator_context: Optional[str] = None,
+    signals: Optional[Dict[str, Any]] = None
 ) -> str:
     """Assemble the complete system prompt for a preset.
 
     Combines:
-    1. Base system prompt (personality/speech patterns from main_system_prompt.txt)
-    2. Operator context block (auto-retrieved from user facts)
-    3. Memory context block (if provided)
-    4. Directives block (from DynamoDB directive store)
-    5. Preset-specific instructions (sandbox rules, etc.)
+    1. Current signals block (mental health, life load, training status)
+    2. Base system prompt (personality/speech patterns from main_system_prompt.txt)
+    3. Operator context block (auto-retrieved from user facts)
+    4. Memory context block (if provided)
+    5. Directives block (from DynamoDB directive store)
+    6. Preset-specific instructions (sandbox rules, etc.)
 
     Args:
         preset_slug: Preset identifier
         memory_context: Optional memory context to inject
         operator_context: Optional operator context from user facts
+        signals: Optional signals dict from get_signals() for context injection
 
     Returns:
         Complete system prompt string
@@ -237,9 +246,21 @@ def assemble_system_prompt(
         logger.warning("Failed to load main_system_prompt.txt, using fallback")
         base_prompt = "You are a helpful AI assistant."
 
-    # Start with base prompt
-    prompt_parts = [base_prompt]
-    
+    # Start with signals if provided (INJECTED FIRST - highest priority context)
+    prompt_parts = []
+    if signals:
+        # Filter out None values for cleaner output
+        active_signals = {k: v for k, v in signals.items() if v is not None}
+        if active_signals:
+            signals_block = f"""<current_signals>
+{json.dumps(active_signals, indent=2, default=str)}
+</current_signals>"""
+            prompt_parts.append(signals_block)
+            logger.info(f"[Session] Injected signals into system prompt: score={signals.get('mental_health_score')}, trend={signals.get('trend')}")
+
+    # Add base prompt
+    prompt_parts.append(base_prompt)
+
     # Add operator context if provided (from user facts)
     if operator_context:
         prompt_parts.append(f"\n{operator_context}\n")
@@ -510,47 +531,61 @@ def get_or_create_session(
     preset_slug: str,
     preset_manager: PresetManager,
     memory_context: Optional[str] = None,
-    messages: Optional[List[Dict[str, Any]]] = None
+    messages: Optional[List[Dict[str, Any]]] = None,
+    context_id: Optional[str] = None,
 ) -> AgentSession:
     """Get existing session or create new one.
-    
+
     Sessions are cached in-memory and keyed by conversation+preset.
     If preset changes, a new session is created.
-    
+
     Args:
         conversation_id: Conversation identifier
         preset_slug: Preset identifier
         preset_manager: Manager with preset data
         memory_context: Optional memory context
         messages: Optional messages for operator context retrieval
-        
+        context_id: Optional context ID for LanceDB storage (format: openwebui_{id} or discord_{id})
+
     Returns:
         AgentSession instance
     """
     # Create session key
     session_key = f"{conversation_id}-{preset_slug}"
-    
+
     # Check cache
     if session_key in _session_cache:
         return _session_cache[session_key]
-    
+
     # Get operator context from user facts if messages provided
     operator_context = None
     if messages:
-        operator_context = get_operator_context(messages)
-    
+        operator_context = get_operator_context(messages, context_id)
+
+    # Get current signals for context injection
+    signals = None
+    try:
+        from agent.tools.context_tools import get_signals_sync
+        signals = get_signals_sync()
+        logger.debug(f"[Session] Retrieved signals for injection: {signals}")
+    except Exception as e:
+        logger.warning(f"[Session] Failed to get signals for context injection: {e}")
+
     # Create new session
     session_id = create_session_id(conversation_id, preset_slug)
     model = get_model_for_preset(preset_slug, preset_manager)
     system_prompt = assemble_system_prompt(
         preset_slug,
         memory_context,
-        operator_context
+        operator_context,
+        signals
     )
     mcp_servers = resolve_mcp_servers(preset_slug)
-    
+
     # Set session context for user facts tools
-    set_session_context("operator", conversation_id)
+    # Use context_id if provided, otherwise fall back to conversation_id
+    ctx_id = context_id or conversation_id
+    set_session_context("operator", conversation_id, ctx_id)
     
     session = AgentSession(
         session_id=session_id,

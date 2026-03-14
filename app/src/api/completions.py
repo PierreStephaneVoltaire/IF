@@ -30,6 +30,7 @@ from agent.tiering import (
     get_tier_for_context,
 )
 from terminal.files import strip_files_line, log_file_refs, FilesStripBuffer, FileRef
+from config import API_MODEL_NAME
 
 if TYPE_CHECKING:
     import httpx
@@ -86,7 +87,7 @@ async def stream_with_files_strip(
     original_stream: AsyncGenerator[str, None],
     conversation_id: str,
     chunk_id: str,
-    model: str = "if-prototype"
+    model: str = API_MODEL_NAME
 ) -> AsyncGenerator[str, None]:
 
     buf = FilesStripBuffer()
@@ -131,11 +132,11 @@ def resolve_cache_key(
     if webhook:
         config = webhook.get_config()
         return config.get("channel_id", webhook.conversation_id)
-    
+
     chat_id = request_data.get("chat_id")
     if chat_id:
         return chat_id
-    
+
     messages = request_data.get("messages", [])
     if messages:
         content = messages[0].get("content", "")
@@ -148,8 +149,53 @@ def resolve_cache_key(
                     text_parts.append(part)
             content = " ".join(text_parts)
         return hashlib.sha256(content.encode()).hexdigest()[:16]
-    
+
     return "default"
+
+
+def build_context_id(
+    request_data: Dict[str, Any],
+    webhook: Optional["WebhookRecord"] = None
+) -> str:
+    """Build a context ID for LanceDB storage.
+
+    Context ID format:
+    - OpenWebUI chat: openwebui_{chat_id}
+    - OpenWebUI channel: openwebui_{channel_id}
+    - Discord channel: discord_{channel_id}
+
+    Args:
+        request_data: The request data dict
+        webhook: Optional webhook record
+
+    Returns:
+        Context ID string
+    """
+    if webhook:
+        config = webhook.get_config()
+        platform = webhook.platform.lower()
+        channel_id = config.get("channel_id", webhook.conversation_id)
+        return f"{platform}_{channel_id}"
+
+    chat_id = request_data.get("chat_id")
+    if chat_id:
+        return f"openwebui_{chat_id}"
+
+    # Fallback: hash of first message
+    messages = request_data.get("messages", [])
+    if messages:
+        content = messages[0].get("content", "")
+        if isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text_parts.append(part.get("text", ""))
+                elif isinstance(part, str):
+                    text_parts.append(part)
+            content = " ".join(text_parts)
+        return f"openwebui_{hashlib.sha256(content.encode()).hexdigest()[:16]}"
+
+    return "openwebui_default"
 
 
 def extract_message_window(messages: List[Dict], window_size: int = 5) -> List[str]:
@@ -193,8 +239,9 @@ async def process_chat_completion_internal(
 
     messages = request_data.get("messages", [])
     stream = request_data.get("stream", False)
-    
+
     cache_key = resolve_cache_key(request_data, webhook)
+    context_id = build_context_id(request_data, webhook)
     
     try:
         from heartbeat.activity import ActivityTracker
@@ -259,11 +306,11 @@ async def process_chat_completion_internal(
                 from memory.user_facts import get_user_fact_store
                 from agent.commands import get_command_handler
                 from agent.reflection import get_reflection_engine
-                
+
                 store = get_user_fact_store()
                 reflection_engine = get_reflection_engine()
-                handler = get_command_handler(store, reflection_engine)
-                
+                handler = get_command_handler(store, reflection_engine, context_id)
+
                 command_str = f"/{cmd.action.value}"
                 result = handler.handle(command_str, cmd.command_args)
                 return result, []
@@ -338,7 +385,8 @@ async def process_chat_completion_internal(
         conversation_id=cache_key,
         preset_slug=selected_preset,
         preset_manager=preset_manager,
-        messages=messages
+        messages=messages,
+        context_id=context_id,
     )
     
     agent_response = await execute_agent(
@@ -364,6 +412,7 @@ async def process_chat_completion_internal(
                 messages=messages,
                 username=username,
                 http_client=http_client,
+                context_id=context_id,
             )
         )
     except Exception as e:
@@ -399,10 +448,10 @@ async def chat_completions(
     raw_request: Request
 ):
 
-    if request.model != "if-prototype":
+    if request.model != API_MODEL_NAME:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid model '{request.model}'. Only 'if-prototype' model is supported."
+            detail=f"Invalid model '{request.model}'. Only '{API_MODEL_NAME}' model is supported."
         )
     
     http_client = raw_request.app.state.http_client
@@ -428,11 +477,11 @@ async def chat_completions(
     if stream:
         async def generate_stream():
 
-            yield make_sse_chunk(response_text, chunk_id, "if-prototype")
+            yield make_sse_chunk(response_text, chunk_id, API_MODEL_NAME)
             
             finish_chunk = ChatCompletionChunk(
                 id=chunk_id,
-                model="if-prototype",
+                model=API_MODEL_NAME,
                 choices=[
                     ChatCompletionChunkChoice(
                         index=0,
@@ -456,7 +505,7 @@ async def chat_completions(
     
     return ChatCompletionResponse(
         id=chunk_id,
-        model="if-prototype",
+        model=API_MODEL_NAME,
         choices=[
             ChatCompletionChoice(
                 index=0,

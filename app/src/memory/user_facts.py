@@ -1,7 +1,7 @@
-"""User facts store using ChromaDB for semantic search.
+"""User facts store using LanceDB for semantic search.
 
-Replaces the simpler memory store with a structured fact system
-supporting categories, sources, and supersession.
+Replaces ChromaDB with LanceDB for multi-instance safe storage.
+Each context (conversation/channel) gets its own isolated storage.
 
 Categories:
 - personal: Name, location, profession, relationships
@@ -21,26 +21,18 @@ Sources:
 - model_observed: Observed from operator behavior
 - model_assessed: Agent's assessment of operator capabilities
 - conversation_derived: Extracted from conversation context
+
+Context ID format:
+- OpenWebUI chat: openwebui_{chat_id}
+- OpenWebUI channel: openwebui_{channel_id}
+- Discord channel: discord_{channel_id}
 """
 from __future__ import annotations
-import json
-import os
 import uuid
 import logging
-from datetime import datetime
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
 from enum import Enum
-
-try:
-    import chromadb
-    from chromadb.config import Settings
-    CHROMADB_AVAILABLE = True
-except ImportError:
-    CHROMADB_AVAILABLE = False
-
-from config import MEMORY_DB_PATH
-
 
 logger = logging.getLogger(__name__)
 
@@ -59,23 +51,23 @@ class FactCategory(str, Enum):
     CONVERSATION_SUMMARY = "conversation_summary"
     TOPIC_LOG = "topic_log"
     MODEL_ASSESSMENT = "model_assessment"
-    
+
     # ── Agent Self-Knowledge ──
     AGENT_IDENTITY = "agent_identity"        # Name, purpose, design facts
     AGENT_OPINION = "agent_opinion"          # Agent's formed positions
     AGENT_PRINCIPLE = "agent_principle"      # Operating principles learned
-    
+
     # ── Capability Tracking ──
     CAPABILITY_GAP = "capability_gap"        # Things agent can't do
     TOOL_SUGGESTION = "tool_suggestion"      # Derived from frequent gaps
-    
+
     # ── Opinion Pairs ──
     OPINION_PAIR = "opinion_pair"            # User opinion + agent response
-    
+
     # ── Operator Growth ──
     MISCONCEPTION = "misconception"          # Things user got wrong
     INTEREST_AREA = "interest_area"          # Topics they gravitate toward
-    
+
     # ── Session Reflection ──
     SESSION_REFLECTION = "session_reflection"  # Post-session learnings
 
@@ -92,6 +84,7 @@ class FactSource(str, Enum):
 class UserFact:
     """A single fact about the user."""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    context_id: str = ""  # The conversational context
     username: str = ""
     content: str = ""
     category: FactCategory = FactCategory.PERSONAL
@@ -108,6 +101,7 @@ class UserFact:
         """Convert to dictionary for serialization."""
         return {
             "id": self.id,
+            "context_id": self.context_id,
             "username": self.username,
             "content": self.content,
             "category": self.category.value,
@@ -126,6 +120,7 @@ class UserFact:
         """Create from dictionary."""
         return cls(
             id=data.get("id", str(uuid.uuid4())),
+            context_id=data.get("context_id", ""),
             username=data.get("username", ""),
             content=data.get("content", ""),
             category=FactCategory(data.get("category", "personal")),
@@ -154,7 +149,7 @@ class CapabilityGap:
     acceptance_criteria: list[str] = field(default_factory=list)
     status: str = "open"                        # "open" | "workaround_exists" | "resolved"
     priority_score: float = 0.0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -169,7 +164,7 @@ class CapabilityGap:
             "status": self.status,
             "priority_score": self.priority_score,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CapabilityGap":
         return cls(
@@ -200,7 +195,7 @@ class OpinionPair:
     evolution: list[dict] = field(default_factory=list)  # Track position changes
     created_at: str = ""
     updated_at: str = ""
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -214,7 +209,7 @@ class OpinionPair:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "OpinionPair":
         return cls(
@@ -245,7 +240,7 @@ class Misconception:
     suggested_resources: list[str] = field(default_factory=list)
     created_at: str = ""
     last_seen: str = ""
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -260,7 +255,7 @@ class Misconception:
             "created_at": self.created_at,
             "last_seen": self.last_seen,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Misconception":
         return cls(
@@ -295,7 +290,7 @@ class SessionReflection:
     preset_used: str = ""                        # Which routing preset
     preset_fit_score: float = 0.0                # Self-assessed routing accuracy
     created_at: str = ""
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -313,7 +308,7 @@ class SessionReflection:
             "preset_fit_score": self.preset_fit_score,
             "created_at": self.created_at,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SessionReflection":
         return cls(
@@ -335,623 +330,392 @@ class SessionReflection:
 
 
 class UserFactStore:
-    """ChromaDB-backed store for user facts.
-    
-    Provides semantic search over stored facts. The database runs in
-    embedded mode and persists to MEMORY_DB_PATH.
-    
+    """LanceDB-backed store for user facts with context scoping.
+
+    Each context (conversation/channel) gets its own isolated storage.
+    Provides semantic search over stored facts within a context.
+
     Example:
         >>> store = UserFactStore()
-        >>> fact = UserFact(content="Operator prefers Python", category=FactCategory.PREFERENCE)
-        >>> store.add(fact)
-        >>> results = store.search("programming language preference")
+        >>> fact_id = store.add(
+        ...     context_id="openwebui_chat123",
+        ...     content="Operator prefers Python",
+        ...     category=FactCategory.PREFERENCE,
+        ...     source=FactSource.USER_STATED,
+        ...     username="alice"
+        ... )
+        >>> results = store.search("openwebui_chat123", "programming preference")
         >>> print(results[0].content)
         "Operator prefers Python"
     """
-    
-    def __init__(self, db_path: str = None):
+
+    def __init__(self, base_path: str = None):
         """Initialize the user facts store.
-        
+
         Args:
-            db_path: Path to ChromaDB persistent storage directory.
-                     Defaults to MEMORY_DB_PATH from config.
+            base_path: Base path for LanceDB storage.
+                       Can be local path or S3 URI.
+                       Defaults to FACTS_BASE_PATH from environment.
         """
-        if not CHROMADB_AVAILABLE:
-            raise ImportError(
-                "chromadb is required for user facts storage. "
-                "Install with: pip install chromadb"
-            )
-        
-        self.db_path = db_path or MEMORY_DB_PATH
-        os.makedirs(self.db_path, exist_ok=True)
-        
-        self.client = chromadb.PersistentClient(
-            path=self.db_path,
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True
-            )
-        )
-        
-        self.collection = self.client.get_or_create_collection(
-            name="user_facts",
-            metadata={"description": "User facts store"}
-        )
-    
-    def _metadata_to_dict(self, metadata: dict) -> dict:
-        """Convert ChromaDB metadata back to format for UserFact.from_dict().
-        
-        ChromaDB only accepts primitive types in metadata, so we store
-        the nested metadata dict as a JSON string. This method converts
-        it back when reading.
-        
-        Args:
-            metadata: The metadata dict from ChromaDB
-            
-        Returns:
-            Dict suitable for spreading into UserFact.from_dict()
-        """
-        result = dict(metadata)
-        # Convert metadata_json back to metadata dict
-        if "metadata_json" in result:
-            try:
-                result["metadata"] = json.loads(result.get("metadata_json", "{}") or "{}")
-            except json.JSONDecodeError:
-                result["metadata"] = {}
-            del result["metadata_json"]
-        # Handle legacy "metadata" key for backward compatibility
-        elif "metadata" in result and isinstance(result["metadata"], str):
-            try:
-                result["metadata"] = json.loads(result["metadata"] or "{}")
-            except json.JSONDecodeError:
-                result["metadata"] = {}
-        return result
-    
-    def add(self, fact: UserFact) -> UserFact:
+        # Import here to avoid circular dependency
+        from .lancedb_store import UserFactStore as LanceDBStore
+        self._store = LanceDBStore(base_path)
+
+    def add(
+        self,
+        context_id: str,
+        content: str,
+        category: FactCategory | str,
+        source: FactSource | str = FactSource.USER_STATED,
+        username: str = "",
+        confidence: float = 0.8,
+        cache_key: str = "",
+        metadata: Dict[str, Any] | None = None,
+        fact: UserFact | None = None,
+    ) -> str:
         """Store a new user fact.
-        
+
+        Can be called with individual parameters or with a UserFact object.
+
         Args:
-            fact: The UserFact to store
-            
+            context_id: The context/conversation identifier
+            content: The fact content text
+            category: Category from FactCategory enum
+            source: Source from FactSource enum
+            username: The user this fact is about
+            confidence: Confidence level (0.0-1.0)
+            cache_key: Session/cache key where fact was captured
+            metadata: Optional structured metadata
+            fact: Alternative: pass a UserFact object directly
+
         Returns:
-            The stored UserFact with timestamps set
+            The fact ID
         """
-        if not fact.created_at:
-            fact.created_at = datetime.utcnow().isoformat() + "Z"
-        if not fact.updated_at:
-            fact.updated_at = fact.created_at
-        
-        metadata = {
-            "username": fact.username,
-            "category": fact.category.value,
-            "source": fact.source.value,
-            "confidence": fact.confidence,
-            "cache_key": fact.cache_key,
-            "created_at": fact.created_at,
-            "updated_at": fact.updated_at,
-            "superseded_by": fact.superseded_by or "",
-            "active": fact.active,
-            "metadata_json": json.dumps(fact.metadata) if fact.metadata else "",
-        }
-        
-        self.collection.add(
-            ids=[fact.id],
-            documents=[fact.content],
-            metadatas=[metadata]
+        if fact is not None:
+            # Use the fact object
+            context_id = fact.context_id or context_id
+            content = fact.content
+            category = fact.category
+            source = fact.source
+            username = fact.username
+            confidence = fact.confidence
+            cache_key = fact.cache_key
+            metadata = fact.metadata
+            fact_id = fact.id
+            created_at = fact.created_at
+            updated_at = fact.updated_at
+        else:
+            fact_id = None
+            created_at = None
+            updated_at = None
+
+        # Convert enums to strings
+        category_str = category.value if isinstance(category, FactCategory) else category
+        source_str = source.value if isinstance(source, FactSource) else source
+
+        return self._store.add(
+            context_id=context_id,
+            user_id=username,
+            content=content,
+            category=category_str,
+            source=source_str,
+            confidence=confidence,
+            session_key=cache_key,
+            metadata=metadata,
+            fact_id=fact_id,
+            created_at=created_at,
+            updated_at=updated_at,
         )
-        
-        logger.debug(f"Stored fact: [{fact.category.value}] {fact.content[:50]}...")
-        return fact
-    
+
     def search(
         self,
+        context_id: str,
         query: str,
         category: FactCategory | None = None,
+        username: str | None = None,
         limit: int = 5,
         active_only: bool = True
     ) -> List[UserFact]:
-        """Semantic search across user facts.
-        
+        """Semantic search across user facts in a context.
+
         Args:
+            context_id: The context to search in
             query: Search query (will be embedded and compared)
             category: Optional category filter
+            username: Optional user filter
             limit: Maximum number of results
             active_only: Only return active (non-superseded) facts
-            
+
         Returns:
             List of matching UserFact objects, ordered by relevance
         """
-        # Build where clause - ChromaDB requires $and for multiple conditions
-        where = None
-        conditions = []
-        if active_only:
-            conditions.append({"active": True})
-        if category:
-            conditions.append({"category": category.value})
-        
-        if len(conditions) == 1:
-            where = conditions[0]
-        elif len(conditions) > 1:
-            where = {"$and": conditions}
-        
-        results = self.collection.query(
-            query_texts=[query],
-            n_results=limit,
-            where=where,
-            include=["documents", "metadatas"]
+        category_str = category.value if category and isinstance(category, FactCategory) else None
+
+        results = self._store.search(
+            context_id=context_id,
+            query=query,
+            category=category_str,
+            user_id=username,
+            active_only=active_only,
+            limit=limit,
         )
-        
-        facts = []
-        if results["ids"] and results["ids"][0]:
-            for i, fact_id in enumerate(results["ids"][0]):
-                content = results["documents"][0][i]
-                metadata = results["metadatas"][0][i]
-                facts.append(UserFact.from_dict({
-                    "id": fact_id,
-                    "content": content,
-                    **self._metadata_to_dict(metadata)
-                }))
-        
-        return facts
-    
+
+        return [UserFact.from_dict(r) for r in results]
+
+    def get(self, context_id: str, fact_id: str) -> UserFact | None:
+        """Get a single fact by ID.
+
+        Args:
+            context_id: The context identifier
+            fact_id: The unique identifier of the fact
+
+        Returns:
+            UserFact if found, None otherwise
+        """
+        result = self._store.get(context_id, fact_id)
+        if result is None:
+            return None
+        return UserFact.from_dict(result)
+
     def supersede(
         self,
+        context_id: str,
         old_fact_id: str,
         new_content: str,
         reason: str,
-        cache_key: str
+        cache_key: str = ""
     ) -> UserFact:
         """Supersede an old fact with new content.
-        
+
         Creates a new fact inheriting category/source/username from old.
         Marks old as active=False and sets superseded_by.
-        
+
         Args:
+            context_id: The context identifier
             old_fact_id: ID of the fact to supersede
             new_content: New content for the replacement fact
             reason: Reason for the change (stored in metadata)
             cache_key: Cache key where the change was captured
-            
+
         Returns:
             The new UserFact
-            
+
         Raises:
             ValueError: If old fact not found
         """
-        old_fact = self.get(old_fact_id)
-        if not old_fact:
-            raise ValueError(f"Fact not found: {old_fact_id}")
-        
-        # Create new fact inheriting from old
-        new_fact = UserFact(
-            username=old_fact.username,
-            content=new_content,
-            category=old_fact.category,
-            source=old_fact.source,
-            cache_key=cache_key,
-            created_at=datetime.utcnow().isoformat() + "Z",
-            updated_at=datetime.utcnow().isoformat() + "Z",
+        new_id = self._store.supersede(
+            context_id=context_id,
+            old_fact_id=old_fact_id,
+            new_content=new_content,
+            reason=reason,
+            session_key=cache_key,
         )
-        
-        # Store new fact
-        self.add(new_fact)
-        
-        # Mark old fact as superseded
-        old_fact.superseded_by = new_fact.id
-        old_fact.active = False
-        old_fact.updated_at = datetime.utcnow().isoformat() + "Z"
-        self._update_metadata(old_fact)
-        
-        logger.info(f"Superseded fact {old_fact_id} -> {new_fact.id}")
+
+        # Return the new fact
+        new_fact = self.get(context_id, new_id)
         return new_fact
-    
-    def get(self, fact_id: str) -> UserFact | None:
-        """Get a single fact by ID.
-        
-        Args:
-            fact_id: The unique identifier of the fact
-            
-        Returns:
-            UserFact if found, None otherwise
-        """
-        results = self.collection.get(
-            ids=[fact_id],
-            include=["documents", "metadatas"]
-        )
-        
-        if not results["ids"]:
-            return None
-        
-        return UserFact.from_dict({
-            "id": results["ids"][0],
-            "content": results["documents"][0],
-            **self._metadata_to_dict(results["metadatas"][0])
-        })
-    
+
     def list_facts(
         self,
+        context_id: str,
         category: FactCategory | None = None,
+        username: str | None = None,
         include_history: bool = False
     ) -> List[UserFact]:
-        """List all facts, optionally filtered.
-        
+        """List all facts in a context, optionally filtered.
+
         Args:
+            context_id: The context identifier
             category: Optional category filter
+            username: Optional user filter
             include_history: Include superseded (inactive) facts
-            
+
         Returns:
             List of UserFact objects
         """
-        # Build where clause - ChromaDB requires $and for multiple conditions
-        where = None
-        where_conditions = []
-        
-        if not include_history:
-            where_conditions.append({"active": True})
-        if category:
-            where_conditions.append({"category": category.value})
-        
-        # ChromaDB requires $and operator when combining multiple conditions
-        if len(where_conditions) == 1:
-            where = where_conditions[0]
-        elif len(where_conditions) > 1:
-            where = {"$and": where_conditions}
-        
-        results = self.collection.get(
-            where=where,
-            include=["documents", "metadatas"]
+        category_str = category.value if category and isinstance(category, FactCategory) else None
+
+        results = self._store.list_facts(
+            context_id=context_id,
+            category=category_str,
+            user_id=username,
+            include_inactive=include_history,
         )
-        
-        facts = []
-        if results["ids"]:
-            for i, fact_id in enumerate(results["ids"]):
-                facts.append(UserFact.from_dict({
-                    "id": fact_id,
-                    "content": results["documents"][i],
-                    **self._metadata_to_dict(results["metadatas"][i])
-                }))
-        
-        return facts
-    
-    def remove(self, fact_id: str) -> bool:
+
+        return [UserFact.from_dict(r) for r in results]
+
+    def remove(self, context_id: str, fact_id: str) -> bool:
         """Hard delete a fact.
-        
+
         Note: Per Directive 0-1, this operation requires explicit operator
         confirmation. The tool implementation should enforce this.
-        
+
         Args:
+            context_id: The context identifier
             fact_id: The unique identifier of the fact to remove
-            
+
         Returns:
             True if fact was removed, False if not found
         """
-        try:
-            existing = self.get(fact_id)
-            if not existing:
-                return False
-            self.collection.delete(ids=[fact_id])
-            logger.info(f"Removed fact {fact_id}")
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to remove fact {fact_id}: {e}")
-            return False
-    
+        return self._store.remove(context_id, fact_id)
+
     @property
     def count(self) -> int:
-        """Count of all facts (including inactive)."""
-        return self.collection.count()
-    
-    @property
-    def active_count(self) -> int:
-        """Count of active facts only."""
-        results = self.collection.get(
-            where={"active": True},
-            include=[]
-        )
-        return len(results["ids"]) if results["ids"] else 0
-    
-    def log_capability_gap(
-        self,
-        content: str,
-        context: str,
-        cache_key: str,
-        workaround: str | None = None,
-    ) -> str:
-        """Log a capability gap, incrementing count if exists.
-        
+        """Count of all facts across all contexts.
+
+        Note: This is expensive for LanceDB. Use count_context() instead.
+        """
+        return self._store.count
+
+    def count_context(self, context_id: str, active_only: bool = True) -> int:
+        """Count facts in a specific context.
+
         Args:
-            content: What the agent cannot do
-            context: The specific request that triggered this gap
-            cache_key: Cache key where the gap was encountered
-            workaround: Any workaround suggested to the operator
-            
+            context_id: The context identifier
+            active_only: Only count active facts
+
         Returns:
-            The gap ID
+            Number of facts in the context
         """
-        from datetime import datetime, timezone
-        
-        now = datetime.now(timezone.utc).isoformat()
-        
-        # Search for existing gap (semantic match)
-        existing = self.search(
-            query=content,
-            category=FactCategory.CAPABILITY_GAP,
-            limit=1,
-        )
-        
-        # Check if existing gap is semantically similar enough
-        if existing:
-            gap_fact = existing[0]
-            gap_metadata = gap_fact.metadata if hasattr(gap_fact, 'metadata') else {}
-            
-            # Increment existing gap
-            gap = CapabilityGap.from_dict(gap_metadata)
-            gap.trigger_count += 1
-            gap.last_seen = now
-            gap.trigger_contexts = gap.trigger_contexts or []
-            gap.trigger_contexts.append(context)
-            if workaround and not gap.workaround:
-                gap.workaround = workaround
-            gap.priority_score = self._compute_gap_priority(gap)
-            
-            # Update the fact metadata
-            gap_fact.metadata = gap.to_dict()
-            self._update_metadata(gap_fact)
-            return gap_fact.id
-        
-        # Create new gap
-        gap = CapabilityGap(
-            content=content,
-            trigger_count=1,
-            first_seen=now,
-            last_seen=now,
-            trigger_contexts=[context],
-            workaround=workaround,
-            status="open",
-        )
-        gap.priority_score = self._compute_gap_priority(gap)
-        
-        # Store as a fact with metadata
-        fact = UserFact(
-            content=content,
-            category=FactCategory.CAPABILITY_GAP,
-            source=FactSource.MODEL_OBSERVED,
-            confidence=0.7,
-            cache_key=cache_key,
-            created_at=now,
-            updated_at=now,
-        )
-        fact.metadata = gap.to_dict()
-        
-        self.add(fact)
-        return fact.id
-    
-    def _compute_gap_priority(self, gap: CapabilityGap) -> float:
-        """Compute priority score for a capability gap.
-        
-        Formula: (frequency * 0.4) + (recency * 0.3) + (impact * 0.3)
-        """
-        from datetime import datetime, timezone
-        
-        # Recency weight: e^(-λ * days_since_last_seen)
-        days_since = 0.0
-        if gap.last_seen:
-            try:
-                last = datetime.fromisoformat(gap.last_seen.replace("Z", "+00:00"))
-                days_since = (datetime.now(timezone.utc) - last).days
-            except (ValueError, TypeError):
-                pass
-        
-        recency_weight = 2.718 ** (-0.05 * days_since)  # λ = 0.05
-        
-        # Normalize trigger count (assume max ~20)
-        frequency_weight = min(gap.trigger_count / 20.0, 1.0)
-        
-        # Impact estimate (placeholder - could be enhanced)
-        impact = 0.5
-        
-        return (frequency_weight * 0.4) + (recency_weight * 0.3) + (impact * 0.3)
-    
-    def list_capability_gaps(self, min_triggers: int = 1) -> List[CapabilityGap]:
-        """List all capability gaps sorted by priority.
-        
+        return self._store.count_context(context_id, active_only)
+
+    def list_by_category(self, context_id: str, category: FactCategory) -> List[UserFact]:
+        """List all facts in a specific category within a context.
+
         Args:
-            min_triggers: Minimum trigger count to include
-            
-        Returns:
-            List of CapabilityGap objects sorted by priority score
-        """
-        facts = self.list_facts(category=FactCategory.CAPABILITY_GAP, include_history=False)
-        
-        gaps = []
-        for fact in facts:
-            gap_metadata = fact.metadata if hasattr(fact, 'metadata') else {}
-            gap = CapabilityGap.from_dict(gap_metadata)
-            gap.id = fact.id  # Use fact ID
-            if gap.trigger_count >= min_triggers:
-                gaps.append(gap)
-        
-        # Sort by priority score descending
-        gaps.sort(key=lambda g: g.priority_score, reverse=True)
-        return gaps
-    
-    def _update_metadata(self, fact: UserFact) -> None:
-        """Update metadata for an existing fact.
-        
-        Args:
-            fact: The UserFact with updated metadata
-        """
-        metadata = {
-            "username": fact.username,
-            "category": fact.category.value,
-            "source": fact.source.value,
-            "confidence": fact.confidence,
-            "cache_key": fact.cache_key,
-            "created_at": fact.created_at,
-            "updated_at": fact.updated_at,
-            "superseded_by": fact.superseded_by or "",
-            "active": fact.active,
-            "metadata_json": json.dumps(fact.metadata) if fact.metadata else "",
-        }
-        self.collection.update(
-            ids=[fact.id],
-            metadatas=[metadata]
-        )
-    
-    def list_by_category(self, category: FactCategory) -> List[UserFact]:
-        """List all facts in a specific category.
-        
-        Args:
+            context_id: The context identifier
             category: The category to filter by
-            
+
         Returns:
             List of UserFact objects in the category
         """
-        return self.list_facts(category=category, include_history=False)
-    
-    def get_recent_facts(self, days: int = 30, limit: int = 100) -> List[UserFact]:
-        """Get facts created within the last N days.
-        
+        return self.list_facts(context_id, category=category, include_history=False)
+
+    def get_recent_facts(self, context_id: str, days: int = 30, limit: int = 100) -> List[UserFact]:
+        """Get facts created within the last N days in a context.
+
         Args:
+            context_id: The context identifier
             days: Number of days to look back
             limit: Maximum number of facts to return
-            
+
         Returns:
             List of recent UserFact objects
         """
-        from datetime import datetime, timezone, timedelta
-        
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        
-        # Get all active facts
-        all_facts = self.list_facts(include_history=False)
-        
-        # Filter by date
-        recent = []
-        for fact in all_facts:
-            if fact.created_at:
-                try:
-                    created = datetime.fromisoformat(fact.created_at.replace("Z", "+00:00"))
-                    if created > cutoff:
-                        recent.append(fact)
-                except (ValueError, TypeError):
-                    pass
-        
-        # Sort by created_at descending and limit
-        recent.sort(key=lambda f: f.created_at or "", reverse=True)
-        return recent[:limit]
-    
-    def get_all_facts(self) -> List[UserFact]:
-        """Get all facts (active and inactive).
-        
-        Returns:
-            List of all UserFact objects
-        """
-        return self.list_facts(include_history=True)
-    
-    def _assess_category_fit(self, content: str, category: FactCategory) -> float:
-        """Assess how well content fits the given category.
-        
-        Uses semantic search to find similar facts in the category
-        and returns a fit score based on similarity.
-        
+        results = self._store.get_recent_facts(context_id, days, limit)
+        return [UserFact.from_dict(r) for r in results]
+
+    def get_all_facts(self, context_id: str) -> List[UserFact]:
+        """Get all facts (active and inactive) in a context.
+
         Args:
-            content: The fact content to assess
-            category: The category to check fit for
-            
+            context_id: The context identifier
+
         Returns:
-            Fit score between 0.0 and 1.0
+            List of all UserFact objects in the context
         """
-        # Search for similar facts in this category
-        similar = self.search(
-            query=content,
-            category=category,
-            limit=5
+        return self.list_facts(context_id, include_history=True)
+
+    @property
+    def active_count(self) -> int:
+        """Count of active facts only.
+
+        Note: This is not context-scoped. Prefer count_context().
+        """
+        # This is a compatibility shim - it's expensive
+        return self.count  # Will return -1, but maintains API compatibility
+
+    def log_capability_gap(
+        self,
+        context_id: str,
+        content: str,
+        trigger_context: str,
+        cache_key: str = "",
+        workaround: str | None = None,
+    ) -> str:
+        """Log a capability gap, incrementing count if exists.
+
+        Args:
+            context_id: The context identifier
+            content: What the agent cannot do
+            trigger_context: The specific request that triggered this gap
+            cache_key: Cache key where the gap was encountered
+            workaround: Any workaround suggested to the operator
+
+        Returns:
+            The gap ID
+        """
+        return self._store.log_capability_gap(
+            context_id=context_id,
+            content=content,
+            trigger_context=trigger_context,
+            session_key=cache_key,
+            workaround=workaround,
         )
-        
-        if not similar:
-            # No similar facts in this category
-            # Check if this is an empty or new category
-            existing = self.list_by_category(category)
-            if not existing:
-                return 0.7  # New category, assume good fit
-            return 0.5  # No similar facts, neutral score
-        
-        # If we found similar facts, it's a good sign
-        # More similar facts = better fit
-        fit_score = min(0.6 + (len(similar) * 0.08), 0.95)
-        return fit_score
-    
+
+    def list_capability_gaps(self, context_id: str, min_triggers: int = 1) -> List[CapabilityGap]:
+        """List all capability gaps sorted by priority.
+
+        Args:
+            context_id: The context identifier
+            min_triggers: Minimum trigger count to include
+
+        Returns:
+            List of CapabilityGap objects sorted by priority score
+        """
+        results = self._store.list_capability_gaps(context_id, min_triggers)
+
+        gaps = []
+        for r in results:
+            gap_data = r.get("gap_data", {})
+            gap = CapabilityGap.from_dict(gap_data)
+            gap.id = r.get("id", gap.id)
+            gaps.append(gap)
+
+        return gaps
+
     def add_with_categorization_tracking(
         self,
+        context_id: str,
         content: str,
         category: FactCategory,
         source: FactSource = FactSource.USER_STATED,
         confidence: float = 0.8,
         cache_key: str = "",
         metadata: dict | None = None,
+        username: str = "",
     ) -> str:
         """Add a fact and track categorization fit.
-        
-        If the fact doesn't fit well in the category, logs a meta_observation
+
+        If the fact doesn't fit well in the category, logs a meta observation
         for later category evolution analysis.
-        
-        This implements Part7 of plan.md - Category Suggestion Mechanism.
-        
+
         Args:
+            context_id: The context identifier
             content: The fact content
             category: Category to store under
             source: Source of the fact
             confidence: Confidence level
-            cache_key: Conversation cache key
+            cache_key: Session/cache key
             metadata: Optional metadata
-            
+            username: The user this fact is about
+
         Returns:
             The fact ID
         """
-        # Store the fact
-        fact_id = self.add(
+        category_str = category.value if isinstance(category, FactCategory) else category
+        source_str = source.value if isinstance(source, FactSource) else source
+
+        return self._store.add_with_categorization_tracking(
+            context_id=context_id,
+            user_id=username,
             content=content,
-            category=category,
-            source=source,
+            category=category_str,
+            source=source_str,
             confidence=confidence,
-            cache_key=cache_key,
+            session_key=cache_key,
             metadata=metadata,
         )
-        
-        # Assess category fit
-        fit_score = self._assess_category_fit(content, category)
-        
-        # If fit is poor, log a meta_observation for category evolution
-        if fit_score < 0.6:
-            try:
-                content_preview = content[:80] + "..." if len(content) > 80 else content
-                meta_content = (
-                    f"Fact '{content_preview}' was categorized as {category.value} "
-                    f"but fit score was {fit_score:.2f}. This fact might belong to "
-                    f"a category that doesn't exist yet."
-                )
-                
-                self.add(
-                    content=meta_content,
-                    category=FactCategory.META_OBSERVATION,
-                    source=FactSource.MODEL_OBSERVED,
-                    confidence=0.7,
-                    metadata={
-                        "original_fact_id": fact_id,
-                        "fit_score": fit_score,
-                        "categorization_tension": True,
-                        "original_category": category.value,
-                    },
-                )
-            except Exception as e:
-                # Don't fail the main operation if meta logging fails
-                import logging
-                logging.getLogger(__name__).warning(
-                    f"[UserFactStore] Failed to log categorization tension: {e}"
-                )
-        
-        return fact_id
 
 
 # Global singleton
@@ -960,14 +724,14 @@ _user_fact_store: Optional[UserFactStore] = None
 
 def get_user_fact_store() -> UserFactStore:
     """Get the global UserFactStore instance.
-    
+
     Creates the instance on first call. Subsequent calls return the same instance.
-    
+
     Returns:
         The global UserFactStore instance
-        
+
     Raises:
-        ImportError: If chromadb is not installed
+        ImportError: If lancedb is not installed
     """
     global _user_fact_store
     if _user_fact_store is None:

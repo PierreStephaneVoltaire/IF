@@ -19,7 +19,7 @@ from memory.user_facts import (
     get_user_fact_store
 )
 
-from agent.tools.user_facts import _current_cache_key
+from agent.tools.user_facts import _current_cache_key, _current_context_id, get_current_context_id
 
 
 
@@ -28,12 +28,16 @@ def _log_capability_gap(
     context: str,
     workaround: Optional[str] = None
 ) -> str:
+    context_id = get_current_context_id()
+    if not context_id:
+        return "Error: No context ID set for this session."
 
     try:
         store = get_user_fact_store()
         gap_id = store.log_capability_gap(
+            context_id=context_id,
             content=content,
-            context=context,
+            trigger_context=context,
             cache_key=_current_cache_key,
             workaround=workaround,
         )
@@ -43,10 +47,16 @@ def _log_capability_gap(
 
 
 def _list_capability_gaps(min_triggers: int = 1) -> str:
+    context_id = get_current_context_id()
+    if not context_id:
+        return "Error: No context ID set for this session."
 
     try:
         store = get_user_fact_store()
-        gaps = store.list_capability_gaps(min_triggers=min_triggers)
+        gaps = store.list_capability_gaps(
+            context_id=context_id,
+            min_triggers=min_triggers
+        )
         
         if not gaps:
             return "No capability gaps logged."

@@ -1,0 +1,132 @@
+import { useMemo, useState } from 'react'
+import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar'
+import { format, parse, startOfWeek, getDay } from 'date-fns'
+import { enUS } from 'date-fns/locale/en-US'
+import { useProgramStore } from '@/store/programStore'
+import { phaseColor } from '@/utils/phases'
+import SessionDrawer from '@/components/sessions/SessionDrawer'
+import 'react-big-calendar/lib/css/react-big-calendar.css'
+
+const locales = {
+  'en-US': enUS,
+}
+
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek: () => startOfWeek(new Date(), { weekStartsOn: 0 }),
+  getDay,
+  locales,
+})
+
+interface CalendarEvent {
+  title: string
+  start: Date
+  end: Date
+  resource: {
+    date: string
+    completed: boolean
+    phaseName: string
+    exercises: Array<{ name: string; kg: number | null }>
+  }
+}
+
+export default function CalendarPage() {
+  const { program, isLoading } = useProgramStore()
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+
+  const events: CalendarEvent[] = useMemo(() => {
+    if (!program) return []
+
+    return program.sessions.map((session) => ({
+      title: session.exercises.length > 0
+        ? session.exercises.map((e) => e.name).join(', ')
+        : 'Rest Day',
+      start: new Date(session.date),
+      end: new Date(session.date),
+      resource: {
+        date: session.date,
+        completed: session.completed,
+        phaseName: session.phase.name,
+        exercises: session.exercises,
+      },
+    }))
+  }, [program])
+
+  const selectedSession = selectedDate
+    ? program?.sessions.find((s) => s.date === selectedDate) || null
+    : null
+  const selectedSessionIndex = selectedDate
+    ? program?.sessions.findIndex((s) => s.date === selectedDate) ?? -1
+    : -1
+
+  const handleSelectEvent = (event: CalendarEvent) => {
+    setSelectedDate(event.resource.date)
+  }
+
+  if (isLoading || !program) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  const eventStyleGetter = (event: CalendarEvent) => {
+    const phase = program.phases.find((p) => p.name === event.resource.phaseName)
+    const bgColor = phase ? phaseColor(phase, program.phases) : '#94a3b8'
+
+    return {
+      style: {
+        backgroundColor: event.resource.completed ? bgColor : `${bgColor}80`,
+        borderRadius: '4px',
+        opacity: event.resource.completed ? 1 : 0.7,
+        borderLeft: `4px solid ${bgColor}`,
+        cursor: 'pointer',
+      },
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold">Calendar</h1>
+
+      {/* Phase Legend */}
+      <div className="flex flex-wrap gap-4">
+        {program.phases.map((phase, idx) => (
+          <div key={idx} className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: phaseColor(phase, program.phases) }}
+            />
+            <span className="text-sm">{phase.name}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-card border border-border rounded-lg p-4" style={{ height: '600px' }}>
+        <Calendar
+          localizer={localizer}
+          events={events}
+          startAccessor="start"
+          endAccessor="end"
+          style={{ height: '100%' }}
+          views={[Views.MONTH, Views.WEEK]}
+          eventPropGetter={eventStyleGetter}
+          tooltipAccessor={(event) =>
+            `${event.resource.exercises.map((e) => e.name).join(', ')}${event.resource.completed ? ' ✓' : ''}`
+          }
+          onSelectEvent={handleSelectEvent}
+        />
+      </div>
+
+      {/* Session Drawer */}
+      <SessionDrawer
+        isOpen={selectedDate !== null}
+        onClose={() => setSelectedDate(null)}
+        session={selectedSession}
+        sessionIndex={selectedSessionIndex}
+      />
+    </div>
+  )
+}

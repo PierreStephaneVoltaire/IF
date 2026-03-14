@@ -25,6 +25,7 @@ from config import (
     OPENROUTER_API_KEY,
     LLM_BASE_URL,
     CONDENSER_MODEL,
+    TOKENIZER_MODEL,
 )
 
 
@@ -46,7 +47,7 @@ class CondensationResult:
     summary: Optional[str] = None
 
 
-def estimate_token_count(messages: List[Dict[str, Any]], model: str = "gpt-4") -> int:
+def estimate_token_count(messages: List[Dict[str, Any]], model: str = TOKENIZER_MODEL) -> int:
     """Estimate the token count of a conversation.
     
     Uses tiktoken for accurate token counting. Falls back to character-based

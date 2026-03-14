@@ -24,26 +24,29 @@ logger = logging.getLogger(__name__)
 
 class CommandHandler:
     """Handles slash commands for the reflection and memory system.
-    
+
     Example:
-        >>> handler = CommandHandler(store, reflection_engine)
+        >>> handler = CommandHandler(store, reflection_engine, context_id="openwebui_chat123")
         >>> result = handler.handle("/gaps")
         >>> print(result)
     """
-    
+
     def __init__(
         self,
         store: "UserFactStore",
         reflection_engine: Optional["ReflectionEngine"] = None,
+        context_id: str = "",
     ):
         """Initialize command handler.
-        
+
         Args:
             store: UserFactStore for reading facts
             reflection_engine: Optional ReflectionEngine for /reflect command
+            context_id: The context ID for LanceDB storage
         """
         self.store = store
         self.reflection_engine = reflection_engine
+        self.context_id = context_id
         
         # Register command handlers
         self._handlers = {
@@ -132,17 +135,23 @@ class CommandHandler:
     
     def _handle_gaps(self, args: str) -> str:
         """Handle /gaps command.
-        
+
         Lists capability gaps ranked by priority.
         """
         from memory.user_facts import FactCategory
-        
+
+        if not self.context_id:
+            return "Error: No context ID set for this session."
+
         # Parse min_triggers from args
         min_triggers = 1
         if args.strip().isdigit():
             min_triggers = int(args.strip())
-        
-        gaps = self.store.list_capability_gaps(min_triggers=min_triggers)
+
+        gaps = self.store.list_capability_gaps(
+            context_id=self.context_id,
+            min_triggers=min_triggers
+        )
         
         if not gaps:
             return f"No capability gaps with at least {min_triggers} trigger(s)."
@@ -170,13 +179,19 @@ class CommandHandler:
     
     def _handle_patterns(self, args: str) -> str:
         """Handle /patterns command.
-        
+
         Shows detected patterns.
         """
         from memory.user_facts import FactCategory
-        
+
+        if not self.context_id:
+            return "Error: No context ID set for this session."
+
         # Get patterns from session reflections
-        reflections = self.store.list_by_category(FactCategory.SESSION_REFLECTION)
+        reflections = self.store.list_by_category(
+            context_id=self.context_id,
+            category=FactCategory.SESSION_REFLECTION
+        )
         
         patterns = []
         for ref in reflections:
@@ -214,12 +229,18 @@ class CommandHandler:
     
     def _handle_opinions(self, args: str) -> str:
         """Handle /opinions command.
-        
+
         Shows opinion pairs (user position vs agent response).
         """
         from memory.user_facts import FactCategory
-        
-        pairs = self.store.list_by_category(FactCategory.OPINION_PAIR)
+
+        if not self.context_id:
+            return "Error: No context ID set for this session."
+
+        pairs = self.store.list_by_category(
+            context_id=self.context_id,
+            category=FactCategory.OPINION_PAIR
+        )
         
         if not pairs:
             return "No opinion pairs logged yet."
@@ -249,39 +270,51 @@ class CommandHandler:
     
     def _handle_growth(self, args: str) -> str:
         """Handle /growth command.
-        
+
         Shows operator growth report.
         """
         from agent.reflection.growth_tracker import GrowthTracker
-        
+
+        if not self.context_id:
+            return "Error: No context ID set for this session."
+
         # Parse days from args
         days = 30
         if args.strip().isdigit():
             days = int(args.strip())
-        
-        tracker = GrowthTracker(self.store)
+
+        tracker = GrowthTracker(self.store, self.context_id)
         report = tracker.generate_growth_report(days_back=days)
-        
+
         return report.get("summary", "No growth report generated.")
     
     def _handle_meta(self, args: str) -> str:
         """Handle /meta command.
-        
+
         Shows store health metrics and category suggestions.
         """
         from agent.reflection.meta_analysis import MetaAnalyzer
-        
-        analyzer = MetaAnalyzer(self.store)
+
+        if not self.context_id:
+            return "Error: No context ID set for this session."
+
+        analyzer = MetaAnalyzer(self.store, self.context_id)
         return analyzer.get_category_report()
     
     def _handle_tools(self, args: str) -> str:
         """Handle /tools command.
-        
+
         Shows tool suggestions derived from capability gaps.
         """
         from memory.user_facts import FactCategory
-        
-        suggestions = self.store.list_by_category(FactCategory.TOOL_SUGGESTION)
+
+        if not self.context_id:
+            return "Error: No context ID set for this session."
+
+        suggestions = self.store.list_by_category(
+            context_id=self.context_id,
+            category=FactCategory.TOOL_SUGGESTION
+        )
         
         if not suggestions:
             return "No tool suggestions yet. Capability gaps need 3+ triggers to be promoted."
@@ -319,18 +352,20 @@ class CommandHandler:
 def get_command_handler(
     store: Optional["UserFactStore"] = None,
     reflection_engine: Optional["ReflectionEngine"] = None,
+    context_id: str = "",
 ) -> CommandHandler:
     """Get a CommandHandler instance.
-    
+
     Args:
         store: Optional UserFactStore (will get global if not provided)
         reflection_engine: Optional ReflectionEngine
-        
+        context_id: The context ID for LanceDB storage
+
     Returns:
         CommandHandler instance
     """
     if store is None:
         from memory.user_facts import get_user_fact_store
         store = get_user_fact_store()
-    
-    return CommandHandler(store, reflection_engine)
+
+    return CommandHandler(store, reflection_engine, context_id)

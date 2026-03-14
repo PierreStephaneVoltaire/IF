@@ -6,13 +6,11 @@ Zero impact on response latency.
 from __future__ import annotations
 import logging
 from typing import List, Dict, Any, TYPE_CHECKING
-from datetime import datetime
 
 from config import LLM_BASE_URL, OPENROUTER_API_KEY, SUGGESTION_MODEL
 from agent.prompts.loader import render_template
 
 from .user_facts import (
-    UserFact,
     FactCategory,
     FactSource,
     get_user_fact_store
@@ -30,17 +28,19 @@ async def summarize_and_store(
     messages: List[Dict[str, Any]],
     username: str,
     http_client: "httpx.AsyncClient",
+    context_id: str = "",
 ) -> None:
     """Generate and store a conversation summary.
-    
+
     Fire-and-forget via asyncio.create_task().
     Only summarizes substantive exchanges (>3 messages).
-    
+
     Args:
         cache_key: The cache key for this conversation
         messages: List of message dicts
         username: The operator's username
         http_client: Shared HTTP client for LLM calls
+        context_id: The context ID for LanceDB storage (format: openwebui_{id} or discord_{id})
     """
     # Only summarize substantive exchanges
     if len(messages) < 4:
@@ -88,18 +88,19 @@ async def summarize_and_store(
         
         # Store as fact
         store = get_user_fact_store()
-        
-        fact = UserFact(
-            username=username,
+
+        # Use context_id if provided, otherwise fall back to cache_key
+        ctx_id = context_id or cache_key
+
+        store.add(
+            context_id=ctx_id,
             content=summary,
             category=FactCategory.CONVERSATION_SUMMARY,
             source=FactSource.CONVERSATION_DERIVED,
+            username=username,
             confidence=0.9,
             cache_key=cache_key,
-            created_at=datetime.utcnow().isoformat() + "Z",
-            updated_at=datetime.utcnow().isoformat() + "Z",
         )
-        store.add(fact)
         logger.debug(f"Stored conversation summary for {cache_key}")
         
     except Exception as e:

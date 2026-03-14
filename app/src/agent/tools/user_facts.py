@@ -14,23 +14,35 @@ from openhands.sdk import (
 from openhands.sdk.tool import ToolExecutor
 
 from memory.user_facts import (
-    UserFact,
     FactCategory,
     FactSource,
     get_user_fact_store
 )
 
 
+# Session context - set by the agent session before tool execution
 _current_username: str = ""
 _current_cache_key: str = ""
+_current_context_id: str = ""
 
 
-def set_session_context(username: str, cache_key: str) -> None:
+def set_session_context(username: str, cache_key: str, context_id: str = "") -> None:
+    """Set the session context for user facts tools.
 
-    global _current_username, _current_cache_key
+    Args:
+        username: The current user's name
+        cache_key: The cache/conversation key
+        context_id: The context ID for LanceDB storage (format: openwebui_{id} or discord_{id})
+    """
+    global _current_username, _current_cache_key, _current_context_id
     _current_username = username or "operator"
     _current_cache_key = cache_key or ""
+    _current_context_id = context_id or cache_key  # Fallback to cache_key if no context_id
 
+
+def get_current_context_id() -> str:
+    """Get the current context ID."""
+    return _current_context_id
 
 
 def _user_facts_search(
@@ -38,16 +50,24 @@ def _user_facts_search(
     category: Optional[str] = None,
     limit: int = 5
 ) -> str:
+    """Search for facts in the current context."""
+    if not _current_context_id:
+        return "Error: No context ID set for this session."
 
     try:
         store = get_user_fact_store()
-        
+
         cat = FactCategory(category) if category else None
-        results = store.search(query, category=cat, limit=limit)
-        
+        results = store.search(
+            context_id=_current_context_id,
+            query=query,
+            category=cat,
+            limit=limit
+        )
+
         if not results:
             return "No facts found matching that query."
-        
+
         output = [f"Found {len(results)} relevant facts:", ""]
         for i, fact in enumerate(results, 1):
             source_tag = "observed" if fact.source in (
@@ -55,7 +75,7 @@ def _user_facts_search(
             ) else "stated"
             output.append(f"{i}. [{fact.category.value}] [{source_tag}] {fact.content}")
             output.append(f"   Updated: {fact.updated_at[:10]}")
-        
+
         return "\n".join(output)
     except Exception as e:
         return f"Error searching facts: {str(e)}"
@@ -67,34 +87,34 @@ def _user_facts_add(
     source: str = "user_stated",
     confidence: float = 0.8
 ) -> str:
-
+    """Add a fact in the current context."""
     from datetime import datetime, timezone
-    
+
+    if not _current_context_id:
+        return "Error: No context ID set for this session."
+
     valid_categories = [c.value for c in FactCategory]
     if category not in valid_categories:
         return f"Invalid category '{category}'. Valid categories: {', '.join(valid_categories)}"
-    
+
     valid_sources = [s.value for s in FactSource]
     if source not in valid_sources:
         return f"Invalid source '{source}'. Valid sources: {', '.join(valid_sources)}"
-    
+
     try:
         store = get_user_fact_store()
-        
-        now = datetime.now(timezone.utc).isoformat()
-        fact = UserFact(
-            username=_current_username,
+
+        fact_id = store.add(
+            context_id=_current_context_id,
             content=content,
             category=FactCategory(category),
             source=FactSource(source),
+            username=_current_username,
             confidence=confidence,
             cache_key=_current_cache_key,
-            created_at=now,
-            updated_at=now,
         )
-        
-        store.add(fact)
-        return f"Fact stored successfully (ID: {fact.id})"
+
+        return f"Fact stored successfully (ID: {fact_id})"
     except Exception as e:
         return f"Error storing fact: {str(e)}"
 
@@ -104,10 +124,14 @@ def _user_facts_update(
     new_content: str,
     reason: str
 ) -> str:
+    """Update a fact by superseding it."""
+    if not _current_context_id:
+        return "Error: No context ID set for this session."
 
     try:
         store = get_user_fact_store()
         new_fact = store.supersede(
+            context_id=_current_context_id,
             old_fact_id=fact_id,
             new_content=new_content,
             reason=reason,
@@ -124,36 +148,46 @@ def _user_facts_list(
     category: Optional[str] = None,
     include_history: bool = False
 ) -> str:
+    """List facts in the current context."""
+    if not _current_context_id:
+        return "Error: No context ID set for this session."
 
     try:
         store = get_user_fact_store()
-        
+
         cat = FactCategory(category) if category else None
-        facts = store.list_facts(category=cat, include_history=include_history)
-        
+        facts = store.list_facts(
+            context_id=_current_context_id,
+            category=cat,
+            include_history=include_history
+        )
+
         if not facts:
-            return "No facts stored."
-        
+            return "No facts stored in this context."
+
         output = [f"Stored facts ({len(facts)} total):", ""]
         for i, fact in enumerate(facts, 1):
             status = "" if fact.active else "[INACTIVE] "
             output.append(f"{i}. {status}[{fact.category.value}] {fact.content}")
             output.append(f"   Source: {fact.source.value}, Updated: {fact.updated_at[:10]}")
-        
+
         return "\n".join(output)
     except Exception as e:
         return f"Error listing facts: {str(e)}"
 
 
 def _user_facts_remove(fact_id: str) -> str:
+    """Request removal of a fact (requires confirmation)."""
+    if not _current_context_id:
+        return "Error: No context ID set for this session."
 
     try:
         store = get_user_fact_store()
-        fact = store.get(fact_id)
-        
+        fact = store.get(_current_context_id, fact_id)
+
         if not fact:
             return f"Fact not found: {fact_id}"
-        
+
         return (
             "PER DIRECTIVE 0-1: Fact deletion requires explicit operator confirmation.\n"
             f"Fact ID: {fact_id}\n"
@@ -165,15 +199,18 @@ def _user_facts_remove(fact_id: str) -> str:
 
 
 def _user_facts_remove_confirmed(fact_id: str) -> str:
+    """Remove a fact after confirmation."""
+    if not _current_context_id:
+        return "Error: No context ID set for this session."
 
     try:
         store = get_user_fact_store()
-        fact = store.get(fact_id)
-        
+        fact = store.get(_current_context_id, fact_id)
+
         if not fact:
             return f"Fact not found: {fact_id}"
-        
-        success = store.remove(fact_id)
+
+        success = store.remove(_current_context_id, fact_id)
         if success:
             return f"Fact removed.\nDeleted: [{fact.category.value}] {fact.content}"
         return f"Failed to remove fact: {fact_id}"

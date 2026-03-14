@@ -1,0 +1,251 @@
+import { useState } from 'react'
+import { useProgramStore } from '@/store/programStore'
+import { useSettingsStore } from '@/store/settingsStore'
+import { useUiStore } from '@/store/uiStore'
+import { groupSessionsByWeek, formatDateShort, getDayOfWeek } from '@/utils/dates'
+import { displayWeight } from '@/utils/units'
+import { phaseColor } from '@/utils/phases'
+import SessionDrawer from '@/components/sessions/SessionDrawer'
+import { Check, ChevronDown, ChevronRight, Dumbbell, Plus, Trash2 } from 'lucide-react'
+import type { Session } from '@powerlifting/types'
+
+export default function ListPage() {
+  const { program, isLoading, createSession, deleteSession } = useProgramStore()
+  const { unit } = useSettingsStore()
+  const { pushToast } = useUiStore()
+  const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(new Set())
+  const [drawerDate, setDrawerDate] = useState<string | null>(null)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newDate, setNewDate] = useState<string>('')
+
+  // Get selected session
+  const selectedSession = drawerDate
+    ? program?.sessions.find((s) => s.date === drawerDate) || null
+    : null
+  const selectedSessionIndex = drawerDate
+    ? program?.sessions.findIndex((s) => s.date === drawerDate) ?? -1
+    : -1
+
+  const handleAddSession = async () => {
+    if (!newDate) {
+      pushToast({ message: 'Please select a date', type: 'error' })
+      return
+    }
+
+    // Check if session already exists
+    if (program?.sessions.some(s => s.date === newDate)) {
+      pushToast({ message: 'Session already exists for this date', type: 'error' })
+      return
+    }
+
+    try {
+      const dayOfWeek = getDayOfWeek(newDate)
+      await createSession({
+        date: newDate,
+        day: dayOfWeek,
+        exercises: [],
+      })
+      pushToast({ message: 'Session created', type: 'success' })
+      setShowAddModal(false)
+      setNewDate('')
+      // Open the new session in the drawer
+      setDrawerDate(newDate)
+    } catch (err) {
+      pushToast({ message: 'Failed to create session', type: 'error' })
+    }
+  }
+
+  const handleDeleteSession = async (date: string) => {
+    if (!confirm('Delete this session?')) return
+    try {
+      await deleteSession(date)
+      pushToast({ message: 'Session deleted', type: 'success' })
+      setDrawerDate(null)
+    } catch (err) {
+      pushToast({ message: 'Failed to delete session', type: 'error' })
+    }
+  }
+
+  if (isLoading || !program) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  const sessionsByWeek = groupSessionsByWeek(program.sessions)
+
+  const toggleWeek = (week: number) => {
+    setExpandedWeeks((prev) => {
+      const next = new Set(prev)
+      if (next.has(week)) {
+        next.delete(week)
+      } else {
+        next.add(week)
+      }
+      return next
+    })
+  }
+
+  const handleSessionClick = (date: string) => {
+    setDrawerDate(date)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Sessions by Week</h1>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Add Session
+        </button>
+      </div>
+
+      {/* Add Session Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-bold mb-4">Add New Session</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-muted-foreground">Date</label>
+                <input
+                  type="date"
+                  value={newDate}
+                  onChange={(e) => setNewDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-border rounded bg-background mt-1"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => {
+                    setShowAddModal(false)
+                    setNewDate('')
+                  }}
+                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddSession}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                >
+                  Create Session
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {Array.from(sessionsByWeek.entries()).map(([week, sessions]) => {
+          const firstSession = sessions[0]
+          const phase = firstSession?.phase
+          const isExpanded = expandedWeeks.has(week)
+
+          return (
+            <div key={week} className="border border-border rounded-lg overflow-hidden">
+              {/* Week Header */}
+              <button
+                onClick={() => toggleWeek(week)}
+                className="w-full flex items-center gap-3 p-4 bg-card hover:bg-accent transition-colors"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                )}
+
+                {phase && (
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: phaseColor(phase, program.phases) }}
+                  />
+                )}
+
+                <span className="font-medium">Week {week}</span>
+                <span className="text-sm text-muted-foreground">
+                  {phase?.name}
+                </span>
+
+                <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>
+                    {sessions.filter((s) => s.completed).length}/{sessions.length} completed
+                  </span>
+                </div>
+              </button>
+
+              {/* Session List */}
+              {isExpanded && (
+                <div className="border-t border-border">
+                  {sessions.map((session) => (
+                    <button
+                      key={session.date}
+                      onClick={() => handleSessionClick(session.date)}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-accent/50 transition-colors border-b border-border last:border-b-0"
+                    >
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-secondary">
+                        {session.completed ? (
+                          <Check className="w-4 h-4 text-primary" />
+                        ) : (
+                          <Dumbbell className="w-4 h-4 text-muted-foreground" />
+                        )}
+                      </div>
+
+                      <div className="flex-1 text-left">
+                        <div className="font-medium">{session.day}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {formatDateShort(session.date)}
+                        </div>
+                      </div>
+
+                      <div className="flex-1 text-right">
+                        <div className="text-sm">
+                          {session.exercises.length} exercise{session.exercises.length !== 1 ? 's' : ''}
+                        </div>
+                        {session.session_rpe !== null && (
+                          <div className="text-xs text-muted-foreground">
+                            RPE {session.session_rpe}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Quick exercise preview */}
+                      <div className="hidden lg:block flex-1 text-right text-sm text-muted-foreground">
+                        {session.exercises.slice(0, 3).map((ex, idx) => (
+                          <span key={idx}>
+                            {ex.name}
+                            {ex.kg !== null && ` @ ${displayWeight(ex.kg, unit)}`}
+                            {idx < Math.min(session.exercises.length, 3) - 1 && ', '}
+                          </span>
+                        ))}
+                        {session.exercises.length > 3 && (
+                          <span className="text-muted-foreground">
+                            {' '}+{session.exercises.length - 3} more
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Session Drawer */}
+      <SessionDrawer
+        isOpen={drawerDate !== null}
+        onClose={() => setDrawerDate(null)}
+        session={selectedSession}
+        sessionIndex={selectedSessionIndex}
+      />
+    </div>
+  )
+}

@@ -1,0 +1,268 @@
+// ─── Program Structure ───────────────────────────────────────────────────────
+
+export interface ProgramMeta {
+  program_name: string
+  program_start: string         // YYYY-MM-DD
+  comp_date: string             // YYYY-MM-DD
+  federation: string
+  practicing_for: string
+  version_label: string
+  weight_class_kg: number
+  weight_class_confirm_by: string
+  current_body_weight_kg: number
+  current_body_weight_lb: number
+  target_squat_kg: number
+  target_bench_kg: number
+  target_dl_kg: number
+  target_total_kg: number
+  training_notes: string[]
+  change_log: ChangeLogEntry[]
+  updated_at: string
+  last_comp: LastComp
+}
+
+export interface ChangeLogEntry {
+  action: string
+  source?: string
+  date: string
+  note?: string
+}
+
+export interface LastComp {
+  date: string
+  body_weight_kg: number
+  body_weight_lb: number
+  weight_class_kg: number
+  results: LiftResults
+  past_comp_day_protocol: CompDayProtocol
+}
+
+export interface LiftResults {
+  squat_kg: number
+  bench_kg: number
+  deadlift_kg: number
+  total_kg: number
+}
+
+export interface CompDayProtocol {
+  caffeine_total_mg: number
+  caffeine_sequence: CaffeineStep[]
+  carbs: string
+  l_theanine: string
+  outcome: string
+  notes: string
+}
+
+export interface CaffeineStep {
+  timing: string
+  dose_mg: number
+  notes: string
+}
+
+// ─── Phase ───────────────────────────────────────────────────────────────────
+
+// Phase is loaded directly from program.phases — never hardcoded in UI logic.
+export interface Phase {
+  name: string
+  intent: string
+  start_week: number
+  end_week: number
+}
+
+// ─── Competition ─────────────────────────────────────────────────────────────
+
+export interface Competition {
+  name: string
+  date: string
+  federation: string
+  location: string
+  hotel_required: boolean
+  status: 'confirmed' | 'optional' | 'skipped'
+  weight_class_kg: number
+  targets: LiftResults
+  notes: string
+  decision_date?: string | null
+  between_comp_plan?: BetweenCompPlan
+}
+
+export interface BetweenCompPlan {
+  rest: string
+  ramp_back: string
+  diet: string
+  weight_class: string
+  inflammation: string
+}
+
+// ─── Session & Exercise ───────────────────────────────────────────────────────
+
+export interface Exercise {
+  name: string
+  sets: number
+  reps: number
+  kg: number | null
+  notes: string
+}
+
+export interface Session {
+  date: string              // YYYY-MM-DD
+  day: string               // 'Friday' etc
+  week: string              // 'W1 (Warmup)' — raw label from DynamoDB
+  week_number: number       // parsed integer, derived on load by backend transform
+  phase: Phase              // resolved from program.phases on load by backend transform
+  completed: boolean
+  exercises: Exercise[]
+  session_notes: string
+  session_rpe: number | null
+  body_weight_kg: number | null
+}
+
+// ─── Full Program ─────────────────────────────────────────────────────────────
+
+export interface Program {
+  pk: string
+  sk: string
+  meta: ProgramMeta
+  phases: Phase[]
+  sessions: Session[]
+  competitions: Competition[]
+  diet_notes: DietNote[]
+  supplements: Supplement[]
+  supplement_phases: SupplementPhase[]
+}
+
+export interface DietNote {
+  date: string
+  notes: string
+}
+
+export interface Supplement {
+  name: string
+  dose: string
+}
+
+export interface SupplementPhase {
+  phase: number
+  phase_name: string
+  notes: string
+  items: (Supplement & { notes?: string })[]
+  peak_week_protocol?: PeakWeekProtocol
+}
+
+export interface PeakWeekProtocol {
+  strategy: string
+  water_retention: string
+  diuretics: string
+}
+
+// ─── Max History ─────────────────────────────────────────────────────────────
+
+export interface MaxEntry {
+  date: string
+  squat_kg: number | null
+  bench_kg: number | null
+  deadlift_kg: number | null
+  total_kg: number | null
+  bodyweight_kg: number | null
+  context: string
+}
+
+// ─── Body Weight Log ─────────────────────────────────────────────────────────
+
+export interface WeightEntry {
+  date: string
+  kg: number
+}
+
+// ─── Glossary ─────────────────────────────────────────────────────────────────
+
+export type MuscleGroup =
+  | 'quads' | 'hamstrings' | 'glutes' | 'calves' | 'hip_flexors'
+  | 'chest' | 'triceps' | 'front_delts' | 'side_delts' | 'rear_delts'
+  | 'lats' | 'upper_back_traps' | 'rhomboids' | 'teres_major'
+  | 'biceps' | 'forearms'
+  | 'erectors' | 'core' | 'obliques'
+
+export type ExerciseCategory =
+  | 'squat' | 'bench' | 'deadlift'
+  | 'upper_accessory' | 'lower_accessory' | 'core_accessory'
+
+export type Equipment =
+  | 'barbell' | 'dumbbell' | 'cable' | 'machine'
+  | 'bodyweight' | 'hex_bar' | 'bands' | 'kettlebell'
+
+export interface GlossaryExercise {
+  id: string
+  name: string
+  category: ExerciseCategory
+  primary_muscles: MuscleGroup[]
+  secondary_muscles: MuscleGroup[]
+  equipment: Equipment
+  cues: string[]
+  notes: string
+  video_url?: string
+}
+
+// ─── Plate Calculator ─────────────────────────────────────────────────────────
+
+export type PlateUnit = 'kg' | 'lb'
+
+export interface PlateLoadout {
+  plates: number[]          // one side, descending order
+  totalKg: number
+  perSideKg: number
+  remainder: number         // leftover that could not be loaded (should be ~0)
+  achievable: boolean
+}
+
+// ─── DOTS ─────────────────────────────────────────────────────────────────────
+
+export type Sex = 'male' | 'female'
+
+export interface DotsResult {
+  dots: number
+  total_kg: number
+  bodyweight_kg: number
+  sex: Sex
+}
+
+// ─── API Response Wrappers ────────────────────────────────────────────────────
+
+export interface ApiResponse<T> {
+  data: T
+  error?: string
+}
+
+export interface ProgramListItem {
+  version: string           // 'v001'
+  sk: string                // 'program#v001'
+  comp_date: string
+  updated_at: string
+  version_label: string
+}
+
+// ─── Glossary Store Item ──────────────────────────────────────────────────────
+
+export interface GlossaryStore {
+  pk: string
+  sk: string
+  exercises: GlossaryExercise[]
+  updated_at: string
+}
+
+// ─── Max History Store Item ───────────────────────────────────────────────────
+
+export interface MaxHistoryStore {
+  pk: string
+  sk: string
+  entries: MaxEntry[]
+  updated_at: string
+}
+
+// ─── Weight Log Store Item ────────────────────────────────────────────────────
+
+export interface WeightLogStore {
+  pk: string
+  sk: string
+  entries: WeightEntry[]
+  updated_at: string
+}
