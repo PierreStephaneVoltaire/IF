@@ -1,37 +1,45 @@
-import { format, differenceInDays, parseISO, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns'
+import { format, differenceInDays, parse, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns'
 import type { Session } from '@powerlifting/types'
 
+/**
+ * Parse a date string (yyyy-MM-dd) as local time, not UTC.
+ * This avoids the timezone shift issue where parseISO would show
+ * the wrong day in certain timezones.
+ */
+const parseLocalDate = (dateStr: string): Date =>
+  parse(dateStr, 'yyyy-MM-dd', new Date())
+
 export const formatDate = (dateStr: string): string =>
-  format(parseISO(dateStr), 'EEE MMM d')
+  format(parseLocalDate(dateStr), 'EEE MMM d')
 
 export const formatDateLong = (dateStr: string): string =>
-  format(parseISO(dateStr), 'EEEE, MMMM d, yyyy')
+  format(parseLocalDate(dateStr), 'EEEE, MMMM d, yyyy')
 
 export const formatDateShort = (dateStr: string): string =>
-  format(parseISO(dateStr), 'MMM d')
+  format(parseLocalDate(dateStr), 'MMM d')
 
 export const daysUntil = (dateStr: string): number =>
-  differenceInDays(parseISO(dateStr), new Date())
+  differenceInDays(parseLocalDate(dateStr), new Date())
 
 export const isToday = (dateStr: string): boolean =>
   format(new Date(), 'yyyy-MM-dd') === dateStr
 
 export const isPast = (dateStr: string): boolean =>
-  parseISO(dateStr) < new Date()
+  parseLocalDate(dateStr) < new Date()
 
 export const isFuture = (dateStr: string): boolean =>
-  parseISO(dateStr) > new Date()
+  parseLocalDate(dateStr) > new Date()
 
 export const currentProgramWeek = (programStart: string): number => {
-  const days = differenceInDays(new Date(), parseISO(programStart))
+  const days = differenceInDays(new Date(), parseLocalDate(programStart))
   return Math.max(1, Math.floor(days / 7) + 1)
 }
 
 export const getDayOfWeek = (dateStr: string): string =>
-  format(parseISO(dateStr), 'EEEE')
+  format(parseLocalDate(dateStr), 'EEEE')
 
 export const getWeekNumber = (dateStr: string, programStart: string): number => {
-  const days = differenceInDays(parseISO(dateStr), parseISO(programStart))
+  const days = differenceInDays(parseLocalDate(dateStr), parseLocalDate(programStart))
   return Math.max(1, Math.floor(days / 7) + 1)
 }
 
@@ -41,7 +49,7 @@ export function sessionsThisCalendarWeek(sessions: Session[]): Session[] {
   const weekEnd = endOfWeek(now, { weekStartsOn: 0 })
 
   return sessions.filter(s => {
-    const sessionDate = parseISO(s.date)
+    const sessionDate = parseLocalDate(s.date)
     return isWithinInterval(sessionDate, { start: weekStart, end: weekEnd })
   })
 }

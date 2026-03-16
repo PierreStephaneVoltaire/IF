@@ -233,11 +233,12 @@ export interface ApiResponse<T> {
 }
 
 export interface ProgramListItem {
-  version: string           // 'v001'
+  version: string           // 'v001' or 'current'
   sk: string                // 'program#v001'
   comp_date: string
   updated_at: string
   version_label: string
+  is_current?: boolean      // true if this is the current/active version
 }
 
 // ─── Glossary Store Item ──────────────────────────────────────────────────────

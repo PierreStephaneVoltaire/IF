@@ -37,6 +37,17 @@ from health.tools import (
     calculate_attempts,
     days_until,
     health_rag_search,
+    # Granular load tools
+    health_get_competition,
+    health_list_competitions,
+    health_get_diet_notes,
+    health_get_session,
+    health_get_sessions_range,
+    health_get_supplements,
+    # Granular edit tools
+    health_update_competition,
+    health_update_diet_note,
+    health_update_supplements,
 )
 from health.renderer import render_program_summary, render_session
 
@@ -59,6 +70,17 @@ __all__ = [
     "calculate_attempts",
     "days_until",
     "health_rag_search",
+    # Granular load tools
+    "health_get_competition",
+    "health_list_competitions",
+    "health_get_diet_notes",
+    "health_get_session",
+    "health_get_sessions_range",
+    "health_get_supplements",
+    # Granular edit tools
+    "health_update_competition",
+    "health_update_diet_note",
+    "health_update_supplements",
     # Renderer
     "render_program_summary",
     "render_session",

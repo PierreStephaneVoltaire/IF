@@ -7,14 +7,45 @@ import type { Program, ProgramListItem, Phase } from '@powerlifting/types'
 const PK = 'operator'
 
 /**
+ * Resolve a version string to the actual SK.
+ * If version is "current", look up the pointer to get the real version.
+ */
+async function resolveVersionSk(version: string): Promise<string> {
+  if (version === 'current') {
+    // Look up the pointer
+    const pointerCommand = new GetCommand({
+      TableName: TABLE,
+      Key: {
+        pk: PK,
+        sk: 'program#current',
+      },
+    })
+
+    const pointerResult = await docClient.send(pointerCommand)
+
+    if (!pointerResult.Item) {
+      // No pointer exists, fall back to v001
+      return 'program#v001'
+    }
+
+    // Return the referenced SK
+    return (pointerResult.Item as any).ref_sk || 'program#v001'
+  }
+
+  return `program#${version}`
+}
+
+/**
  * Get a specific program version
  */
 export async function getProgram(version: string): Promise<Program> {
+  const sk = await resolveVersionSk(version)
+
   const command = new GetCommand({
     TableName: TABLE,
     Key: {
       pk: PK,
-      sk: `program#${version}`,
+      sk,
     },
   })
 
@@ -38,21 +69,40 @@ export async function listPrograms(): Promise<ProgramListItem[]> {
       ':pk': PK,
       ':prefix': 'program#',
     },
-    ProjectionExpression: 'sk, #meta.program_name, #meta.comp_date, #meta.updated_at, #meta.version_label',
-    ExpressionAttributeNames: {
-      '#meta': 'meta',
-    },
   })
 
   const result = await docClient.send(command)
 
-  return (result.Items || []).map((item: any) => ({
-    version: item.sk.replace('program#', ''),
-    sk: item.sk,
-    comp_date: item.meta?.comp_date || '',
-    updated_at: item.meta?.updated_at || '',
-    version_label: item.meta?.version_label || '',
-  }))
+  // Find the current pointer
+  const pointer = (result.Items || []).find((item: any) => item.sk === 'program#current')
+  const currentRefSk = pointer?.ref_sk || 'program#v001'
+
+  // Filter to only actual programs (not pointers) and map to list items
+  const programs = (result.Items || [])
+    .filter((item: any) => item.sk !== 'program#current' && item.meta)
+    .map((item: any) => ({
+      version: item.sk.replace('program#', ''),
+      sk: item.sk,
+      comp_date: item.meta?.comp_date || '',
+      updated_at: item.meta?.updated_at || '',
+      version_label: item.meta?.version_label || item.sk.replace('program#', ''),
+      is_current: item.sk === currentRefSk,
+    }))
+
+  // Add "current" as the first option if there's a pointer
+  if (pointer) {
+    const currentProgram = programs.find(p => p.is_current)
+    programs.unshift({
+      version: 'current',
+      sk: currentRefSk,
+      comp_date: currentProgram?.comp_date || '',
+      updated_at: currentProgram?.updated_at || '',
+      version_label: currentProgram?.version_label ? `Current (${currentProgram.version_label})` : 'Current',
+      is_current: true,
+    })
+  }
+
+  return programs
 }
 
 /**

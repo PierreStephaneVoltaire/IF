@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar'
-import { format, parse, startOfWeek, getDay } from 'date-fns'
+import { format, parse, startOfWeek, getDay, endOfDay, startOfDay } from 'date-fns'
 import { enUS } from 'date-fns/locale/en-US'
 import { useProgramStore } from '@/store/programStore'
 import { phaseColor } from '@/utils/phases'
@@ -23,6 +23,7 @@ interface CalendarEvent {
   title: string
   start: Date
   end: Date
+  allDay: boolean
   resource: {
     date: string
     completed: boolean
@@ -38,19 +39,23 @@ export default function CalendarPage() {
   const events: CalendarEvent[] = useMemo(() => {
     if (!program) return []
 
-    return program.sessions.map((session) => ({
-      title: session.exercises.length > 0
-        ? session.exercises.map((e) => e.name).join(', ')
-        : 'Rest Day',
-      start: new Date(session.date),
-      end: new Date(session.date),
-      resource: {
-        date: session.date,
-        completed: session.completed,
-        phaseName: session.phase.name,
-        exercises: session.exercises,
-      },
-    }))
+    return program.sessions.map((session) => {
+      const sessionDate = new Date(session.date)
+      return {
+        title: session.exercises.length > 0
+          ? session.exercises.map((e) => e.name).join(', ')
+          : 'Rest Day',
+        start: startOfDay(sessionDate),
+        end: endOfDay(sessionDate),
+        allDay: true,
+        resource: {
+          date: session.date,
+          completed: session.completed,
+          phaseName: session.phase?.name || 'Unknown',
+          exercises: session.exercises,
+        },
+      }
+    })
   }, [program])
 
   const selectedSession = selectedDate

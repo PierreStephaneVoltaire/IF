@@ -521,20 +521,319 @@ async def days_until(target_date: str, label: str = "target") -> dict:
 
 async def health_rag_search(query: str, n_results: int = 4) -> list[dict]:
     """Search health documents using semantic search.
-    
+
     Thin wrapper over HealthDocsRAG.query().
-    
+
     Args:
         query: Search query
         n_results: Number of results to return (default 4)
-        
+
     Returns:
         [{"text": str, "source": str, "score": float}, ...]
-        
+
     Raises:
         RuntimeError: If RAG not initialized or search fails
     """
     if _rag is None:
         raise RuntimeError("Health RAG not initialized. Call init_tools() with rag parameter.")
-    
+
     return await _rag.query(query, n_results=n_results)
+
+
+# =============================================================================
+# Granular Load Tools (Read-Only)
+# =============================================================================
+
+def _resolve_phase(session: dict, phases: list[dict]) -> dict:
+    """Resolve the phase object for a session based on week_number.
+
+    Args:
+        session: Session dict with week_number
+        phases: List of phase dicts from program
+
+    Returns:
+        Matching phase dict, or first phase if no match
+    """
+    week_number = session.get("week_number", 1)
+    for phase in phases:
+        start = phase.get("start_week", 0)
+        end = phase.get("end_week", 99)
+        if start <= week_number <= end:
+            return phase
+    return phases[0] if phases else {}
+
+
+async def health_get_competition(date: str) -> dict:
+    """Load a specific competition by date.
+
+    Args:
+        date: Competition date (YYYY-MM-DD)
+
+    Returns:
+        Full competition object including targets, between_comp_plan, comp_day_protocol
+
+    Raises:
+        ValueError: If competition not found
+        ProgramNotFoundError: If no program exists
+    """
+    store = _get_store()
+    program = await store.get_program()
+
+    competitions = program.get("competitions", [])
+    for comp in competitions:
+        if comp.get("date") == date:
+            return comp
+
+    raise ValueError(f"Competition not found with date={date}")
+
+
+async def health_list_competitions() -> list[dict]:
+    """List all competitions with summary info.
+
+    Returns:
+        [{name, date, status, weight_class_kg, federation}, ...]
+        Sorted by date ascending.
+    """
+    store = _get_store()
+    program = await store.get_program()
+
+    competitions = program.get("competitions", [])
+    summaries = []
+    for comp in competitions:
+        summaries.append({
+            "name": comp.get("name"),
+            "date": comp.get("date"),
+            "status": comp.get("status"),
+            "weight_class_kg": comp.get("weight_class_kg"),
+            "federation": comp.get("federation"),
+        })
+
+    # Sort by date ascending
+    summaries.sort(key=lambda x: x.get("date", ""))
+    return summaries
+
+
+async def health_get_diet_notes(
+    start_date: str | None = None,
+    end_date: str | None = None
+) -> list[dict]:
+    """Get diet notes, optionally filtered by date range.
+
+    Args:
+        start_date: Optional start of range (YYYY-MM-DD)
+        end_date: Optional end of range (YYYY-MM-DD)
+
+    Returns:
+        Array of {date, notes} sorted by date descending
+    """
+    store = _get_store()
+    program = await store.get_program()
+
+    diet_notes = program.get("diet_notes", [])
+
+    # Filter by date range if specified
+    if start_date or end_date:
+        filtered = []
+        for note in diet_notes:
+            note_date = note.get("date", "")
+            if start_date and note_date < start_date:
+                continue
+            if end_date and note_date > end_date:
+                continue
+            filtered.append(note)
+        diet_notes = filtered
+
+    # Sort by date descending (most recent first)
+    diet_notes.sort(key=lambda x: x.get("date", ""), reverse=True)
+    return diet_notes
+
+
+async def health_get_session(date: str) -> dict:
+    """Load a single session by date.
+
+    Args:
+        date: Session date (YYYY-MM-DD)
+
+    Returns:
+        Session object with exercises and resolved phase object
+
+    Raises:
+        ValueError: If session not found
+    """
+    store = _get_store()
+    program = await store.get_program()
+
+    phases = program.get("phases", [])
+    sessions = program.get("sessions", [])
+
+    for session in sessions:
+        if session.get("date") == date:
+            # Add resolved phase
+            session_copy = dict(session)
+            session_copy["phase"] = _resolve_phase(session, phases)
+            return session_copy
+
+    raise ValueError(f"Session not found with date={date}")
+
+
+async def health_get_sessions_range(start_date: str, end_date: str) -> list[dict]:
+    """Load sessions within a date range.
+
+    Args:
+        start_date: Start of range (YYYY-MM-DD)
+        end_date: End of range (YYYY-MM-DD)
+
+    Returns:
+        Array of sessions in date order, each with resolved phase object
+    """
+    store = _get_store()
+    program = await store.get_program()
+
+    phases = program.get("phases", [])
+    sessions = program.get("sessions", [])
+
+    result = []
+    for session in sessions:
+        session_date = session.get("date", "")
+        if start_date <= session_date <= end_date:
+            session_copy = dict(session)
+            session_copy["phase"] = _resolve_phase(session, phases)
+            result.append(session_copy)
+
+    # Sort by date ascending
+    result.sort(key=lambda x: x.get("date", ""))
+    return result
+
+
+async def health_get_supplements() -> dict:
+    """Load supplements and supplement phases.
+
+    Returns:
+        {supplements: [...], supplement_phases: [...]}
+    """
+    store = _get_store()
+    program = await store.get_program()
+
+    return {
+        "supplements": program.get("supplements", []),
+        "supplement_phases": program.get("supplement_phases", []),
+    }
+
+
+# =============================================================================
+# Granular Edit Tools (Create Minor Version)
+# =============================================================================
+
+async def health_update_competition(date: str, patch: dict) -> dict:
+    """Update a competition by date.
+
+    Creates a new minor version of the program.
+
+    Args:
+        date: Competition date to update
+        patch: Fields to update (targets, status, notes, between_comp_plan, etc.)
+
+    Returns:
+        Updated competition object
+
+    Raises:
+        ValueError: If competition not found
+    """
+    import copy
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    competitions = new_program.get("competitions", [])
+    comp_idx = None
+    for i, comp in enumerate(competitions):
+        if comp.get("date") == date:
+            comp_idx = i
+            break
+
+    if comp_idx is None:
+        raise ValueError(f"Competition not found with date={date}")
+
+    # Apply patch
+    for key, value in patch.items():
+        competitions[comp_idx][key] = value
+
+    # Write new minor version
+    await store._write_new_version(new_program, minor=True)
+
+    return competitions[comp_idx]
+
+
+async def health_update_diet_note(date: str, notes: str) -> dict:
+    """Update or create a diet note for a specific date.
+
+    Creates a new minor version of the program. Replaces existing content.
+
+    Args:
+        date: Date for the diet note (YYYY-MM-DD)
+        notes: The diet notes content
+
+    Returns:
+        Updated diet note object {date, notes}
+    """
+    import copy
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    diet_notes = new_program.get("diet_notes", [])
+
+    # Find existing or create new
+    note_idx = None
+    for i, note in enumerate(diet_notes):
+        if note.get("date") == date:
+            note_idx = i
+            break
+
+    new_note = {"date": date, "notes": notes}
+
+    if note_idx is not None:
+        diet_notes[note_idx] = new_note
+    else:
+        diet_notes.append(new_note)
+
+    new_program["diet_notes"] = diet_notes
+
+    # Write new minor version
+    await store._write_new_version(new_program, minor=True)
+
+    return new_note
+
+
+async def health_update_supplements(patch: dict) -> dict:
+    """Update supplements or supplement phases.
+
+    Creates a new minor version of the program.
+
+    Args:
+        patch: {"supplements": [...]} or {"supplement_phases": [...]} or both
+
+    Returns:
+        Updated {supplements: [...], supplement_phases: [...]}
+    """
+    import copy
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    if "supplements" in patch:
+        new_program["supplements"] = patch["supplements"]
+
+    if "supplement_phases" in patch:
+        new_program["supplement_phases"] = patch["supplement_phases"]
+
+    # Write new minor version
+    await store._write_new_version(new_program, minor=True)
+
+    return {
+        "supplements": new_program.get("supplements", []),
+        "supplement_phases": new_program.get("supplement_phases", []),
+    }

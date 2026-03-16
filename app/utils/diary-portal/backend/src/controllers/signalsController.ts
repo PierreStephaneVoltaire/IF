@@ -38,11 +38,10 @@ export async function getSignalHistory(days: number = 90): Promise<DiarySignal[]
   const command = new QueryCommand({
     TableName: SIGNALS_TABLE,
     KeyConditionExpression: 'pk = :pk AND begins_with(sk, :sk_prefix)',
-    FilterExpression: 'sk <> :latest AND computed_at >= :cutoff',
+    FilterExpression: 'computed_at >= :cutoff',
     ExpressionAttributeValues: {
       ':pk': OPERATOR_PK,
       ':sk_prefix': 'signal#',
-      ':latest': 'signal#latest',
       ':cutoff': cutoffISO,
     },
   })
@@ -53,8 +52,11 @@ export async function getSignalHistory(days: number = 90): Promise<DiarySignal[]
     return []
   }
 
+  // Filter out signal#latest in code (can't filter on primary key in DynamoDB)
+  const signals = result.Items
+    .filter(item => item.sk !== 'signal#latest') as DiarySignal[]
+
   // Sort by computed_at ascending for charting
-  const signals = result.Items as DiarySignal[]
   return signals.sort((a, b) => a.computed_at.localeCompare(b.computed_at))
 }
 

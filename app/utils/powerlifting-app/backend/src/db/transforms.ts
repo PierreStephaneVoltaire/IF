@@ -2,21 +2,35 @@ import type { Program, Session, Phase } from '@powerlifting/types'
 
 /**
  * Parse week number from a week label string.
- * Examples: 'W7 (Intensification)' -> 7, 'W1 (Warmup)' -> 1, 'W10' -> 10
+ * Examples: 'W7 (Intensification)' -> 7, 'W1 (Warmup)' -> 1, 'W10' -> 10, '1' -> 1
  */
-function parseWeekNumber(weekLabel: string): number {
-  const match = weekLabel.match(/W(\d+)/)
-  return match ? parseInt(match[1], 10) : 0
+function parseWeekNumber(weekLabel: string | number | undefined): number {
+  if (typeof weekLabel === 'number') {
+    return weekLabel
+  }
+  if (!weekLabel) {
+    return 0
+  }
+  // Try to match "W<number>" pattern first
+  const match = weekLabel.match(/W(\d+)/i)
+  if (match) {
+    return parseInt(match[1], 10)
+  }
+  // Try to parse as plain number
+  const num = parseInt(weekLabel, 10)
+  return isNaN(num) ? 0 : num
 }
 
 /**
- * Resolve the correct Phase object for a given week label using program.phases.
+ * Resolve the correct Phase object for a given week number using program.phases.
  * No hardcoded phase names anywhere — purely data-driven from the JSON.
  */
-function resolvePhase(weekLabel: string, phases: Phase[]): Phase {
-  const weekNum = parseWeekNumber(weekLabel)
+function resolvePhase(weekNum: number, phases: Phase[]): Phase {
+  if (weekNum <= 0 || phases.length === 0) {
+    return { name: 'Unscheduled', intent: '', start_week: 0, end_week: 0 }
+  }
   const phase = phases.find(p => weekNum >= p.start_week && weekNum <= p.end_week)
-  return phase ?? { name: 'Unknown', intent: '', start_week: weekNum, end_week: weekNum }
+  return phase ?? { name: 'Unscheduled', intent: '', start_week: weekNum, end_week: weekNum }
 }
 
 /**
@@ -28,12 +42,28 @@ function resolvePhase(weekLabel: string, phases: Phase[]): Phase {
 export function transformProgram(item: Record<string, unknown>): Program {
   const program = item as unknown as Program
 
+  // Ensure sessions and phases arrays exist
+  if (!program.sessions) {
+    program.sessions = []
+  }
+  if (!program.phases) {
+    program.phases = []
+  }
+
   // Derive week_number and resolve phase for each session
-  program.sessions = program.sessions.map(session => ({
-    ...session,
-    week_number: parseWeekNumber(session.week),
-    phase: resolvePhase(session.week, program.phases),
-  }))
+  program.sessions = program.sessions.map(session => {
+    // Parse week number from session.week field
+    const weekNum = parseWeekNumber(session.week as string | number | undefined)
+
+    // Resolve phase from the program's phases array based on week number
+    const phase = resolvePhase(weekNum, program.phases)
+
+    return {
+      ...session,
+      week_number: weekNum,
+      phase,
+    }
+  })
 
   // Sort sessions by date
   program.sessions.sort((a, b) => a.date.localeCompare(b.date))

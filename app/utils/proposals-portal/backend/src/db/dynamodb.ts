@@ -1,16 +1,13 @@
 import {
   DynamoDBClient,
-  GetItemCommand,
-  PutItemCommand,
-  UpdateItemCommand,
-  DeleteItemCommand,
-  QueryCommand,
-  AttributeValue,
 } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
-  marshall,
-  unmarshall,
+  GetCommand,
+  PutCommand,
+  UpdateCommand,
+  DeleteCommand,
+  QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 
 // Uses default credential chain (IAM role, instance profile, etc.)
@@ -31,42 +28,38 @@ export async function getProposalsByStatus(
 ): Promise<any[]> {
   const params: any = {
     TableName: PROPOSALS_TABLE,
-    KeyConditionExpression: 'pk = :pk',
-    ExpressionAttributeValues: marshall({
+    KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+    ExpressionAttributeValues: {
       ':pk': pk,
-    }),
+      ':prefix': 'proposal#',
+    },
   };
 
   if (status) {
-    params.KeyConditionExpression += ' AND begins_with(sk, :prefix)';
-    params.ExpressionAttributeValues[':prefix'] = `proposal#`;
     params.FilterExpression = '#status = :status';
     params.ExpressionAttributeNames = { '#status': 'status' };
     params.ExpressionAttributeValues[':status'] = status;
-  } else {
-    params.KeyConditionExpression += ' AND begins_with(sk, :prefix)';
-    params.ExpressionAttributeValues[':prefix'] = `proposal#`;
   }
 
   const command = new QueryCommand(params);
   const result = await docClient.send(command);
-  return result.Items?.map((item) => unmarshall(item)) || [];
+  return result.Items || [];
 }
 
 export async function getProposal(pk: string, sk: string): Promise<any | null> {
-  const command = new GetItemCommand({
+  const command = new GetCommand({
     TableName: PROPOSALS_TABLE,
-    Key: marshall({ pk, sk }),
+    Key: { pk, sk },
   });
 
   const result = await docClient.send(command);
-  return result.Item ? unmarshall(result.Item) : null;
+  return result.Item || null;
 }
 
 export async function createProposal(proposal: any): Promise<any> {
-  const command = new PutItemCommand({
+  const command = new PutCommand({
     TableName: PROPOSALS_TABLE,
-    Item: marshall(proposal),
+    Item: proposal,
   });
 
   await docClient.send(command);
@@ -94,26 +87,26 @@ export async function updateProposalStatus(
     return getProposal(pk, sk);
   }
 
-  const command = new UpdateItemCommand({
+  const command = new UpdateCommand({
     TableName: PROPOSALS_TABLE,
-    Key: marshall({ pk, sk }),
+    Key: { pk, sk },
     UpdateExpression: `SET ${updateExpressions.join(', ')}`,
     ExpressionAttributeNames: expressionAttributeNames,
-    ExpressionAttributeValues: marshall(expressionAttributeValues),
+    ExpressionAttributeValues: expressionAttributeValues,
     ReturnValues: 'ALL_NEW',
   });
 
   const result = await docClient.send(command);
-  return result.Attributes ? unmarshall(result.Attributes) : null;
+  return result.Attributes || null;
 }
 
 export async function deleteProposal(pk: string, sk: string): Promise<boolean> {
-  const command = new DeleteItemCommand({
+  const command = new DeleteCommand({
     TableName: PROPOSALS_TABLE,
-    Key: marshall({ pk, sk }),
+    Key: { pk, sk },
     ConditionExpression: '#status = :status',
     ExpressionAttributeNames: { '#status': 'status' },
-    ExpressionAttributeValues: marshall({ ':status': 'pending' }),
+    ExpressionAttributeValues: { ':status': 'pending' },
   });
 
   try {
@@ -132,22 +125,22 @@ export async function getDirectives(pk: string): Promise<any[]> {
   const command = new QueryCommand({
     TableName: CORE_TABLE,
     KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
-    ExpressionAttributeValues: marshall({
+    ExpressionAttributeValues: {
       ':pk': pk,
       ':prefix': '01#',
-    }),
+    },
   });
 
   const result = await docClient.send(command);
-  return result.Items?.map((item) => unmarshall(item)) || [];
+  return result.Items || [];
 }
 
 export async function getDirective(pk: string, sk: string): Promise<any | null> {
-  const command = new GetItemCommand({
+  const command = new GetCommand({
     TableName: CORE_TABLE,
-    Key: marshall({ pk, sk }),
+    Key: { pk, sk },
   });
 
   const result = await docClient.send(command);
-  return result.Item ? unmarshall(result.Item) : null;
+  return result.Item || null;
 }

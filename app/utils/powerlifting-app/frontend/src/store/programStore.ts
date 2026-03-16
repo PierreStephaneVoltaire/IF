@@ -1,10 +1,11 @@
 import { create } from 'zustand'
-import type { Program, Session, Exercise, MaxEntry, WeightEntry } from '@powerlifting/types'
+import type { Program, Session, Exercise, MaxEntry, WeightEntry, ProgramListItem } from '@powerlifting/types'
 import * as api from '@/api/client'
 
 interface ProgramState {
   program: Program | null
   version: string
+  versions: ProgramListItem[]
   isLoading: boolean
   error: string | null
   isDirty: boolean
@@ -12,6 +13,7 @@ interface ProgramState {
 
   // Actions
   loadProgram: (version: string) => Promise<void>
+  loadVersions: () => Promise<void>
   setActiveSession: (date: string | null) => void
   createSession: (session: Partial<Session> & { date: string }) => Promise<void>
   deleteSession: (date: string) => Promise<void>
@@ -45,7 +47,8 @@ interface ProgramState {
 
 export const useProgramStore = create<ProgramState>((set, get) => ({
   program: null,
-  version: 'v001',
+  version: 'current',
+  versions: [],
   isLoading: false,
   error: null,
   isDirty: false,
@@ -58,6 +61,17 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
       set({ program, version, isLoading: false })
     } catch (e) {
       set({ error: String(e), isLoading: false })
+    }
+  },
+
+  loadVersions: async () => {
+    try {
+      const versions = await api.fetchPrograms()
+      // Sort by version number descending (newest first)
+      versions.sort((a, b) => b.version.localeCompare(a.version))
+      set({ versions })
+    } catch (e) {
+      console.error('Failed to load versions:', e)
     }
   },
 
@@ -249,7 +263,8 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
   reset: () =>
     set({
       program: null,
-      version: 'v001',
+      version: 'current',
+      versions: [],
       isLoading: false,
       error: null,
       isDirty: false,

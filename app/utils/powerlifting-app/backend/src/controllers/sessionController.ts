@@ -6,18 +6,32 @@ import type { Session, Exercise, Phase } from '@powerlifting/types'
 const PK = 'operator'
 
 /**
+ * Resolve a version string to the actual SK.
+ */
+async function resolveVersionSk(version: string): Promise<string> {
+  if (version === 'current') {
+    const pointerCommand = new GetCommand({
+      TableName: TABLE,
+      Key: { pk: PK, sk: 'program#current' },
+    })
+    const pointerResult = await docClient.send(pointerCommand)
+    if (!pointerResult.Item) return 'program#v001'
+    return (pointerResult.Item as any).ref_sk || 'program#v001'
+  }
+  return `program#${version}`
+}
+
+/**
  * Create a new session
  */
 export async function createSession(
   version: string,
   session: Session
 ): Promise<void> {
+  const sk = await resolveVersionSk(version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     ProjectionExpression: 'sessions, phases',
   })
 
@@ -27,8 +41,8 @@ export async function createSession(
     throw new AppError(`Program version ${version} not found`, 404)
   }
 
-  const sessions = result.Item.sessions as Session[]
-  const phases = result.Item.phases as Phase[]
+  const sessions = (result.Item.sessions ?? []) as Session[]
+  const phases = (result.Item.phases ?? []) as Phase[]
 
   // Check if session with this date already exists
   if (sessions.some(s => s.date === session.date)) {
@@ -53,20 +67,13 @@ export async function createSession(
   }
 
   sessions.push(newSession)
-
-  // Sort sessions by date
   sessions.sort((a, b) => a.date.localeCompare(b.date))
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
-    ExpressionAttributeNames: {
-      '#meta': 'meta',
-    },
+    ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
       ':sessions': sessions,
       ':now': new Date().toISOString(),
@@ -83,12 +90,10 @@ export async function deleteSession(
   version: string,
   date: string
 ): Promise<void> {
+  const sk = await resolveVersionSk(version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -98,7 +103,7 @@ export async function deleteSession(
     throw new AppError(`Program version ${version} not found`, 404)
   }
 
-  const sessions = result.Item.sessions as Session[]
+  const sessions = (result.Item.sessions ?? []) as Session[]
   const sessionIndex = sessions.findIndex(s => s.date === date)
 
   if (sessionIndex === -1) {
@@ -109,14 +114,9 @@ export async function deleteSession(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
-    ExpressionAttributeNames: {
-      '#meta': 'meta',
-    },
+    ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
       ':sessions': sessions,
       ':now': new Date().toISOString(),
@@ -130,12 +130,10 @@ export async function deleteSession(
  * Get a specific program and find a session by date
  */
 export async function getSession(version: string, date: string): Promise<Session | null> {
+  const sk = await resolveVersionSk(version)
   const command = new GetCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -145,7 +143,7 @@ export async function getSession(version: string, date: string): Promise<Session
     throw new AppError(`Program version ${version} not found`, 404)
   }
 
-  const sessions = result.Item.sessions as Session[]
+  const sessions = (result.Item.sessions ?? []) as Session[]
   return sessions.find(s => s.date === date) || null
 }
 
@@ -157,13 +155,10 @@ export async function updateSession(
   date: string,
   session: Session
 ): Promise<void> {
-  // First get the current program to find session index
+  const sk = await resolveVersionSk(version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -173,26 +168,20 @@ export async function updateSession(
     throw new AppError(`Program version ${version} not found`, 404)
   }
 
-  const sessions = result.Item.sessions as Session[]
+  const sessions = (result.Item.sessions ?? []) as Session[]
   const sessionIndex = sessions.findIndex(s => s.date === date)
 
   if (sessionIndex === -1) {
     throw new AppError(`Session with date ${date} not found`, 404)
   }
 
-  // Update the session in the array
   sessions[sessionIndex] = session
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
-    ExpressionAttributeNames: {
-      '#meta': 'meta',
-    },
+    ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
       ':sessions': sessions,
       ':now': new Date().toISOString(),
@@ -211,12 +200,10 @@ export async function rescheduleSession(
   newDate: string,
   newDay: string
 ): Promise<void> {
+  const sk = await resolveVersionSk(version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -226,14 +213,13 @@ export async function rescheduleSession(
     throw new AppError(`Program version ${version} not found`, 404)
   }
 
-  const sessions = result.Item.sessions as Session[]
+  const sessions = (result.Item.sessions ?? []) as Session[]
   const sessionIndex = sessions.findIndex(s => s.date === oldDate)
 
   if (sessionIndex === -1) {
     throw new AppError(`Session with date ${oldDate} not found`, 404)
   }
 
-  // Update date and day
   sessions[sessionIndex] = {
     ...sessions[sessionIndex],
     date: newDate,
@@ -242,14 +228,9 @@ export async function rescheduleSession(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
-    ExpressionAttributeNames: {
-      '#meta': 'meta',
-    },
+    ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
       ':sessions': sessions,
       ':now': new Date().toISOString(),
@@ -267,12 +248,10 @@ export async function completeSession(
   date: string,
   data: { rpe?: number; bodyWeightKg?: number; notes?: string }
 ): Promise<void> {
+  const sk = await resolveVersionSk(version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -282,7 +261,7 @@ export async function completeSession(
     throw new AppError(`Program version ${version} not found`, 404)
   }
 
-  const sessions = result.Item.sessions as Session[]
+  const sessions = (result.Item.sessions ?? []) as Session[]
   const sessionIndex = sessions.findIndex(s => s.date === date)
 
   if (sessionIndex === -1) {
@@ -299,14 +278,9 @@ export async function completeSession(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
-    ExpressionAttributeNames: {
-      '#meta': 'meta',
-    },
+    ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
       ':sessions': sessions,
       ':now': new Date().toISOString(),
@@ -324,12 +298,10 @@ export async function addExercise(
   date: string,
   exercise: Exercise
 ): Promise<void> {
+  const sk = await resolveVersionSk(version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -339,7 +311,7 @@ export async function addExercise(
     throw new AppError(`Program version ${version} not found`, 404)
   }
 
-  const sessions = result.Item.sessions as Session[]
+  const sessions = (result.Item.sessions ?? []) as Session[]
   const sessionIndex = sessions.findIndex(s => s.date === date)
 
   if (sessionIndex === -1) {
@@ -350,14 +322,9 @@ export async function addExercise(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
-    ExpressionAttributeNames: {
-      '#meta': 'meta',
-    },
+    ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
       ':sessions': sessions,
       ':now': new Date().toISOString(),
@@ -375,12 +342,10 @@ export async function removeExercise(
   date: string,
   exerciseIndex: number
 ): Promise<void> {
+  const sk = await resolveVersionSk(version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -390,7 +355,7 @@ export async function removeExercise(
     throw new AppError(`Program version ${version} not found`, 404)
   }
 
-  const sessions = result.Item.sessions as Session[]
+  const sessions = (result.Item.sessions ?? []) as Session[]
   const sessionIndex = sessions.findIndex(s => s.date === date)
 
   if (sessionIndex === -1) {
@@ -405,14 +370,9 @@ export async function removeExercise(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
-    ExpressionAttributeNames: {
-      '#meta': 'meta',
-    },
+    ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
       ':sessions': sessions,
       ':now': new Date().toISOString(),
@@ -432,12 +392,10 @@ export async function updateExerciseField(
   field: keyof Exercise,
   value: unknown
 ): Promise<void> {
+  const sk = await resolveVersionSk(version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -447,7 +405,7 @@ export async function updateExerciseField(
     throw new AppError(`Program version ${version} not found`, 404)
   }
 
-  const sessions = result.Item.sessions as Session[]
+  const sessions = (result.Item.sessions ?? []) as Session[]
   const sessionIndex = sessions.findIndex(s => s.date === date)
 
   if (sessionIndex === -1) {
@@ -458,19 +416,13 @@ export async function updateExerciseField(
     throw new AppError(`Exercise index ${exerciseIndex} out of range`, 400)
   }
 
-  // Update the field
   ;(sessions[sessionIndex].exercises[exerciseIndex] as any)[field] = value
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: {
-      pk: PK,
-      sk: `program#${version}`,
-    },
+    Key: { pk: PK, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
-    ExpressionAttributeNames: {
-      '#meta': 'meta',
-    },
+    ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
       ':sessions': sessions,
       ':now': new Date().toISOString(),
