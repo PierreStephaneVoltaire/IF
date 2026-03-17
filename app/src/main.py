@@ -324,25 +324,38 @@ async def lifespan(app: FastAPI):
     
     global terminal_manager, terminal_cleanup_task
     try:
-        from terminal import TerminalConfig, TerminalLifecycleManager, init_lifecycle_manager
-        import docker
-        
-        docker_client = docker.from_env()
+        from terminal import (
+            TerminalConfig,
+            K8sConfig,
+            K8sTerminalLifecycleManager,
+            init_k8s_lifecycle_manager,
+            get_k8s_lifecycle_manager,
+        )
+        from terminal.k8s_client import K8sTerminalClient
+
+        # Initialize K8s client
+        k8s_config = K8sConfig.from_env()
+        k8s_client = K8sTerminalClient(k8s_config)
+        k8s_client.connect()
+
+        # Initialize K8s lifecycle manager
         terminal_config = TerminalConfig.from_env()
-        terminal_manager = init_lifecycle_manager(docker_client, terminal_config)
-        
+        terminal_manager = init_k8s_lifecycle_manager(k8s_client, terminal_config)
+
+        # Recover existing pods
         recovered = await terminal_manager.recover_existing()
         if recovered:
-            logger.info(f"[Terminal] Recovered {len(recovered)} existing containers")
-        
+            logger.info(f"[Terminal] Recovered {len(recovered)} existing pods")
+
+        # Start cleanup task
         terminal_cleanup_task = asyncio.create_task(_terminal_cleanup_loop())
-        
-        logger.info(f"Terminal lifecycle manager initialized (max={terminal_config.max_containers}, idle_timeout={terminal_config.idle_timeout}s)")
+
+        logger.info(f"K8s terminal lifecycle manager initialized (namespace={k8s_config.namespace}, max={terminal_config.max_containers}, idle_timeout={terminal_config.idle_timeout}s)")
     except ImportError as e:
         logger.warning(f"Terminal module not available: {e}")
-        logger.warning("Install docker package to enable terminal containers: pip install docker>=7.0.0")
+        logger.warning("Install kubernetes package to enable terminal pods: pip install kubernetes>=28.0.0")
     except Exception as e:
-        logger.warning(f"Terminal lifecycle manager initialization failed: {e}")
+        logger.warning(f"K8s terminal lifecycle manager initialization failed: {e}")
     
     logger.info(f"Server ready on {HOST}:{PORT}")
     

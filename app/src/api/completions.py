@@ -271,6 +271,19 @@ async def process_chat_completion_internal(
             except Exception as e:
                 logger.warning(f"[Cache] Failed to persist eviction: {e}")
             logger.info(f"[Cache] Evicted cache key: {cache_key}")
+
+            # Clean up terminal resources (stop pod, delete PVC for full cleanup)
+            try:
+                from terminal import get_k8s_lifecycle_manager
+                terminal_mgr = get_k8s_lifecycle_manager()
+                if terminal_mgr:
+                    # Stop the pod (PVC persists by default, but we delete it for full cleanup)
+                    await terminal_mgr.stop(chat_id)
+                    await terminal_mgr.delete_pvc(chat_id)
+                    logger.info(f"[Terminal] Cleaned up terminal resources for chat: {chat_id}")
+            except Exception as e:
+                logger.warning(f"[Terminal] Failed to clean up terminal resources: {e}")
+
             return cmd.response_text, []
         
         if cmd.action == CommandAction.PIN_PRESET:

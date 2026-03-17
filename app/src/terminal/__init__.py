@@ -57,6 +57,21 @@ from .files import (
     log_file_refs,
 )
 
+# K8s client
+from .k8s_client import K8sTerminalClient, K8sConfig
+
+# K8s lifecycle manager
+from .k8s_lifecycle import (
+    K8sTerminalContainer,
+    K8sTerminalLifecycleManager,
+    K8sTerminalError,
+    K8sTerminalStartupError,
+    K8sTerminalNotFoundError,
+    K8sTerminalCapacityError,
+    get_k8s_lifecycle_manager,
+    init_k8s_lifecycle_manager,
+)
+
 __all__ = [
     # Configuration
     "TerminalConfig",
@@ -84,4 +99,15 @@ __all__ = [
     "get_lifecycle_manager",
     "init_lifecycle_manager",
     "create_terminal_client",
+    # K8s
+    "K8sTerminalClient",
+    "K8sConfig",
+    "K8sTerminalContainer",
+    "K8sTerminalLifecycleManager",
+    "K8sTerminalError",
+    "K8sTerminalStartupError",
+    "K8sTerminalNotFoundError",
+    "K8sTerminalCapacityError",
+    "get_k8s_lifecycle_manager",
+    "init_k8s_lifecycle_manager",
 ]
