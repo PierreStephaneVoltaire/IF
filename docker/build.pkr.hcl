@@ -23,12 +23,12 @@ source "docker" "if_agent" {
   changes = [
     "WORKDIR /app",
     "ENV PATH=/root/.local/bin:/usr/local/bin:$PATH",
-    "CMD [\"python\", \"-m\", \"uvicorn\", \"src.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]"
+    "CMD [\"python\", \"-m\", \"uvicorn\", \"src.main:app\", \"--host\", \"0.0.0.0\", \"port\", \"8000\"]"
   ]
 }
 
 build {
-  name    = "if-agent"
+  name    = "if-agent-api"
   sources = ["source.docker.if_agent"]
 
   # Install system dependencies
@@ -75,12 +75,6 @@ build {
     destination = "/app/main_system_prompt.txt"
   }
 
-  # Copy .env.example for reference
-  provisioner "file" {
-    source      = "../app/.env.example"
-    destination = "/app/.env.example"
-  }
-
   # Copy data directory structure
   provisioner "file" {
     source      = "../app/data"
@@ -100,7 +94,7 @@ build {
       "rm -rf /root/.cache"
     ]
   }
-  
+
   post-processors {
     post-processor "docker-tag" {
       repository = var.image_repository

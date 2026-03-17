@@ -1,5 +1,8 @@
-resource "aws_ecr_repository" "if_agent" {
-  name                 = "if-agent"
+# ECR Repositories for all container images
+
+# Main API
+resource "aws_ecr_repository" "if_agent_api" {
+  name                 = "${var.ecr_repository_prefix}-agent-api"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -7,8 +10,51 @@ resource "aws_ecr_repository" "if_agent" {
   }
 }
 
-resource "aws_ecr_lifecycle_policy" "if_agent" {
-  repository = aws_ecr_repository.if_agent.name
+# Portal Backends
+resource "aws_ecr_repository" "portal_backends" {
+  for_each = toset([
+    "main-portal-backend",
+    "finance-portal-backend",
+    "diary-portal-backend",
+    "proposals-portal-backend",
+    "powerlifting-app-backend"
+  ])
+
+  name                 = "${var.ecr_repository_prefix}-${each.key}"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+# Portal Frontends
+resource "aws_ecr_repository" "portal_frontends" {
+  for_each = toset([
+    "main-portal-frontend",
+    "finance-portal-frontend",
+    "diary-portal-frontend",
+    "proposals-portal-frontend",
+    "powerlifting-app-frontend"
+  ])
+
+  name                 = "${var.ecr_repository_prefix}-${each.key}"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+# Lifecycle policy - keep last 5 images
+resource "aws_ecr_lifecycle_policy" "keep_5" {
+  for_each = merge(
+    { "if-agent-api" = aws_ecr_repository.if_agent_api.name },
+    { for k, v in aws_ecr_repository.portal_backends : k => v.name },
+    { for k, v in aws_ecr_repository.portal_frontends : k => v.name }
+  )
+
+  repository = each.value
 
   policy = jsonencode({
     rules = [
@@ -28,24 +74,86 @@ resource "aws_ecr_lifecycle_policy" "if_agent" {
   })
 }
 
+# ===========================================
+# Packer Build Triggers
+# ===========================================
+
 locals {
-  docker_hash   = filesha1("${path.module}/../docker/build.pkr.hcl")
+  docker_hash = filesha1("${path.module}/../docker/build.pkr.hcl")
+
+  portals = {
+    "main-portal"      = { port = "3000" }
+    "finance-portal"   = { port = "3002" }
+    "diary-portal"     = { port = "3003" }
+    "proposals-portal" = { port = "3004" }
+    "powerlifting-app" = { port = "3005" }
+  }
 }
 
-resource "null_resource" "packer_build" {
+# Main API Packer Build
+resource "null_resource" "packer_build_main_api" {
   triggers = {
     dir_sha1 = local.docker_hash
-    repo_url = aws_ecr_repository.if_agent.repository_url
+    repo_url = aws_ecr_repository.if_agent_api.repository_url
   }
 
   provisioner "local-exec" {
     working_dir = "${path.module}/../docker"
-    command     = <<EOT
+    command     = <<-EOT
       aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
       packer init build.pkr.hcl
-      packer build -var "image_repository=${aws_ecr_repository.if_agent.repository_url}" -var "image_tag=test" build.pkr.hcl
+      packer build -var "image_repository=${aws_ecr_repository.if_agent_api.repository_url}" -var "image_tag=test" build.pkr.hcl
     EOT
   }
 
-  depends_on = [aws_ecr_repository.if_agent]
+  depends_on = [aws_ecr_repository.if_agent_api]
+}
+
+# Portal Backend Packer Builds
+resource "null_resource" "packer_build_portal_backends" {
+  for_each = local.portals
+
+  triggers = {
+    dir_sha1    = filesha1("${path.module}/../docker/portals-backend.pkr.hcl")
+    repo_url    = aws_ecr_repository.portal_backends["${each.key}-backend"].repository_url
+    portal_name = each.key
+    port        = each.value.port
+  }
+
+  provisioner "local-exec" {
+    working_dir = "${path.module}/../docker"
+    command     = <<-EOT
+      aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+      packer init portals-backend.pkr.hcl
+      packer build -var "image_repository=${aws_ecr_repository.portal_backends["${each.key}-backend"].repository_url}" -var "image_tag=test" -var "portal_name=${each.key}" -var "portal_port=${each.value.port}" portals-backend.pkr.hcl
+    EOT
+  }
+
+  depends_on = [aws_ecr_repository.portal_backends]
+}
+
+# Portal Frontend Packer Builds
+resource "null_resource" "packer_build_portal_frontends" {
+  for_each = local.portals
+
+  triggers = {
+    dir_sha1    = filesha1("${path.module}/../docker/portals-frontend.pkr.hcl")
+    repo_url    = aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url
+    portal_name = each.key
+  }
+
+  provisioner "local-exec" {
+    working_dir = "${path.module}/../docker"
+    command     = <<-EOT
+      # Build frontend first
+      cd ../app/utils/${each.key}/frontend && npm ci && npm run build
+      cd ../../../..
+      # Then build and push image
+      aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+      packer init portals-frontend.pkr.hcl
+      packer build -var "image_repository=${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url}" -var "image_tag=test" -var "portal_name=${each.key}" portals-frontend.pkr.hcl
+    EOT
+  }
+
+  depends_on = [aws_ecr_repository.portal_frontends]
 }
