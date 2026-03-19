@@ -1,6 +1,6 @@
-# IF — Intelligent Routing Agent API
+# IF — Intelligent Agent API
 
-An OpenAI-compatible API server in Python that provides intelligent routing to specialized AI presets based on conversation analysis. Incoming chat completions are analyzed by parallel scoring models, classified against preset definitions, and dispatched to the best-fit specialist model via OpenRouter presets.
+A single main agent with context-aware tiering and specialist subagent delegation. The system uses a general-purpose preset as the main agent, automatically upgrading tiers based on context size, and can spawn specialized subagents for deep domain expertise.
 
 The agent runs on the OpenHands SDK with access to MCP servers for extended capabilities (AWS docs, financial data, file system), a persistent RAG-backed memory store, conversation persistence, and a file-based attachment system.
 
@@ -11,7 +11,9 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
 - [Architecture Overview](#architecture-overview)
 - [Request Flow Diagram](#request-flow-diagram)
 - [API Endpoints](#api-endpoints)
-- [Routing Pipeline](#routing-pipeline)
+- [Tiering System](#tiering-system)
+- [Specialist Subagents](#specialist-subagents)
+- [Subagent Tools](#subagent-tools)
 - [Command System](#command-system)
 - [User Facts Store](#user-facts-store)
 - [Metacognitive Memory System](#metacognitive-memory-system)
@@ -33,6 +35,17 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
 - [Environment Variables](#environment-variables)
 - [Project Structure](#project-structure)
 - [Startup Sequence](#startup-sequence)
+- [Utility Applications](#utility-applications)
+  - [Main Portal (Hub)](#main-portal-hub---port-3000)
+  - [Finance Portal](#finance-portal---port-3002)
+  - [Diary Portal](#diary-portal---port-3003)
+  - [Proposals Portal](#proposals-portal---port-3004)
+  - [Powerlifting App](#powerlifting-app)
+  - [Discord Webhook Server](#discord-webhook-server)
+- [Utility App Architecture](#utility-app-architecture)
+- [Shared Patterns Across Utility Apps](#shared-patterns-across-utility-apps)
+- [Kubernetes Deployment](#kubernetes-deployment)
+- [Development and Running](#development-and-running)
 - [Future Improvements](#future-improvements)
 - [Quick Start](#quick-start)
 
@@ -90,25 +103,20 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
 │  │          │ (bypass routing for title/suggestion tasks)    │          │   │
 │  │          └────────────────────────────────────────────────┘          │   │
 │  │                           │                                          │   │
-│  │  Step 2: Parallel Scoring (preset classification)                   │   │
+│  │  Step 2: Context Size → Preset Tier                                 │   │
 │  │          ┌────────────────────────────────────────────────┐          │   │
-│  │          │ score_conversation() → SCORING_MODELS (3x)     │          │   │
-│  │          │ (gemini-flash, gpt-oss, claude-haiku)          │          │   │
+│  │          │ estimate_context_tokens() → check_tier()       │          │   │
+│  │          │ (air → standard → heavy based on context)      │          │   │
 │  │          └────────────────────────────────────────────────┘          │   │
 │  │                           │                                          │   │
-│  │  Step 3: Decision Logic (preset selection)                          │   │
+│  │  Step 3: Conversation Cache (tier tracking)                         │   │
 │  │          ┌────────────────────────────────────────────────┐          │   │
-│  │          │ select_preset() → Crisis/Confident/Ambiguous   │          │   │
+│  │          │ ConversationCache → current_tier, pinned_tier  │          │   │
 │  │          └────────────────────────────────────────────────┘          │   │
 │  │                           │                                          │   │
-│  │  Step 4: Conversation Cache (routing state)                         │   │
+│  │  Step 4: Agent Execution (OpenHands SDK)                            │   │
 │  │          ┌────────────────────────────────────────────────┐          │   │
-│  │          │ ConversationCache → Topic Shift Detection      │          │   │
-│  │          └────────────────────────────────────────────────┘          │   │
-│  │                           │                                          │   │
-│  │  Step 5: Agent Execution (OpenHands SDK)                            │   │
-│  │          ┌────────────────────────────────────────────────┐          │   │
-│  │          │ execute_agent() → @preset/{selected_preset}    │          │   │
+│  │          │ execute_agent() → @preset/general (main agent) │          │   │
 │  │          └────────────────────────────────────────────────┘          │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -183,8 +191,7 @@ sequenceDiagram
     participant Client
     participant API as FastAPI Endpoint
     participant Interceptor
-    participant Scorer
-    participant Decision
+    participant Tiering
     participant Cache
     participant Agent as OpenHands Agent
     participant OR as OpenRouter
@@ -201,45 +208,30 @@ sequenceDiagram
         Interceptor-->>API: Bypass routing
         API-->>Client: Return response
     else Normal Request
-        Interceptor-->>API: Continue to routing
+        Interceptor-->>API: Continue to tiering
 
-        API->>Cache: get conversation_id
+        API->>Cache: get_or_create conversation_id
+        Cache-->>API: ConversationState (current_tier)
 
-        alt Cache Hit and No Topic Shift
-            Cache-->>API: Return cached preset
-        else Cache Miss or Topic Shift
-            API->>Scorer: score_conversation messages
+        alt Pinned Tier (pondering mode)
+            API->>Tiering: get_preset_for_tier(pinned_tier)
+        else Normal Tiering
+            API->>Tiering: estimate_context_tokens(messages)
+            Tiering-->>API: token_count
 
-            par Parallel Scoring
-                Scorer->>OR: Model 1: gemini-2.5-flash-lite
-                Scorer->>OR: Model 2: gpt-oss-120b
-                Scorer->>OR: Model 3: claude-haiku-4.5
+            API->>Tiering: check_tier(tokens, current_tier)
+            Tiering-->>API: (condensation_needed, upgrade_tier)
+
+            alt Upgrade Available
+                API->>Cache: Update current_tier
             end
-
-            OR-->>Scorer: Scores from all models
-            Scorer->>Scorer: Aggregate scores
-            Scorer-->>API: AggregatedScores
-
-            API->>Decision: select_preset scores
-
-            alt Crisis Detected
-                Decision-->>API: Route to mental_health preset
-            else Confident Match
-                Decision-->>API: Route to top preset
-            else Ambiguous
-                Decision-->>API: Route to most capable
-            else Low Confidence
-                Decision-->>API: Route to fallback
-            end
-
-            API->>Cache: Update conversation state
         end
 
-        API->>Agent: execute_agent preset messages
+        API->>Agent: execute_agent (preset="general") messages
 
         Agent->>Agent: Assemble system prompt
         Agent->>Agent: Resolve MCP servers
-        Agent->>OR: Call @preset/selected_preset
+        Agent->>OR: Call @preset/general
 
         OR-->>Agent: Stream response
         Agent->>Agent: Scan for attachments
@@ -247,6 +239,193 @@ sequenceDiagram
 
         API-->>Client: ChatCompletionResponse
     end
+```
+
+---
+
+## Tiering System
+
+The tiering system replaces the previous parallel scoring router with a simpler context-based approach.
+
+**Module:** [`src/agent/tiering.py`](src/agent/tiering.py)
+
+### Overview
+
+Instead of using 3 parallel models to classify conversations, the system now uses a single main agent with context-aware tiering:
+
+1. **Single Main Agent**: Uses `@preset/general` as the default
+2. **Context-Based Tiers**: Upgrades from air → standard → heavy based on context size
+3. **Specialist Delegation**: Main agent can spawn specialists for deep expertise
+
+### Tier Definitions
+
+| Tier | Name | Context Limit | Preset | Use Case |
+|------|------|---------------|--------|----------|
+| 0 | Air | 30,000 tokens | `@preset/air` | Simple queries, quick responses |
+| 1 | Standard | 120,000 tokens | `@preset/standard` | Most conversations |
+| 2 | Heavy | 200,000 tokens | `@preset/heavy` | Complex tasks, large context |
+
+### Tier Upgrade Logic
+
+```python
+# In src/agent/tiering.py
+
+def check_tier(context_tokens: int, current_tier: int) -> tuple[bool, Optional[int]]:
+    """
+    Returns:
+        (try_condensation, upgrade_available)
+
+    - try_condensation: True if context exceeds limit
+    - upgrade_available: New tier number if upgrade recommended
+    """
+```
+
+**Upgrade Threshold**: 65% of current tier's limit (`TIER_UPGRADE_THRESHOLD`)
+
+### Context Estimation
+
+```python
+def estimate_context_tokens(
+    system_prompt: str,
+    messages: List[dict],
+    tool_overhead: int = 0
+) -> int:
+    """Estimate total context tokens (~4 chars per token)."""
+```
+
+### Configuration
+
+Environment variables (see `src/config.py`):
+
+```bash
+TIER_UPGRADE_THRESHOLD=0.65    # Fraction of limit before upgrade
+TIER_AIR_LIMIT=30000           # Air tier context limit
+TIER_STANDARD_LIMIT=120000     # Standard tier context limit
+TIER_HEAVY_LIMIT=200000        # Heavy tier context limit
+TIER_AIR_PRESET=@preset/air
+TIER_STANDARD_PRESET=@preset/standard
+TIER_HEAVY_PRESET=@preset/heavy
+```
+
+---
+
+## Specialist Subagents
+
+The main agent can spawn specialist subagents for domain-specific expertise.
+
+**Module:** [`src/agent/specialists.py`](src/agent/specialists.py)
+
+### Available Specialists
+
+| Specialist | Description | Directive Types | MCP Servers |
+|------------|-------------|-----------------|-------------|
+| `debugger` | Deep code debugging and error analysis | code, architecture | - |
+| `architect` | System architecture and design patterns | architecture, code | aws_docs |
+| `secops` | Security operations and vulnerability analysis | security, code | - |
+| `devops` | Infrastructure and deployment automation | code, architecture | - |
+| `financial_analyst` | Financial data analysis and market research | finance, competition | yahoo_finance, alpha_vantage |
+| `health_coach` | Health program analysis and coaching | health | google_sheets |
+| `web_researcher` | Web research and information synthesis | core, competition | - |
+
+### Skills (Mode Modifiers)
+
+Specialists can operate in different modes:
+
+| Skill | Description |
+|-------|-------------|
+| `red_team` | Adversarial/attack perspective |
+| `blue_team` | Defensive/protection perspective |
+| `pro_con` | Balanced pros and cons analysis |
+
+### Directive Filtering
+
+Specialists receive filtered directives based on their domain:
+
+```python
+def get_for_subagent(types: List[str]) -> List[Directive]:
+    """
+    1. All tier 0 directives (always included for safety)
+    2. All directives matching any of the given types
+    3. Exclude main-agent-only types (tool, memory, metacognition)
+    """
+```
+
+### Templates
+
+Specialist prompts are Jinja2 templates in `src/agent/prompts/specialists/`:
+
+```
+src/agent/prompts/
+├── deep_thinker.j2          # Extended pondering
+└── specialists/
+    ├── debugger.j2
+    ├── architect.j2
+    ├── secops.j2
+    ├── devops.j2
+    ├── financial_analyst.j2
+    ├── health_coach.j2
+    └── web_researcher.j2
+```
+
+---
+
+## Subagent Tools
+
+The main agent has access to tools for spawning subagents.
+
+**Module:** [`src/agent/tools/subagents.py`](src/agent/tools/subagents.py)
+
+### deep_think
+
+Spawn a deep thinking subagent for extended analysis.
+
+```python
+deep_think(
+    topic: str,           # Topic identifier (used in output filename)
+    task: str,            # Detailed task description
+    context: str = "",    # Background information
+    extra_directives: str = ""  # Additional directive text
+) -> str
+```
+
+**Output**: Analysis saved to `plans/{topic}-plan.md`
+
+### spawn_specialist
+
+Spawn a single specialist subagent.
+
+```python
+spawn_specialist(
+    specialist_type: str,      # debugger, architect, secops, etc.
+    task: str,                 # Task description
+    context: str = "",         # Background information
+    extra_directives: str = "",# Additional directive text
+    skill: str = None,         # red_team, blue_team, pro_con
+    write_to_file: str = None  # Optional file path for output
+) -> str
+```
+
+### spawn_specialists
+
+Spawn multiple specialists in parallel.
+
+```python
+spawn_specialists(
+    specialist_types: List[str],  # e.g., ["debugger", "secops"]
+    task: str,                    # Same task sent to all
+    context: str = ""             # Same context sent to all
+) -> str
+```
+
+**Output**: Combined results from all specialists, separated by `---`
+
+### Configuration
+
+```bash
+SPECIALIST_PRESET=@preset/standard
+SPECIALIST_MAX_TURNS=15
+THINKING_PRESET=@preset/general
+THINKING_MAX_TURNS=20
 ```
 
 ---
@@ -441,158 +620,6 @@ Returns system health status.
   }
 }
 ```
-
----
-
-## Routing Pipeline
-
-The routing pipeline in [`src/api/completions.py`](src/api/completions.py:74) (`process_chat_completion_internal()`) consists of 5 steps:
-
-### Step 1: Request Interception
-
-**Module:** [`src/routing/interceptor.py`](src/routing/interceptor.py)
-
-Detects OpenWebUI suggestion/title generation requests and bypasses the full routing pipeline.
-
-- Checks for known OpenWebUI task markers in message content
-- Calls `SUGGESTION_MODEL` (default: `mistralai/mistral-nemo`) directly
-- Returns immediately without running scoring
-
-**Detection Markers:**
-- `"### Task:\nSuggest 3-5 relevant follow-up"`
-- `"### Task:\nGenerate a concise, 3-5 word title"`
-- `"### Task:\nGenerate 1-3 broad tags"`
-
-### Step 2: Parallel Scoring
-
-**Module:** [`src/routing/scorer.py`](src/routing/scorer.py)
-
-Sends the last `MESSAGE_WINDOW` messages to all scoring models in parallel.
-
-**Default Scoring Models:**
-1. `google/gemini-2.5-flash-lite`
-2. `openai/gpt-oss-120b`
-3. `anthropic/claude-haiku-4.5`
-
-**Scoring Prompt Structure:**
-```
-You are a conversation classifier. Given the following conversation
-and a set of preset descriptions, score how well the conversation
-matches each preset.
-
-Return a JSON object where each key is the preset slug and the
-value is a confidence score from 0.0 to 1.0.
-
-Additionally, include a "crisis" key scored 0.0 to 1.0 indicating
-whether the conversation contains signals of genuine distress.
-```
-
-**Response Validation:**
-1. Parse response as JSON
-2. Verify all preset slugs are present
-3. Verify `crisis` key exists
-4. Verify all values are floats between 0.0 and 1.0
-5. Discard invalid responses
-
-**Score Aggregation:**
-- Each model nominates a top preset with confidence gap
-- If all models agree → use that preset
-- If models disagree → use scores from model with largest gap
-- Crisis score = maximum across all models
-
-### Step 3: Decision Logic
-
-**Module:** [`src/routing/decision.py`](src/routing/decision.py)
-
-Selects the final preset based on aggregated scores.
-
-**Decision Tree:**
-
-```
-1. CRISIS CHECK
-   If crisis_score > CRISIS_THRESHOLD (0.3):
-     → Route to MENTAL_HEALTH_PRESET
-     → Skip all other logic
-
-2. CONFIDENT ROUTE
-   If top_score > CONFIDENCE_THRESHOLD (0.6)
-   AND (top_score - second_score) > CONFIDENCE_GAP (0.2):
-     → Route to top-scoring preset
-
-3. AMBIGUOUS ROUTE
-   If multiple presets score above CONFIDENCE_THRESHOLD
-   and gap is within CONFIDENCE_GAP:
-     → Route to most capable preset among candidates
-
-4. LOW CONFIDENCE FALLBACK
-   If no preset scores above CONFIDENCE_THRESHOLD:
-     → Route to most capable general preset
-```
-
-**Capability Ranking:**
-```python
-capability_ranking = {
-    "architecture": 100,  # Claude 3.5 Sonnet
-    "code": 95,         # Claude 3.5 Sonnet
-    "reasoning": 90,      # o1-preview
-    "general": 50,
-    "social": 40,
-    "health": 30,
-}
-```
-
-### Step 4: Conversation State Cache
-
-**Module:** [`src/routing/cache.py`](src/routing/cache.py)
-
-Caches routing decisions per conversation to avoid reclassifying on every message.
-
-**Cache Entry:**
-```python
-@dataclass
-class ConversationState:
-    conversation_id: str
-    active_preset: str
-    anchor_window: List[str]      # Messages at last classification
-    last_scores: AggregatedScores
-    last_decision: RoutingDecision
-    last_updated: datetime
-```
-
-**Topic Shift Detection:**
-
-**Module:** [`src/routing/topic_shift.py`](src/routing/topic_shift.py)
-
-When cache is warm (preset already assigned), uses LLM to detect topic shifts:
-
-```python
-async def topic_has_shifted(
-    anchor_messages: List[str],  # From cache
-    current_messages: List[str], # Current window
-    http_client: httpx.AsyncClient,
-) -> bool:
-```
-
-- Uses `TOPIC_SHIFT_MODEL` (default: `z-ai/glm-4.7-flash`)
-- 5-second timeout, defaults to `False` on failure
-- Returns `True` only for major domain shifts (code → finance)
-- Ignores sub-topic shifts (Python → Terraform)
-- Ignores social noise ("thanks", "ok")
-
-### Step 5: Agent Execution
-
-**Module:** [`src/agent/session.py`](src/agent/session.py)
-
-Executes the conversation with the selected preset via OpenHands SDK.
-
-**Process:**
-1. Get or create agent session for conversation
-2. Assemble system prompt (base + operator context + preset-specific)
-3. Resolve MCP servers for preset
-4. Execute agent with messages
-5. Scan for new file attachments
-6. Return response with attachments
-7. Fire-and-forget conversation summarization
 
 ---
 
@@ -1879,29 +1906,32 @@ class Preset:
 |----------|-------------|
 | `OPENROUTER_API_KEY` | OpenRouter API key for model access |
 
-### Routing Configuration
+### Tiering Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MESSAGE_WINDOW` | `8` | Recent messages for routing |
-| `CRISIS_THRESHOLD` | `0.3` | Crisis score threshold |
-| `CONFIDENCE_THRESHOLD` | `0.6` | Minimum score for confident routing |
-| `CONFIDENCE_GAP` | `0.2` | Minimum gap for confident decision |
-| `RECLASSIFY_MESSAGE_COUNT` | `4` | Messages before reclassification check |
+| `TIER_UPGRADE_THRESHOLD` | `0.65` | Fraction of context limit before tier upgrade |
+| `TIER_AIR_LIMIT` | `30000` | Air tier context limit (tokens) |
+| `TIER_STANDARD_LIMIT` | `120000` | Standard tier context limit (tokens) |
+| `TIER_HEAVY_LIMIT` | `200000` | Heavy tier context limit (tokens) |
+| `TIER_AIR_PRESET` | `@preset/air` | Preset for air tier |
+| `TIER_STANDARD_PRESET` | `@preset/standard` | Preset for standard tier |
+| `TIER_HEAVY_PRESET` | `@preset/heavy` | Preset for heavy tier |
+
+### Specialist Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SPECIALIST_PRESET` | `@preset/standard` | Default preset for specialist subagents |
+| `SPECIALIST_MAX_TURNS` | `15` | Maximum turns per specialist |
+| `THINKING_PRESET` | `@preset/general` | Preset for deep thinking subagent |
+| `THINKING_MAX_TURNS` | `20` | Maximum turns for deep thinking |
 
 ### Model Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SUGGESTION_MODEL` | `mistralai/mistral-nemo` | Quick reply model |
-| `SCORING_MODELS` | *(see below)* | Comma-separated scoring models |
-| `TOPIC_SHIFT_MODEL` | `z-ai/glm-4.7-flash` | Topic shift detection |
-| `MENTAL_HEALTH_PRESET` | `mental-health` | Crisis routing target |
-
-**Default SCORING_MODELS:**
-```
-google/gemini-2.5-flash-lite,openai/gpt-oss-120b,anthropic/claude-haiku-4.5
-```
+| `SUGGESTION_MODEL` | `mistralai/mistral-nemo` | Quick reply model for OpenWebUI tasks |
 
 ### Storage Configuration
 
@@ -2032,28 +2062,32 @@ if-prototype-a1/
     │   ├── directives.py        # /v1/directives/* endpoints
     │   └── schemas.py           # Pydantic request/response models
     │
-    ├── routing/                 # Routing pipeline
+    ├── routing/                 # Request handling
     │   ├── __init__.py
-    │   ├── interceptor.py       # Step 1: OpenWebUI task detection
-    │   ├── commands.py          # Step 0: Slash command parser
-    │   ├── scorer.py            # Step 2: Parallel scoring
-    │   ├── decision.py          # Step 3: Preset selection
-    │   ├── cache.py             # Step 4: Conversation state + pinning
-    │   └── topic_shift.py       # Topic shift detection with heuristic
+    │   ├── interceptor.py       # OpenWebUI task detection
+    │   ├── commands.py          # Slash command parser
+    │   └── cache.py             # Conversation state + tier tracking
     │
     ├── agent/                   # OpenHands agent integration
     │   ├── __init__.py
     │   ├── session.py           # Session management + operator context
+    │   ├── tiering.py           # Context-aware tier system
+    │   ├── specialists.py       # Specialist registry
     │   ├── commands.py          # Metacognitive command handlers
-    │   ├── tools.py             # Legacy memory tools
+    │   ├── condenser.py         # Context condensation
+    │   ├── sandbox.py           # Sandbox path resolution
     │   ├── tools/               # Agent tool implementations
     │   │   ├── user_facts.py    # User facts tools (add/search/update/remove)
     │   │   ├── capability_tracker.py  # Capability gap logging
     │   │   ├── opinion_tools.py       # Opinion pair tools
     │   │   ├── session_reflection.py  # Session reflection tools
-    │   │   └── directive_tools.py     # Directive management tools
-    │   ├── sandbox.py           # Sandbox path resolution
-    │   ├── condenser.py         # Context condensation
+    │   │   ├── directive_tools.py     # Directive management tools
+    │   │   ├── subagents.py          # Subagent spawning tools
+    │   │   ├── terminal_tools.py     # Terminal execution tools
+    │   │   ├── context_tools.py      # Context management tools
+    │   │   ├── diary_tools.py        # Diary entry tools
+    │   │   ├── proposal_tools.py     # Proposal management tools
+    │   │   └── health_tools.py       # Health program tools
     │   ├── reflection/          # Metacognitive analysis layer
     │   │   ├── __init__.py
     │   │   ├── engine.py        # Core reflection engine
@@ -2185,6 +2219,640 @@ sequenceDiagram
 [Startup] Resumed 0 active channel listeners
 [Startup] Server ready on 0.0.0.0:8000
 ```
+
+---
+
+## Utility Applications
+
+The `app/utils/` directory contains standalone utility applications that complement the main agent API. These are frontend/backend portals for visualizing data, managing directives, and tracking various metrics.
+
+### Main Portal (Hub) - Port 3000
+
+**Purpose:** Central hub that aggregates status from all other portals and provides navigation.
+
+**Tech Stack:**
+- Frontend: React 18 + Vite + TypeScript + Tailwind CSS
+- Backend: Node.js + Express + TypeScript
+
+**Key Features:**
+- Aggregates status from all domain portals
+- Dark/light mode toggle with system preference detection
+- Portal cards with real-time status indicators
+- Signal strip for alerts and notifications
+- Snapshot bar for data summaries
+
+**Directory Structure:**
+```
+app/utils/main-portal/
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx              # Main app with theme toggle
+│   │   ├── pages/
+│   │   │   └── Hub.tsx          # Hub page with portal grid
+│   │   ├── components/
+│   │   │   ├── PortalCard.tsx   # Portal status cards
+│   │   │   ├── AlertsList.tsx   # Alerts display
+│   │   │   ├── SnapshotBar.tsx  # Data snapshot display
+│   │   │   └── SignalStrip.tsx  # Signal notifications
+│   │   ├── api/
+│   │   │   └── client.ts        # API client
+│   │   ├── store/
+│   │   │   └── hubStore.ts      # Zustand state store
+│   │   └── utils/
+│   │       └── formatters.ts    # Data formatting utilities
+│   └── vite.config.ts
+└── backend/
+    ├── src/
+    │   ├── server.ts            # Express server entry point
+    │   ├── routes/
+    │   │   └── hub.ts           # Hub API routes
+    │   ├── controllers/
+    │   │   └── hubController.ts # Hub controller
+    │   └── middleware/
+    │       └── errorHandler.ts  # Error handling
+    └── package.json
+```
+
+**API Endpoints:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/hub/status` | GET | Get status of all portals |
+| `/health` | GET | Health check |
+
+---
+
+### Finance Portal - Port 3002
+
+**Purpose:** Financial dashboard for tracking net worth, investments, cashflow, and financial goals.
+
+**Tech Stack:**
+- Frontend: React + Vite + TypeScript + Tailwind CSS
+- Backend: Node.js + Express + TypeScript
+- Database: DynamoDB
+
+**Key Features:**
+- Net worth tracking with historical data
+- Investment accounts and holdings management
+- Cashflow visualization with Sankey diagrams
+- Goals tracking with progress bars
+- Version history for financial snapshots
+- Asset allocation charts
+- Tax and insurance tracking
+
+**Directory Structure:**
+```
+app/utils/finance-portal/
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Dashboard.tsx    # Main dashboard
+│   │   │   ├── Accounts.tsx     # Account management
+│   │   │   ├── Investments.tsx  # Investment holdings
+│   │   │   ├── Cashflow.tsx     # Cashflow visualization
+│   │   │   ├── Goals.tsx        # Financial goals
+│   │   │   ├── TaxInsurance.tsx # Tax/insurance tracking
+│   │   │   └── VersionHistory.tsx # Snapshot history
+│   │   ├── components/
+│   │   │   ├── NetWorthCard.tsx       # Net worth display
+│   │   │   ├── HoldingsTable.tsx      # Investment holdings
+│   │   │   ├── CashflowSankey.tsx     # Sankey diagram
+│   │   │   ├── AllocationChart.tsx    # Asset allocation
+│   │   │   ├── GoalProgressBar.tsx    # Goal progress
+│   │   │   ├── WatchlistTable.tsx     # Stock watchlist
+│   │   │   ├── CreditCardRow.tsx      # Credit card display
+│   │   │   ├── LOCRow.tsx             # Line of credit display
+│   │   │   └── LoanRow.tsx            # Loan display
+│   │   └── store/
+│   │       └── financeStore.ts  # Zustand state store
+│   └── package.json
+├── backend/
+│   ├── src/
+│   │   ├── server.ts
+│   │   ├── routes/
+│   │   │   ├── finance.ts       # Main finance routes
+│   │   │   ├── accounts.ts      # Account routes
+│   │   │   ├── investments.ts   # Investment routes
+│   │   │   ├── cashflow.ts      # Cashflow routes
+│   │   │   └── versions.ts      # Version history routes
+│   │   ├── controllers/
+│   │   │   ├── financeController.ts
+│   │   │   ├── accountsController.ts
+│   │   │   ├── investmentsController.ts
+│   │   │   └── cashflowController.ts
+│   │   └── db/
+│   │       └── dynamodb.ts      # DynamoDB client
+│   └── package.json
+└── packages/
+    └── types/
+        └── src/
+            └── index.ts         # Shared TypeScript types
+```
+
+**API Endpoints:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/finance` | GET/PUT | Main finance data |
+| `/api/accounts` | GET/POST/PUT | Account management |
+| `/api/investments` | GET/PUT | Investment data |
+| `/api/cashflow` | GET | Cashflow data |
+| `/api/versions` | GET | Version history |
+
+---
+
+### Diary Portal - Port 3003
+
+**Purpose:** Mental health diary and signal tracking for personal journaling and wellness monitoring.
+
+**Tech Stack:**
+- Frontend: React + Vite + TypeScript + Tailwind CSS
+- Backend: Node.js + Express + TypeScript
+- Database: DynamoDB
+
+**Key Features:**
+- Write panel for diary entries
+- Signal history charts for tracking mood/wellness
+- Entry management with CRUD operations
+- Signal tracking over time
+
+**Directory Structure:**
+```
+app/utils/diary-portal/
+├── frontend/
+│   ├── src/
+│   │   ├── main.tsx             # Entry point
+│   │   └── ...                  # Components for diary UI
+│   ├── vite.config.ts
+│   └── tailwind.config.ts
+├── backend/
+│   ├── src/
+│   │   ├── server.ts            # Express server
+│   │   ├── routes/
+│   │   │   ├── entries.ts       # Diary entries CRUD
+│   │   │   └── signals.ts       # Signal tracking routes
+│   │   └── controllers/
+│   │       └── entriesController.ts
+│   └── package.json
+└── packages/
+    └── types/
+        └── src/
+            └── index.ts         # Shared TypeScript types
+```
+
+**API Endpoints:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/entries` | GET/POST/PUT/DELETE | Diary entries CRUD |
+| `/api/signals` | GET | Signal history |
+
+---
+
+### Proposals Portal - Port 3004
+
+**Purpose:** Kanban board for managing agent-proposed directives, tools, and system improvements.
+
+**Tech Stack:**
+- Frontend: React + Vite + TypeScript + Tailwind CSS
+- Backend: Node.js + Express + TypeScript
+- Database: DynamoDB
+- Real-time: WebSocket support
+
+**Key Features:**
+- Kanban board with columns (backlog, in-progress, review, done)
+- Status badges for proposal state
+- Type badges for proposal category
+- Author badges (operator, agent, reflection)
+- Implementation plan generation
+- Directive preview before approval
+- Real-time updates via WebSocket
+
+**Directory Structure:**
+```
+app/utils/proposals-portal/
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Board.tsx        # Kanban board view
+│   │   │   └── ProposalDetail.tsx # Proposal detail view
+│   │   ├── components/
+│   │   │   ├── KanbanColumn.tsx       # Kanban columns
+│   │   │   ├── ProposalCard.tsx       # Proposal cards
+│   │   │   ├── NewProposalModal.tsx   # Create proposals
+│   │   │   ├── FilterBar.tsx          # Filtering controls
+│   │   │   ├── StatusBadge.tsx        # Status indicators
+│   │   │   ├── TypeBadge.tsx          # Type indicators
+│   │   │   ├── AuthorBadge.tsx        # Author indicators
+│   │   │   ├── DirectivePreview.tsx   # Preview before approval
+│   │   │   └── ImplementationPlan.tsx # Plan display
+│   │   ├── hooks/
+│   │   │   └── useWebSocket.ts  # WebSocket hook for real-time
+│   │   └── store/
+│   │       └── proposalsStore.ts # Zustand state store
+│   └── package.json
+├── backend/
+│   ├── src/
+│   │   ├── server.ts
+│   │   ├── routes/
+│   │   │   ├── proposals.ts     # Proposals CRUD
+│   │   │   └── directives.ts    # Directive management
+│   │   ├── controllers/
+│   │   │   ├── proposalsController.ts
+│   │   │   └── directivesController.ts
+│   │   └── services/
+│   │       └── planGenerator.ts # Implementation plan generation
+│   └── package.json
+└── packages/
+    └── types/
+        └── src/
+            └── index.ts         # Shared TypeScript types
+```
+
+**API Endpoints:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/proposals` | GET/POST/PUT/DELETE | Proposals CRUD |
+| `/api/directives` | GET/POST | Directive management |
+
+---
+
+### Powerlifting App
+
+**Purpose:** Full-stack application for powerlifting training tracking, analytics, and tools.
+
+**Tech Stack:**
+- Frontend: React + Vite + TypeScript + Tailwind CSS
+- Backend: Node.js + Express + TypeScript
+- Shared: `@powerlifting/types` package for shared types
+
+**Key Features:**
+- Timeline view of training sessions
+- Charts and analytics for progress tracking
+- Tools: plate calculator, DOTS score calculator
+- Training phase management
+- Volume tracking by muscle group
+
+**Utility Functions** (`frontend/src/utils/`):
+
+| File | Purpose | Key Functions |
+|------|---------|---------------|
+| `units.ts` | Unit conversion | `kgToLb()`, `lbToKg()`, `displayWeight()`, `toDisplayUnit()`, `fromDisplayUnit()`, `roundToNearest()` |
+| `phases.ts` | Training phase management | `phaseColor()`, `buildPhaseMap()`, `sessionsByPhase()`, `uniquePhaseNames()` |
+| `plates.ts` | Barbell plate calculation | `getPlateLoadout()`, `closestLbLoadout()`, `getPlateColor()`, `compAttempts()` |
+| `dots.ts` | DOTS score calculation | `calculateDots()`, `calculateDotsFromLifts()`, `totalForTargetDots()`, `dotsAcrossWeightClasses()`, `getDotsLevel()` |
+| `volume.ts` | Training volume calculations | `exerciseVolume()`, `sessionVolume()`, `categorizeExercise()`, `volumeByCategory()`, `weeklyVolumeByCategory()` |
+| `muscles.ts` | Muscle group mapping | `muscleVolumeFromSessions()`, `normalizeMuscleVolumes()`, `heatmapColor()` + `MUSCLE_MAP` constant |
+| `dates.ts` | Date formatting | `formatDate()`, `daysUntil()`, `isToday()`, `isPast()`, `isFuture()`, `currentProgramWeek()`, `sessionsThisCalendarWeek()`, `groupSessionsByWeek()` |
+
+**Constants** (`frontend/src/constants/`):
+- `plates.ts`: KG and LB plate denominations, bar weights, plate colors for visual display
+
+**Directory Structure:**
+```
+app/utils/powerlifting-app/
+├── frontend/
+│   ├── src/
+│   │   ├── utils/               # Utility functions (see above)
+│   │   ├── constants/           # Plate constants, etc.
+│   │   └── ...
+│   └── package.json
+├── backend/
+│   ├── src/
+│   │   └── ...                  # Express routes, controllers
+│   └── package.json
+└── packages/
+    └── types/
+        ├── package.json         # @powerlifting/types
+        └── src/
+            └── index.ts         # Shared TypeScript types
+```
+
+---
+
+### Discord Webhook Server
+
+**Purpose:** Python FastAPI service for managing Discord channel webhooks and bot lifecycle.
+
+**Tech Stack:**
+- Python + FastAPI
+- discord.py for Discord bot integration
+- httpx for async HTTP requests
+
+**Key Features:**
+- Discord bot client lifecycle management
+- Channel registration via REST API
+- HTTP client for LLM API calls
+- Message streaming support
+
+**Directory Structure:**
+```
+app/utils/discord-webhook-server/
+└── backend/
+    ├── src/
+    │   ├── main.py              # FastAPI application with lifespan
+    │   ├── config.py            # Environment configuration
+    │   ├── discord_client.py    # Discord bot client management
+    │   └── routers/
+    │       ├── __init__.py
+    │       └── channels.py      # Channel registration routes
+    ├── requirements.txt
+    └── ...
+```
+
+**Key Files:**
+
+| File | Purpose |
+|------|---------|
+| `src/main.py` | FastAPI app with lifespan management, starts Discord client |
+| `src/config.py` | Environment variables (HOST, PORT, LOG_LEVEL, DISCORD_BOT_TOKEN) |
+| `src/discord_client.py` | Discord bot client lifecycle (start, stop, get_client) |
+| `src/routers/channels.py` | Channel registration and management endpoints |
+
+**API Endpoints:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/channels/` | GET/POST | List or register channels |
+| `/health` | GET | Health check (Discord connection status) |
+| `/` | GET | API info |
+
+**Environment Variables:**
+```bash
+HOST=0.0.0.0
+PORT=8001
+LOG_LEVEL=INFO
+DISCORD_BOT_TOKEN=your-bot-token
+```
+
+---
+
+## Utility App Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           IF System Architecture                              │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                        Main Agent API Server                            │ │
+│  │                           (Port 8000)                                   │ │
+│  │                                                                         │ │
+│  │   • OpenAI-compatible /v1/chat/completions                             │ │
+│  │   • OpenHands SDK with MCP servers                                     │ │
+│  │   • ChromaDB/LanceDB for memory                                        │ │
+│  │   • DynamoDB for directives                                            │ │
+│  │   • Kubernetes terminal pods                                           │ │
+│  └────────────────────────────────┬───────────────────────────────────────┘ │
+│                                   │                                          │
+│                                   │ Provides data to / integrates with       │
+│                                   ▼                                          │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                   Utility Applications (app/utils/)                     │ │
+│  │                                                                         │ │
+│  │   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐                  │ │
+│  │   │ Main Portal │   │  Finance    │   │   Diary     │                  │ │
+│  │   │    (Hub)    │   │   Portal    │   │   Portal    │                  │ │
+│  │   │  Port 3000  │   │  Port 3002  │   │  Port 3003  │                  │ │
+│  │   │             │   │             │   │             │                  │ │
+│  │   │ Aggregates  │   │ Net worth,  │   │ Mental      │                  │ │
+│  │   │ all portals │   │ holdings,   │   │ health      │                  │ │
+│  │   │ status      │   │ cashflow    │   │ journal     │                  │ │
+│  │   └─────────────┘   └─────────────┘   └─────────────┘                  │ │
+│  │                                                                         │ │
+│  │   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐                  │ │
+│  │   │ Proposals   │   │Powerlifting │   │  Discord    │                  │ │
+│  │   │   Portal    │   │    App      │   │  Webhook    │                  │ │
+│  │   │  Port 3004  │   │  Standalone │   │   Server    │                  │ │
+│  │   │             │   │             │   │             │                  │ │
+│  │   │ Kanban for  │   │ Training    │   │ Channel     │                  │ │
+│  │   │ directives  │   │ tracking    │   │ management  │                  │ │
+│  │   └─────────────┘   └─────────────┘   └─────────────┘                  │ │
+│  │                                                                         │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Shared Patterns Across Utility Apps
+
+All utility apps follow consistent architectural patterns:
+
+### Monorepo Structure
+```
+app/utils/{portal-name}/
+├── frontend/              # React + Vite + TypeScript + Tailwind
+│   ├── src/
+│   │   ├── pages/         # Route pages
+│   │   ├── components/    # Reusable UI components
+│   │   ├── api/           # API client functions
+│   │   ├── store/         # Zustand state stores
+│   │   ├── utils/         # Utility functions
+│   │   └── types/         # TypeScript interfaces
+│   ├── vite.config.ts
+│   └── package.json
+├── backend/               # Node.js + Express + TypeScript
+│   ├── src/
+│   │   ├── server.ts      # Express app entry point
+│   │   ├── routes/        # API route definitions
+│   │   ├── controllers/   # Request handlers
+│   │   ├── services/      # Business logic (optional)
+│   │   ├── middleware/    # Express middleware
+│   │   └── db/            # Database clients
+│   └── package.json
+└── packages/
+    └── types/
+        └── src/
+            └── index.ts   # Shared TypeScript types
+```
+
+### Common Technologies
+| Layer | Technology |
+|-------|------------|
+| Frontend Framework | React 18 |
+| Build Tool | Vite |
+| Language | TypeScript |
+| Styling | Tailwind CSS |
+| State Management | Zustand |
+| Backend Framework | Express |
+| Database | DynamoDB |
+| Charts | D3.js (finance, powerlifting) |
+| Real-time | WebSocket (proposals portal) |
+
+### Backend Pattern
+```typescript
+// routes/resource.ts
+import { Router } from 'express'
+import { ResourceController } from '../controllers/resourceController'
+
+const router = Router()
+const controller = new ResourceController()
+
+router.get('/', controller.list)
+router.get('/:id', controller.get)
+router.post('/', controller.create)
+router.put('/:id', controller.update)
+router.delete('/:id', controller.delete)
+
+export { router as resourceRouter }
+```
+
+### Frontend Pattern
+```typescript
+// store/resourceStore.ts (Zustand)
+import { create } from 'zustand'
+
+interface ResourceState {
+  items: Resource[]
+  loading: boolean
+  error: string | null
+  fetch: () => Promise<void>
+  create: (item: Partial<Resource>) => Promise<void>
+}
+
+export const useResourceStore = create<ResourceState>((set, get) => ({
+  items: [],
+  loading: false,
+  error: null,
+  fetch: async () => { /* ... */ },
+  create: async (item) => { /* ... */ },
+}))
+```
+
+---
+
+## Kubernetes Deployment
+
+All services are deployed to Kubernetes via Terraform configurations in the `terraform/` directory.
+
+### Namespace
+- **Namespace:** `if-portals`
+
+### Deployed Services
+
+| Service | Type | Port | Description |
+|---------|------|------|-------------|
+| `if-agent-api` | Deployment | 8000 | Main agent API server |
+| `main-portal-frontend` | Deployment | 3000 | Hub frontend |
+| `main-portal-backend` | Deployment | 3001 | Hub backend |
+| `finance-portal-frontend` | Deployment | 3002 | Finance frontend |
+| `finance-portal-backend` | Deployment | 3005 | Finance backend |
+| `diary-portal-frontend` | Deployment | 3003 | Diary frontend |
+| `diary-portal-backend` | Deployment | 3006 | Diary backend |
+| `proposals-portal-frontend` | Deployment | 3004 | Proposals frontend |
+| `proposals-portal-backend` | Deployment | 3007 | Proposals backend |
+
+### Terraform Files
+
+| File | Purpose |
+|------|---------|
+| `terraform/k8s-namespace.tf` | Namespace definitions |
+| `terraform/k8s-deployments.tf` | Deployment configurations |
+| `terraform/k8s-services.tf` | Service definitions |
+| `terraform/k8s-ingress.tf` | Ingress routing |
+| `terraform/k8s-rbac.tf` | RBAC configuration |
+| `terraform/image.tf` | Container image references |
+
+### Docker Image Building
+
+Images are built using Packer configurations in `docker/`:
+
+| File | Purpose |
+|------|---------|
+| `docker/build.pkr.hcl` | Main API image (Python base) |
+| `docker/portals-backend.pkr.hcl` | Portal backend images (Node.js) |
+| `docker/portals-frontend.pkr.hcl` | Portal frontend images (nginx) |
+| `docker/dev-sandbox.pkr.hcl` | Development sandbox |
+
+**Base Images:**
+- Main API: `python:3.11-slim`
+- Portal backends: Node.js LTS
+- Portal frontends: nginx (for serving static files)
+
+### Deployment Commands
+```bash
+# Initialize Terraform
+cd terraform && terraform init
+
+# Plan deployment
+terraform plan
+
+# Apply changes
+terraform apply
+```
+
+---
+
+## Development and Running
+
+### Main Agent API
+
+```bash
+# Install dependencies
+cd app
+pip install -r requirements.txt
+
+# Set environment variables
+export OPENROUTER_API_KEY=your-key-here
+# ... other variables from .env.example
+
+# Run the server
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+
+### Utility Apps (TypeScript/Node.js)
+
+Each utility app follows the same pattern:
+
+```bash
+# Navigate to app directory
+cd app/utils/{portal-name}
+
+# Install dependencies (root + frontend + backend)
+npm install
+cd frontend && npm install
+cd ../backend && npm install
+
+# Run in development mode
+# Terminal 1: Backend
+cd backend && npm run dev
+
+# Terminal 2: Frontend
+cd frontend && npm run dev
+```
+
+### Discord Webhook Server (Python)
+
+```bash
+cd app/utils/discord-webhook-server/backend
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables
+export DISCORD_BOT_TOKEN=your-token
+
+# Run the server
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+### Running All Services
+
+```bash
+# Use the start script
+cd app/scripts
+./start_all.sh
+
+# Or stop all services
+./stop_all.sh
+```
+
+### Environment Files
+
+Each component has its own `.env` file or shares from the root:
+
+| Component | Env File Location |
+|-----------|-------------------|
+| Main API | `app/.env` |
+| Portal backends | `app/utils/{portal}/backend/.env` |
+| Portal frontends | Via `VITE_*` environment variables |
 
 ---
 
