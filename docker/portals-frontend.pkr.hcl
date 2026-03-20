@@ -28,7 +28,7 @@ source "docker" "portal_frontend" {
   changes = [
     "WORKDIR /app",
     "EXPOSE 3001",
-    "CMD [\"node\", \"/app/node_modules/.bin/serve\", \"-s\", \"/app/dist\", \"-l\", \"3001\"]"
+    "CMD [\"serve\", \"-s\", \"/app/dist\", \"-l\", \"3001\"]"
   ]
 }
 
