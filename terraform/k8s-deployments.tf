@@ -29,6 +29,10 @@ resource "kubernetes_deployment" "if_agent_api" {
       spec {
         service_account_name = kubernetes_service_account.if_agent_api.metadata[0].name
 
+        image_pull_secrets {
+          name = kubernetes_secret.ecr_registry.metadata[0].name
+        }
+
         # Volume definitions for persistent storage
         volume {
           name = "data-storage"
@@ -210,6 +214,10 @@ resource "kubernetes_deployment" "portal_backends" {
       }
 
       spec {
+        image_pull_secrets {
+          name = kubernetes_secret.ecr_registry.metadata[0].name
+        }
+
         # Mount host AWS credentials - k3s on Ubuntu, no IRSA
         volume {
           name = "aws-credentials"
@@ -303,6 +311,10 @@ resource "kubernetes_deployment" "portal_frontends" {
       }
 
       spec {
+        image_pull_secrets {
+          name = kubernetes_secret.ecr_registry.metadata[0].name
+        }
+
         container {
           name  = "frontend"
           image = "${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url}:latest"
