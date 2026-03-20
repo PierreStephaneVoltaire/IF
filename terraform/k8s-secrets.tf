@@ -175,9 +175,11 @@ resource "kubernetes_config_map" "finance_portal_config" {
   }
 
   data = {
-    AWS_REGION    = var.region
+    AWS_REGION     = var.region
     DYNAMODB_TABLE = var.dynamodb_finance_table
     NODE_ENV       = "production"
+    PORT           = "3002"
+    FRONTEND_URL   = "http://finance-portal-frontend:3001"
   }
 }
 
@@ -189,9 +191,11 @@ resource "kubernetes_config_map" "diary_portal_config" {
   }
 
   data = {
-    AWS_REGION    = var.region
+    AWS_REGION     = var.region
     DYNAMODB_TABLE = var.dynamodb_diary_entries_table
     NODE_ENV       = "production"
+    PORT           = "3003"
+    FRONTEND_URL   = "http://diary-portal-frontend:3001"
   }
 }
 
@@ -203,9 +207,11 @@ resource "kubernetes_config_map" "proposals_portal_config" {
   }
 
   data = {
-    AWS_REGION    = var.region
+    AWS_REGION     = var.region
     DYNAMODB_TABLE = var.dynamodb_proposals_table
     NODE_ENV       = "production"
+    PORT           = "3004"
+    FRONTEND_URL   = "http://proposals-portal-frontend:3001"
   }
 }
 
@@ -217,8 +223,10 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
   }
 
   data = {
-    AWS_REGION    = var.region
+    AWS_REGION     = var.region
     DYNAMODB_TABLE = var.dynamodb_powerlifting_table
     NODE_ENV       = "production"
+    PORT           = "3005"
+    FRONTEND_URL   = "http://powerlifting-app-frontend:3001"
   }
 }
