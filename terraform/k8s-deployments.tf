@@ -74,6 +74,7 @@ resource "kubernetes_deployment" "if_agent_api" {
         container {
           name  = "api"
           image = "${aws_ecr_repository.if_agent_api.repository_url}:latest"
+          image_pull_policy = "Always"
 
           port {
             container_port = 8000
@@ -232,6 +233,7 @@ resource "kubernetes_deployment" "portal_backends" {
         container {
           name  = "backend"
           image = "${aws_ecr_repository.portal_backends["${each.key}-backend"].repository_url}:latest"
+          image_pull_policy = "Always"
 
           port {
             container_port = each.value.port
@@ -322,6 +324,7 @@ resource "kubernetes_deployment" "portal_frontends" {
         container {
           name  = "frontend"
           image = "${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url}:latest"
+          image_pull_policy = "Always"
 
           port {
             container_port = 3001
