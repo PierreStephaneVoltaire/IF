@@ -12,7 +12,7 @@ resource "kubernetes_secret" "ecr_registry" {
   data = {
     ".dockerconfigjson" = jsonencode({
       auths = {
-        data.aws_ecr_authorization_token.private.proxy_endpoint = {
+        (replace(data.aws_ecr_authorization_token.private.proxy_endpoint, "https://", "")) = {
           username = data.aws_ecr_authorization_token.private.user_name
           password = data.aws_ecr_authorization_token.private.password
           email    = "none"
