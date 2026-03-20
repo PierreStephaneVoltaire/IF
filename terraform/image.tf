@@ -80,13 +80,35 @@ resource "aws_ecr_lifecycle_policy" "keep_5" {
 
 locals {
   docker_hash = filesha1("${path.module}/../docker/build.pkr.hcl")
+
+  # Main API source code hash
+  main_api_hash = sha1(join("", [
+    for f in fileset("${path.module}/../app/src", "**/*") :
+    filesha1("${path.module}/../app/src/${f}")
+  ]))
+
+  # Source code hashes for each portal (triggers rebuild on any code change)
+  portal_backend_hashes = {
+    for name, config in local.portals : name => sha1(join("", [
+      for f in fileset("${path.module}/../app/utils/${name}/backend", "**/*") :
+      filesha1("${path.module}/../app/utils/${name}/backend/${f}")
+    ]))
+  }
+
+  portal_frontend_hashes = {
+    for name, config in local.portals : name => sha1(join("", [
+      for f in fileset("${path.module}/../app/utils/${name}/frontend", "**/*") :
+      filesha1("${path.module}/../app/utils/${name}/frontend/${f}")
+    ]))
+  }
 }
 
 # Main API Packer Build
 resource "null_resource" "packer_build_main_api" {
   triggers = {
-    dir_sha1 = local.docker_hash
-    repo_url = aws_ecr_repository.if_agent_api.repository_url
+    dir_sha1    = local.docker_hash
+    source_sha1 = local.main_api_hash
+    repo_url    = aws_ecr_repository.if_agent_api.repository_url
   }
 
   provisioner "local-exec" {
@@ -106,10 +128,11 @@ resource "null_resource" "packer_build_portal_backends" {
   for_each = local.portals
 
   triggers = {
-    dir_sha1    = filesha1("${path.module}/../docker/portals-backend.pkr.hcl")
-    repo_url    = aws_ecr_repository.portal_backends["${each.key}-backend"].repository_url
-    portal_name = each.key
-    port        = each.value.port
+    dir_sha1      = filesha1("${path.module}/../docker/portals-backend.pkr.hcl")
+    source_sha1   = local.portal_backend_hashes[each.key]
+    repo_url      = aws_ecr_repository.portal_backends["${each.key}-backend"].repository_url
+    portal_name   = each.key
+    port          = each.value.port
   }
 
   provisioner "local-exec" {
@@ -131,6 +154,7 @@ resource "null_resource" "packer_build_portal_frontends" {
 
   triggers = {
     dir_sha1    = filesha1("${path.module}/../docker/portals-frontend.pkr.hcl")
+    source_sha1 = local.portal_frontend_hashes[each.key]
     repo_url    = aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url
     portal_name = each.key
   }
