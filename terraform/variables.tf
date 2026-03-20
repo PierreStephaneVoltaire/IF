@@ -509,3 +509,13 @@ variable "frontend_cpu_millicores" {
   default     = 100
 }
 
+# =============================================================================
+# Host Paths
+# =============================================================================
+
+variable "aws_credentials_host_path" {
+  description = "Path to AWS credentials directory on the k3s node (mounted into pods)"
+  type        = string
+  default     = "/root/.aws"
+}
+
