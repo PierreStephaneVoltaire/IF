@@ -80,14 +80,6 @@ resource "aws_ecr_lifecycle_policy" "keep_5" {
 
 locals {
   docker_hash = filesha1("${path.module}/../docker/build.pkr.hcl")
-
-  portals = {
-    "main-portal"      = { port = "3000" }
-    "finance-portal"   = { port = "3002" }
-    "diary-portal"     = { port = "3003" }
-    "proposals-portal" = { port = "3004" }
-    "powerlifting-app" = { port = "3005" }
-  }
 }
 
 # Main API Packer Build

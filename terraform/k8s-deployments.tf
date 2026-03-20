@@ -29,6 +29,35 @@ resource "kubernetes_deployment" "if_agent_api" {
       spec {
         service_account_name = kubernetes_service_account.if_agent_api.metadata[0].name
 
+        # Volume definitions for persistent storage
+        volume {
+          name = "data-storage"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.if_agent_data.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "sandbox-storage"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.if_agent_sandbox.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "conversations-storage"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.if_agent_conversations.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "facts-storage"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.if_agent_facts.metadata[0].name
+          }
+        }
+
         container {
           name  = "api"
           image = "${aws_ecr_repository.if_agent_api.repository_url}:latest"
@@ -48,14 +77,39 @@ resource "kubernetes_deployment" "if_agent_api" {
             }
           }
 
-          env {
-            name  = "AWS_REGION"
-            value = var.region
+          # Reference ConfigMap for non-sensitive config
+          env_from {
+            config_map_ref {
+              name = kubernetes_config_map.if_agent_api_config.metadata[0].name
+            }
           }
 
-          env {
-            name  = "AWS_SDK_LOAD_CONFIG"
-            value = "true"
+          # Reference Secret for sensitive data
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.if_agent_api_secrets.metadata[0].name
+            }
+          }
+
+          # Volume mounts for persistent storage
+          volume_mount {
+            name       = "data-storage"
+            mount_path = "/app/data"
+          }
+
+          volume_mount {
+            name       = "sandbox-storage"
+            mount_path = "/app/sandbox"
+          }
+
+          volume_mount {
+            name       = "conversations-storage"
+            mount_path = "/app/data/conversations"
+          }
+
+          volume_mount {
+            name       = "facts-storage"
+            mount_path = "/app/data/facts"
           }
 
           liveness_probe {
@@ -160,26 +214,10 @@ resource "kubernetes_deployment" "portal_backends" {
             }
           }
 
-          env {
-            name  = "PORT"
-            value = tostring(each.value.port)
-          }
-
-          env {
-            name  = "AWS_REGION"
-            value = var.region
-          }
-
-          env {
-            name  = "AWS_SDK_LOAD_CONFIG"
-            value = "true"
-          }
-
-          dynamic "env" {
-            for_each = each.value.has_db ? [1] : []
-            content {
-              name  = "DYNAMODB_TABLE"
-              value = each.value.db_table
+          # Reference portal-specific ConfigMap
+          env_from {
+            config_map_ref {
+              name = "${each.key}-config"
             }
           }
 
