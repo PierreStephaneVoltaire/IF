@@ -66,7 +66,7 @@ resource "kubernetes_deployment" "if_agent_api" {
         volume {
           name = "aws-credentials"
           host_path {
-            path = "/root/.aws"
+            path = var.aws_credentials_host_path
             type = "Directory"
           }
         }
@@ -224,7 +224,7 @@ resource "kubernetes_deployment" "portal_backends" {
         volume {
           name = "aws-credentials"
           host_path {
-            path = "/root/.aws"
+            path = var.aws_credentials_host_path
             type = "Directory"
           }
         }
