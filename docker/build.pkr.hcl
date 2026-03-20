@@ -23,7 +23,7 @@ source "docker" "if_agent" {
   changes = [
     "WORKDIR /app",
     "ENV PATH=/root/.local/bin:/usr/local/bin:$PATH",
-    "CMD [\"python\", \"-m\", \"uvicorn\", \"src.main:app\", \"--host\", \"0.0.0.0\", \"port\", \"8000\"]"
+    "CMD [\"python\", \"-m\", \"uvicorn\", \"src.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]"
   ]
 }
 
@@ -77,14 +77,14 @@ build {
 
   # Copy data directory structure
   provisioner "file" {
-    source      = "../app/data"
-    destination = "/app/"
+    source      = "../app/src/data"
+    destination = "/app/data"
   }
 
   # Copy sandbox directory
   provisioner "file" {
-    source      = "../app/sandbox"
-    destination = "/app/"
+    source      = "../app/src/sandbox"
+    destination = "/app/sandbox"
   }
 
   # Clean up unnecessary files
