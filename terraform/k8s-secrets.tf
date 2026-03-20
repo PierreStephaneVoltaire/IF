@@ -2,6 +2,23 @@
 
 data "aws_ecr_authorization_token" "private" {}
 
+locals {
+  ecr_registry_server = replace(data.aws_ecr_authorization_token.private.proxy_endpoint, "https://", "")
+  ecr_registry_auth   = base64encode("${data.aws_ecr_authorization_token.private.user_name}:${data.aws_ecr_authorization_token.private.password}")
+  ecr_dockerconfigjson = <<-EOT
+{
+  "auths": {
+    "${local.ecr_registry_server}": {
+      "username": "${data.aws_ecr_authorization_token.private.user_name}",
+      "password": "${data.aws_ecr_authorization_token.private.password}",
+      "email": "none",
+      "auth": "${local.ecr_registry_auth}"
+    }
+  }
+}
+EOT
+}
+
 # Private ECR image pull secret for k3s
 resource "kubernetes_secret" "ecr_registry" {
   metadata {
@@ -10,16 +27,7 @@ resource "kubernetes_secret" "ecr_registry" {
   }
 
   data = {
-    ".dockerconfigjson" = jsonencode({
-      auths = {
-        (replace(data.aws_ecr_authorization_token.private.proxy_endpoint, "https://", "")) = {
-          username = data.aws_ecr_authorization_token.private.user_name
-          password = data.aws_ecr_authorization_token.private.password
-          email    = "none"
-          auth     = base64encode("${data.aws_ecr_authorization_token.private.user_name}:${data.aws_ecr_authorization_token.private.password}")
-        }
-      }
-    })
+    ".dockerconfigjson" = local.ecr_dockerconfigjson
   }
 
   type = "kubernetes.io/dockerconfigjson"
