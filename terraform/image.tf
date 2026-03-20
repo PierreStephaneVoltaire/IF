@@ -98,7 +98,6 @@ resource "null_resource" "packer_build_main_api" {
       packer build -var "image_repository=${aws_ecr_repository.if_agent_api.repository_url}" -var "image_tag=latest" build.pkr.hcl
     EOT
   }
-
   depends_on = [aws_ecr_repository.if_agent_api]
 }
 
