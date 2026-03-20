@@ -1,8 +1,8 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import { hubRouter } from './routes/hub.ts'
-import { errorHandler } from './middleware/errorHandler.ts'
+import { hubRouter } from './routes/hub'
+import { errorHandler } from './middleware/errorHandler'
 
 const app = express()
 
