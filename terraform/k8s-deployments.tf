@@ -152,6 +152,8 @@ resource "kubernetes_deployment" "if_agent_api" {
       }
     }
   }
+
+  depends_on = [null_resource.packer_build_main_api]
 }
 
 # Portal configurations
@@ -280,6 +282,8 @@ resource "kubernetes_deployment" "portal_backends" {
       }
     }
   }
+
+  depends_on = [null_resource.packer_build_portal_backends]
 }
 
 # Portal Frontend Deployments
@@ -355,4 +359,6 @@ resource "kubernetes_deployment" "portal_frontends" {
       }
     }
   }
+
+  depends_on = [null_resource.packer_build_portal_frontends]
 }
