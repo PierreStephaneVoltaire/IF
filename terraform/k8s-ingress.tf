@@ -115,7 +115,7 @@ resource "kubernetes_ingress_v1" "if_portals" {
             service {
               name = kubernetes_service.portal_frontends["main-portal"].metadata[0].name
               port {
-                number = 80
+                number = 3001
               }
             }
           }
@@ -129,7 +129,7 @@ resource "kubernetes_ingress_v1" "if_portals" {
             service {
               name = kubernetes_service.portal_frontends["finance-portal"].metadata[0].name
               port {
-                number = 80
+                number = 3001
               }
             }
           }
@@ -143,7 +143,7 @@ resource "kubernetes_ingress_v1" "if_portals" {
             service {
               name = kubernetes_service.portal_frontends["diary-portal"].metadata[0].name
               port {
-                number = 80
+                number = 3001
               }
             }
           }
@@ -157,7 +157,7 @@ resource "kubernetes_ingress_v1" "if_portals" {
             service {
               name = kubernetes_service.portal_frontends["proposals-portal"].metadata[0].name
               port {
-                number = 80
+                number = 3001
               }
             }
           }
@@ -171,7 +171,7 @@ resource "kubernetes_ingress_v1" "if_portals" {
             service {
               name = kubernetes_service.portal_frontends["powerlifting-app"].metadata[0].name
               port {
-                number = 80
+                number = 3001
               }
             }
           }
@@ -186,7 +186,7 @@ resource "kubernetes_ingress_v1" "if_portals" {
             service {
               name = kubernetes_service.portal_frontends["main-portal"].metadata[0].name
               port {
-                number = 80
+                number = 3001
               }
             }
           }

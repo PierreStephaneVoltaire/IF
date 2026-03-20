@@ -59,8 +59,8 @@ resource "kubernetes_service" "portal_frontends" {
     }
 
     port {
-      port        = 80
-      target_port = 80
+      port        = 3001
+      target_port = 3001
     }
 
     type = "ClusterIP"

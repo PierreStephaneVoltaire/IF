@@ -58,6 +58,15 @@ resource "kubernetes_deployment" "if_agent_api" {
           }
         }
 
+        # Mount host AWS credentials - k3s on Ubuntu, no IRSA
+        volume {
+          name = "aws-credentials"
+          host_path {
+            path = "/root/.aws"
+            type = "Directory"
+          }
+        }
+
         container {
           name  = "api"
           image = "${aws_ecr_repository.if_agent_api.repository_url}:latest"
@@ -110,6 +119,12 @@ resource "kubernetes_deployment" "if_agent_api" {
           volume_mount {
             name       = "facts-storage"
             mount_path = "/app/data/facts"
+          }
+
+          volume_mount {
+            name       = "aws-credentials"
+            mount_path = "/root/.aws"
+            read_only  = true
           }
 
           liveness_probe {
@@ -195,6 +210,15 @@ resource "kubernetes_deployment" "portal_backends" {
       }
 
       spec {
+        # Mount host AWS credentials - k3s on Ubuntu, no IRSA
+        volume {
+          name = "aws-credentials"
+          host_path {
+            path = "/root/.aws"
+            type = "Directory"
+          }
+        }
+
         container {
           name  = "backend"
           image = "${aws_ecr_repository.portal_backends["${each.key}-backend"].repository_url}:latest"
@@ -219,6 +243,12 @@ resource "kubernetes_deployment" "portal_backends" {
             config_map_ref {
               name = "${each.key}-config"
             }
+          }
+
+          volume_mount {
+            name       = "aws-credentials"
+            mount_path = "/root/.aws"
+            read_only  = true
           }
 
           liveness_probe {
@@ -278,7 +308,7 @@ resource "kubernetes_deployment" "portal_frontends" {
           image = "${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url}:latest"
 
           port {
-            container_port = 80
+            container_port = 3001
           }
 
           resources {
@@ -294,8 +324,8 @@ resource "kubernetes_deployment" "portal_frontends" {
 
           liveness_probe {
             http_get {
-              path = "/health"
-              port = 80
+              path = "/"
+              port = 3001
             }
             initial_delay_seconds = 5
             period_seconds        = 10
@@ -304,7 +334,7 @@ resource "kubernetes_deployment" "portal_frontends" {
           readiness_probe {
             http_get {
               path = "/"
-              port = 80
+              port = 3001
             }
             initial_delay_seconds = 2
             period_seconds        = 5
