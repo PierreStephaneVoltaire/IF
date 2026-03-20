@@ -21,9 +21,9 @@ source "docker" "if_agent" {
   commit   = true
   platform = "linux/amd64"
   changes = [
-    "WORKDIR /app",
+    "WORKDIR /app/src",
     "ENV PATH=/root/.local/bin:/usr/local/bin:$PATH",
-    "CMD [\"python\", \"-m\", \"uvicorn\", \"src.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]"
+    "CMD [\"python\", \"-m\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]"
   ]
 }
 
@@ -36,7 +36,7 @@ build {
     inline = [
       "apt-get update && apt-get install -y curl unzip ca-certificates git",
       "rm -rf /var/lib/apt/lists/*",
-      "mkdir -p /app"
+      "mkdir -p /app/src"
     ]
   }
 
@@ -63,34 +63,34 @@ build {
     ]
   }
 
-  # Copy source code
+  # Copy source code — Packer uploads the directory itself into /app/,
+  # producing /app/src/ with all contents (data/, sandbox/, logs/, etc.)
   provisioner "file" {
     source      = "../app/src"
     destination = "/app/"
   }
 
-  # Copy main entry point
+  # Copy main system prompt to /app/ (code resolves via Path(__file__).parent…parent…parent)
   provisioner "file" {
     source      = "../app/main_system_prompt.txt"
     destination = "/app/main_system_prompt.txt"
   }
 
-  # Copy data directory structure
-  provisioner "file" {
-    source      = "../app/src/data"
-    destination = "/app/data"
-  }
-
-  # Copy sandbox directory
-  provisioner "file" {
-    source      = "../app/src/sandbox"
-    destination = "/app/sandbox"
+  # Ensure writable directories exist inside /app/src (match local dev layout)
+  provisioner "shell" {
+    inline = [
+      "mkdir -p /app/src/data/memory_db",
+      "mkdir -p /app/src/data/conversations",
+      "mkdir -p /app/src/data/facts",
+      "mkdir -p /app/src/sandbox",
+      "mkdir -p /app/src/logs"
+    ]
   }
 
   # Clean up unnecessary files
   provisioner "shell" {
     inline = [
-      "rm -rf /app/data/memory.json",
+      "rm -rf /app/src/data/memory.json",
       "rm -rf /root/.cache"
     ]
   }
