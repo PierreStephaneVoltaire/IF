@@ -1,5 +1,30 @@
 # Kubernetes Secrets for IF Agent API
 
+data "aws_ecr_authorization_token" "private" {}
+
+# Private ECR image pull secret for k3s
+resource "kubernetes_secret" "ecr_registry" {
+  metadata {
+    name      = "ecr-registry"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+  }
+
+  data = {
+    ".dockerconfigjson" = jsonencode({
+      auths = {
+        data.aws_ecr_authorization_token.private.proxy_endpoint = {
+          username = data.aws_ecr_authorization_token.private.user_name
+          password = data.aws_ecr_authorization_token.private.password
+          email    = "none"
+          auth     = base64encode("${data.aws_ecr_authorization_token.private.user_name}:${data.aws_ecr_authorization_token.private.password}")
+        }
+      }
+    })
+  }
+
+  type = "kubernetes.io/dockerconfigjson"
+}
+
 # Main API Secrets - sensitive values only
 resource "kubernetes_secret" "if_agent_api_secrets" {
   metadata {
