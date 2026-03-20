@@ -104,25 +104,25 @@ resource "kubernetes_deployment" "if_agent_api" {
             }
           }
 
-          # Volume mounts for persistent storage
+          # Volume mounts for persistent storage (match local dev: CWD = /app/src)
           volume_mount {
             name       = "data-storage"
-            mount_path = "/app/data"
+            mount_path = "/app/src/data"
           }
 
           volume_mount {
             name       = "sandbox-storage"
-            mount_path = "/app/sandbox"
+            mount_path = "/app/src/sandbox"
           }
 
           volume_mount {
             name       = "conversations-storage"
-            mount_path = "/app/data/conversations"
+            mount_path = "/app/src/data/conversations"
           }
 
           volume_mount {
             name       = "facts-storage"
-            mount_path = "/app/data/facts"
+            mount_path = "/app/src/data/facts"
           }
 
           volume_mount {
