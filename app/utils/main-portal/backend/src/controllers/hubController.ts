@@ -29,8 +29,8 @@ async function fetchPortal<T>(url: string, label: string): Promise<{ data: T | n
       return { data: null, reachable: false }
     }
 
-    const json = await response.json()
-    return { data: json.data ?? json, reachable: true }
+    const json = await response.json() as Record<string, unknown>
+    return { data: (json.data ?? json) as T, reachable: true }
   } catch (error) {
     console.warn(`${label} unreachable:`, error instanceof Error ? error.message : error)
     return { data: null, reachable: false }
