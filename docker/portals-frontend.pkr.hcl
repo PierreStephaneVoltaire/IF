@@ -21,6 +21,11 @@ variable "portal_name" {
   default = "portal"
 }
 
+variable "api_url" {
+  type    = string
+  default = ""
+}
+
 source "docker" "portal_frontend" {
   image    = "public.ecr.aws/docker/library/node:20-alpine"
   commit   = true
@@ -52,9 +57,10 @@ build {
 
   # Install all workspace dependencies, build types, then build frontend
   # Supports both npm workspace portals (with packages/types) and standalone frontends
+  # Sets both VITE_API_URL and VITE_API_BASE_URL since different portals use different var names
   provisioner "shell" {
     inline = [
-      "if [ -f /workspace/package.json ] && grep -q '\"workspaces\"' /workspace/package.json; then cd /workspace && npm ci && npm run build --workspace=packages/types && npm run build --workspace=frontend && cp -r /workspace/frontend/dist /app/dist; else cd /workspace/frontend && npm ci && npm run build && cp -r /workspace/frontend/dist /app/dist; fi",
+      "if [ -f /workspace/package.json ] && grep -q '\"workspaces\"' /workspace/package.json; then cd /workspace && npm ci && npm run build --workspace=packages/types && VITE_API_URL=${var.api_url} VITE_API_BASE_URL=${var.api_url} npm run build --workspace=frontend && cp -r /workspace/frontend/dist /app/dist; else cd /workspace/frontend && npm ci && VITE_API_URL=${var.api_url} VITE_API_BASE_URL=${var.api_url} npm run build && cp -r /workspace/frontend/dist /app/dist; fi",
       "npm install -g serve"
     ]
   }

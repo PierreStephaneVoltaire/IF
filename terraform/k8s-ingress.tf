@@ -1,11 +1,40 @@
 # Kubernetes Ingress for k3s (Traefik)
 
+# Traefik Middleware to strip path prefixes for backend routing
+resource "null_resource" "traefik_strip_prefix_middleware" {
+  depends_on = [kubernetes_namespace.if_portals]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      kubectl apply -f - <<EOF
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-prefix
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  stripPrefix:
+    prefixes:
+      - /api
+      - /main
+      - /finance
+      - /diary
+      - /proposals
+      - /fitness
+EOF
+    EOT
+  }
+}
+
 resource "kubernetes_ingress_v1" "if_portals" {
+  depends_on = [null_resource.traefik_strip_prefix_middleware]
+
   metadata {
     name      = "if-portals-ingress"
     namespace = kubernetes_namespace.if_portals.metadata[0].name
     annotations = {
-      "kubernetes.io/ingress.class" = "traefik"
+      "kubernetes.io/ingress.class"                      = "traefik"
+      "traefik.ingress.kubernetes.io/router.middlewares" = "strip-prefix@kubernetescrd"
     }
   }
 

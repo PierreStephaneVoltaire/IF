@@ -101,6 +101,15 @@ locals {
       filesha1("${path.module}/../app/utils/${name}/frontend/${f}")
     ]))
   }
+
+  # Map portal names to ingress paths for API URLs
+  portal_api_paths = {
+    "main-portal"     = "/main"
+    "finance-portal"  = "/finance"
+    "diary-portal"    = "/diary"
+    "proposals-portal" = "/proposals"
+    "powerlifting-app" = "/fitness"
+  }
 }
 
 # Main API Packer Build
@@ -157,6 +166,7 @@ resource "null_resource" "packer_build_portal_frontends" {
     source_sha1 = local.portal_frontend_hashes[each.key]
     repo_url    = aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url
     portal_name = each.key
+    api_path    = local.portal_api_paths[each.key]
   }
 
   provisioner "local-exec" {
@@ -166,7 +176,7 @@ resource "null_resource" "packer_build_portal_frontends" {
       aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
       aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin $(echo ${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url} | cut -d'/' -f1)
       packer init portals-frontend.pkr.hcl
-      packer build -var "image_repository=${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url}" -var "image_tag=latest" -var "portal_name=${each.key}" portals-frontend.pkr.hcl
+      packer build -var "image_repository=${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url}" -var "image_tag=latest" -var "portal_name=${each.key}" -var "api_url=${local.portal_api_paths[each.key]}" portals-frontend.pkr.hcl
     EOT
   }
 
