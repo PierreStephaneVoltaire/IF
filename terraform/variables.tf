@@ -179,18 +179,6 @@ variable "thinking_max_turns" {
   default     = 20
 }
 
-variable "thinking_preset" {
-  description = "Preset for deep thinking subagent"
-  type        = string
-  default     = "@preset/general"
-}
-
-variable "thinking_max_turns" {
-  description = "Maximum turns for deep thinking"
-  type        = number
-  default     = 20
-}
-
 # =============================================================================
 # Model Configuration
 # =============================================================================
@@ -345,12 +333,6 @@ variable "heartbeat_quiet_hours" {
   default     = "23:00-07:00"
 }
 
-variable "heartbeat_quiet_hours" {
-  description = "UTC time range to skip heartbeats"
-  type        = string
-  default     = "23:00-07:00"
-}
-
 # =============================================================================
 # Reflection Configuration
 # =============================================================================
@@ -359,24 +341,6 @@ variable "reflection_enabled" {
   description = "Enable reflection engine"
   type        = bool
   default     = true
-}
-
-variable "reflection_periodic_hours" {
-  description = "Hours between periodic reflections"
-  type        = number
-  default     = 6.0
-}
-
-variable "reflection_post_session_min_turns" {
-  description = "Minimum turns before post-session reflection"
-  type        = number
-  default     = 5
-}
-
-variable "reflection_threshold_uncategorized" {
-  description = "Uncategorized facts to trigger reflection"
-  type        = number
-  default     = 20
 }
 
 variable "reflection_periodic_hours" {
