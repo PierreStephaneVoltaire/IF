@@ -346,7 +346,7 @@ resource "kubernetes_deployment" "portal_frontends" {
               path = "/"
               port = 3001
             }
-            initial_delay_seconds = 5
+            initial_delay_seconds = 10
             period_seconds        = 10
           }
 
@@ -355,7 +355,7 @@ resource "kubernetes_deployment" "portal_frontends" {
               path = "/"
               port = 3001
             }
-            initial_delay_seconds = 2
+            initial_delay_seconds = 5
             period_seconds        = 5
           }
         }
