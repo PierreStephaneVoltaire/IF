@@ -139,9 +139,6 @@ resource "null_resource" "packer_build_portal_frontends" {
   provisioner "local-exec" {
     working_dir = "${path.module}/../docker"
     command     = <<-EOT
-      # Build frontend first
-      cd ../app/utils/${each.key}/frontend && npm ci && npm run build
-      cd ../../../..
       # Login to both public ECR (base images) and private ECR (push target)
       aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
       aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin $(echo ${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url} | cut -d'/' -f1)

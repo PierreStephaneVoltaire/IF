@@ -28,7 +28,7 @@ source "docker" "portal_frontend" {
   changes = [
     "WORKDIR /app",
     "EXPOSE 3001",
-    "CMD [\"npx\", \"serve\", \"-s\", \"/app/dist\", \"-l\", \"3001\"]"
+    "CMD [\"node\", \"/app/node_modules/.bin/serve\", \"-s\", \"/app/dist\", \"-l\", \"3001\"]"
   ]
 }
 
@@ -36,20 +36,27 @@ build {
   name    = "portal-frontend"
   sources = ["source.docker.portal_frontend"]
 
-  # Install serve for static file serving
+  # Install build tools
   provisioner "shell" {
     inline = [
-      "mkdir -p /app/dist",
-      "npm install -g serve"
+      "apk add --no-cache curl",
+      "mkdir -p /workspace /app"
     ]
   }
 
-  # Copy built frontend files
-  # Note: Frontend must be built separately before running Packer
-  # This expects a pre-built dist/ directory
+  # Copy entire portal workspace (needed for npm workspaces + shared types package)
   provisioner "file" {
-    source      = "../app/utils/${var.portal_name}/frontend/dist"
-    destination = "/app/dist"
+    source      = "../app/utils/${var.portal_name}/"
+    destination = "/workspace"
+  }
+
+  # Install all workspace dependencies, build types, then build frontend
+  # Supports both npm workspace portals (with packages/types) and standalone frontends
+  provisioner "shell" {
+    inline = [
+      "if [ -f /workspace/package.json ] && grep -q '\"workspaces\"' /workspace/package.json; then cd /workspace && npm ci && npm run build --workspace=packages/types && npm run build --workspace=frontend && cp -r /workspace/frontend/dist /app/dist; else cd /workspace/frontend && npm ci && npm run build && cp -r /workspace/frontend/dist /app/dist; fi",
+      "npm install -g serve"
+    ]
   }
 
   post-processors {

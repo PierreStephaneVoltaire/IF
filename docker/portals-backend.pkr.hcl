@@ -31,7 +31,7 @@ source "docker" "portal_backend" {
   commit   = true
   platform = "linux/amd64"
   changes = [
-    "WORKDIR /app",
+    "WORKDIR /workspace/backend",
     "ENV NODE_ENV=production",
     "EXPOSE ${var.portal_port}",
     "CMD [\"node\", \"dist/server.js\"]"
@@ -42,60 +42,25 @@ build {
   name    = "portal-backend"
   sources = ["source.docker.portal_backend"]
 
-  # Install build dependencies
+  # Install build tools
   provisioner "shell" {
     inline = [
       "apk add --no-cache curl",
-      "mkdir -p /app"
+      "mkdir -p /workspace"
     ]
   }
 
-  # Copy package files
+  # Copy entire portal workspace (needed for npm workspaces + shared types package)
   provisioner "file" {
-    source      = "../app/utils/${var.portal_name}/backend/package.json"
-    destination = "/app/package.json"
+    source      = "../app/utils/${var.portal_name}/"
+    destination = "/workspace"
   }
 
-  provisioner "file" {
-    source      = "../app/utils/${var.portal_name}/backend/package-lock.json"
-    destination = "/app/package-lock.json"
-  }
-
-  # Copy shared types if exists
+  # Install all workspace dependencies and build: types first, then backend
+  # Supports both npm workspace portals (with packages/types) and standalone backends
   provisioner "shell" {
     inline = [
-      "mkdir -p /app/packages/types"
-    ]
-  }
-
-  provisioner "file" {
-    source      = "../app/utils/${var.portal_name}/packages/types/package.json"
-    destination = "/app/packages/types/package.json"
-  }
-
-  # Install dependencies
-  provisioner "shell" {
-    inline = [
-      "cd /app && npm ci --include=dev || npm install"
-    ]
-  }
-
-  # Copy TypeScript config
-  provisioner "file" {
-    source      = "../app/utils/${var.portal_name}/backend/tsconfig.json"
-    destination = "/app/tsconfig.json"
-  }
-
-  # Copy source code
-  provisioner "file" {
-    source      = "../app/utils/${var.portal_name}/backend/src"
-    destination = "/app/"
-  }
-
-  # Build TypeScript
-  provisioner "shell" {
-    inline = [
-      "cd /app && npm run build"
+      "if [ -f /workspace/package.json ] && grep -q '\"workspaces\"' /workspace/package.json; then cd /workspace && npm ci && npm run build --workspace=packages/types && npm run build --workspace=backend; else cd /workspace/backend && npm ci && npm run build; fi"
     ]
   }
 
@@ -104,7 +69,7 @@ build {
     inline = [
       "addgroup -g 1001 -S nodejs",
       "adduser -S nodejs -u 1001 -G nodejs",
-      "chown -R nodejs:nodejs /app"
+      "chown -R nodejs:nodejs /workspace/backend"
     ]
   }
 
