@@ -2,7 +2,6 @@
   "name": "@finance-portal/backend",
   "version": "1.0.0",
   "description": "Finance Portal Backend - Express 5 + TypeScript",
-  "type": "module",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
