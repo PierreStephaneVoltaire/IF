@@ -360,5 +360,8 @@ resource "kubernetes_deployment" "portal_frontends" {
     }
   }
 
-  depends_on = [null_resource.packer_build_portal_frontends]
+  depends_on = [
+    null_resource.packer_build_portal_frontends,
+    kubernetes_deployment.portal_backends,
+  ]
 }
