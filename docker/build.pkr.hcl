@@ -17,7 +17,7 @@ variable "image_tag" {
 }
 
 source "docker" "if_agent" {
-  image    = "public.ecr.aws/docker/library/python:3.11-slim"
+  image    = "public.ecr.aws/docker/library/python:3.12-slim"
   commit   = true
   platform = "linux/amd64"
   changes = [
