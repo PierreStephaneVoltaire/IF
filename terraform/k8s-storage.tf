@@ -1,16 +1,5 @@
 # Persistent Volume Claims for IF Agent API
 
-# Storage class with immediate binding (instead of WaitForFirstConsumer)
-resource "kubernetes_storage_class" "immediate" {
-  metadata {
-    name = "local-path-immediate"
-  }
-
-  storage_provisioner = "rancher.io/local-path"
-  reclaim_policy      = "Delete"
-  volume_binding_mode = "Immediate"
-}
-
 # Main data storage - for memory, facts, and other persistent data
 resource "kubernetes_persistent_volume_claim" "if_agent_data" {
   metadata {
@@ -20,7 +9,7 @@ resource "kubernetes_persistent_volume_claim" "if_agent_data" {
 
   spec {
     access_modes       = ["ReadWriteOnce"]
-    storage_class_name = kubernetes_storage_class.immediate.metadata[0].name
+    storage_class_name = var.storage_class
 
     resources {
       requests = {
@@ -39,7 +28,7 @@ resource "kubernetes_persistent_volume_claim" "if_agent_sandbox" {
 
   spec {
     access_modes       = ["ReadWriteOnce"]
-    storage_class_name = kubernetes_storage_class.immediate.metadata[0].name
+    storage_class_name = var.storage_class
 
     resources {
       requests = {
@@ -58,7 +47,7 @@ resource "kubernetes_persistent_volume_claim" "if_agent_conversations" {
 
   spec {
     access_modes       = ["ReadWriteOnce"]
-    storage_class_name = kubernetes_storage_class.immediate.metadata[0].name
+    storage_class_name = var.storage_class
 
     resources {
       requests = {
@@ -77,7 +66,7 @@ resource "kubernetes_persistent_volume_claim" "if_agent_facts" {
 
   spec {
     access_modes       = ["ReadWriteOnce"]
-    storage_class_name = kubernetes_storage_class.immediate.metadata[0].name
+    storage_class_name = var.storage_class
 
     resources {
       requests = {
