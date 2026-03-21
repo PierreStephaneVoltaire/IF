@@ -24,7 +24,6 @@ class ChannelConfig:
     """Configuration for a registered channel."""
     channel_id: int
     history_limit: int = 50
-    model: str = "openrouter/@preset/general"
     system_prompt: Optional[str] = None
     handler: Optional[Callable] = None
 
@@ -57,6 +56,8 @@ class DiscordClient:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._ready_event = threading.Event()
+        # Shared HTTP client injected by main.py lifespan for agent API calls
+        self.http_client: Optional[Any] = None
 
     @classmethod
     def get_instance(cls, bot_token: Optional[str] = None) -> 'DiscordClient':
@@ -157,17 +158,15 @@ class DiscordClient:
         self,
         channel_id: int,
         history_limit: int = 50,
-        model: str = "openrouter/@preset/general",
         system_prompt: Optional[str] = None,
-        handler: Optional[Callable] = None
+        handler: Optional[Callable] = None,
     ) -> ChannelConfig:
         """Register a channel for listening."""
         config = ChannelConfig(
             channel_id=channel_id,
             history_limit=history_limit,
-            model=model,
             system_prompt=system_prompt,
-            handler=handler
+            handler=handler,
         )
         self.registered_channels[channel_id] = config
         logger.info(f"Registered channel {channel_id} (history_limit={history_limit})")
@@ -211,8 +210,9 @@ class DiscordClient:
         messages = []
         try:
             async for msg in channel.history(limit=limit, before=before):
-                if msg.author.bot:
-                    continue
+                # Include bot messages — they represent the agent's previous replies
+                # and are needed for the agent to maintain coherent conversation context.
+                # Mark them with is_bot=True so the translator maps them to role="assistant".
 
                 # Convert attachments
                 attachments = []
@@ -229,7 +229,7 @@ class DiscordClient:
                     content=msg.clean_content,
                     attachments=attachments,
                     timestamp=msg.created_at,
-                    is_bot=msg.author.bot
+                    is_bot=msg.author.bot,
                 ))
         except Exception as e:
             logger.error(f"Error fetching history for channel {channel_id}: {e}")

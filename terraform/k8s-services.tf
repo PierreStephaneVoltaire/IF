@@ -66,3 +66,24 @@ resource "kubernetes_service" "portal_frontends" {
     type = "ClusterIP"
   }
 }
+
+# Discord Webhook Server Service
+resource "kubernetes_service" "discord_webhook" {
+  metadata {
+    name      = "discord-webhook-server"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+  }
+
+  spec {
+    selector = {
+      app = "discord-webhook-server"
+    }
+
+    port {
+      port        = 8080
+      target_port = 8080
+    }
+
+    type = "ClusterIP"
+  }
+}

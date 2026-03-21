@@ -368,3 +368,93 @@ resource "kubernetes_deployment" "portal_frontends" {
     kubernetes_deployment.portal_backends,
   ]
 }
+
+# Discord Webhook Server Deployment
+resource "kubernetes_deployment" "discord_webhook" {
+  metadata {
+    name      = "discord-webhook-server"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+    labels = {
+      app = "discord-webhook-server"
+    }
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "discord-webhook-server"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "discord-webhook-server"
+        }
+      }
+
+      spec {
+        image_pull_secrets {
+          name = kubernetes_secret.ecr_registry.metadata[0].name
+        }
+
+        container {
+          name  = "discord-webhook"
+          image = "${aws_ecr_repository.discord_webhook.repository_url}:latest"
+          image_pull_policy = "Always"
+
+          port {
+            container_port = 8080
+          }
+
+          resources {
+            limits = {
+              memory = "512Mi"
+              cpu    = "500m"
+            }
+            requests = {
+              memory = "256Mi"
+              cpu    = "100m"
+            }
+          }
+
+          # Reference ConfigMap for non-sensitive config
+          env_from {
+            config_map_ref {
+              name = kubernetes_config_map.discord_webhook_config.metadata[0].name
+            }
+          }
+
+          # Reference Secret for sensitive data
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.discord_webhook_secrets.metadata[0].name
+            }
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/health"
+              port = 8080
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/health"
+              port = 8080
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 5
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [null_resource.packer_build_discord_webhook]
+}

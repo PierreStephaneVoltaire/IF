@@ -230,3 +230,51 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
     FRONTEND_URL   = "http://powerlifting-app-frontend:3001"
   }
 }
+
+# =============================================================================
+# Discord Webhook Server ConfigMap and Secret
+# =============================================================================
+
+# Discord Webhook Server ConfigMap - non-sensitive configuration
+resource "kubernetes_config_map" "discord_webhook_config" {
+  metadata {
+    name      = "discord-webhook-config"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+  }
+
+  data = {
+    # Server configuration
+    HOST = "0.0.0.0"
+    PORT = "8080"
+
+    # Agent API configuration - points to the main agent API service
+    AGENT_API_URL    = "http://if-agent-api:8000"
+    AGENT_MODEL_NAME = var.api_model_name
+    AGENT_TIMEOUT    = "120.0"
+
+    # History configuration
+    DEFAULT_HISTORY_LIMIT = "50"
+    MAX_HISTORY_LIMIT     = "500"
+
+    # Response chunking (Discord has a 2000 char message limit)
+    MAX_CHUNK_CHARS   = "1500"
+    INTER_CHUNK_DELAY = "0.5"
+
+    # Logging
+    LOG_LEVEL = var.log_level
+  }
+}
+
+# Discord Webhook Server Secret - sensitive values
+resource "kubernetes_secret" "discord_webhook_secrets" {
+  metadata {
+    name      = "discord-webhook-secrets"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+  }
+
+  data = {
+    DISCORD_BOT_TOKEN = var.discord_token
+  }
+
+  type = "Opaque"
+}

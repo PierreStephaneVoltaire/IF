@@ -8,48 +8,37 @@ Provides endpoints to:
 """
 from __future__ import annotations
 import asyncio
-import json
 import logging
-import re
-from typing import Dict, List, Any, Optional, AsyncGenerator
+from typing import Dict, List, Any, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from config import (
     DEFAULT_HISTORY_LIMIT,
-    DEFAULT_MODEL,
+    AGENT_MODEL_NAME,
+    AGENT_API_URL,
     MAX_HISTORY_LIMIT,
-    OPENROUTER_HEADERS,
-    LLM_BASE_URL,
     MAX_CHUNK_CHARS,
     INTER_CHUNK_DELAY,
+    AGENT_TIMEOUT,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/channels", tags=["channels"])
 
 
-# SSE format constants (from main app completions.py)
-SSE_PREFIX = "data: "
-SSE_DONE = "data: [DONE]\n\n"
-
-
 class ChannelRegistration(BaseModel):
     """Request to register a Discord channel."""
     channel_id: str = Field(..., description="Discord channel ID")
     history_limit: int = Field(DEFAULT_HISTORY_LIMIT, description="Number of messages to fetch for context")
-    model: str = Field(DEFAULT_MODEL, description="LLM model to use")
-    system_prompt: Optional[str] = Field(None, description="Optional system prompt")
+    system_prompt: Optional[str] = Field(None, description="Optional system prompt override (unused — agent manages its own prompts)")
 
 
 class ChannelInfo(BaseModel):
     """Information about a registered channel."""
     channel_id: str
     history_limit: int
-    model: str
-    system_prompt: Optional[str]
     status: str = "registered"
 
 
@@ -59,13 +48,18 @@ class ChannelListResponse(BaseModel):
     total: int
 
 
-def convert_messages_to_openai(
+def convert_history_to_messages(
     messages: List[Any],
-    system_prompt: Optional[str] = None
+    bot_user_id: Optional[int] = None,
+    system_prompt: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Convert Discord messages to OpenAI format.
+    """Convert Discord channel history to OpenAI chat messages format.
 
-    Reuses patterns from src/channels/translators/discord_translator.py
+    Bot messages become role="assistant", human messages become role="user"
+    with author attribution. This gives the agent full conversation context.
+
+    Follows the same pattern as app/src/channels/translators/discord_translator.py
+    but for full history rather than a debounced batch.
     """
     openai_messages = []
 
@@ -73,48 +67,56 @@ def convert_messages_to_openai(
         openai_messages.append({"role": "system", "content": system_prompt})
 
     for msg in messages:
-        content_parts = []
-
-        # Add text with author attribution
-        if msg.content:
-            content_parts.append({
-                "type": "text",
-                "text": f"[{msg.author}]: {msg.content}"
+        if msg.is_bot:
+            # Bot's own previous replies — "assistant" role
+            openai_messages.append({
+                "role": "assistant",
+                "content": msg.content,
             })
+        else:
+            # Human messages — "user" role with author attribution
+            content_parts = []
 
-        # Handle attachments
-        for att in msg.attachments:
-            ct = att.get("content_type", "")
-            url = att.get("url", "")
-            filename = att.get("filename", "attachment")
-
-            if ct.startswith("image/") and url:
-                # Image attachments become image_url content
-                content_parts.append({
-                    "type": "image_url",
-                    "image_url": {"url": url}
-                })
-            else:
-                # Non-image attachments become text references
+            if msg.content:
                 content_parts.append({
                     "type": "text",
-                    "text": f"[Attachment: {filename} ({ct}) — {url}]"
+                    "text": f"[{msg.author}]: {msg.content}",
                 })
 
-        if content_parts:
-            # Discord messages are always "user" role from AI perspective
-            openai_messages.append({
-                "role": "user",
-                "content": content_parts if len(content_parts) > 1 else content_parts[0].get("text", "")
-            })
+            # Handle attachments
+            for att in msg.attachments:
+                ct = att.get("content_type", "")
+                url = att.get("url", "")
+                filename = att.get("filename", "attachment")
+
+                if ct.startswith("image/") and url:
+                    content_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": url},
+                    })
+                else:
+                    content_parts.append({
+                        "type": "text",
+                        "text": f"[Attachment: {filename} ({ct}) — {url}]",
+                    })
+
+            if content_parts:
+                openai_messages.append({
+                    "role": "user",
+                    "content": (
+                        content_parts
+                        if len(content_parts) > 1
+                        else content_parts[0].get("text", "")
+                    ),
+                })
 
     return openai_messages
 
 
 def chunk_response(text: str, max_chars: int = MAX_CHUNK_CHARS) -> List[str]:
-    """Split response into chunks for Discord.
+    """Split response into chunks for Discord's 2000-char message limit.
 
-    Reuses patterns from src/channels/chunker.py
+    Reuses patterns from app/src/channels/chunker.py
     """
     if len(text) <= max_chars:
         return [text] if text.strip() else []
@@ -149,106 +151,122 @@ def chunk_response(text: str, max_chars: int = MAX_CHUNK_CHARS) -> List[str]:
     return chunks
 
 
-async def stream_llm_response(
+async def call_agent_api(
     messages: List[Dict[str, Any]],
-    model: str,
+    channel_id: str,
     http_client: Any,
-    timeout: float = 120.0
-) -> AsyncGenerator[str, None]:
-    """Stream response from OpenRouter directly.
+    timeout: float = AGENT_TIMEOUT,
+) -> str:
+    """Send chat history to the main agent FastAPI server and return the response.
 
-    Reuses patterns from src/routing/interceptor.py
+    Calls POST /v1/chat/completions on the main app (app/src/main.py).
+    The agent handles all LLM routing, session management, tiering, memory, etc.
+
+    Args:
+        messages: OpenAI-format message list (role + content)
+        channel_id: Discord channel ID, used as chat_id for session persistence
+        http_client: httpx.AsyncClient instance
+        timeout: Request timeout in seconds
+
+    Returns:
+        Agent response text
     """
-    url = f"{LLM_BASE_URL}/chat/completions"
+    url = f"{AGENT_API_URL}/v1/chat/completions"
 
+    # chat_id scopes the conversation session in the agent — use discord_{channel_id}
+    # so each Discord channel gets its own persistent context/memory
     payload = {
-        "model": model,
+        "model": AGENT_MODEL_NAME,
         "messages": messages,
-        "stream": True,
+        "stream": False,
+        "chat_id": f"discord_{channel_id}",
     }
 
-    full_content = ""
+    try:
+        response = await http_client.post(
+            url,
+            json=payload,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+    except Exception as e:
+        logger.error(f"Agent API request failed: {e}")
+        raise
 
-    async with http_client.stream(
-        "POST",
-        url,
-        headers=OPENROUTER_HEADERS,
-        json=payload,
-        timeout=timeout
-    ) as response:
-        async for line in response.aiter_lines():
-            if line.startswith(SSE_PREFIX):
-                data = line[len(SSE_PREFIX):].strip()
-                if data == "[DONE]":
-                    break
+    data = response.json()
+    choices = data.get("choices", [])
+    if not choices:
+        logger.warning("Agent API returned no choices")
+        return ""
 
-                try:
-                    parsed = json.loads(data)
-                    choices = parsed.get("choices", [])
-                    if choices:
-                        delta = choices[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            full_content += content
-                except json.JSONDecodeError:
-                    continue
-
-    return full_content
+    message = choices[0].get("message", {})
+    content = message.get("content", "")
+    return content or ""
 
 
 async def handle_discord_message(message: Any, config: Any) -> None:
-    """Handle incoming Discord message with LLM response.
+    """Handle incoming Discord message by routing through the main agent API.
 
-    This is the main handler that:
-    1. Fetches channel history
-    2. Converts to OpenAI format
-    3. Streams LLM response
-    4. Sends response back to Discord
+    Flow:
+    1. Fetch full channel history (human + bot messages)
+    2. Convert history to OpenAI chat format (user/assistant roles)
+    3. POST to main agent's /v1/chat/completions — agent handles all logic
+    4. Chunk and send agent response back to Discord
+
+    Args:
+        message: discord.Message object
+        config: ChannelConfig for this channel
     """
     from discord_client import get_client
 
     client = get_client()
 
-    # Fetch history including the new message
+    # Fetch full history — include bot messages for context
     history = await client.fetch_history(
         config.channel_id,
-        limit=config.history_limit
+        limit=config.history_limit,
     )
 
     logger.info(f"Fetched {len(history)} messages for channel {config.channel_id}")
 
-    # Convert to OpenAI format
-    openai_messages = convert_messages_to_openai(
+    if not history:
+        logger.warning("No history to send to agent")
+        return
+
+    # Convert full history to OpenAI format
+    # Bot messages → role: assistant, human messages → role: user
+    openai_messages = convert_history_to_messages(
         history,
-        system_prompt=config.system_prompt
+        system_prompt=config.system_prompt,
     )
 
     if not openai_messages:
-        logger.warning("No messages to send to LLM")
+        logger.warning("No messages to send to agent")
         return
 
-    # Get HTTP client from app state
-    http_client = message.client.http_client if hasattr(message.client, 'http_client') else None
+    # Get shared HTTP client from the Discord client's app state
+    # The http_client is stored on the client object by main.py lifespan
+    http_client = getattr(client, "http_client", None)
     if not http_client:
-        logger.error("HTTP client not available")
+        logger.error("HTTP client not available on Discord client")
         return
 
-    # Stream LLM response
+    # Route through the main agent API
     try:
-        response_text = await stream_llm_response(
+        response_text = await call_agent_api(
             messages=openai_messages,
-            model=config.model,
-            http_client=http_client
+            channel_id=str(config.channel_id),
+            http_client=http_client,
         )
     except Exception as e:
-        logger.error(f"LLM streaming failed: {e}")
+        logger.error(f"Agent API call failed: {e}")
         return
 
     if not response_text:
-        logger.info("Empty response from LLM")
+        logger.info("Empty response from agent")
         return
 
-    # Chunk and send to Discord
+    # Chunk response and send back to Discord
     chunks = chunk_response(response_text)
     channel = client.get_channel(config.channel_id)
 
@@ -270,7 +288,13 @@ async def handle_discord_message(message: Any, config: Any) -> None:
 
 @router.post("/register", response_model=ChannelInfo)
 async def register_channel(req: ChannelRegistration, request: Request):
-    """Register a Discord channel for listening."""
+    """Register a Discord channel for listening.
+
+    Once registered, every new message in the channel will:
+    1. Trigger a history fetch
+    2. Send that history to the main agent API
+    3. Post the agent's response back to Discord
+    """
     from discord_client import get_client
 
     try:
@@ -281,7 +305,7 @@ async def register_channel(req: ChannelRegistration, request: Request):
     if req.history_limit > MAX_HISTORY_LIMIT:
         raise HTTPException(
             status_code=400,
-            detail=f"history_limit exceeds maximum of {MAX_HISTORY_LIMIT}"
+            detail=f"history_limit exceeds maximum of {MAX_HISTORY_LIMIT}",
         )
 
     client = get_client()
@@ -294,21 +318,21 @@ async def register_channel(req: ChannelRegistration, request: Request):
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found or not accessible")
 
-    # Register with handler
+    # Attach the shared HTTP client to the Discord client for use in handlers
+    client.http_client = request.app.state.http_client
+
+    # Register with message handler
     config = client.register_channel(
         channel_id=channel_id,
         history_limit=req.history_limit,
-        model=req.model,
         system_prompt=req.system_prompt,
-        handler=handle_discord_message
+        handler=handle_discord_message,
     )
 
     return ChannelInfo(
         channel_id=str(channel_id),
         history_limit=config.history_limit,
-        model=config.model,
-        system_prompt=config.system_prompt,
-        status="registered"
+        status="registered",
     )
 
 
@@ -342,9 +366,7 @@ async def list_channels():
         channels.append(ChannelInfo(
             channel_id=str(channel_id),
             history_limit=config.history_limit,
-            model=config.model,
-            system_prompt=config.system_prompt,
-            status="registered"
+            status="registered",
         ))
 
     return ChannelListResponse(channels=channels, total=len(channels))
@@ -352,9 +374,10 @@ async def list_channels():
 
 @router.post("/{channel_id}/trigger")
 async def trigger_response(channel_id: str, request: Request):
-    """Manually trigger a response for testing.
+    """Manually trigger an agent response for testing.
 
-    Fetches history and sends to LLM without waiting for a new message.
+    Fetches history and sends it to the main agent API without
+    waiting for a new Discord message.
     """
     from discord_client import get_client
 
@@ -370,33 +393,33 @@ async def trigger_response(channel_id: str, request: Request):
 
     config = client.registered_channels[channel_id_int]
 
-    # Fetch history
+    # Fetch full channel history including bot messages
     history = await client.fetch_history(
         channel_id_int,
-        limit=config.history_limit
+        limit=config.history_limit,
     )
 
     if not history:
         return {"status": "no_messages", "message": "No messages found in channel history"}
 
     # Convert to OpenAI format
-    openai_messages = convert_messages_to_openai(
+    openai_messages = convert_history_to_messages(
         history,
-        system_prompt=config.system_prompt
+        system_prompt=config.system_prompt,
     )
 
-    # Get HTTP client
+    # Get shared HTTP client
     http_client = request.app.state.http_client
 
-    # Stream LLM response
+    # Route through main agent API
     try:
-        response_text = await stream_llm_response(
+        response_text = await call_agent_api(
             messages=openai_messages,
-            model=config.model,
-            http_client=http_client
+            channel_id=str(channel_id_int),
+            http_client=http_client,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM streaming failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent API call failed: {e}")
 
     # Send to Discord
     chunks = chunk_response(response_text)
@@ -414,7 +437,9 @@ async def trigger_response(channel_id: str, request: Request):
 
     return {
         "status": "success",
+        "agent_api_url": AGENT_API_URL,
+        "model": AGENT_MODEL_NAME,
         "messages_processed": len(history),
         "response_length": len(response_text),
-        "chunks_sent": len(chunks) if channel else 0
+        "chunks_sent": len(chunks) if channel else 0,
     }

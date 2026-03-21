@@ -2,11 +2,10 @@
 
 Minimal wrapper that:
 1. Initializes Discord client
-2. Sets up HTTP client for LLM calls
+2. Sets up HTTP client for agent API calls
 3. Includes channel registration router
 """
 from __future__ import annotations
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -14,7 +13,7 @@ from typing import Optional
 import httpx
 from fastapi import FastAPI
 
-from config import HOST, PORT, LOG_LEVEL, DISCORD_BOT_TOKEN
+from config import HOST, PORT, LOG_LEVEL, DISCORD_BOT_TOKEN, AGENT_API_URL, AGENT_TIMEOUT
 from routers import channels
 
 # Setup logging
@@ -24,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global HTTP client for LLM calls
+# Global HTTP client for agent API calls
 http_client: Optional[httpx.AsyncClient] = None
 
 
@@ -34,15 +33,16 @@ async def lifespan(app: FastAPI):
     global http_client
 
     logger.info("Starting Discord Webhook Server...")
+    logger.info(f"Agent API URL: {AGENT_API_URL}")
 
-    # Initialize HTTP client for LLM calls
+    # Initialize HTTP client for calls to the main agent FastAPI server
     http_client = httpx.AsyncClient(
-        timeout=120.0,
+        timeout=AGENT_TIMEOUT,
         limits=httpx.Limits(
             max_keepalive_connections=20,
             max_connections=100,
-            keepalive_expiry=60.0
-        )
+            keepalive_expiry=60.0,
+        ),
     )
     app.state.http_client = http_client
     logger.info("HTTP client initialized")
@@ -51,6 +51,8 @@ async def lifespan(app: FastAPI):
     from discord_client import start_client
     try:
         client = start_client(DISCORD_BOT_TOKEN)
+        # Attach the HTTP client to the Discord client so message handlers can use it
+        client.http_client = http_client
         app.state.discord_client = client
         logger.info("Discord client started")
     except Exception as e:
@@ -75,8 +77,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Discord Webhook Server",
-    description="FastAPI server for Discord channel webhooks with LLM streaming",
-    version="0.1.0",
+    description="FastAPI server that listens to Discord channels and routes messages through the main agent API",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -102,6 +104,7 @@ async def health_check():
         "service": "discord-webhook-server",
         "discord_connected": discord_ready,
         "registered_channels": registered_count,
+        "agent_api_url": AGENT_API_URL,
     }
 
 
@@ -110,11 +113,12 @@ async def root():
     """Root endpoint with API info."""
     return {
         "name": "Discord Webhook Server",
-        "version": "0.1.0",
+        "version": "0.2.0",
+        "agent_api_url": AGENT_API_URL,
         "endpoints": {
             "channels": "/channels/",
             "health": "/health",
-        }
+        },
     }
 
 
@@ -124,5 +128,5 @@ if __name__ == "__main__":
         "main:app",
         host=HOST,
         port=PORT,
-        reload=True
+        reload=True,
     )
