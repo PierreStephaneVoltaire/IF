@@ -15,6 +15,70 @@ import { createError } from '../middleware/errorHandler.js';
 const OPERATOR_PK = process.env.IF_OPERATOR_PK || 'operator';
 
 /**
+ * POST /api/investments/:accountId/holdings
+ * Add a new holding to an investment account
+ */
+export async function postHolding(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const pk = (req.query.pk as string) || OPERATOR_PK;
+    const { accountId } = req.params;
+    const { ticker, shares, avg_cost, current_price, notes } = req.body as Partial<Holding>;
+
+    if (!accountId) {
+      throw createError('Account ID is required', 400, 'VALIDATION_ERROR');
+    }
+    if (!ticker) {
+      throw createError('Ticker is required', 400, 'VALIDATION_ERROR');
+    }
+
+    // Get current snapshot
+    const resolved = await resolvePointer(pk);
+    if (!resolved) {
+      throw createError('No finance snapshot found', 404, 'NOT_FOUND');
+    }
+
+    // Find the investment account
+    const accountIndex = resolved.item.investment_accounts.findIndex(
+      (a) => a.id === accountId
+    );
+    if (accountIndex === -1) {
+      throw createError('Investment account not found', 404, 'NOT_FOUND');
+    }
+
+    const account = resolved.item.investment_accounts[accountIndex];
+
+    // Check if holding already exists
+    const existingHoldingIndex = account.holdings.findIndex((h) => h.ticker === ticker);
+    if (existingHoldingIndex !== -1) {
+      throw createError('Holding with this ticker already exists', 400, 'VALIDATION_ERROR');
+    }
+
+    // Create new holding
+    const newHolding: Holding = {
+      ticker,
+      shares: shares ?? 0,
+      avg_cost: avg_cost ?? 0,
+      current_price: current_price ?? avg_cost ?? 0,
+      last_price_update: new Date().toISOString(),
+      notes: notes ?? '',
+    };
+
+    // Add to holdings array
+    const updatedHoldings = [...account.holdings, newHolding];
+    const path = `investment_accounts[${accountIndex}].holdings`;
+    await patchVersionedItem(pk, path, updatedHoldings);
+
+    res.json({ success: true, holding: newHolding });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * PATCH /api/investments/:accountId/holdings/:ticker
  * Update a specific holding within an investment account
  */

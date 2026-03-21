@@ -50,6 +50,7 @@ interface FinanceState {
   updateLoan: (id: string, updates: Partial<Loan>) => Promise<void>;
   updateInvestmentAccount: (id: string, updates: Partial<InvestmentAccount>) => Promise<void>;
   updateHolding: (accountId: string, ticker: string, updates: Partial<Holding>) => Promise<void>;
+  addHolding: (accountId: string, holding: Partial<Holding>) => Promise<void>;
   updateCashflow: (updates: Partial<MonthlyCashflow>) => void;
 
   // Actions - Dirty tracking
@@ -157,8 +158,8 @@ export const useFinanceStore = create<FinanceState>()(
         const { snapshot } = get();
         if (!snapshot) return;
 
-        // Optimistic update
-        const cardIndex = snapshot.accounts.credit_cards.findIndex((c) => c.id === id);
+        // Optimistic update - use name as id since credit cards are uniquely identified by name
+        const cardIndex = snapshot.accounts.credit_cards.findIndex((c) => c.name === id);
         if (cardIndex === -1) return;
 
         const updatedCards = [...snapshot.accounts.credit_cards];
@@ -197,7 +198,8 @@ export const useFinanceStore = create<FinanceState>()(
         const { snapshot } = get();
         if (!snapshot) return;
 
-        const locIndex = snapshot.accounts.lines_of_credit.findIndex((l) => l.id === id);
+        // Use name as id since LOCs are uniquely identified by name
+        const locIndex = snapshot.accounts.lines_of_credit.findIndex((l) => l.name === id);
         if (locIndex === -1) return;
 
         const updatedLOCs = [...snapshot.accounts.lines_of_credit];
@@ -317,10 +319,62 @@ export const useFinanceStore = create<FinanceState>()(
         }
       },
 
-      updateCashflow: (updates: Partial<MonthlyCashflow>) => {
+      addHolding: async (accountId: string, holding: Partial<Holding>) => {
         const { snapshot } = get();
         if (!snapshot) return;
 
+        const accountIndex = snapshot.investment_accounts.findIndex((a) => a.id === accountId);
+        if (accountIndex === -1) return;
+
+        const account = snapshot.investment_accounts[accountIndex];
+
+        // Check if holding already exists
+        if (account.holdings.some((h) => h.ticker === holding.ticker)) {
+          set({
+            error: 'Holding with this ticker already exists',
+          });
+          return;
+        }
+
+        // Optimistic update
+        const newHolding: Holding = {
+          ticker: holding.ticker || '',
+          shares: holding.shares ?? 0,
+          avg_cost: holding.avg_cost ?? 0,
+          current_price: holding.current_price ?? holding.avg_cost ?? 0,
+          last_price_update: new Date().toISOString(),
+          notes: holding.notes ?? '',
+        };
+
+        const updatedHoldings = [...account.holdings, newHolding];
+        const updatedAccounts = [...snapshot.investment_accounts];
+        updatedAccounts[accountIndex] = {
+          ...account,
+          holdings: updatedHoldings,
+        };
+
+        set({
+          snapshot: {
+            ...snapshot,
+            investment_accounts: updatedAccounts,
+          },
+        });
+
+        try {
+          await apiClient.postHolding(accountId, newHolding);
+        } catch (error) {
+          set({
+            snapshot,
+            error: error instanceof Error ? error.message : 'Failed to add holding',
+          });
+        }
+      },
+
+      updateCashflow: async (updates: Partial<MonthlyCashflow>) => {
+        const { snapshot } = get();
+        if (!snapshot) return;
+
+        // Optimistic update
         set({
           snapshot: {
             ...snapshot,
@@ -330,6 +384,18 @@ export const useFinanceStore = create<FinanceState>()(
             },
           },
         });
+
+        // Persist to server based on what was updated
+        try {
+          if (updates.net_monthly_income !== undefined) {
+            await apiClient.patchIncome(updates.net_monthly_income);
+          }
+          // For other updates, you would call the appropriate API
+          // For now, just optimistic update is in place
+        } catch (error) {
+          // Revert on error
+          set({ snapshot });
+        }
       },
 
       // ============ Dirty Tracking ============

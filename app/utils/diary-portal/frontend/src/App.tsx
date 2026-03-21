@@ -5,9 +5,10 @@ import { CurrentSignalCard } from './components/CurrentSignalCard'
 import { ScoreChart } from './components/ScoreChart'
 import { SignalHistoryTable } from './components/SignalHistoryTable'
 import { EntryCountBadge } from './components/EntryCountBadge'
+import { EntriesPanel } from './components/EntriesPanel'
 
 function App() {
-  const { fetchLatestSignal, fetchSignalHistory, fetchEntryCount } =
+  const { fetchLatestSignal, fetchSignalHistory, fetchEntryCount, fetchEntries } =
     useDiaryStore()
 
   useEffect(() => {
@@ -15,7 +16,8 @@ function App() {
     fetchLatestSignal()
     fetchSignalHistory(90)
     fetchEntryCount()
-  }, [fetchLatestSignal, fetchSignalHistory, fetchEntryCount])
+    fetchEntries()
+  }, [fetchLatestSignal, fetchSignalHistory, fetchEntryCount, fetchEntries])
 
   return (
     <div className="min-h-screen bg-gray-950">
@@ -59,6 +61,17 @@ function App() {
             History Log
           </h2>
           <SignalHistoryTable />
+        </section>
+
+        {/* Divider */}
+        <hr className="border-gray-800" />
+
+        {/* Entries Panel */}
+        <section>
+          <h2 className="text-lg font-semibold text-gray-300 mb-4">
+            Your Entries
+          </h2>
+          <EntriesPanel />
         </section>
 
         {/* Footer */}

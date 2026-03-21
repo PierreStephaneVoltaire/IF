@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useFinanceStore, useSnapshot } from '../store/financeStore';
 import { EditableField, CashflowSankey } from '../components';
 import { formatCurrency } from '../utils/formatters';
+import apiClient from '../api/client';
 
 export function Cashflow() {
   const fetchCurrentSnapshot = useFinanceStore((state) => state.fetchCurrentSnapshot);
@@ -16,8 +17,19 @@ export function Cashflow() {
   }, [snapshot, fetchCurrentSnapshot]);
 
   const handleIncomeUpdate = async (value: number) => {
-    updateCashflow({ net_monthly_income: value });
-    // Server-side recalculation would happen via API call
+    await updateCashflow({ net_monthly_income: value });
+  };
+
+  const handleVariableBudgetUpdate = async (index: number, value: number) => {
+    const updatedBudget = [...monthly_cashflow.variable_expense_budget];
+    updatedBudget[index] = { ...updatedBudget[index], budget_amount: value };
+    await updateCashflow({ variable_expense_budget: updatedBudget });
+    // Persist to server
+    try {
+      await apiClient.patchVariableBudget(monthly_cashflow.variable_expense_budget);
+    } catch (error) {
+      console.error('Failed to update variable budget:', error);
+    }
   };
 
   if (isLoading && !snapshot) {
@@ -208,10 +220,17 @@ export function Cashflow() {
               </tr>
             </thead>
             <tbody>
-              {monthly_cashflow.variable_expense_budget.map((item) => (
+              {monthly_cashflow.variable_expense_budget.map((item, index) => (
                 <tr key={item.id} className="border-b hover:bg-gray-50">
                   <td className="py-3 px-4 font-medium">{item.category}</td>
-                  <td className="py-3 px-4 text-right">{formatCurrency(item.budget_amount)}</td>
+                  <td className="py-3 px-4 text-right">
+                    <EditableField
+                      value={item.budget_amount}
+                      type="currency"
+                      onSave={(v) => handleVariableBudgetUpdate(index, v as number)}
+                      displayClassName="font-medium text-blue-600"
+                    />
+                  </td>
                   <td className="py-3 px-4 text-gray-500 text-xs">{item.notes || '-'}</td>
                 </tr>
               ))}

@@ -19,6 +19,7 @@ const OPERATOR_PK = process.env.IF_OPERATOR_PK || 'operator';
 /**
  * PATCH /api/accounts/credit-cards/:id
  * Update a credit card (surgical update, no new version)
+ * Note: id parameter is the credit card name (expected to be unique)
  */
 export async function patchCreditCard(
   req: Request,
@@ -31,7 +32,7 @@ export async function patchCreditCard(
     const updates = req.body as PatchCreditCardRequest;
 
     if (!id) {
-      throw createError('Credit card ID is required', 400, 'VALIDATION_ERROR');
+      throw createError('Credit card name is required', 400, 'VALIDATION_ERROR');
     }
 
     // Get current snapshot to find the card
@@ -40,7 +41,8 @@ export async function patchCreditCard(
       throw createError('No finance snapshot found', 404, 'NOT_FOUND');
     }
 
-    const cardIndex = resolved.item.accounts.credit_cards.findIndex((c) => c.id === id);
+    // Use name as the identifier since credit cards are uniquely identified by name
+    const cardIndex = resolved.item.accounts.credit_cards.findIndex((c) => c.name === id);
     if (cardIndex === -1) {
       throw createError('Credit card not found', 404, 'NOT_FOUND');
     }
@@ -84,7 +86,7 @@ export async function patchLineOfCredit(
     const updates = req.body as PatchLOCRequest;
 
     if (!id) {
-      throw createError('LOC ID is required', 400, 'VALIDATION_ERROR');
+      throw createError('LOC name is required', 400, 'VALIDATION_ERROR');
     }
 
     // Get current snapshot to find the LOC
@@ -93,7 +95,8 @@ export async function patchLineOfCredit(
       throw createError('No finance snapshot found', 404, 'NOT_FOUND');
     }
 
-    const locIndex = resolved.item.accounts.lines_of_credit.findIndex((loc) => loc.id === id);
+    // Use name as the identifier since LOCs are uniquely identified by name
+    const locIndex = resolved.item.accounts.lines_of_credit.findIndex((loc) => loc.name === id);
     if (locIndex === -1) {
       throw createError('Line of credit not found', 404, 'NOT_FOUND');
     }

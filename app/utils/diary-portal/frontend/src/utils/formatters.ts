@@ -8,21 +8,36 @@ export type { SignalTrend, LifeLoad, SocialBattery } from '@diary-portal/types'
  * Format ISO date string to readable date
  */
 export function formatDate(isoString: string): string {
-  return format(parseISO(isoString), 'MMM d, yyyy')
+  if (!isoString) return 'Unknown date'
+  try {
+    return format(parseISO(isoString), 'MMM d, yyyy')
+  } catch {
+    return 'Invalid date'
+  }
 }
 
 /**
  * Format ISO date string to readable date and time
  */
 export function formatDateTime(isoString: string): string {
-  return format(parseISO(isoString), 'MMM d, yyyy h:mm a')
+  if (!isoString) return 'Unknown date'
+  try {
+    return format(parseISO(isoString), 'MMM d, yyyy h:mm a')
+  } catch {
+    return 'Invalid date'
+  }
 }
 
 /**
  * Format ISO date string to relative time (e.g., "2 hours ago")
  */
 export function formatRelativeTime(isoString: string): string {
-  return formatDistanceToNow(parseISO(isoString), { addSuffix: true })
+  if (!isoString) return 'Unknown time'
+  try {
+    return formatDistanceToNow(parseISO(isoString), { addSuffix: true })
+  } catch {
+    return 'Invalid date'
+  }
 }
 
 /**

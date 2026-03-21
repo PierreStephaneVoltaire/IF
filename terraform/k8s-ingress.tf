@@ -1,6 +1,6 @@
 # Kubernetes Ingress for k3s (Traefik)
 
-# Traefik Middleware to strip path prefixes for backend routing
+# Traefik Middleware to strip path prefixes for backend API routing
 resource "null_resource" "traefik_strip_prefix_middleware" {
   depends_on = [kubernetes_namespace.if_portals]
 
@@ -26,15 +26,41 @@ EOF
   }
 }
 
-resource "kubernetes_ingress_v1" "if_portals" {
+# Traefik Middleware to strip /app/xxx prefixes for frontend routing
+resource "null_resource" "traefik_strip_frontend_prefix_middleware" {
+  depends_on = [kubernetes_namespace.if_portals]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      kubectl apply -f - <<EOF
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-frontend-prefix
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  stripPrefix:
+    prefixes:
+      - /app/main
+      - /app/finance
+      - /app/diary
+      - /app/proposals
+      - /app/fitness
+EOF
+    EOT
+  }
+}
+
+# Ingress for backend APIs with strip-prefix middleware
+resource "kubernetes_ingress_v1" "if_portals_backends" {
   depends_on = [null_resource.traefik_strip_prefix_middleware]
 
   metadata {
-    name      = "if-portals-ingress"
+    name      = "if-portals-backends-ingress"
     namespace = kubernetes_namespace.if_portals.metadata[0].name
     annotations = {
       "kubernetes.io/ingress.class"                      = "traefik"
-      "traefik.ingress.kubernetes.io/router.middlewares" = "strip-prefix@kubernetescrd"
+      "traefik.ingress.kubernetes.io/router.middlewares" = "if-portals-strip-prefix@kubernetescrd"
     }
   }
 
@@ -132,7 +158,23 @@ resource "kubernetes_ingress_v1" "if_portals" {
         }
       }
     }
+  }
+}
 
+# Ingress for frontends with strip-frontend-prefix middleware
+resource "kubernetes_ingress_v1" "if_portals_frontends" {
+  depends_on = [null_resource.traefik_strip_frontend_prefix_middleware]
+
+  metadata {
+    name      = "if-portals-frontends-ingress"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+    annotations = {
+      "kubernetes.io/ingress.class"                      = "traefik"
+      "traefik.ingress.kubernetes.io/router.middlewares" = "if-portals-strip-frontend-prefix@kubernetescrd"
+    }
+  }
+
+  spec {
     # Portal Frontends - route by path
     rule {
       http {
@@ -205,8 +247,24 @@ resource "kubernetes_ingress_v1" "if_portals" {
             }
           }
         }
+      }
+    }
+  }
+}
 
-        # Default - serve main portal frontend at root
+# Main portal frontend at root (no prefix stripping)
+resource "kubernetes_ingress_v1" "if_portals_main" {
+  metadata {
+    name      = "if-portals-main-ingress"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+    annotations = {
+      "kubernetes.io/ingress.class" = "traefik"
+    }
+  }
+
+  spec {
+    rule {
+      http {
         path {
           path      = "/"
           path_type = "Prefix"

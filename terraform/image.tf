@@ -120,6 +120,7 @@ locals {
   ]))
 
   # Map portal names to ingress paths for API URLs
+  # Note: Frontend code already includes /api in paths, so base URL is just the path prefix
   portal_api_paths = {
     "main-portal"     = "/main"
     "finance-portal"  = "/finance"

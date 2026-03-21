@@ -7,6 +7,11 @@ export function formatCurrency(amount: number, options?: {
 }): string {
   const { compact = false, showSign = false } = options || {};
 
+  // Handle NaN, undefined, null
+  if (amount === undefined || amount === null || isNaN(amount)) {
+    return '$0.00';
+  }
+
   const formatter = new Intl.NumberFormat('en-CA', {
     style: 'currency',
     currency: 'CAD',
@@ -30,6 +35,9 @@ export function formatCurrency(amount: number, options?: {
  * Percentage formatter
  */
 export function formatPercent(value: number, decimals: number = 1): string {
+  if (value === undefined || value === null || isNaN(value)) {
+    return `0.0%`;
+  }
   return `${value.toFixed(decimals)}%`;
 }
 
@@ -100,6 +108,9 @@ export function formatGainLoss(value: number, prefix: string = ''): string {
  * Format large numbers with K/M suffix
  */
 export function formatCompact(amount: number): string {
+  if (amount === undefined || amount === null || isNaN(amount)) {
+    return '0';
+  }
   if (Math.abs(amount) >= 1_000_000) {
     return `${(amount / 1_000_000).toFixed(1)}M`;
   }
@@ -113,6 +124,9 @@ export function formatCompact(amount: number): string {
  * Format APR as percentage
  */
 export function formatAPR(apr: number): string {
+  if (apr === undefined || apr === null || isNaN(apr)) {
+    return `0.00% APR`;
+  }
   return `${apr.toFixed(2)}% APR`;
 }
 

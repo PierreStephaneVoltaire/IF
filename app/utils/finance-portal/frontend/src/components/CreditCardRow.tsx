@@ -11,7 +11,7 @@ export function CreditCardRow({ card }: CreditCardRowProps) {
   const updateCreditCard = useFinanceStore((state) => state.updateCreditCard);
 
   const handleUpdate = async (field: keyof CreditCard, value: number | string) => {
-    await updateCreditCard(card.id, { [field]: value });
+    await updateCreditCard(card.name, { [field]: value });
   };
 
   const utilizationClass = getUtilizationClass(card.utilization_pct);
@@ -61,7 +61,15 @@ export function CreditCardRow({ card }: CreditCardRowProps) {
       </td>
 
       <td className="py-3 px-4 text-right text-sm">
-        {formatAPR(card.apr)}
+        <EditableField
+          value={card.apr}
+          type="number"
+          step={0.01}
+          decimals={2}
+          onSave={(v) => handleUpdate('apr', v as number)}
+          formatter={(v) => formatAPR(v as number)}
+          displayClassName="text-gray-700"
+        />
       </td>
 
       <td className="py-3 px-4 text-right">

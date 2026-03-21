@@ -1,10 +1,20 @@
 import { create } from 'zustand'
 import type { DiarySignal } from '@diary-portal/types'
-import { getLatestSignal, getSignalHistory, getEntryCount, writeEntry } from '../api/client'
+import type { DiaryEntry } from '../api/client'
+import {
+  getLatestSignal,
+  getSignalHistory,
+  getEntryCount,
+  writeEntry,
+  getEntries,
+  updateEntry as apiUpdateEntry,
+  deleteEntry as apiDeleteEntry,
+} from '../api/client'
 
 interface DiaryState {
   currentSignal: DiarySignal | null
   signalHistory: DiarySignal[]
+  entries: DiaryEntry[]
   entryCount: number
   loading: boolean
   error: string | null
@@ -13,14 +23,18 @@ interface DiaryState {
   // Actions
   fetchLatestSignal: () => Promise<void>
   fetchSignalHistory: (days?: number) => Promise<void>
+  fetchEntries: () => Promise<void>
   fetchEntryCount: () => Promise<void>
   submitEntry: (content: string) => Promise<{ ok: boolean; entry_count: number }>
+  updateEntry: (sk: string, content: string) => Promise<void>
+  deleteEntry: (sk: string) => Promise<void>
   clearError: () => void
 }
 
 export const useDiaryStore = create<DiaryState>((set) => ({
   currentSignal: null,
   signalHistory: [],
+  entries: [],
   entryCount: 0,
   loading: false,
   error: null,
@@ -59,6 +73,25 @@ export const useDiaryStore = create<DiaryState>((set) => ({
     } catch (err) {
       set({
         error: err instanceof Error ? err.message : 'Failed to fetch history',
+        loading: false,
+      })
+    }
+  },
+
+  fetchEntries: async () => {
+    try {
+      set({ loading: true, error: null })
+      const response = await getEntries()
+
+      if (response.error) {
+        set({ error: response.error, loading: false })
+        return
+      }
+
+      set({ entries: response.data, loading: false })
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : 'Failed to fetch entries',
         loading: false,
       })
     }
@@ -103,6 +136,53 @@ export const useDiaryStore = create<DiaryState>((set) => ({
         loading: false,
       })
       return { ok: false, entry_count: 0 }
+    }
+  },
+
+  updateEntry: async (sk: string, content: string) => {
+    try {
+      set({ loading: true, error: null })
+      const response = await apiUpdateEntry(sk, content)
+
+      if (response.error) {
+        set({ error: response.error, loading: false })
+        return
+      }
+
+      // Update the entry in the list
+      set((state) => ({
+        entries: state.entries.map((e) => (e.sk === sk ? response.data : e)),
+        loading: false,
+      }))
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : 'Failed to update entry',
+        loading: false,
+      })
+    }
+  },
+
+  deleteEntry: async (sk: string) => {
+    try {
+      set({ loading: true, error: null })
+      const response = await apiDeleteEntry(sk)
+
+      if (response.error) {
+        set({ error: response.error, loading: false })
+        return
+      }
+
+      // Remove the entry from the list
+      set((state) => ({
+        entries: state.entries.filter((e) => e.sk !== sk),
+        entryCount: state.entryCount - 1,
+        loading: false,
+      }))
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : 'Failed to delete entry',
+        loading: false,
+      })
     }
   },
 

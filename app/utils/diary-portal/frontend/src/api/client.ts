@@ -24,11 +24,43 @@ export interface EntryCountResponse {
   count: number
 }
 
+export interface DiaryEntry {
+  pk: string
+  sk: string
+  content: string
+  created_at: string
+  expires_at: number
+}
+
 // API functions
 export async function writeEntry(content: string): Promise<ApiResponse<WriteEntryResponse>> {
   const response = await api.post<ApiResponse<WriteEntryResponse>>('/api/entries', {
     content,
   })
+  return response.data
+}
+
+export async function getEntries(limit: number = 50): Promise<ApiResponse<DiaryEntry[]>> {
+  const response = await api.get<ApiResponse<DiaryEntry[]>>('/api/entries', {
+    params: { limit },
+  })
+  return response.data
+}
+
+export async function getEntry(sk: string): Promise<ApiResponse<DiaryEntry>> {
+  const response = await api.get<ApiResponse<DiaryEntry>>(`/api/entries/${sk}`)
+  return response.data
+}
+
+export async function updateEntry(sk: string, content: string): Promise<ApiResponse<DiaryEntry>> {
+  const response = await api.patch<ApiResponse<DiaryEntry>>(`/api/entries/${sk}`, {
+    content,
+  })
+  return response.data
+}
+
+export async function deleteEntry(sk: string): Promise<ApiResponse<{ ok: boolean }>> {
+  const response = await api.delete<ApiResponse<{ ok: boolean }>>(`/api/entries/${sk}`)
   return response.data
 }
 

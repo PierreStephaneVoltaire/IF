@@ -132,6 +132,13 @@ class ApiClient {
 
   // ============ Investments ============
 
+  async postHolding(accountId: string, holding: Partial<Holding>): Promise<{ success: boolean; holding: Holding }> {
+    return this.request<{ success: boolean; holding: Holding }>(`/api/investments/${accountId}/holdings`, {
+      method: 'POST',
+      body: JSON.stringify(holding),
+    });
+  }
+
   async patchHolding(accountId: string, ticker: string, updates: PatchHoldingRequest): Promise<{ success: boolean; holding: Holding }> {
     return this.request<{ success: boolean; holding: Holding }>(
       `/api/investments/${accountId}/holdings/${encodeURIComponent(ticker)}`,

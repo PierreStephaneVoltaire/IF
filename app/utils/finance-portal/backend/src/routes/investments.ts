@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  postHolding,
   patchHolding,
   putWatchlist,
   patchTargetAllocation,
@@ -14,6 +15,12 @@ const router = Router();
  * Update investment account properties
  */
 router.patch('/:accountId', patchInvestmentAccount);
+
+/**
+ * POST /api/investments/:accountId/holdings
+ * Add a new holding to an investment account
+ */
+router.post('/:accountId/holdings', postHolding);
 
 /**
  * PATCH /api/investments/:accountId/holdings/:ticker

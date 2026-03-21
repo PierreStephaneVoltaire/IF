@@ -11,7 +11,7 @@ export function LOCRow({ loc }: LOCRowProps) {
   const updateLineOfCredit = useFinanceStore((state) => state.updateLineOfCredit);
 
   const handleUpdate = async (field: keyof LineOfCredit, value: number | string) => {
-    await updateLineOfCredit(loc.id, { [field]: value });
+    await updateLineOfCredit(loc.name, { [field]: value });
   };
 
   const utilization = loc.credit_limit > 0 ? (loc.balance_owing / loc.credit_limit) * 100 : 0;
