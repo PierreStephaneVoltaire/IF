@@ -177,9 +177,9 @@ export default function PlateCalculator() {
 
           {/* Plate Visualization */}
           <div className="flex items-center justify-center gap-4 py-6">
-            {/* Left plates */}
+            {/* Left plates - reversed so smaller plates are at the edge */}
             <div className="flex items-center gap-1">
-              {loadout.plates.map((plate, idx) => (
+              {[...loadout.plates].reverse().map((plate, idx) => (
                 <div
                   key={idx}
                   className="rounded-sm flex items-center justify-center text-xs font-bold"
@@ -198,9 +198,9 @@ export default function PlateCalculator() {
             {/* Bar */}
             <div className="w-4 h-8 bg-gray-400 rounded-sm" />
 
-            {/* Right plates */}
+            {/* Right plates - reversed so smaller plates are at the edge */}
             <div className="flex items-center gap-1">
-              {loadout.plates.map((plate, idx) => (
+              {[...loadout.plates].reverse().map((plate, idx) => (
                 <div
                   key={idx}
                   className="rounded-sm flex items-center justify-center text-xs font-bold"
@@ -285,11 +285,11 @@ export default function PlateCalculator() {
           </p>
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center p-4 bg-secondary rounded-lg">
-              <p className="text-sm text-muted-foreground">Opener (92%)</p>
+              <p className="text-sm text-muted-foreground">Opener (85%)</p>
               <p className="text-xl font-bold">{displayWeight(attempts.opener, unit)}</p>
             </div>
             <div className="text-center p-4 bg-secondary rounded-lg">
-              <p className="text-sm text-muted-foreground">Second (96%)</p>
+              <p className="text-sm text-muted-foreground">Second (95%)</p>
               <p className="text-xl font-bold">{displayWeight(attempts.second, unit)}</p>
             </div>
             <div className="text-center p-4 bg-primary/10 rounded-lg">

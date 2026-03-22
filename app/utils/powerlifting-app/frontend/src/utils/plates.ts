@@ -87,8 +87,8 @@ export function compAttempts(targetKg: number): {
   third: number
 } {
   return {
-    opener: roundToNearest(targetKg * 0.92, 2.5),
-    second: roundToNearest(targetKg * 0.96, 2.5),
+    opener: roundToNearest(targetKg * 0.85, 2.5),
+    second: roundToNearest(targetKg * 0.95, 2.5),
     third: targetKg,
   }
 }
