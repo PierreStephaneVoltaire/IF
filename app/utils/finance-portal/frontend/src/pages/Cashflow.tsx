@@ -21,12 +21,14 @@ export function Cashflow() {
   };
 
   const handleVariableBudgetUpdate = async (index: number, value: number) => {
-    const updatedBudget = [...monthly_cashflow.variable_expense_budget];
+    if (!snapshot?.monthly_cashflow) return;
+
+    const updatedBudget = [...snapshot.monthly_cashflow.variable_expense_budget];
     updatedBudget[index] = { ...updatedBudget[index], budget_amount: value };
     await updateCashflow({ variable_expense_budget: updatedBudget });
     // Persist to server
     try {
-      await apiClient.patchVariableBudget(monthly_cashflow.variable_expense_budget);
+      await apiClient.patchVariableBudget(updatedBudget);
     } catch (error) {
       console.error('Failed to update variable budget:', error);
     }

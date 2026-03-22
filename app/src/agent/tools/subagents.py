@@ -346,7 +346,7 @@ register_tool("deep_think", DeepThinkTool)
 # Spawn Specialist Tool
 # =============================================================================
 
-SPAWN_SPECIALIST_DESCRIPTION = """Spawn a specialist subagent for domain-specific work.
+SPAWN_SPECIAListDescription = """Spawn a specialist subagent for domain-specific work.
 
 Available specialists:
 - debugger: Deep code debugging and error analysis
@@ -354,7 +354,7 @@ Available specialists:
 - secops: Security operations and vulnerability analysis
 - devops: Infrastructure and deployment automation
 - financial_analyst: Financial data analysis and market research
-- health_coach: Health program analysis and coaching
+- health_write: DynamoDB mutations for training program (logging sessions, updating body weight, RPE, etc.)
 - web_researcher: Web research and information synthesis
 
 Skills (mode modifiers):
@@ -367,7 +367,7 @@ class SpawnSpecialistAction(Action):
     """Action for spawning a specialist subagent."""
 
     specialist_type: str = Field(
-        description="Type of specialist to spawn (debugger, architect, secops, devops, financial_analyst, health_coach, web_researcher)"
+        description="Type of specialist to spawn (debugger, architect, secops, devops, financial_analyst, health_write, web_researcher)"
     )
     task: str = Field(
         description="Detailed task description for the specialist"
@@ -387,6 +387,14 @@ class SpawnSpecialistAction(Action):
     write_to_file: Optional[str] = Field(
         default=None,
         description="Optional file path to save the specialist's output"
+    )
+    pk: Optional[str] = Field(
+        default="operator",
+        description="Primary key for DynamoDB operations (default: operator)"
+    )
+    sk: Optional[str] = Field(
+        default="program#current",
+        description="Sort key for DynamoDB operations (default: program#current)"
     )
 
 
@@ -441,6 +449,8 @@ class SpawnSpecialistExecutor(ToolExecutor):
                 context=action.context,
                 directives=directives,
                 skill=action.skill,
+                pk=action.pk,
+                sk=action.sk,
             )
 
             # Build user message

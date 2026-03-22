@@ -44,8 +44,10 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
   - [Discord Webhook Server](#discord-webhook-server)
 - [Utility App Architecture](#utility-app-architecture)
 - [Shared Patterns Across Utility Apps](#shared-patterns-across-utility-apps)
+- [Data Models & Key Patterns](#data-models--key-patterns)
 - [Kubernetes Deployment](#kubernetes-deployment)
 - [Development and Running](#development-and-running)
+- [Common Issues & Solutions](#common-issues--solutions)
 - [Future Improvements](#future-improvements)
 - [Quick Start](#quick-start)
 
@@ -2351,11 +2353,23 @@ app/utils/finance-portal/
 **API Endpoints:**
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/finance` | GET/PUT | Main finance data |
-| `/api/accounts` | GET/POST/PUT | Account management |
-| `/api/investments` | GET/PUT | Investment data |
-| `/api/cashflow` | GET | Cashflow data |
-| `/api/versions` | GET | Version history |
+| `/finance/api/finance` | GET | Get current finance snapshot |
+| `/finance/api/finance` | PUT | Update entire snapshot |
+| `/finance/api/accounts/credit-cards/:id` | PATCH | Update credit card (use id) |
+| `/finance/api/accounts/locs/:name` | PATCH | Update line of credit (use **name**, not id) |
+| `/finance/api/accounts/loans/:id` | PATCH | Update loan |
+| `/finance/api/investments/accounts/:id/holdings/:ticker` | PATCH | Update holding |
+| `/finance/api/investments/watchlist` | PUT | Replace watchlist |
+| `/finance/api/investments/accounts/:id/allocation` | PATCH | Update target allocation |
+| `/finance/api/cashflow/income` | PATCH | Update net monthly income |
+| `/finance/api/cashflow/variable-budget` | PATCH | Update variable expense budget |
+| `/finance/api/versions` | GET | List all versions |
+| `/finance/api/versions/:version` | GET | Get specific version |
+
+**Important Patterns:**
+- Lines of Credit use `name` as unique identifier (not `id`)
+- Cashflow updates validate for NaN values server-side
+- All PATCH endpoints return updated item on success
 
 ---
 
@@ -2505,6 +2519,23 @@ app/utils/proposals-portal/
 **Constants** (`frontend/src/constants/`):
 - `plates.ts`: KG and LB plate denominations, bar weights, plate colors for visual display
 
+**API Endpoints:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/fitness/api/programs` | GET | List all program versions |
+| `/fitness/api/programs/:version` | GET | Get specific program (`:version` can be "current") |
+| `/fitness/api/programs/:version/fork` | POST | Fork program to new version |
+| `/fitness/api/programs/:version/meta` | PATCH | Update meta field |
+| `/fitness/api/programs/:version/body-weight` | PUT | Update body weight (kg) |
+| `/fitness/api/programs/:version/phases` | PUT | Update all phases |
+| `/fitness/api/sessions` | GET | List sessions (supports `?from=&to=`) |
+| `/fitness/api/sessions/:date` | GET/PUT | Get or update session |
+| `/fitness/api/weight` | GET/POST | Get or add weight entry |
+| `/fitness/api/maxes` | GET/POST | Get or add max entry |
+
+**Sub-Path Routing:**
+The app is served at `/app/fitness/` (not root). API calls go to `/fitness/api/*`.
+
 **Directory Structure:**
 ```
 app/utils/powerlifting-app/
@@ -2512,11 +2543,21 @@ app/utils/powerlifting-app/
 │   ├── src/
 │   │   ├── utils/               # Utility functions (see above)
 │   │   ├── constants/           # Plate constants, etc.
-│   │   └── ...
+│   │   ├── store/               # Zustand stores
+│   │   │   ├── programStore.ts  # Program & sessions state
+│   │   │   ├── settingsStore.ts # Unit preferences
+│   │   │   └── uiStore.ts       # Drawers, toasts, sidebar
+│   │   └── api/client.ts        # Axios client
+│   ├── vite.config.ts           # base: '/app/fitness/'
 │   └── package.json
 ├── backend/
 │   ├── src/
-│   │   └── ...                  # Express routes, controllers
+│   │   ├── routes/              # Express routes
+│   │   ├── controllers/         # Request handlers
+│   │   │   └── programController.ts  # Version resolution logic
+│   │   └── db/
+│   │       ├── dynamo.ts        # DynamoDB client
+│   │       └── transforms.ts    # Raw → typed transforms
 │   └── package.json
 └── packages/
     └── types/
@@ -2718,6 +2759,274 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
 
 ---
 
+## Data Models & Key Patterns
+
+### DynamoDB Schema
+
+All utility apps use DynamoDB with a single-table design pattern:
+
+| Table | PK | SK Pattern | Purpose |
+|-------|----|-----------:|---------|
+| `if-core` | `operator` | `finance#v001`, `finance#current` | Finance snapshots |
+| `if-core` | `operator` | `program#v001`, `program#current` | Powerlifting programs |
+| `if-core` | `operator` | `session#YYYY-MM-DD` | Training sessions |
+| `if-core` | `operator` | `weight#YYYY-MM-DD` | Body weight log |
+| `if-core` | `operator` | `maxes#history` | Max history |
+| `if-core` | `operator` | `directive#alpha#beta` | Agent directives |
+| `if-diary` | `operator` | `entry#id` | Diary entries |
+
+### Version Pointer Pattern
+
+Both Finance Portal and Powerlifting App use a version/pointer pattern for data versioning:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    DynamoDB Items                                │
+│                                                                  │
+│  pk: "operator"                                                  │
+│  ├── sk: "program#current"  → ref_sk: "program#v002" (POINTER) │
+│  ├── sk: "program#v001"     → Full program data (VERSION 1)    │
+│  └── sk: "program#v002"     → Full program data (VERSION 2)    │
+│                                                                  │
+│  When version="current" is requested:                           │
+│  1. Look up pointer at sk="program#current"                     │
+│  2. Get ref_sk value (e.g., "program#v002")                     │
+│  3. Fetch actual data at that SK                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Backend Implementation:**
+```typescript
+// programController.ts - resolves "current" to actual version
+async function resolveVersionSk(version: string): Promise<string> {
+  if (version === 'current') {
+    const pointer = await docClient.send(new GetCommand({
+      Key: { pk: PK, sk: 'program#current' }
+    }))
+    return pointer.Item?.ref_sk || 'program#v001'
+  }
+  return `program#${version}`
+}
+```
+
+### Finance Portal Data Model
+
+**Type Package:** `@finance-portal/types` (`packages/types/src/index.ts`)
+
+```typescript
+interface FinanceSnapshot {
+  pk: string                      // "operator"
+  sk: string                      // "finance#v001"
+  version_label: string           // "1.0"
+  updated_at: string              // ISO timestamp
+  change_log: string[]            // History of changes
+
+  meta: {
+    currency: string              // "CAD"
+    province: string              // "ON"
+    last_reviewed: string
+  }
+
+  profile: {
+    age: number
+    employment: Employment
+    net_monthly_income: number
+    secondary_income: SecondaryIncome[]
+    tax_bracket_federal: number
+    tax_bracket_provincial: number
+  }
+
+  accounts: {
+    chequing: ChequingAccount[]
+    savings: SavingsAccount[]
+    credit_cards: CreditCard[]
+    lines_of_credit: LineOfCredit[]  // Identified by name, not id
+    loans: Loan[]
+  }
+
+  investment_accounts: InvestmentAccount[]
+  watchlist: WatchlistItem[]
+  monthly_cashflow: MonthlyCashflow
+  insurance: Insurance[]
+  tax: Tax
+  goals: Goals
+  risk_profile: RiskProfile
+  net_worth_snapshot: NetWorthSnapshot
+}
+```
+
+**Key Account Types:**
+```typescript
+interface CreditCard {
+  id: string
+  name: string                    // Display name
+  institution: string
+  balance_owing: number
+  credit_limit: number
+  apr: number
+  target_payment: number
+  due_date: number                // Day of month
+  account_number_last4: string
+}
+
+interface LineOfCredit {
+  id: string
+  name: string                    // UNIQUE IDENTIFIER - used for PATCH
+  institution: string
+  balance_owing: number
+  credit_limit: number
+  apr: number
+  type: 'personal' | 'home_equity' | 'business'
+  target_payment: number
+}
+```
+
+**Important:** Lines of Credit are uniquely identified by `name`, not `id`. PATCH requests use the name in the URL path.
+
+### Powerlifting App Data Model
+
+**Type Package:** `@powerlifting/types` (`packages/types/index.ts`)
+
+```typescript
+interface Program {
+  pk: string                      // "operator"
+  sk: string                      // "program#v001" or "program#current"
+  meta: ProgramMeta
+  phases: Phase[]
+  sessions: Session[]
+  competitions: Competition[]
+  diet_notes: DietNote[]
+  supplements: Supplement[]
+  supplement_phases: SupplementPhase[]
+}
+
+interface ProgramMeta {
+  program_name: string
+  program_start: string           // YYYY-MM-DD
+  comp_date: string               // YYYY-MM-DD
+  federation: string
+  practicing_for: string
+  version_label: string
+  weight_class_kg: number
+  current_body_weight_kg: number
+  current_body_weight_lb: number
+  target_squat_kg: number
+  target_bench_kg: number
+  target_dl_kg: number
+  target_total_kg: number
+  training_notes: string[]
+  change_log: ChangeLogEntry[]
+  last_comp: LastComp
+}
+
+interface Phase {
+  name: string                    // "Base Building", "Peaking", etc.
+  intent: string
+  start_week: number
+  end_week: number
+}
+
+interface Session {
+  date: string                    // YYYY-MM-DD
+  day: string                     // "Friday"
+  week: string                    // "W1 (Warmup)"
+  week_number: number             // Parsed integer
+  phase: Phase                    // Resolved from program.phases
+  completed: boolean
+  exercises: Exercise[]
+  session_notes: string
+  session_rpe: number | null
+  body_weight_kg: number | null
+}
+
+interface Exercise {
+  name: string
+  sets: number
+  reps: number
+  kg: number | null
+  notes: string
+}
+```
+
+### Optimistic Updates Pattern
+
+Frontend stores use optimistic updates for better UX:
+
+```typescript
+// financeStore.ts
+updateLineOfCredit: async (name, updates) => {
+  // 1. Optimistic update - immediately update UI
+  set((state) => {
+    const index = state.snapshot.accounts.lines_of_credit
+      .findIndex(l => l.name === name)
+    // ...update in place
+  })
+
+  // 2. Server sync - send to backend
+  try {
+    await apiClient.patchLOC(name, updates)
+  } catch (error) {
+    // 3. Rollback on failure
+    // ...revert to previous state
+  }
+}
+```
+
+### Sub-Path Routing (Powerlifting App)
+
+The powerlifting app is served at `/app/fitness/` (not root):
+
+**Vite Config:**
+```typescript
+export default defineConfig({
+  base: '/app/fitness/',
+  server: {
+    proxy: { '/api': { target: 'http://localhost:3001' } }
+  }
+})
+```
+
+**React Router:**
+```tsx
+<BrowserRouter basename="/app/fitness">
+  <App />
+</BrowserRouter>
+```
+
+**API Client:**
+```typescript
+const api = axios.create({
+  baseURL: '/fitness/api',  // Not '/api' - matches nginx routing
+})
+```
+
+### Editable Field Component Pattern
+
+Used for inline editing in tables (finance portal):
+
+```tsx
+// EditableField.tsx
+function EditableField({ value, type, onSave, displayClassName }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(value)
+
+  return isEditing ? (
+    <input
+      value={editValue}
+      onChange={(e) => setEditValue(e.target.value)}
+      onBlur={() => { onSave(editValue); setIsEditing(false) }}
+      onKeyDown={(e) => e.key === 'Enter' && ...}
+    />
+  ) : (
+    <span onClick={() => setIsEditing(true)} className={displayClassName}>
+      {formatValue(value, type)}
+    </span>
+  )
+}
+```
+
+---
+
 ## Kubernetes Deployment
 
 All services are deployed to Kubernetes via Terraform configurations in the `terraform/` directory.
@@ -2853,6 +3162,62 @@ Each component has its own `.env` file or shares from the root:
 | Main API | `app/.env` |
 | Portal backends | `app/utils/{portal}/backend/.env` |
 | Portal frontends | Via `VITE_*` environment variables |
+
+---
+
+## Common Issues & Solutions
+
+### Finance Portal
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| LOC PATCH returns 404 | Using `loc.id` (undefined) instead of `loc.name` | LOCs are identified by name: `PATCH /accounts/locs/:name` |
+| Cashflow update returns 500 | Frontend sending NaN value | Backend validates `isNaN()` - ensure form fields have valid numbers |
+| Variable budget not saving | Sending old array, not updated one | Call API with the **updated** array, not the original |
+
+### Powerlifting App
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Body weight update returns 500 ValidationException | `updateBodyWeight` using `program#current` directly | Must call `resolveVersionSk(version)` before DynamoDB Update |
+| Routes return 404 | BrowserRouter missing basename | Add `basename="/app/fitness"` to BrowserRouter |
+| API calls return 404 | Wrong baseURL in axios | Use `baseURL: '/fitness/api'` (not `/api`) |
+| crypto.randomUUID not a function | Browser compatibility | Add fallback ID generator in uiStore |
+| Program updates affect wrong version | Not resolving "current" to actual version | All update functions must use `resolveVersionSk()` |
+
+### Diary Portal
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| App crashes on save | Date formatter receiving undefined | Add null checks: `if (!isoString) return 'Unknown date'` |
+
+### Main Hub
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Portal data not loading | Missing env var in ConfigMap | Add all `*_PORTAL_URL` vars to k8s-secrets.tf |
+
+### Debugging Tips
+
+1. **Check pod logs first** - Don't guess, look at actual error messages:
+   ```bash
+   kubectl logs -n if-portals deployment/finance-portal-backend --tail=100
+   ```
+
+2. **DynamoDB ValidationException** - Usually means:
+   - Invalid document path (SK doesn't exist)
+   - NaN values in numbers
+   - Missing required fields
+
+3. **404 on PATCH** - Check:
+   - URL parameter matches identifier (name vs id)
+   - Route is actually registered
+   - Item exists in database
+
+4. **Frontend routing 404s** - Check:
+   - Vite `base` config matches deployment path
+   - React Router `basename` matches
+   - API client `baseURL` matches nginx routing
 
 ---
 

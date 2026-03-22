@@ -169,11 +169,13 @@ export async function updateMetaField(
     throw new AppError(`Cannot update field: ${field}`, 400)
   }
 
+  const sk = await resolveVersionSk(version)
+
   const command = new UpdateCommand({
     TableName: TABLE,
     Key: {
       pk: PK,
-      sk: `program#${version}`,
+      sk,
     },
     UpdateExpression: `SET #meta.#field = :value, #meta.updated_at = :now`,
     ExpressionAttributeNames: {
@@ -197,12 +199,13 @@ export async function updateBodyWeight(
   weightKg: number
 ): Promise<void> {
   const weightLb = weightKg * 2.20462
+  const sk = await resolveVersionSk(version)
 
   const command = new UpdateCommand({
     TableName: TABLE,
     Key: {
       pk: PK,
-      sk: `program#${version}`,
+      sk,
     },
     UpdateExpression: `SET #meta.current_body_weight_kg = :kg, #meta.current_body_weight_lb = :lb, #meta.updated_at = :now`,
     ExpressionAttributeNames: {
@@ -225,11 +228,13 @@ export async function updatePhases(
   version: string,
   phases: Phase[]
 ): Promise<void> {
+  const sk = await resolveVersionSk(version)
+
   const command = new UpdateCommand({
     TableName: TABLE,
     Key: {
       pk: PK,
-      sk: `program#${version}`,
+      sk,
     },
     UpdateExpression: `SET phases = :phases, #meta.updated_at = :now`,
     ExpressionAttributeNames: {

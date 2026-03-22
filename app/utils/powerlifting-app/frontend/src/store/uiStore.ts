@@ -23,6 +23,14 @@ interface UiState {
   setSidebarCollapsed: (collapsed: boolean) => void
 }
 
+// Fallback for browsers that don't support crypto.randomUUID
+const generateId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+}
+
 export const useUiStore = create<UiState>()((set) => ({
   drawerOpen: false,
   drawerType: null,
@@ -35,7 +43,7 @@ export const useUiStore = create<UiState>()((set) => ({
 
   pushToast: (toast) =>
     set((s) => ({
-      toasts: [...s.toasts, { ...toast, id: crypto.randomUUID() }],
+      toasts: [...s.toasts, { ...toast, id: generateId() }],
     })),
 
   dismissToast: (id) =>

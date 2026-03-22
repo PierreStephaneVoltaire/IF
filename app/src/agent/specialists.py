@@ -90,12 +90,12 @@ SPECIALISTS: Dict[str, SpecialistConfig] = {
         mcp_servers=["yahoo_finance", "alpha_vantage"],
         directive_types=["finance", "competition"],
     ),
-    "health_coach": SpecialistConfig(
-        slug="health_coach",
-        description="Health program analysis and personalized coaching specialist",
-        template="specialists/health_coach.j2",
-        tools=["read_file"],
-        mcp_servers=["google_sheets"],
+    "health_write": SpecialistConfig(
+        slug="health_write",
+        description="Use health_write when a mutation to the training program is required: logging a completed session, updating body weight, recording RPE, changing attempt targets, updating supplement protocol, or any other write to the health DynamoDB record. Do not use for read-only queries.",
+        template="specialists/health_write.j2",
+        tools=["health_get_program", "health_get_session", "health_update_session"],
+        mcp_servers=[],
         directive_types=["health"],
     ),
     "web_researcher": SpecialistConfig(
@@ -150,7 +150,9 @@ def render_specialist_prompt(
     task: str,
     context: Optional[str] = None,
     directives: Optional[str] = None,
-    skill: Optional[str] = None
+    skill: Optional[str] = None,
+    pk: Optional[str] = None,
+    sk: Optional[str] = None
 ) -> str:
     """Render a specialist's prompt template.
 
@@ -160,6 +162,8 @@ def render_specialist_prompt(
         context: Optional context/background information
         directives: Optional formatted directives block
         skill: Optional skill mode (red_team, blue_team, pro_con)
+        pk: Optional primary key for DynamoDB operations
+        sk: Optional sort key for DynamoDB operations
 
     Returns:
         Rendered prompt string
@@ -170,4 +174,6 @@ def render_specialist_prompt(
         context=context or "",
         directives=directives or "",
         skill=skill,
+        pk=pk or "operator",
+        sk=sk or "program#current",
     )

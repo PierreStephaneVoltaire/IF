@@ -5,7 +5,7 @@ import logging
 from typing import Dict, Any, Optional, Set
 from dataclasses import dataclass
 
-from config import SANDBOX_PATH, GOOGLE_SHEETS_CREDENTIALS, ALPHAVANTAGE_API_KEY
+from config import SANDBOX_PATH, ALPHAVANTAGE_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +32,6 @@ MCP_SERVERS: Dict[str, Dict[str, Any]] = {
             )
         }
     },
-    "google_sheets": {
-        "command": "uvx",
-        "args": ["mcp-server-google-sheets@latest"],
-        "env": {
-            "FASTMCP_LOG_LEVEL": "ERROR",
-            "CREDENTIALS_CONFIG": GOOGLE_SHEETS_CREDENTIALS,
-        }
-    },
     "yahoo_finance": {
         "command": "uvx",
         "args": ["mcp-yahoo-finance"],
@@ -64,7 +56,7 @@ PRESET_MCP_MAP: Dict[str, list] = {
     
     "architecture": ["aws_docs"],
     "code": [],
-    "health": ["google_sheets"],
+    "health": [],
     "mental_health": [],
     "social": [],
     "finance": ["yahoo_finance", "alpha_vantage"],

@@ -87,8 +87,8 @@ export async function patchIncome(
     const pk = (req.query.pk as string) || OPERATOR_PK;
     const { net_monthly_income } = req.body;
 
-    if (typeof net_monthly_income !== 'number') {
-      throw createError('net_monthly_income must be a number', 400, 'VALIDATION_ERROR');
+    if (typeof net_monthly_income !== 'number' || isNaN(net_monthly_income)) {
+      throw createError('net_monthly_income must be a valid number', 400, 'VALIDATION_ERROR');
     }
 
     const resolved = await resolvePointer(pk);
@@ -245,6 +245,13 @@ export async function patchVariableBudget(
 
     if (!Array.isArray(variable_expense_budget)) {
       throw createError('variable_expense_budget must be an array', 400, 'VALIDATION_ERROR');
+    }
+
+    // Validate that all budget_amount values are valid numbers
+    for (const item of variable_expense_budget) {
+      if (typeof item.budget_amount === 'number' && isNaN(item.budget_amount)) {
+        throw createError('budget_amount values must be valid numbers', 400, 'VALIDATION_ERROR');
+      }
     }
 
     const resolved = await resolvePointer(pk);

@@ -825,6 +825,26 @@ BAR WEIGHT: Always a multiple of 2.5 kg. Minimum 2.5 kg progression
   exceed the existing record by at least 0.5 kg.'
 put 2 33 "IPF_COMPETITION_PROCEDURE" "$C" health competition
 
+C='Before responding to any message about training, programming,
+exercise selection, attempt selection, nutrition, supplementation,
+weight management, competition prep, or recovery: call
+health_get_session with today'"'"'s date to retrieve the current
+session, and call health_get_program to retrieve the full program
+state including current week, phase, and targets.
+
+Do not advise on training without reading current state first.
+Do not guess the current week, phase, or session — fetch it.
+Treat the returned data as ground truth. If a session does not
+exist for today, say so and reference the next upcoming session.
+
+When a write is needed (logging a completed session, updating body
+weight, recording RPE, changing attempt targets, modifying supplement
+protocol, or any other mutation to the program), spawn the
+health_write specialist. Pass the intended change as the task, and
+pass the current program pk and sk. Do not attempt DynamoDB writes
+directly from the main agent.'
+put 2 34 "TRAINING_DATA_FETCH" "$C" health
+
 C='Default to planning before implementing. When given a coding
 task: explore the codebase first, understand existing patterns
 and architecture, identify affected files, then produce a
