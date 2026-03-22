@@ -161,6 +161,7 @@ resource "kubernetes_config_map" "main_portal_config" {
     NODE_ENV             = "production"
     PORT                 = "3000"
     FINANCE_PORTAL_URL   = "http://finance-portal-backend:3002"
+    HEALTH_PORTAL_URL    = "http://powerlifting-app-backend:3005"
     DIARY_PORTAL_URL     = "http://diary-portal-backend:3003"
     PROPOSALS_PORTAL_URL = "http://proposals-portal-backend:3004"
     FRONTEND_URL         = "http://main-portal-frontend:3001"
