@@ -44,27 +44,29 @@ export default function TimelinePage() {
   const width = Math.max(800, timelineData.totalDays * 3)
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Program Timeline</h1>
+    <div className="flex flex-col h-[calc(100vh-180px)] md:h-[calc(100vh-140px)]">
+      <div className="flex items-center justify-between mb-2 shrink-0">
+        <h1 className="text-2xl font-bold">Program Timeline</h1>
 
-      {/* Phase Legend */}
-      <div className="flex flex-wrap gap-4">
-        {program.phases.map((phase, idx) => (
-          <div key={idx} className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: phaseColor(phase, program.phases) }}
-            />
-            <span className="text-sm">
-              {phase.name} (W{phase.start_week}-W{phase.end_week})
-            </span>
-          </div>
-        ))}
+        {/* Phase Legend */}
+        <div className="flex flex-wrap gap-3">
+          {program.phases.map((phase, idx) => (
+            <div key={idx} className="flex items-center gap-1">
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: phaseColor(phase, program.phases) }}
+              />
+              <span className="text-xs">
+                {phase.name} (W{phase.start_week}-W{phase.end_week})
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Timeline SVG */}
-      <div className="overflow-x-auto border border-border rounded-lg">
-        <svg width={width} height={300} className="bg-card">
+      <div className="flex-1 overflow-auto border border-border rounded-lg min-h-0">
+        <svg viewBox={`0 0 ${width} 300`} preserveAspectRatio="xMidYMid meet" className="bg-card w-full h-full" style={{ minHeight: '180px' }}>
           {/* Phase bands */}
           {timelineData.phases.map((phase, idx) => {
             const x1 = (phase.startOffset / timelineData.totalDays) * width
@@ -160,9 +162,8 @@ export default function TimelinePage() {
       </div>
 
       {/* Info */}
-      <div className="text-sm text-muted-foreground">
-        <p>Program: {format(timelineData.startDate, 'MMM d, yyyy')} → {format(timelineData.compDate, 'MMM d, yyyy')}</p>
-        <p>Total: {timelineData.totalDays} days ({Math.ceil(timelineData.totalDays / 7)} weeks)</p>
+      <div className="text-xs text-muted-foreground shrink-0 mt-1">
+        {format(timelineData.startDate, 'MMM d, yyyy')} → {format(timelineData.compDate, 'MMM d, yyyy')} ({timelineData.totalDays} days, {Math.ceil(timelineData.totalDays / 7)} weeks)
       </div>
     </div>
   )

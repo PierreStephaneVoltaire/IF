@@ -17,9 +17,9 @@ export default function AppShell({ children }: AppShellProps) {
         </aside>
 
         {/* Main content */}
-        <div className="flex-1 md:ml-64">
+        <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
           <TopBar />
-          <main className="p-4 md:p-6">
+          <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-auto">
             {children}
           </main>
         </div>

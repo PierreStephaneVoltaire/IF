@@ -93,23 +93,25 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Calendar</h1>
+    <div className="flex flex-col h-[calc(100vh-180px)] md:h-[calc(100vh-140px)]">
+      <div className="flex items-center justify-between mb-2 shrink-0">
+        <h1 className="text-2xl font-bold">Calendar</h1>
 
-      {/* Phase Legend */}
-      <div className="flex flex-wrap gap-4">
-        {program.phases.map((phase, idx) => (
-          <div key={idx} className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: phaseColor(phase, program.phases) }}
-            />
-            <span className="text-sm">{phase.name}</span>
-          </div>
-        ))}
+        {/* Phase Legend */}
+        <div className="flex flex-wrap gap-3">
+          {program.phases.map((phase, idx) => (
+            <div key={idx} className="flex items-center gap-1">
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: phaseColor(phase, program.phases) }}
+              />
+              <span className="text-xs">{phase.name}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="bg-card border border-border rounded-lg p-4" style={{ height: '600px' }}>
+      <div className="bg-card border border-border rounded-lg p-4 flex-1 min-h-0">
         <Calendar
           localizer={localizer}
           events={events}

@@ -66,16 +66,16 @@ export default function StrengthProgressChart() {
 
   if (!program || data.length === 0) {
     return (
-      <div className="bg-card border border-border rounded-lg p-6 text-center">
-        <p className="text-muted-foreground">No completed sessions with lifts yet</p>
+      <div className="bg-card border border-border rounded-lg p-4 flex items-center justify-center min-h-0 flex-1">
+        <p className="text-muted-foreground text-sm">No completed sessions with lifts yet</p>
       </div>
     )
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="font-medium mb-4">Strength Progress</h3>
-      <div className="h-[300px]">
+    <div className="bg-card border border-border rounded-lg p-4 flex flex-col min-h-0">
+      <h3 className="font-medium mb-2 shrink-0">Strength Progress</h3>
+      <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />

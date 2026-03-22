@@ -48,18 +48,18 @@ export default function RpeChart() {
 
   if (!program || data.length === 0) {
     return (
-      <div className="bg-card border border-border rounded-lg p-6 text-center">
-        <p className="text-muted-foreground">
-          No sessions with RPE logged. Complete sessions and rate your effort.
+      <div className="bg-card border border-border rounded-lg p-4 h-full flex items-center justify-center min-h-0">
+        <p className="text-muted-foreground text-sm">
+          No sessions with RPE logged.
         </p>
       </div>
     )
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="font-medium mb-4">Session RPE (Last {data.length} Sessions)</h3>
-      <div className="h-[300px]">
+    <div className="bg-card border border-border rounded-lg p-4 h-full flex flex-col min-h-0">
+      <h3 className="font-medium mb-2 shrink-0 text-sm">Session RPE (Last {data.length})</h3>
+      <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} barCategoryGap={4}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -88,7 +88,7 @@ export default function RpeChart() {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 mt-4">
+      <div className="flex flex-wrap gap-3 mt-2 shrink-0">
         {[
           { color: '#22c55e', label: '≤7 Easy' },
           { color: '#eab308', label: '8 Moderate' },

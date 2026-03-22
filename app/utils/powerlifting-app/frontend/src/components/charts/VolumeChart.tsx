@@ -25,16 +25,16 @@ export default function VolumeChart() {
 
   if (!program || data.length === 0) {
     return (
-      <div className="bg-card border border-border rounded-lg p-6 text-center">
-        <p className="text-muted-foreground">No session data available</p>
+      <div className="bg-card border border-border rounded-lg p-4 flex items-center justify-center min-h-0 flex-1">
+        <p className="text-muted-foreground text-sm">No session data available</p>
       </div>
     )
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="font-medium mb-4">Weekly Volume by Category</h3>
-      <div className="h-[300px]">
+    <div className="bg-card border border-border rounded-lg p-4 flex flex-col min-h-0">
+      <h3 className="font-medium mb-2 shrink-0">Weekly Volume by Category</h3>
+      <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -45,6 +45,7 @@ export default function VolumeChart() {
             <Tooltip
               formatter={(value: number) => [`${(value / 1000).toFixed(1)}k volume`]}
             />
+            <Legend />
             <Bar
               dataKey="squat"
               stackId="a"
