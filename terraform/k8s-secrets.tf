@@ -43,6 +43,7 @@ resource "kubernetes_secret" "if_agent_api_secrets" {
   data = {
     OPENROUTER_API_KEY = var.openrouter_api_key
     DISCORD_TOKEN      = var.discord_token
+    TERMINAL_API_KEY   = var.terminal_api_key
   }
 
   type = "Opaque"
@@ -120,13 +121,8 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     REFLECTION_POST_SESSION_MIN_TURNS  = tostring(var.reflection_post_session_min_turns)
     REFLECTION_THRESHOLD_UNCATEGORIZED = tostring(var.reflection_threshold_uncategorized)
 
-    # Terminal configuration (K8s mode - uses pods instead of docker)
-    TERMINAL_IMAGE           = var.terminal_image
-    TERMINAL_MEM_LIMIT       = var.terminal_mem_limit
-    TERMINAL_CPU_QUOTA       = tostring(var.terminal_cpu_quota)
-    TERMINAL_IDLE_TIMEOUT    = tostring(var.terminal_idle_timeout)
-    TERMINAL_STARTUP_TIMEOUT = tostring(var.terminal_startup_timeout)
-    TERMINAL_MAX_CONTAINERS  = tostring(var.terminal_max_containers)
+    # Terminal configuration (static deployment via Terraform)
+    TERMINAL_URL = "http://open-terminal:7681"
 
     # Health configuration
     HEALTH_PROGRAM_PK = var.health_program_pk

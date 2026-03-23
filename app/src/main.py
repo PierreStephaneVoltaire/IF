@@ -15,7 +15,7 @@ from fastapi.responses import StreamingResponse, PlainTextResponse
 from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR, STORAGE_DB_PATH
 from config import HEARTBEAT_ENABLED, HEARTBEAT_IDLE_HOURS, HEARTBEAT_COOLDOWN_HOURS
 from config import REFLECTION_ENABLED
-from config import TERMINAL_IDLE_TIMEOUT
+from config import TERMINAL_URL, TERMINAL_API_KEY
 from api.models import router as models_router
 from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
@@ -37,7 +37,6 @@ heartbeat_runner = None
 reflection_engine = None
 
 terminal_manager = None
-terminal_cleanup_task = None
 
 
 async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
@@ -83,23 +82,6 @@ async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
         return
     
     logger.warning(f"Unknown platform for heartbeat: {platform}")
-
-
-async def _terminal_cleanup_loop():
-
-    global terminal_manager
-    
-    while True:
-        await asyncio.sleep(300)
-        if terminal_manager:
-            try:
-                cleaned = await terminal_manager.cleanup_idle(
-                    max_idle_seconds=TERMINAL_IDLE_TIMEOUT
-                )
-                if cleaned:
-                    logger.info(f"[Terminal] Cleaned up {len(cleaned)} idle containers: {cleaned}")
-            except Exception as e:
-                logger.error(f"[Terminal] Cleanup error: {e}")
 
 
 @asynccontextmanager
@@ -322,57 +304,26 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Reflection engine initialization failed: {e}")
     
-    global terminal_manager, terminal_cleanup_task
-    try:
-        from terminal import (
-            TerminalConfig,
-            K8sConfig,
-            K8sTerminalLifecycleManager,
-            init_k8s_lifecycle_manager,
-            get_k8s_lifecycle_manager,
-        )
-        from terminal.k8s_client import K8sTerminalClient
-
-        # Initialize K8s client
-        k8s_config = K8sConfig.from_env()
-        k8s_client = K8sTerminalClient(k8s_config)
-        k8s_client.connect()
-
-        # Initialize K8s lifecycle manager
-        terminal_config = TerminalConfig.from_env()
-        terminal_manager = init_k8s_lifecycle_manager(k8s_client, terminal_config)
-
-        # Recover existing pods
-        recovered = await terminal_manager.recover_existing()
-        if recovered:
-            logger.info(f"[Terminal] Recovered {len(recovered)} existing pods")
-
-        # Start cleanup task
-        terminal_cleanup_task = asyncio.create_task(_terminal_cleanup_loop())
-
-        logger.info(f"K8s terminal lifecycle manager initialized (namespace={k8s_config.namespace}, max={terminal_config.max_containers}, idle_timeout={terminal_config.idle_timeout}s)")
-    except ImportError as e:
-        logger.warning(f"Terminal module not available: {e}")
-        logger.warning("Install kubernetes package to enable terminal pods: pip install kubernetes>=28.0.0")
-    except Exception as e:
-        logger.warning(f"K8s terminal lifecycle manager initialization failed: {e}")
+    global terminal_manager
+    if TERMINAL_API_KEY:
+        try:
+            from terminal import init_static_manager
+            terminal_manager = init_static_manager(TERMINAL_URL, TERMINAL_API_KEY)
+            logger.info(f"[Terminal] Static terminal manager initialized: {TERMINAL_URL}")
+        except ImportError as e:
+            logger.warning(f"Terminal module not available: {e}")
+        except Exception as e:
+            logger.warning(f"Terminal initialization failed: {e}")
+    else:
+        logger.warning("[Terminal] No TERMINAL_API_KEY configured, terminal tools disabled")
     
     logger.info(f"Server ready on {HOST}:{PORT}")
     
     yield
-    
-    if terminal_cleanup_task:
-        terminal_cleanup_task.cancel()
-        try:
-            await terminal_cleanup_task
-        except asyncio.CancelledError:
-            pass
-        logger.info("Terminal cleanup task cancelled")
-    
+
     if terminal_manager:
-        await terminal_manager.stop_all()
         await terminal_manager.close()
-        logger.info("All terminal containers stopped")
+        logger.info("Terminal manager closed")
     
     if reflection_engine:
         reflection_engine.stop()

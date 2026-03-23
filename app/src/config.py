@@ -212,18 +212,15 @@ PRESET_FALLBACK_MODEL = os.getenv("PRESET_FALLBACK_MODEL", "openrouter/@preset/g
 REFLECTION_MODEL = os.getenv("REFLECTION_MODEL", "openrouter/@preset/general")
 
 
-TERMINAL_IMAGE = os.getenv("TERMINAL_IMAGE", "ghcr.io/open-webui/open-terminal:latest")
-TERMINAL_NETWORK = os.getenv("TERMINAL_NETWORK", "if-terminal-net")
-TERMINAL_MEM_LIMIT = os.getenv("TERMINAL_MEM_LIMIT", "512m")
-TERMINAL_CPU_QUOTA = int(os.getenv("TERMINAL_CPU_QUOTA", "50000"))
-TERMINAL_IDLE_TIMEOUT = int(os.getenv("TERMINAL_IDLE_TIMEOUT", "3600"))
-TERMINAL_STARTUP_TIMEOUT = float(os.getenv("TERMINAL_STARTUP_TIMEOUT", "30.0"))
-TERMINAL_MAX_CONTAINERS = int(os.getenv("TERMINAL_MAX_CONTAINERS", "20"))
+# =============================================================================
+# Terminal Configuration (Static Deployment)
+# =============================================================================
 
-# Docker named volumes host root path (for file serving)
-# On standard Docker installs this is /var/lib/docker/volumes/
-# Set to empty string to disable direct host access (will use docker cp fallback)
-TERMINAL_VOLUME_HOST_ROOT = os.getenv("TERMINAL_VOLUME_HOST_ROOT", "/var/lib/docker/volumes")
+# URL of the shared OpenTerminal deployment (managed via Terraform)
+TERMINAL_URL = os.getenv("TERMINAL_URL", "http://open-terminal:7681")
+
+# API key for terminal authentication
+TERMINAL_API_KEY = os.getenv("TERMINAL_API_KEY", "")
 
 
 

@@ -1,45 +1,39 @@
-"""Terminal module for persistent Docker container management.
+"""Terminal module for connecting to a shared OpenTerminal deployment.
 
-This module provides per-chat terminal containers backed by
-Open Terminal (https://github.com/open-webui/open-terminal).
+This module provides a client that connects to a pre-deployed terminal
+instance (managed via Terraform) rather than creating containers dynamically.
 
-Containers use named Docker volumes (not bind mounts) so the filesystem
-at /home/user survives container removal and recreation.
+The terminal uses conversation-scoped working directories for isolation:
+/home/user/conversations/{chat_id}
 
 Key components:
 - TerminalConfig: Configuration dataclass for terminal settings
-- TerminalLifecycleManager: Manages container creation, health, and cleanup
-- TerminalContainer: Data model for container metadata
+- StaticTerminalManager: Connects to existing terminal deployment
+- StaticTerminalContainer: Data model for terminal connection
 - TerminalClient: HTTP client for terminal API operations
 - CommandResult: Result of command execution
 
 Example:
-    from src.terminal import TerminalConfig, TerminalLifecycleManager, create_terminal_client
-    
-    config = TerminalConfig.from_env()
-    manager = TerminalLifecycleManager(docker.from_env(), config)
-    
-    # Get or create container for a chat
+    from terminal import init_static_manager, get_static_manager, create_terminal_client
+
+    # Initialize at startup
+    init_static_manager("http://open-terminal:7681", "your-api-key")
+
+    # Get container for tool execution
+    manager = get_static_manager()
     container = await manager.get_or_create("chat-123")
-    
+
     # Create client and execute commands
     client = create_terminal_client(container, httpx.AsyncClient())
     result = await client.execute_command("ls -la")
     print(result.stdout)
-    
-    # Clean up when done (volume persists)
-    await manager.stop("chat-123")
 """
 from .config import TerminalConfig
-from .lifecycle import (
-    TerminalContainer,
-    TerminalLifecycleManager,
-    TerminalCapacityError,
-    TerminalError,
-    TerminalNotFoundError,
-    TerminalStartupError,
-    get_lifecycle_manager,
-    init_lifecycle_manager,
+from .static_client import (
+    StaticTerminalContainer,
+    StaticTerminalManager,
+    init_static_manager,
+    get_static_manager,
 )
 from .client import (
     CommandResult,
@@ -57,28 +51,17 @@ from .files import (
     log_file_refs,
 )
 
-# K8s client
-from .k8s_client import K8sTerminalClient, K8sConfig
-
-# K8s lifecycle manager
-from .k8s_lifecycle import (
-    K8sTerminalContainer,
-    K8sTerminalLifecycleManager,
-    K8sTerminalError,
-    K8sTerminalStartupError,
-    K8sTerminalNotFoundError,
-    K8sTerminalCapacityError,
-    get_k8s_lifecycle_manager,
-    init_k8s_lifecycle_manager,
-)
-
 __all__ = [
     # Configuration
     "TerminalConfig",
-    # Core classes
-    "TerminalContainer",
-    "TerminalLifecycleManager",
+    # Static terminal management
+    "StaticTerminalContainer",
+    "StaticTerminalManager",
+    "init_static_manager",
+    "get_static_manager",
+    # HTTP client
     "TerminalClient",
+    "create_terminal_client",
     # Data models
     "CommandResult",
     "FileEntry",
@@ -88,26 +71,7 @@ __all__ = [
     "strip_files_line",
     "log_file_refs",
     # Exceptions
-    "TerminalError",
-    "TerminalStartupError",
-    "TerminalNotFoundError",
-    "TerminalCapacityError",
     "TerminalClientError",
     "TerminalTimeoutError",
     "TerminalAPIError",
-    # Module-level helpers
-    "get_lifecycle_manager",
-    "init_lifecycle_manager",
-    "create_terminal_client",
-    # K8s
-    "K8sTerminalClient",
-    "K8sConfig",
-    "K8sTerminalContainer",
-    "K8sTerminalLifecycleManager",
-    "K8sTerminalError",
-    "K8sTerminalStartupError",
-    "K8sTerminalNotFoundError",
-    "K8sTerminalCapacityError",
-    "get_k8s_lifecycle_manager",
-    "init_k8s_lifecycle_manager",
 ]

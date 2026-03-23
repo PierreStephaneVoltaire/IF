@@ -395,6 +395,18 @@ variable "terminal_max_containers" {
   default     = 20
 }
 
+variable "terminal_storage_gb" {
+  description = "Storage size for terminal workspace (GB)"
+  type        = number
+  default     = 10
+}
+
+variable "terminal_api_key" {
+  description = "API key for OpenTerminal authentication"
+  type        = string
+  sensitive   = true
+}
+
 # =============================================================================
 # User/Operator Configuration
 # =============================================================================
