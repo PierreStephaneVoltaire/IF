@@ -6,7 +6,7 @@ resource "kubernetes_service_account" "if_agent_api" {
     name      = "if-agent-api"
     namespace = kubernetes_namespace.if_portals.metadata[0].name
     labels = {
-      app       = "if-agent-api"
+      app        = "if-agent-api"
       managed-by = "terraform"
     }
   }

@@ -75,14 +75,17 @@ export interface Competition {
   name: string
   date: string
   federation: string
-  location: string
-  hotel_required: boolean
-  status: 'confirmed' | 'optional' | 'skipped'
+  location?: string
+  hotel_required?: boolean
+  status: 'confirmed' | 'optional' | 'completed' | 'skipped'
   weight_class_kg: number
-  targets: LiftResults
-  notes: string
+  body_weight_kg?: number  // Actual weigh-in weight for completed competitions
+  targets?: LiftResults    // For upcoming competitions
+  results?: LiftResults    // For completed competitions
+  notes?: string
   decision_date?: string | null
   between_comp_plan?: BetweenCompPlan
+  comp_day_protocol?: CompDayProtocol
 }
 
 export interface BetweenCompPlan {
@@ -114,6 +117,22 @@ export interface Session {
   session_notes: string
   session_rpe: number | null
   body_weight_kg: number | null
+  videos?: SessionVideo[]   // Optional video attachments
+}
+
+// ─── Session Video ───────────────────────────────────────────────────────────
+
+export interface SessionVideo {
+  video_id: string
+  s3_key: string
+  thumbnail_s3_key?: string
+  video_url: string
+  thumbnail_url?: string
+  exercise_name?: string
+  set_number?: number
+  notes?: string
+  uploaded_at: string
+  thumbnail_status?: 'pending' | 'ready' | 'failed'
 }
 
 // ─── Full Program ─────────────────────────────────────────────────────────────
@@ -145,13 +164,7 @@ export interface SupplementPhase {
   phase_name: string
   notes: string
   items: (Supplement & { notes?: string })[]
-  peak_week_protocol?: PeakWeekProtocol
-}
-
-export interface PeakWeekProtocol {
-  strategy: string
-  water_retention: string
-  diuretics: string
+  peak_week_protocol?: Record<string, string>  // Dynamic key-value pairs (caffeine, creatine_timing, etc.)
 }
 
 // ─── Max History ─────────────────────────────────────────────────────────────

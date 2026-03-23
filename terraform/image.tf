@@ -46,23 +46,12 @@ resource "aws_ecr_repository" "portal_frontends" {
   }
 }
 
-# Discord Webhook Server
-resource "aws_ecr_repository" "discord_webhook" {
-  name                 = "${var.ecr_repository_prefix}-discord-webhook"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-}
-
 # Lifecycle policy - keep last 5 images
 resource "aws_ecr_lifecycle_policy" "keep_5" {
   for_each = merge(
     { "if-agent-api" = aws_ecr_repository.if_agent_api.name },
     { for k, v in aws_ecr_repository.portal_backends : k => v.name },
-    { for k, v in aws_ecr_repository.portal_frontends : k => v.name },
-    { "discord-webhook" = aws_ecr_repository.discord_webhook.name }
+    { for k, v in aws_ecr_repository.portal_frontends : k => v.name }
   )
 
   repository = each.value
@@ -113,20 +102,14 @@ locals {
     ]))
   }
 
-  # Discord webhook server source code hash
-  discord_webhook_hash = sha1(join("", [
-    for f in fileset("${path.module}/../app/utils/discord-webhook-server/backend", "**/*") :
-    filesha1("${path.module}/../app/utils/discord-webhook-server/backend/${f}")
-  ]))
-
   # Map portal names to ingress paths for API URLs
-  # Note: Frontend code already includes /api in paths, so base URL is just the path prefix
+  # These are the full API base URLs including /api suffix where applicable
   portal_api_paths = {
-    "main-portal"     = "/main"
-    "finance-portal"  = "/finance"
-    "diary-portal"    = "/diary"
+    "main-portal"      = "/main"
+    "finance-portal"   = "/finance"
+    "diary-portal"     = "/diary"
     "proposals-portal" = "/proposals"
-    "powerlifting-app" = "/fitness"
+    "powerlifting-app" = "/fitness/api"
   }
 }
 
@@ -155,11 +138,11 @@ resource "null_resource" "packer_build_portal_backends" {
   for_each = local.portals
 
   triggers = {
-    dir_sha1      = filesha1("${path.module}/../docker/portals-backend.pkr.hcl")
-    source_sha1   = local.portal_backend_hashes[each.key]
-    repo_url      = aws_ecr_repository.portal_backends["${each.key}-backend"].repository_url
-    portal_name   = each.key
-    port          = each.value.port
+    dir_sha1    = filesha1("${path.module}/../docker/portals-backend.pkr.hcl")
+    source_sha1 = local.portal_backend_hashes[each.key]
+    repo_url    = aws_ecr_repository.portal_backends["${each.key}-backend"].repository_url
+    portal_name = each.key
+    port        = each.value.port
   }
 
   provisioner "local-exec" {
@@ -201,22 +184,3 @@ resource "null_resource" "packer_build_portal_frontends" {
   depends_on = [aws_ecr_repository.portal_frontends]
 }
 
-# Discord Webhook Server Packer Build
-resource "null_resource" "packer_build_discord_webhook" {
-  triggers = {
-    dir_sha1    = filesha1("${path.module}/../docker/discord-webhook.pkr.hcl")
-    source_sha1 = local.discord_webhook_hash
-    repo_url    = aws_ecr_repository.discord_webhook.repository_url
-  }
-
-  provisioner "local-exec" {
-    working_dir = "${path.module}/../docker"
-    command     = <<-EOT
-      aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
-      aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin $(echo ${aws_ecr_repository.discord_webhook.repository_url} | cut -d'/' -f1)
-      packer init discord-webhook.pkr.hcl
-      packer build -var "image_repository=${aws_ecr_repository.discord_webhook.repository_url}" -var "image_tag=latest" discord-webhook.pkr.hcl
-    EOT
-  }
-  depends_on = [aws_ecr_repository.discord_webhook]
-}

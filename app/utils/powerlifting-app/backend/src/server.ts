@@ -5,6 +5,10 @@ import { sessionsRouter } from './routes/sessions'
 import { exercisesRouter } from './routes/exercises'
 import { maxesRouter } from './routes/maxes'
 import { weightRouter } from './routes/weight'
+import { supplementsRouter } from './routes/supplements'
+import { dietNotesRouter } from './routes/dietNotes'
+import { competitionsRouter } from './routes/competitions'
+import { videosRouter } from './routes/videos'
 import { errorHandler } from './middleware/errorHandler'
 
 const app = express()
@@ -26,6 +30,10 @@ app.use('/api/sessions', sessionsRouter)
 app.use('/api/exercises', exercisesRouter)
 app.use('/api/maxes', maxesRouter)
 app.use('/api/weight', weightRouter)
+app.use('/api/supplements', supplementsRouter)
+app.use('/api/diet-notes', dietNotesRouter)
+app.use('/api/competitions', competitionsRouter)
+app.use('/api/videos', videosRouter)
 
 // Error handler
 app.use(errorHandler)

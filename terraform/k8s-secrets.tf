@@ -3,8 +3,8 @@
 data "aws_ecr_authorization_token" "private" {}
 
 locals {
-  ecr_registry_server = replace(data.aws_ecr_authorization_token.private.proxy_endpoint, "https://", "")
-  ecr_registry_auth   = base64encode("${data.aws_ecr_authorization_token.private.user_name}:${data.aws_ecr_authorization_token.private.password}")
+  ecr_registry_server  = replace(data.aws_ecr_authorization_token.private.proxy_endpoint, "https://", "")
+  ecr_registry_auth    = base64encode("${data.aws_ecr_authorization_token.private.user_name}:${data.aws_ecr_authorization_token.private.password}")
   ecr_dockerconfigjson = <<-EOT
 {
   "auths": {
@@ -57,24 +57,24 @@ resource "kubernetes_config_map" "if_agent_api_config" {
 
   data = {
     # DynamoDB Tables
-    IF_CORE_TABLE_NAME           = var.dynamodb_core_table
-    IF_HEALTH_TABLE_NAME         = var.dynamodb_health_table
-    IF_FINANCE_TABLE_NAME        = var.dynamodb_finance_table
-    IF_DIARY_ENTRIES_TABLE_NAME  = var.dynamodb_diary_entries_table
-    IF_DIARY_SIGNALS_TABLE_NAME  = var.dynamodb_diary_signals_table
-    IF_PROPOSALS_TABLE_NAME      = var.dynamodb_proposals_table
+    IF_CORE_TABLE_NAME          = var.dynamodb_core_table
+    IF_HEALTH_TABLE_NAME        = var.dynamodb_health_table
+    IF_FINANCE_TABLE_NAME       = var.dynamodb_finance_table
+    IF_DIARY_ENTRIES_TABLE_NAME = var.dynamodb_diary_entries_table
+    IF_DIARY_SIGNALS_TABLE_NAME = var.dynamodb_diary_signals_table
+    IF_PROPOSALS_TABLE_NAME     = var.dynamodb_proposals_table
 
     # Model configuration
-    API_MODEL_NAME   = var.api_model_name
-    TOKENIZER_MODEL  = var.tokenizer_model
-    EMBEDDING_MODEL  = var.embedding_model
+    API_MODEL_NAME  = var.api_model_name
+    TOKENIZER_MODEL = var.tokenizer_model
+    EMBEDDING_MODEL = var.embedding_model
 
     # Preset models
-    DIRECTIVE_REWRITE_MODEL      = var.directive_rewrite_model
-    CONDENSER_MODEL              = var.condenser_model
-    REFLECTION_MODEL             = var.reflection_model
-    RESEARCH_AGENT_MODEL         = var.research_agent_model
-    DIARY_SIGNAL_MODEL           = var.diary_signal_model
+    DIRECTIVE_REWRITE_MODEL = var.directive_rewrite_model
+    CONDENSER_MODEL         = var.condenser_model
+    REFLECTION_MODEL        = var.reflection_model
+    RESEARCH_AGENT_MODEL    = var.research_agent_model
+    DIARY_SIGNAL_MODEL      = var.diary_signal_model
 
     # Tiering configuration
     TIER_UPGRADE_THRESHOLD = tostring(var.tier_upgrade_threshold)
@@ -105,8 +105,8 @@ resource "kubernetes_config_map" "if_agent_api_config" {
 
     # Channel configuration
     CHANNEL_DEBOUNCE_SECONDS = tostring(var.channel_debounce_seconds)
-    CHANNEL_MAX_CHUNK_CHARS   = tostring(var.channel_max_chunk_chars)
-    OPENWEBUI_POLL_INTERVAL   = tostring(var.openwebui_poll_interval)
+    CHANNEL_MAX_CHUNK_CHARS  = tostring(var.channel_max_chunk_chars)
+    OPENWEBUI_POLL_INTERVAL  = tostring(var.openwebui_poll_interval)
 
     # Heartbeat configuration
     HEARTBEAT_ENABLED        = tostring(var.heartbeat_enabled)
@@ -135,8 +135,8 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     IF_USER_PK = var.if_user_pk
 
     # Diary configuration
-    DIARY_TTL_DAYS                       = tostring(var.diary_ttl_days)
-    DIARY_SIGNAL_COMPUTE_INTERVAL_HOURS  = tostring(var.diary_signal_compute_interval_hours)
+    DIARY_TTL_DAYS                      = tostring(var.diary_ttl_days)
+    DIARY_SIGNAL_COMPUTE_INTERVAL_HOURS = tostring(var.diary_signal_compute_interval_hours)
 
     # AWS Region
     AWS_REGION = var.region
@@ -232,50 +232,3 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
   }
 }
 
-# =============================================================================
-# Discord Webhook Server ConfigMap and Secret
-# =============================================================================
-
-# Discord Webhook Server ConfigMap - non-sensitive configuration
-resource "kubernetes_config_map" "discord_webhook_config" {
-  metadata {
-    name      = "discord-webhook-config"
-    namespace = kubernetes_namespace.if_portals.metadata[0].name
-  }
-
-  data = {
-    # Server configuration
-    HOST = "0.0.0.0"
-    PORT = "8080"
-
-    # Agent API configuration - points to the main agent API service
-    AGENT_API_URL    = "http://if-agent-api:8000"
-    AGENT_MODEL_NAME = var.api_model_name
-    AGENT_TIMEOUT    = "120.0"
-
-    # History configuration
-    DEFAULT_HISTORY_LIMIT = "50"
-    MAX_HISTORY_LIMIT     = "500"
-
-    # Response chunking (Discord has a 2000 char message limit)
-    MAX_CHUNK_CHARS   = "1500"
-    INTER_CHUNK_DELAY = "0.5"
-
-    # Logging
-    LOG_LEVEL = var.log_level
-  }
-}
-
-# Discord Webhook Server Secret - sensitive values
-resource "kubernetes_secret" "discord_webhook_secrets" {
-  metadata {
-    name      = "discord-webhook-secrets"
-    namespace = kubernetes_namespace.if_portals.metadata[0].name
-  }
-
-  data = {
-    DISCORD_BOT_TOKEN = var.discord_token
-  }
-
-  type = "Opaque"
-}

@@ -9,6 +9,9 @@ import TimelinePage from '@/pages/TimelinePage'
 import ChartsPage from '@/pages/ChartsPage'
 import GlossaryPage from '@/pages/GlossaryPage'
 import ToolsPage from '@/pages/ToolsPage'
+import SupplementsPage from '@/pages/SupplementsPage'
+import DietNotesPage from '@/pages/DietNotesPage'
+import CompetitionsPage from '@/pages/CompetitionsPage'
 
 export default function App() {
   const { loadProgram, version } = useProgramStore()
@@ -25,6 +28,9 @@ export default function App() {
         <Route path="/list" element={<ListPage />} />
         <Route path="/timeline" element={<TimelinePage />} />
         <Route path="/charts" element={<ChartsPage />} />
+        <Route path="/supplements" element={<SupplementsPage />} />
+        <Route path="/diet" element={<DietNotesPage />} />
+        <Route path="/competitions" element={<CompetitionsPage />} />
         <Route path="/glossary" element={<GlossaryPage />} />
         <Route path="/tools" element={<ToolsPage />} />
       </Routes>

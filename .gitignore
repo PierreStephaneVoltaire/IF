@@ -9,6 +9,7 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+video-lambda.zip
 
 # Docker
 .docker/

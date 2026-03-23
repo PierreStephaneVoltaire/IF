@@ -7,8 +7,10 @@ import { formatDateLong, getDayOfWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
 import { clsx } from 'clsx'
-import { X, Check, Save, RotateCcw, Plus, GripVertical, Trash2, Calendar } from 'lucide-react'
-import type { Session, Exercise } from '@powerlifting/types'
+import { X, Check, Save, RotateCcw, Plus, GripVertical, Trash2, Calendar, Film, Loader2 } from 'lucide-react'
+import type { Session, Exercise, SessionVideo } from '@powerlifting/types'
+import VideoGrid from './VideoGrid'
+import VideoUploadModal from './VideoUploadModal'
 
 interface SessionDrawerProps {
   isOpen: boolean
@@ -23,13 +25,15 @@ export default function SessionDrawer({
   session,
   sessionIndex,
 }: SessionDrawerProps) {
-  const { program, updateSession, saveSession, rescheduleSession } = useProgramStore()
+  const { program, updateSession, saveSession, rescheduleSession, deleteSession } = useProgramStore()
   const { unit } = useSettingsStore()
   const { pushToast } = useUiStore()
 
   const [localSession, setLocalSession] = useState<Session | null>(null)
   const [originalDate, setOriginalDate] = useState<string>('')
   const [hasChanges, setHasChanges] = useState(false)
+  const [showVideoUpload, setShowVideoUpload] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Initialize local state when session changes
   useEffect(() => {
@@ -139,6 +143,21 @@ export default function SessionDrawer({
   const updateNotes = (notes: string) => {
     setLocalSession((prev) => prev ? { ...prev, session_notes: notes } : prev)
     setHasChanges(true)
+  }
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this entire session? This cannot be undone.')) return
+    setIsDeleting(true)
+    try {
+      await deleteSession(originalDate)
+      pushToast({ message: 'Session deleted', type: 'success' })
+      onClose()
+    } catch (err) {
+      console.error(err)
+      pushToast({ message: 'Failed to delete session', type: 'error' })
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   const phaseColorValue = phaseColor(session.phase, program.phases)
@@ -297,6 +316,36 @@ export default function SessionDrawer({
                         <Plus className="w-4 h-4 inline mr-1" />
                         Add Exercise
                       </button>
+
+                      {/* Videos Section */}
+                      <div className="pt-4 border-t border-border">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-medium flex items-center gap-2">
+                            <Film className="w-4 h-4" />
+                            Videos
+                            {(session.videos?.length || 0) > 0 && (
+                              <span className="text-xs text-muted-foreground">
+                                ({session.videos?.length})
+                              </span>
+                            )}
+                          </h3>
+                          <button
+                            onClick={() => setShowVideoUpload(true)}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-secondary rounded hover:bg-secondary/80"
+                          >
+                            <Plus className="w-3 h-3" />
+                            Upload
+                          </button>
+                        </div>
+
+                        {session.videos && session.videos.length > 0 ? (
+                          <VideoGrid session={session} />
+                        ) : (
+                          <p className="text-xs text-muted-foreground text-center py-4">
+                            No videos uploaded for this session
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     {/* Footer */}
@@ -346,6 +395,21 @@ export default function SessionDrawer({
                       {/* Actions */}
                       <div className="flex gap-2">
                         <button
+                          onClick={handleDelete}
+                          disabled={isDeleting}
+                          className={clsx(
+                            'py-2 px-3 rounded-md text-sm font-medium transition-colors',
+                            'text-destructive hover:bg-destructive/10',
+                            isDeleting && 'opacity-50 cursor-not-allowed'
+                          )}
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
                           onClick={handleDiscard}
                           disabled={!hasChanges}
                           className={clsx(
@@ -380,6 +444,23 @@ export default function SessionDrawer({
           </div>
         </div>
       </Dialog>
+
+      {/* Video Upload Modal */}
+      <VideoUploadModal
+        session={session}
+        isOpen={showVideoUpload}
+        onClose={() => setShowVideoUpload(false)}
+        onUploaded={(video: SessionVideo) => {
+          // Reload session to get updated videos
+          setLocalSession((prev) => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              videos: [...(prev.videos || []), video],
+            }
+          })
+        }}
+      />
     </Transition>
   )
 }

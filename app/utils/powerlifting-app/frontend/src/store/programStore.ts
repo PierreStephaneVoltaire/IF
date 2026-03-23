@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Program, Session, Exercise, MaxEntry, WeightEntry, ProgramListItem } from '@powerlifting/types'
+import type { Program, Session, Exercise, MaxEntry, WeightEntry, ProgramListItem, SupplementPhase, DietNote, Competition, SessionVideo, LiftResults } from '@powerlifting/types'
 import * as api from '@/api/client'
 
 interface ProgramState {
@@ -43,6 +43,20 @@ interface ProgramState {
   removeWeightEntry: (date: string) => Promise<void>
   forkVersion: (label?: string) => Promise<string>
   reset: () => void
+
+  // Supplements
+  updateSupplementPhases: (phases: SupplementPhase[]) => Promise<void>
+
+  // Diet Notes
+  updateDietNotes: (dietNotes: DietNote[]) => Promise<void>
+
+  // Competitions
+  updateCompetitions: (competitions: Competition[]) => Promise<void>
+  migrateLastComp: () => Promise<void>
+  completeCompetition: (date: string, results: LiftResults, bodyWeightKg: number) => Promise<void>
+
+  // Videos
+  removeSessionVideo: (sessionDate: string, videoId: string) => void
 }
 
 export const useProgramStore = create<ProgramState>((set, get) => ({
@@ -258,6 +272,102 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
     const newVersion = await api.forkProgram(version, label)
     await get().loadProgram(newVersion)
     return newVersion
+  },
+
+  // Supplements
+  updateSupplementPhases: async (phases) => {
+    const { version } = get()
+    await api.updateSupplementPhases(version, phases)
+
+    set((state) => {
+      if (!state.program) return state
+      return {
+        program: {
+          ...state.program,
+          supplement_phases: phases,
+        },
+      }
+    })
+  },
+
+  // Diet Notes
+  updateDietNotes: async (dietNotes) => {
+    const { version } = get()
+    await api.updateDietNotes(version, dietNotes)
+
+    set((state) => {
+      if (!state.program) return state
+      return {
+        program: {
+          ...state.program,
+          diet_notes: dietNotes,
+        },
+      }
+    })
+  },
+
+  // Competitions
+  updateCompetitions: async (competitions) => {
+    const { version } = get()
+    await api.updateCompetitions(version, competitions)
+
+    set((state) => {
+      if (!state.program) return state
+      return {
+        program: {
+          ...state.program,
+          competitions,
+        },
+      }
+    })
+  },
+
+  migrateLastComp: async () => {
+    const { version } = get()
+    const competitions = await api.migrateLastComp(version)
+
+    set((state) => {
+      if (!state.program) return state
+      return {
+        program: {
+          ...state.program,
+          competitions,
+        },
+      }
+    })
+  },
+
+  completeCompetition: async (date, results, bodyWeightKg) => {
+    const { version } = get()
+    await api.completeCompetition(version, date, results, bodyWeightKg)
+
+    set((state) => {
+      if (!state.program) return state
+      const competitions = state.program.competitions.map((c) =>
+        c.date === date
+          ? { ...c, status: 'completed' as const, results, body_weight_kg: bodyWeightKg }
+          : c
+      )
+      return {
+        program: {
+          ...state.program,
+          competitions,
+        },
+      }
+    })
+  },
+
+  // Videos
+  removeSessionVideo: (sessionDate, videoId) => {
+    set((state) => {
+      if (!state.program) return state
+      const sessions = state.program.sessions.map((s) => {
+        if (s.date !== sessionDate) return s
+        const videos = (s.videos || []).filter((v) => v.video_id !== videoId)
+        return { ...s, videos: videos.length > 0 ? videos : undefined }
+      })
+      return { program: { ...state.program, sessions } }
+    })
   },
 
   reset: () =>

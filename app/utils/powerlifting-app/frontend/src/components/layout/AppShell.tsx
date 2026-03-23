@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
+import SettingsDrawer from './SettingsDrawer'
 
 interface AppShellProps {
   children: ReactNode
@@ -29,6 +30,9 @@ export default function AppShell({ children }: AppShellProps) {
       <nav className="fixed bottom-0 left-0 right-0 md:hidden border-t border-border bg-card z-50">
         <Sidebar mobile />
       </nav>
+
+      {/* Settings Drawer */}
+      <SettingsDrawer />
     </div>
   )
 }

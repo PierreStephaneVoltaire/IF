@@ -9,6 +9,11 @@ import type {
   GlossaryExercise,
   ApiResponse,
   Phase,
+  SupplementPhase,
+  DietNote,
+  Competition,
+  SessionVideo,
+  LiftResults,
 } from '@powerlifting/types'
 
 const api = axios.create({
@@ -230,6 +235,74 @@ export async function upsertExercise(
 
 export async function deleteExercise(exerciseId: string): Promise<void> {
   await api.delete(`/exercises/${exerciseId}`)
+}
+
+// ─── Supplements ──────────────────────────────────────────────────────────────
+
+export async function fetchSupplementPhases(
+  version: string
+): Promise<SupplementPhase[]> {
+  const res = await api.get<ApiResponse<SupplementPhase[]>>(`/supplements/${version}`)
+  return res.data.data
+}
+
+export async function updateSupplementPhases(
+  version: string,
+  phases: SupplementPhase[]
+): Promise<void> {
+  await api.put(`/supplements/${version}`, { phases })
+}
+
+// ─── Diet Notes ───────────────────────────────────────────────────────────────
+
+export async function fetchDietNotes(version: string): Promise<DietNote[]> {
+  const res = await api.get<ApiResponse<DietNote[]>>(`/diet-notes/${version}`)
+  return res.data.data
+}
+
+export async function updateDietNotes(
+  version: string,
+  dietNotes: DietNote[]
+): Promise<void> {
+  await api.put(`/diet-notes/${version}`, { dietNotes })
+}
+
+// ─── Competitions ─────────────────────────────────────────────────────────────
+
+export async function fetchCompetitions(version: string): Promise<Competition[]> {
+  const res = await api.get<ApiResponse<Competition[]>>(`/competitions/${version}`)
+  return res.data.data
+}
+
+export async function updateCompetitions(
+  version: string,
+  competitions: Competition[]
+): Promise<void> {
+  await api.put(`/competitions/${version}`, { competitions })
+}
+
+export async function migrateLastComp(version: string): Promise<Competition[]> {
+  const res = await api.post<ApiResponse<Competition[]>>(`/competitions/${version}/migrate`)
+  return res.data.data
+}
+
+export async function completeCompetition(
+  version: string,
+  date: string,
+  results: LiftResults,
+  bodyWeightKg: number
+): Promise<void> {
+  await api.patch(`/competitions/${version}/${date}/complete`, { results, bodyWeightKg })
+}
+
+// ─── Videos ───────────────────────────────────────────────────────────────────
+
+export async function removeSessionVideo(
+  version: string,
+  sessionDate: string,
+  videoId: string
+): Promise<void> {
+  await api.delete(`/videos/${version}/${sessionDate}/${videoId}`)
 }
 
 export default api

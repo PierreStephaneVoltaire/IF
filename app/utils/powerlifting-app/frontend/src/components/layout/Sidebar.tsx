@@ -7,6 +7,9 @@ import {
   BarChart3,
   BookOpen,
   Wrench,
+  Pill,
+  Utensils,
+  Trophy,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -20,6 +23,9 @@ const NAV_ITEMS = [
   { to: '/list', icon: List, label: 'List' },
   { to: '/timeline', icon: GitBranch, label: 'Timeline' },
   { to: '/charts', icon: BarChart3, label: 'Charts' },
+  { to: '/supplements', icon: Pill, label: 'Supplements' },
+  { to: '/diet', icon: Utensils, label: 'Diet Notes' },
+  { to: '/competitions', icon: Trophy, label: 'Competitions' },
   { to: '/glossary', icon: BookOpen, label: 'Glossary' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
 ]
