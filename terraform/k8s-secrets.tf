@@ -228,3 +228,22 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
   }
 }
 
+# =============================================================================
+# Tinyauth Secrets
+# =============================================================================
+
+resource "kubernetes_secret" "tinyauth_secrets" {
+  metadata {
+    name      = "tinyauth-secrets"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+  }
+
+  data = {
+    TINYAUTH_SECRET                        = var.tinyauth_secret
+    TINYAUTH_OAUTH_PROVIDERS_GOOGLE_CLIENTID     = var.google_oauth_client_id
+    TINYAUTH_OAUTH_PROVIDERS_GOOGLE_CLIENTSECRET = var.google_oauth_client_secret
+  }
+
+  type = "Opaque"
+}
+

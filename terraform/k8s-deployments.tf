@@ -214,6 +214,11 @@ resource "kubernetes_deployment" "portal_backends" {
         labels = {
           app = "${each.key}-backend"
         }
+        annotations = {
+          "prometheus.io/scrape" = "true"
+          "prometheus.io/port"   = tostring(each.value.port)
+          "prometheus.io/path"   = "/metrics"
+        }
       }
 
       spec {

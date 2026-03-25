@@ -452,7 +452,7 @@ variable "log_level" {
 variable "storage_class" {
   description = "Kubernetes storage class for persistent volumes"
   type        = string
-  default     = "local-path"
+  default     = "local-path-wait"
 }
 
 variable "data_storage_gb" {
@@ -529,5 +529,108 @@ variable "aws_credentials_host_path" {
   description = "Path to AWS credentials directory on the k3s node (mounted into pods)"
   type        = string
   default     = "/root/.aws"
+}
+
+# =============================================================================
+# Domain & Gateway
+# =============================================================================
+
+variable "domain" {
+  description = "Primary domain for the cluster (Tailscale MagicDNS or custom domain)"
+  type        = string
+  default     = ""
+}
+
+variable "gateway_name" {
+  description = "Name of the manually-managed Gateway resource"
+  type        = string
+  default     = "nginx-gateway"
+}
+
+variable "gateway_namespace" {
+  description = "Namespace of the manually-managed Gateway resource"
+  type        = string
+  default     = "default"
+}
+
+# =============================================================================
+# Tinyauth Configuration
+# =============================================================================
+
+variable "tinyauth_secret" {
+  description = "Tinyauth session secret (min 32 chars)"
+  type        = string
+  sensitive   = true
+}
+
+variable "google_oauth_client_id" {
+  description = "Google OAuth client ID from Google Cloud Console"
+  type        = string
+  sensitive   = true
+}
+
+variable "google_oauth_client_secret" {
+  description = "Google OAuth client secret from Google Cloud Console"
+  type        = string
+  sensitive   = true
+}
+
+variable "tinyauth_oauth_whitelist" {
+  description = "Comma-separated list of allowed Google email addresses"
+  type        = string
+  default     = ""
+}
+
+variable "tinyauth_local_users" {
+  description = "Local users in format 'username:bcrypt_hash' (comma-separated for multiple)"
+  type        = string
+  default     = ""
+}
+
+variable "tinyauth_image_tag" {
+  description = "Tinyauth container image tag"
+  type        = string
+  default     = "v5"
+}
+
+# =============================================================================
+# Observability Configuration
+# =============================================================================
+
+variable "loki_storage_gb" {
+  description = "Storage size for Loki log data (GB)"
+  type        = number
+  default     = 10
+}
+
+variable "prometheus_storage_gb" {
+  description = "Storage size for Prometheus metrics (GB)"
+  type        = number
+  default     = 10
+}
+
+variable "grafana_storage_gb" {
+  description = "Storage size for Grafana dashboards (GB)"
+  type        = number
+  default     = 2
+}
+
+variable "log_retention_days" {
+  description = "Days to retain logs in Loki"
+  type        = number
+  default     = 7
+}
+
+variable "metrics_retention_days" {
+  description = "Days to retain metrics in Prometheus"
+  type        = number
+  default     = 15
+}
+
+variable "grafana_admin_password" {
+  description = "Grafana admin user password"
+  type        = string
+  sensitive   = true
+  default     = "admin"
 }
 

@@ -57,10 +57,10 @@ export default function RpeChart() {
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4 h-full flex flex-col min-h-0">
-      <h3 className="font-medium mb-2 shrink-0 text-sm">Session RPE (Last {data.length})</h3>
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
+    <div className="bg-card border border-border rounded-lg p-4">
+      <h3 className="font-medium mb-2 text-sm">Session RPE (Last {data.length})</h3>
+      <div>
+        <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data} barCategoryGap={4}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="label" angle={-45} textAnchor="end" height={80} />

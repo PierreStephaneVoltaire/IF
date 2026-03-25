@@ -1,284 +1,500 @@
-# Kubernetes Ingress for k3s (Traefik)
+# gateway-global-setup injects rate limiting and the internal /_tinyauth forward-auth location.
+# Only one HTTPRoute needs to reference it for these to be available to all routes on the listener.
+resource "kubectl_manifest" "snippets_gateway_global" {
+  depends_on = [
+    null_resource.ngf_snippets_enable,
+    kubernetes_deployment.tinyauth,
+  ]
 
-# Traefik Middleware to strip path prefixes for backend API routing
-resource "null_resource" "traefik_strip_prefix_middleware" {
-  depends_on = [kubernetes_namespace.if_portals]
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      kubectl apply -f - <<EOF
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
+  yaml_body = <<-YAML
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
 metadata:
-  name: strip-prefix
+  name: gateway-global-setup
   namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
 spec:
-  stripPrefix:
-    prefixes:
-      - /api
-      - /main
-      - /finance
-      - /diary
-      - /proposals
-      - /fitness
-EOF
-    EOT
-  }
+  snippets:
+    - context: http
+      value: |
+        limit_req_zone $binary_remote_addr zone=portal_limit:10m rate=30r/s;
+    - context: http.server
+      value: |
+        location = /_tinyauth {
+            internal;
+            proxy_pass http://tinyauth.${kubernetes_namespace.if_portals.metadata[0].name}.svc.cluster.local:3000/api/auth/nginx;
+            proxy_set_header x-forwarded-proto $scheme;
+            proxy_set_header x-forwarded-host $http_host;
+            proxy_set_header x-forwarded-uri $request_uri;
+            proxy_set_header Content-Length "";
+            proxy_set_header Connection "";
+            proxy_pass_request_body off;
+        }
+    - context: http.server.location
+      value: |
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        limit_req zone=portal_limit burst=20 nodelay;
+  YAML
 }
 
-# Traefik Middleware to strip /app/xxx prefixes for frontend routing
-resource "null_resource" "traefik_strip_frontend_prefix_middleware" {
-  depends_on = [kubernetes_namespace.if_portals]
+resource "kubectl_manifest" "snippets_auth_and_security" {
+  depends_on = [kubectl_manifest.snippets_gateway_global]
 
-  provisioner "local-exec" {
-    command = <<-EOT
-      kubectl apply -f - <<EOF
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
+  yaml_body = <<-YAML
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
 metadata:
-  name: strip-frontend-prefix
+  name: auth-and-security
   namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
 spec:
-  stripPrefix:
-    prefixes:
-      - /app/main
-      - /app/finance
-      - /app/diary
-      - /app/proposals
-      - /app/fitness
-EOF
-    EOT
-  }
+  snippets:
+    - context: http.server.location
+      value: |
+        auth_request /_tinyauth;
+        error_page 401 =302 /auth/?rd=$scheme://$http_host$request_uri;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';" always;
+        limit_req zone=portal_limit burst=20 nodelay;
+  YAML
 }
 
-# Ingress for backend APIs with strip-prefix middleware
-resource "kubernetes_ingress_v1" "if_portals_backends" {
-  depends_on = [null_resource.traefik_strip_prefix_middleware]
+resource "kubectl_manifest" "snippets_security_only" {
+  depends_on = [null_resource.ngf_snippets_enable]
 
-  metadata {
-    name      = "if-portals-backends-ingress"
-    namespace = kubernetes_namespace.if_portals.metadata[0].name
-    annotations = {
-      "kubernetes.io/ingress.class"                      = "traefik"
-      "traefik.ingress.kubernetes.io/router.middlewares" = "if-portals-strip-prefix@kubernetescrd"
-    }
-  }
-
-  spec {
-    # Main API
-    rule {
-      http {
-        path {
-          path      = "/api"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.if_agent_api.metadata[0].name
-              port {
-                number = 8000
-              }
-            }
-          }
-        }
-      }
-    }
-
-    # Portal Backends - route by path prefix
-    rule {
-      http {
-        path {
-          path      = "/main"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_backends["main-portal"].metadata[0].name
-              port {
-                number = 3000
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/finance"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_backends["finance-portal"].metadata[0].name
-              port {
-                number = 3002
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/diary"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_backends["diary-portal"].metadata[0].name
-              port {
-                number = 3003
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/proposals"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_backends["proposals-portal"].metadata[0].name
-              port {
-                number = 3004
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/fitness"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_backends["powerlifting-app"].metadata[0].name
-              port {
-                number = 3005
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+  yaml_body = <<-YAML
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
+metadata:
+  name: security-only
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  snippets:
+    - context: http.server.location
+      value: |
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';" always;
+        limit_req zone=portal_limit burst=20 nodelay;
+  YAML
 }
 
-# Ingress for frontends with strip-frontend-prefix middleware
-resource "kubernetes_ingress_v1" "if_portals_frontends" {
-  depends_on = [null_resource.traefik_strip_frontend_prefix_middleware]
+resource "kubectl_manifest" "route_tinyauth" {
+  depends_on = [kubectl_manifest.snippets_gateway_global]
 
-  metadata {
-    name      = "if-portals-frontends-ingress"
-    namespace = kubernetes_namespace.if_portals.metadata[0].name
-    annotations = {
-      "kubernetes.io/ingress.class"                      = "traefik"
-      "traefik.ingress.kubernetes.io/router.middlewares" = "if-portals-strip-frontend-prefix@kubernetescrd"
-    }
-  }
-
-  spec {
-    # Portal Frontends - route by path
-    rule {
-      http {
-        path {
-          path      = "/app/main"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_frontends["main-portal"].metadata[0].name
-              port {
-                number = 3001
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/app/finance"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_frontends["finance-portal"].metadata[0].name
-              port {
-                number = 3001
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/app/diary"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_frontends["diary-portal"].metadata[0].name
-              port {
-                number = 3001
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/app/proposals"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_frontends["proposals-portal"].metadata[0].name
-              port {
-                number = 3001
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/app/fitness"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.portal_frontends["powerlifting-app"].metadata[0].name
-              port {
-                number = 3001
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+  yaml_body = <<-YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: tinyauth-portal
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  parentRefs:
+    - name: ${var.gateway_name}
+      namespace: ${var.gateway_namespace}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /auth
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: gateway-global-setup
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.tinyauth.metadata[0].name}
+          port: 3000
+  YAML
 }
 
-# Main portal frontend at root (no prefix stripping)
-resource "kubernetes_ingress_v1" "if_portals_main" {
-  metadata {
-    name      = "if-portals-main-ingress"
-    namespace = kubernetes_namespace.if_portals.metadata[0].name
-    annotations = {
-      "kubernetes.io/ingress.class" = "traefik"
-    }
-  }
+resource "kubectl_manifest" "route_protected_frontends" {
+  depends_on = [kubectl_manifest.snippets_auth_and_security]
 
-  spec {
-    rule {
-      http {
-        path {
-          path      = "/"
-          path_type = "Prefix"
+  yaml_body = <<-YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: protected-frontends
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  parentRefs:
+    - name: ${var.gateway_name}
+      namespace: ${var.gateway_namespace}
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+      backendRefs:
+        - name: ${kubernetes_service.portal_frontends["main-portal"].metadata[0].name}
+          port: 3001
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /app/main
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_frontends["main-portal"].metadata[0].name}
+          port: 3001
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /app/finance
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_frontends["finance-portal"].metadata[0].name}
+          port: 3001
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /app/diary
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_frontends["diary-portal"].metadata[0].name}
+          port: 3001
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /app/proposals
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_frontends["proposals-portal"].metadata[0].name}
+          port: 3001
+  YAML
+}
 
-          backend {
-            service {
-              name = kubernetes_service.portal_frontends["main-portal"].metadata[0].name
-              port {
-                number = 3001
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+resource "kubectl_manifest" "route_protected_backends" {
+  depends_on = [kubectl_manifest.snippets_auth_and_security]
+
+  yaml_body = <<-YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: protected-backends
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  parentRefs:
+    - name: ${var.gateway_name}
+      namespace: ${var.gateway_namespace}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /main
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_backends["main-portal"].metadata[0].name}
+          port: 3000
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /finance
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_backends["finance-portal"].metadata[0].name}
+          port: 3002
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /diary
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_backends["diary-portal"].metadata[0].name}
+          port: 3003
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /proposals
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_backends["proposals-portal"].metadata[0].name}
+          port: 3004
+  YAML
+}
+
+resource "kubectl_manifest" "route_fitness_protected" {
+  depends_on = [kubectl_manifest.snippets_auth_and_security]
+
+  yaml_body = <<-YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: fitness-protected
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  parentRefs:
+    - name: ${var.gateway_name}
+      namespace: ${var.gateway_namespace}
+  rules:
+%{for method in ["POST", "PUT", "PATCH", "DELETE"]}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /fitness
+          method: ${method}
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_backends["powerlifting-app"].metadata[0].name}
+          port: 3005
+%{endfor}
+  YAML
+}
+
+resource "kubectl_manifest" "route_public" {
+  depends_on = [kubectl_manifest.snippets_security_only]
+
+  yaml_body = <<-YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: public-routes
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  parentRefs:
+    - name: ${var.gateway_name}
+      namespace: ${var.gateway_namespace}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /app/fitness
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: security-only
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_frontends["powerlifting-app"].metadata[0].name}
+          port: 3001
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /fitness
+          method: GET
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: security-only
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_backends["powerlifting-app"].metadata[0].name}
+          port: 3005
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /fitness
+          method: HEAD
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: security-only
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_backends["powerlifting-app"].metadata[0].name}
+          port: 3005
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /fitness
+          method: OPTIONS
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: security-only
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.portal_backends["powerlifting-app"].metadata[0].name}
+          port: 3005
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: security-only
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: ${kubernetes_service.if_agent_api.metadata[0].name}
+          port: 8000
+  YAML
+}
+
+# Grafana uses cross-namespace backendRef, requires ReferenceGrant in monitoring ns
+resource "kubectl_manifest" "route_grafana" {
+  depends_on = [
+    kubectl_manifest.snippets_auth_and_security,
+    kubectl_manifest.monitoring_reference_grant,
+  ]
+
+  yaml_body = <<-YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  parentRefs:
+    - name: ${var.gateway_name}
+      namespace: ${var.gateway_namespace}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /grafana
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: auth-and-security
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: grafana
+          namespace: ${kubernetes_namespace.monitoring.metadata[0].name}
+          port: 3000
+  YAML
 }

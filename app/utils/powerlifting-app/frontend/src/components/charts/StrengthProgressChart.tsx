@@ -73,15 +73,15 @@ export default function StrengthProgressChart() {
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4 flex flex-col min-h-0">
-      <h3 className="font-medium mb-2 shrink-0">Strength Progress</h3>
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
+    <div className="bg-card border border-border rounded-lg p-4">
+      <h3 className="font-medium mb-2">Strength Progress</h3>
+      <div>
+        <ResponsiveContainer width="100%" height={250}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="week" />
             <YAxis
-              domain={[0,  0]}
+              domain={[0, 'auto']}
               tickFormatter={(value: number) => displayWeight(value, unit)}
             />
             <Tooltip

@@ -212,9 +212,11 @@ export default function SupplementsPage() {
                       <textarea
                         value={phase.notes}
                         onChange={(e) => updatePhase(originalIndex, { notes: e.target.value })}
-                        rows={2}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background resize-none"
+                        rows={Math.max(2, (phase.notes || '').split('\n').length)}
+                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background resize-none overflow-hidden"
                         placeholder="Notes about this phase..."
+                        onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
+                        ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
                       />
                     </div>
 
@@ -233,11 +235,11 @@ export default function SupplementsPage() {
 
                       {phase.items.length > 0 ? (
                         <div className="border border-border rounded-lg overflow-hidden">
-                          <table className="w-full text-sm">
+                          <table className="w-full text-sm table-fixed">
                             <thead>
                               <tr className="bg-muted/50">
-                                <th className="text-left px-3 py-2 font-medium">Name</th>
-                                <th className="text-left px-3 py-2 font-medium">Dose</th>
+                                <th className="text-left px-3 py-2 font-medium w-[15%]">Name</th>
+                                <th className="text-left px-3 py-2 font-medium w-[15%]">Dose</th>
                                 <th className="text-left px-3 py-2 font-medium">Notes</th>
                                 <th className="w-10"></th>
                               </tr>
@@ -266,14 +268,16 @@ export default function SupplementsPage() {
                                     />
                                   </td>
                                   <td className="px-3 py-2">
-                                    <input
-                                      type="text"
+                                    <textarea
                                       value={item.notes || ''}
                                       onChange={(e) =>
                                         updateItem(originalIndex, itemIndex, { notes: e.target.value })
                                       }
-                                      className="w-full px-2 py-1 border border-border rounded bg-background"
+                                      className="w-full px-2 py-1 border border-border rounded bg-background resize-none overflow-hidden"
                                       placeholder="Optional"
+                                      rows={Math.max(2, (item.notes || '').split('\n').length)}
+                                      onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
+                                      ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
                                     />
                                   </td>
                                   <td className="px-3 py-2">
