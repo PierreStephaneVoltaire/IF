@@ -1,10 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mv .claude/.claude/*.md .claude/)",
-      "Bash(rm -rf .claude/.claude)",
-      "Bash(awk ':*)",
-      "Bash(grep -n \"^\\\\`\\\\`\\\\`$\" README.md)"
     ]
   }
 }
