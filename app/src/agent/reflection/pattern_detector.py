@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any, List, Dict
 from dataclasses import dataclass, field
 import uuid
 
+from config import REFLECTION_CONTEXT_ID
+
 if TYPE_CHECKING:
     from memory.user_facts import UserFactStore
 
@@ -123,8 +125,8 @@ class PatternDetector:
         patterns = []
         
         try:
-            # Get recent facts from the last30 days
-            recent_facts = self.store.get_recent_facts(days=30, limit=100)
+            # Get recent facts from the last 30 days
+            recent_facts = self.store.get_recent_facts(REFLECTION_CONTEXT_ID, days=30, limit=100)
             
             # Group by category for initial clustering
             category_counts: Dict[str, int] = {}
@@ -180,7 +182,7 @@ class PatternDetector:
         
         try:
             # Get facts with timestamps
-            recent_facts = self.store.get_recent_facts(days=60, limit=200)
+            recent_facts = self.store.get_recent_facts(REFLECTION_CONTEXT_ID, days=60, limit=200)
             
             # Group by day of week
             dow_counts: Dict[int, List[Any]] = {}
@@ -243,7 +245,7 @@ class PatternDetector:
         
         try:
             # Get misconceptions
-            misconceptions = self.store.list_by_category(FactCategory.MISCONCEPTION)
+            misconceptions = self.store.list_by_category(REFLECTION_CONTEXT_ID, FactCategory.MISCONCEPTION)
             
             # Group by domain
             domain_counts: Dict[str, List[Any]] = {}
@@ -292,7 +294,7 @@ class PatternDetector:
         
         try:
             # Get capability gaps
-            gaps = self.store.list_by_category(FactCategory.CAPABILITY_GAP)
+            gaps = self.store.list_by_category(REFLECTION_CONTEXT_ID, FactCategory.CAPABILITY_GAP)
             
             for gap in gaps:
                 trigger_count = gap.metadata.get("trigger_count", 0)
@@ -342,7 +344,7 @@ class PatternDetector:
         
         try:
             # Search for existing patterns
-            existing = self.store.list_by_category(FactCategory.SESSION_REFLECTION)
+            existing = self.store.list_by_category(REFLECTION_CONTEXT_ID, FactCategory.SESSION_REFLECTION)
             
             for fact in existing:
                 metadata = fact.metadata or {}
@@ -459,7 +461,8 @@ class PatternDetector:
                     pass
                 else:
                     # Create new
-                    fact = UserFact(
+                    self.store.add(
+                        context_id=REFLECTION_CONTEXT_ID,
                         content=f"Pattern: {pattern.description}",
                         category=FactCategory.SESSION_REFLECTION,
                         source=FactSource.MODEL_OBSERVED,
@@ -474,7 +477,6 @@ class PatternDetector:
                             "suggested_action": pattern.suggested_action,
                         }
                     )
-                    self.store.add(fact)
                     
             except Exception as e:
                 logger.warning(f"[PatternDetector] Failed to store pattern: {e}")

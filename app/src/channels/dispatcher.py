@@ -19,14 +19,15 @@ async def dispatch_channel_batch(
     conversation_id: str,
     platform: str,
     channel_ref: Any,
+    discord_loop: Any = None,
 ) -> None:
     """Process a batch of channel messages and deliver response.
-    
+
     This is the main entry point for the channel system:
     1. Translate platform messages to ChatCompletionRequest format
     2. Call the same core pipeline as /v1/chat/completions
     3. Chunk and deliver the response back to the channel
-    
+
     Args:
         messages: List of message dicts from debounce queue
         conversation_id: Conversation ID for this batch
@@ -37,7 +38,7 @@ async def dispatch_channel_batch(
         f"Dispatching batch for {conversation_id}: "
         f"{len(messages)} messages from {platform}"
     )
-    
+
     # Step 1: Translate messages to request format
     if platform == "discord":
         request_data = translate_discord_batch(messages, conversation_id)
@@ -46,30 +47,34 @@ async def dispatch_channel_batch(
     else:
         logger.error(f"Unknown platform: {platform}")
         return
-    
+
     # Step 2: Process through the existing pipeline
     # Import here to avoid circular dependency
     from api.completions import process_chat_completion_internal
     from main import app
-    
+    from storage.factory import get_webhook_store
+
     # Get HTTP client from app state
     http_client = app.state.http_client
-    
+
+    # Get webhook record for this conversation
+    webhook = None
     try:
-        # Discord: show typing indicator while processing
-        if platform == "discord" and hasattr(channel_ref, "typing"):
-            async with channel_ref.typing():
-                response_text, attachments = await process_chat_completion_internal(
-                    request_data=request_data,
-                    http_client=http_client,
-                    conversation_id=conversation_id,
-                )
-        else:
-            response_text, attachments = await process_chat_completion_internal(
-                request_data=request_data,
-                http_client=http_client,
-                conversation_id=conversation_id,
-            )
+        store = get_webhook_store()
+        records = store.list_active()
+        for r in records:
+            if r.conversation_id == conversation_id:
+                webhook = r
+                break
+    except Exception as e:
+        logger.warning(f"Could not fetch webhook record: {e}")
+
+    try:
+        response_text, attachments = await process_chat_completion_internal(
+            request_data=request_data,
+            http_client=http_client,
+            webhook=webhook,
+        )
     except Exception as e:
         logger.error(f"Pipeline error for {conversation_id}: {e}")
         # Send error message to channel
@@ -95,6 +100,7 @@ async def dispatch_channel_batch(
         channel_ref=channel_ref,
         chunks=chunks,
         attachments=attachments,
+        discord_loop=discord_loop,
     )
     
     logger.info(f"Delivery completed for {conversation_id}")

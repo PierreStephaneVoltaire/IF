@@ -122,6 +122,7 @@ async def _flush(conversation_id: str) -> None:
 
     platform = messages[0].get("platform", "unknown")
     channel_ref = messages[-1].get("channel_ref")  # Latest ref
+    discord_loop = messages[-1].get("discord_loop")  # Discord event loop
 
     logger.info(
         f"Flushing {len(messages)} messages for {conversation_id} ({platform})"
@@ -136,6 +137,7 @@ async def _flush(conversation_id: str) -> None:
             conversation_id=conversation_id,
             platform=platform,
             channel_ref=channel_ref,
+            discord_loop=discord_loop,
         )
     except Exception as e:
         logger.error(f"Dispatch failed for {conversation_id}: {e}")

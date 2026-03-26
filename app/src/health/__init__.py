@@ -44,10 +44,30 @@ from health.tools import (
     health_get_session,
     health_get_sessions_range,
     health_get_supplements,
+    health_get_meta,
+    health_get_phases,
+    health_get_current_maxes,
+    health_get_operator_prefs,
+    health_get_breaks,
     # Granular edit tools
     health_update_competition,
     health_update_diet_note,
     health_update_supplements,
+    # Session CRUD
+    health_create_session,
+    health_delete_session,
+    health_reschedule_session,
+    health_add_exercise,
+    health_remove_exercise,
+    # Competition CRUD
+    health_create_competition,
+    health_delete_competition,
+    # Diet note delete
+    health_delete_diet_note,
+    # Meta & structure
+    health_update_meta,
+    health_update_phases,
+    health_update_current_maxes,
 )
 from health.renderer import render_program_summary, render_session
 
@@ -77,10 +97,30 @@ __all__ = [
     "health_get_session",
     "health_get_sessions_range",
     "health_get_supplements",
+    "health_get_meta",
+    "health_get_phases",
+    "health_get_current_maxes",
+    "health_get_operator_prefs",
+    "health_get_breaks",
     # Granular edit tools
     "health_update_competition",
     "health_update_diet_note",
     "health_update_supplements",
+    # Session CRUD
+    "health_create_session",
+    "health_delete_session",
+    "health_reschedule_session",
+    "health_add_exercise",
+    "health_remove_exercise",
+    # Competition CRUD
+    "health_create_competition",
+    "health_delete_competition",
+    # Diet note delete
+    "health_delete_diet_note",
+    # Meta & structure
+    "health_update_meta",
+    "health_update_phases",
+    "health_update_current_maxes",
     # Renderer
     "render_program_summary",
     "render_session",

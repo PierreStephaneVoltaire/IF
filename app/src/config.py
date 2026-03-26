@@ -77,6 +77,11 @@ TOPIC_SHIFT_MODEL = os.getenv("TOPIC_SHIFT_MODEL", "z-ai/glm-4.7-flash")
 # Context Condensation
 CONTEXT_CONDENSE_THRESHOLD = int(os.getenv("CONTEXT_CONDENSE_THRESHOLD", "250000"))
 
+# Maximum characters for tool output before OpenHands SDK truncates it.
+# Default SDK value is 50000 which silently clips large tool results
+# (e.g. health_get_program ~95K) causing hallucinations from incomplete data.
+TOOL_OUTPUT_CHAR_LIMIT = int(os.getenv("TOOL_OUTPUT_CHAR_LIMIT", "200000"))
+
 # =============================================================================
 # Tier System Configuration (Phase 3)
 # =============================================================================
@@ -117,7 +122,7 @@ HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
 
 # Channel System Configuration (Phase 5)
-CHANNEL_DEBOUNCE_SECONDS = float(os.getenv("CHANNEL_DEBOUNCE_SECONDS", "30"))
+CHANNEL_DEBOUNCE_SECONDS = float(os.getenv("CHANNEL_DEBOUNCE_SECONDS", "5"))
 CHANNEL_MAX_CHUNK_CHARS = int(os.getenv("CHANNEL_MAX_CHUNK_CHARS", "1500"))
 OPENWEBUI_POLL_INTERVAL = float(os.getenv("OPENWEBUI_POLL_INTERVAL", "5.0"))
 
@@ -130,6 +135,7 @@ HEARTBEAT_QUIET_HOURS: str = os.getenv("HEARTBEAT_QUIET_HOURS", "23:00-07:00")  
 
 
 
+REFLECTION_CONTEXT_ID: str = os.getenv("REFLECTION_CONTEXT_ID", "__global__")
 REFLECTION_ENABLED: bool = os.getenv("REFLECTION_ENABLED", "true").lower() == "true"
 REFLECTION_PERIODIC_HOURS: float = float(os.getenv("REFLECTION_PERIODIC_HOURS", "6.0"))
 REFLECTION_POST_SESSION_MIN_TURNS: int = int(os.getenv("REFLECTION_POST_SESSION_MIN_TURNS", "5"))
@@ -211,6 +217,10 @@ PRESET_FALLBACK_MODEL = os.getenv("PRESET_FALLBACK_MODEL", "openrouter/@preset/g
 # Model for reflection engine and opinion formation
 REFLECTION_MODEL = os.getenv("REFLECTION_MODEL", "openrouter/@preset/general")
 
+# Reasoning effort passed to the OpenHands LLM for the main agent.
+# Valid values: "high", "medium", "low" (silently ignored for models that don't support it).
+LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "high")
+
 
 # =============================================================================
 # Terminal Configuration (Static Deployment)
@@ -221,6 +231,10 @@ TERMINAL_URL = os.getenv("TERMINAL_URL", "http://open-terminal:7681")
 
 # API key for terminal authentication
 TERMINAL_API_KEY = os.getenv("TERMINAL_API_KEY", "")
+
+# Host path for Docker volume access (for workspace file serving)
+# Set to empty string to disable workspace file serving
+TERMINAL_VOLUME_HOST_ROOT = os.getenv("TERMINAL_VOLUME_HOST_ROOT", "")
 
 
 

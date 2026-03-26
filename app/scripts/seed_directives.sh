@@ -827,22 +827,30 @@ put 2 33 "IPF_COMPETITION_PROCEDURE" "$C" health competition
 
 C='Before responding to any message about training, programming,
 exercise selection, attempt selection, nutrition, supplementation,
-weight management, competition prep, or recovery: call
-health_get_session with today'"'"'s date to retrieve the current
-session, and call health_get_program to retrieve the full program
-state including current week, phase, and targets.
+weight management, competition prep, or recovery:
 
-Do not advise on training without reading current state first.
-Do not guess the current week, phase, or session — fetch it.
-Treat the returned data as ground truth. If a session does not
-exist for today, say so and reference the next upcoming session.
+1. Call get_current_date to get today'"'"'s date.
+2. Call health_comp_countdown to get current week, current phase,
+   and days to competition.
+3. Call health_get_session with today'"'"'s date to retrieve the
+   session for today.
 
-When a write is needed (logging a completed session, updating body
-weight, recording RPE, changing attempt targets, modifying supplement
-protocol, or any other mutation to the program), spawn the
-health_write specialist. Pass the intended change as the task, and
-pass the current program pk and sk. Do not attempt DynamoDB writes
-directly from the main agent.'
+Do not advise on training without fetching current state first.
+Do not guess the current week, phase, or session — use the tools.
+Treat the returned data as ground truth.
+
+If no session exists for today, call health_get_sessions_range to
+find upcoming sessions and reference the next one.
+
+For targeted lookups use the granular tools: health_get_meta
+(comp date, targets, training notes), health_get_phases,
+health_get_current_maxes, health_get_operator_prefs,
+health_get_breaks. Avoid health_get_program unless every field
+is genuinely needed.
+
+When a write is needed (logging completion, RPE, body weight,
+attempt targets, supplement changes), spawn the health_write
+specialist with the intended change.'
 put 2 34 "TRAINING_DATA_FETCH" "$C" health
 
 C='Default to planning before implementing. When given a coding
@@ -995,11 +1003,13 @@ answering. Prefer one focused clarifying question over a
 barrage of five.'
 put 4 3 "CONTEXT_GATHERING" "$C" core
 
-C='You have access to a time server for current date/time.
+C='You have access to a time server via the get_current_date tool.
 
-USE TIME WHEN:
+USE get_current_date WHEN:
   - You need the current date or time for calculations, scheduling,
-    context, timestamps, or date-based file naming.'
+    context, timestamps, date-based file naming, or any temporal query.
+  - Before calling health_get_session, health_comp_countdown, or
+    any tool that requires knowing today'"'"'s date.'
 put 4 4 "TIME" "$C" tool
 
 # ── Tier 5 ────────────────────────────────────────────────────────────────────

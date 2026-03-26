@@ -324,12 +324,63 @@ class GetContextSnapshotTool(ToolDefinition[GetContextSnapshotAction, GetContext
 
 
 # =============================================================================
+# get_current_date - Time server for current date/time
+# =============================================================================
+
+def get_current_date() -> Dict[str, Any]:
+    """Get the current date and time from the server.
+
+    Returns:
+        Dict with date, time, day_of_week, iso8601, unix_timestamp
+    """
+    from datetime import date, datetime, timezone
+    now = datetime.now(timezone.utc)
+    return {
+        "date": now.strftime("%Y-%m-%d"),
+        "time": now.strftime("%H:%M:%S"),
+        "day_of_week": now.strftime("%A"),
+        "iso8601": now.isoformat(),
+        "unix_timestamp": int(now.timestamp()),
+    }
+
+
+class GetCurrentDateAction(Action):
+    pass
+
+
+class GetCurrentDateObservation(Observation):
+    pass
+
+
+class GetCurrentDateExecutor(ToolExecutor[GetCurrentDateAction, GetCurrentDateObservation]):
+    def __call__(self, action: GetCurrentDateAction, conversation=None) -> GetCurrentDateObservation:
+        result = get_current_date()
+        return GetCurrentDateObservation.from_text(_format_result(result))
+
+
+class GetCurrentDateTool(ToolDefinition[GetCurrentDateAction, GetCurrentDateObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["GetCurrentDateTool"]:
+        return [cls(
+            description=(
+                "Get the current date and time from the server. "
+                "Use this whenever you need to know today's date for scheduling, "
+                "calculations, session lookups, or any temporal context."
+            ),
+            action_type=GetCurrentDateAction,
+            observation_type=GetCurrentDateObservation,
+            executor=GetCurrentDateExecutor(),
+        )]
+
+
+# =============================================================================
 # Register all tools
 # =============================================================================
 
 register_tool("GetSignalsTool", GetSignalsTool)
 register_tool("GetFinancialContextTool", GetFinancialContextTool)
 register_tool("GetContextSnapshotTool", GetContextSnapshotTool)
+register_tool("GetCurrentDateTool", GetCurrentDateTool)
 
 
 # =============================================================================
@@ -342,4 +393,5 @@ def get_context_tools() -> List[Tool]:
         Tool(name="GetSignalsTool"),
         Tool(name="GetFinancialContextTool"),
         Tool(name="GetContextSnapshotTool"),
+        Tool(name="GetCurrentDateTool"),
     ]

@@ -271,6 +271,12 @@ variable "context_condense_threshold" {
   default     = 250000
 }
 
+variable "tool_output_char_limit" {
+  description = "Max chars for tool output before SDK truncation (default SDK is 50000)"
+  type        = number
+  default     = 200000
+}
+
 # =============================================================================
 # Channel Configuration
 # =============================================================================
@@ -278,7 +284,13 @@ variable "context_condense_threshold" {
 variable "channel_debounce_seconds" {
   description = "Message batching window (seconds)"
   type        = number
-  default     = 30
+  default     = 5
+}
+
+variable "llm_reasoning_effort" {
+  description = "Reasoning effort for the main agent LLM (high/medium/low)"
+  type        = string
+  default     = "high"
 }
 
 variable "channel_max_chunk_chars" {

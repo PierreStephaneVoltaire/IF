@@ -29,6 +29,7 @@ from config import (
     LLM_API_KEY,
     LLM_BASE_URL,
     PRESET_FALLBACK_MODEL,
+    LLM_REASONING_EFFORT,
 )
 from presets.loader import PresetManager
 from mcp_servers.config import resolve_mcp_config, get_preset_servers
@@ -40,6 +41,7 @@ from agent.tools.session_reflection import get_session_reflection_tools
 from agent.tools.directive_tools import get_directive_tools
 from agent.tools.terminal_tools import get_terminal_tools, get_terminal_system_prompt
 from agent.tools.health_tools import get_health_tools
+from agent.tools.context_tools import get_context_tools
 from agent.tools.subagents import get_subagent_tools
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
 
@@ -398,8 +400,9 @@ async def execute_agent(
             model=model,
             base_url=LLM_BASE_URL,
             api_key=SecretStr(LLM_API_KEY),
+            reasoning_effort=LLM_REASONING_EFFORT,
         )
-        logger.info(f"Using model: {model}")
+        logger.info(f"Using model: {model}, reasoning_effort: {LLM_REASONING_EFFORT}")
         # Get MCP config for this preset
         mcp_config = resolve_mcp_config(session.preset_slug)
         logger.info(f"Resolved MCP servers: {list(mcp_config.keys())}")
@@ -420,6 +423,8 @@ async def execute_agent(
         tools.extend(get_terminal_tools(session.session_id))
         # Get health tools
         tools.extend(get_health_tools())
+        # Get context tools (date/time, signals, finance)
+        tools.extend(get_context_tools())
         # Get subagent tools (specialist spawning, deep thinking)
         tools.extend(get_subagent_tools(session.session_id))
         # Create shared HTTP client for orchestrator tools (connection pooling)
@@ -456,6 +461,12 @@ async def execute_agent(
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
+            if isinstance(content, list):
+                text_parts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        text_parts.append(part.get("text", ""))
+                content = "\n".join(text_parts)
             conversation.send_message(content)
         
         conversation.run()

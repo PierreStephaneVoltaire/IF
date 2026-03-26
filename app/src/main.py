@@ -8,6 +8,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
 
+# Override OpenHands SDK tool output truncation limit.
+# Default 50K silently truncates large tool results (e.g. health_get_program
+# returns ~95K) causing the model to hallucinate from incomplete data.
+from config import TOOL_OUTPUT_CHAR_LIMIT
+import openhands.sdk.utils.truncate as _oh_truncate
+_oh_truncate.DEFAULT_TEXT_CONTENT_LIMIT = TOOL_OUTPUT_CHAR_LIMIT
+import openhands.sdk.utils as _oh_utils
+_oh_utils.DEFAULT_TEXT_CONTENT_LIMIT = TOOL_OUTPUT_CHAR_LIMIT
+
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, PlainTextResponse
@@ -137,7 +146,8 @@ async def lifespan(app: FastAPI):
         
         logger.info("Warming up embedding model...")
         try:
-            user_facts_store.search("__warmup_query__", limit=1)
+            from config import REFLECTION_CONTEXT_ID
+            user_facts_store.search(REFLECTION_CONTEXT_ID, "__warmup_query__", limit=1)
             logger.info("Embedding model ready")
         except Exception as warmup_error:
             logger.warning(f"Embedding model warmup failed: {warmup_error}")

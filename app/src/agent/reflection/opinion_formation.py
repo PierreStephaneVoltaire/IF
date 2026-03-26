@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from config import REFLECTION_MODEL
 from agent.prompts.loader import render_template
 
+from config import REFLECTION_CONTEXT_ID
+
 if TYPE_CHECKING:
     from memory.user_facts import UserFactStore
     import httpx
@@ -69,11 +71,12 @@ class OpinionFormer:
         formed_opinions = []
         
         try:
+            ctx = REFLECTION_CONTEXT_ID
             # Get all opinions
-            opinions = self.store.list_by_category(FactCategory.OPINION)
-            
+            opinions = self.store.list_by_category(ctx, FactCategory.OPINION)
+
             # Also check opinion_pairs that might need evolution
-            pairs = self.store.list_by_category(FactCategory.OPINION_PAIR)
+            pairs = self.store.list_by_category(ctx, FactCategory.OPINION_PAIR)
             
             # Find opinions without agent responses
             for opinion in opinions:
@@ -189,16 +192,15 @@ class OpinionFormer:
             )
             
             # Store as fact
-            fact = UserFact(
+            fact_id = self.store.add(
+                context_id=REFLECTION_CONTEXT_ID,
                 content=f"Opinion: {topic}",
                 category=FactCategory.OPINION_PAIR,
                 source=FactSource.MODEL_OBSERVED,
                 confidence=pair.agent_confidence,
                 metadata=pair.to_dict(),
             )
-            
-            self.store.add(fact)
-            
+
             return {
                 "topic": topic,
                 "user_position": user_position,
@@ -206,7 +208,7 @@ class OpinionFormer:
                 "agent_reasoning": pair.agent_reasoning,
                 "agreement_level": pair.agreement_level,
                 "confidence": pair.agent_confidence,
-                "fact_id": fact.id,
+                "fact_id": fact_id,
             }
             
         except Exception as e:
@@ -251,8 +253,8 @@ class OpinionFormer:
         evolved = []
         
         try:
-            pairs = self.store.list_by_category(FactCategory.OPINION_PAIR)
-            
+            pairs = self.store.list_by_category(REFLECTION_CONTEXT_ID, FactCategory.OPINION_PAIR)
+
             for pair in pairs:
                 metadata = pair.metadata or {}
                 evolution = metadata.get("evolution", [])

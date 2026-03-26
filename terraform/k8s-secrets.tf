@@ -99,6 +99,7 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     # Context configuration
     CONTEXT_CONDENSE_THRESHOLD = tostring(var.context_condense_threshold)
     MESSAGE_WINDOW             = tostring(var.message_window)
+    TOOL_OUTPUT_CHAR_LIMIT     = tostring(var.tool_output_char_limit)
 
     # Server configuration
     HOST = "0.0.0.0"
@@ -108,6 +109,7 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     CHANNEL_DEBOUNCE_SECONDS = tostring(var.channel_debounce_seconds)
     CHANNEL_MAX_CHUNK_CHARS  = tostring(var.channel_max_chunk_chars)
     OPENWEBUI_POLL_INTERVAL  = tostring(var.openwebui_poll_interval)
+    LLM_REASONING_EFFORT     = var.llm_reasoning_effort
 
     # Heartbeat configuration
     HEARTBEAT_ENABLED        = tostring(var.heartbeat_enabled)

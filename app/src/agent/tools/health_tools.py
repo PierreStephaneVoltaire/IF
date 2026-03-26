@@ -582,6 +582,194 @@ class HealthGetSupplementsTool(ToolDefinition[HealthGetSupplementsAction, Health
         )]
 
 
+# --- health_get_meta ---
+
+class HealthGetMetaAction(Action):
+    pass
+
+
+class HealthGetMetaObservation(Observation):
+    pass
+
+
+class HealthGetMetaExecutor(ToolExecutor[HealthGetMetaAction, HealthGetMetaObservation]):
+    def __call__(self, action: HealthGetMetaAction, conversation=None) -> HealthGetMetaObservation:
+        from health import health_get_meta
+        result = _run_async(health_get_meta())
+        return HealthGetMetaObservation.from_text(_format_result(result))
+
+
+class HealthGetMetaTool(ToolDefinition[HealthGetMetaAction, HealthGetMetaObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthGetMetaTool"]:
+        return [cls(
+            description=(
+                "Get program metadata: comp_date, program_start, targets (squat/bench/deadlift/total), "
+                "weight_class_kg, version, training_notes, change_log. "
+                "Use this instead of health_get_program when you only need program-level info."
+            ),
+            action_type=HealthGetMetaAction,
+            observation_type=HealthGetMetaObservation,
+            executor=HealthGetMetaExecutor(),
+        )]
+
+
+# --- health_get_phases ---
+
+class HealthGetPhasesAction(Action):
+    pass
+
+
+class HealthGetPhasesObservation(Observation):
+    pass
+
+
+class HealthGetPhasesExecutor(ToolExecutor[HealthGetPhasesAction, HealthGetPhasesObservation]):
+    def __call__(self, action: HealthGetPhasesAction, conversation=None) -> HealthGetPhasesObservation:
+        from health import health_get_phases
+        result = _run_async(health_get_phases())
+        return HealthGetPhasesObservation.from_text(_format_result(result))
+
+
+class HealthGetPhasesTool(ToolDefinition[HealthGetPhasesAction, HealthGetPhasesObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthGetPhasesTool"]:
+        return [cls(
+            description=(
+                "Get training phases (name, start_week, end_week, intent). "
+                "Use to understand the program structure without loading all sessions."
+            ),
+            action_type=HealthGetPhasesAction,
+            observation_type=HealthGetPhasesObservation,
+            executor=HealthGetPhasesExecutor(),
+        )]
+
+
+# --- health_get_current_maxes ---
+
+class HealthGetCurrentMaxesAction(Action):
+    pass
+
+
+class HealthGetCurrentMaxesObservation(Observation):
+    pass
+
+
+class HealthGetCurrentMaxesExecutor(ToolExecutor[HealthGetCurrentMaxesAction, HealthGetCurrentMaxesObservation]):
+    def __call__(self, action: HealthGetCurrentMaxesAction, conversation=None) -> HealthGetCurrentMaxesObservation:
+        from health import health_get_current_maxes
+        result = _run_async(health_get_current_maxes())
+        return HealthGetCurrentMaxesObservation.from_text(_format_result(result))
+
+
+class HealthGetCurrentMaxesTool(ToolDefinition[HealthGetCurrentMaxesAction, HealthGetCurrentMaxesObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthGetCurrentMaxesTool"]:
+        return [cls(
+            description=(
+                "Get current competition maxes in kg: {squat, bench, deadlift}. "
+                "Use for percentage calculations or attempt planning without loading the full program."
+            ),
+            action_type=HealthGetCurrentMaxesAction,
+            observation_type=HealthGetCurrentMaxesObservation,
+            executor=HealthGetCurrentMaxesExecutor(),
+        )]
+
+
+# --- health_get_operator_prefs ---
+
+class HealthGetOperatorPrefsAction(Action):
+    pass
+
+
+class HealthGetOperatorPrefsObservation(Observation):
+    pass
+
+
+class HealthGetOperatorPrefsExecutor(ToolExecutor[HealthGetOperatorPrefsAction, HealthGetOperatorPrefsObservation]):
+    def __call__(self, action: HealthGetOperatorPrefsAction, conversation=None) -> HealthGetOperatorPrefsObservation:
+        from health import health_get_operator_prefs
+        result = _run_async(health_get_operator_prefs())
+        return HealthGetOperatorPrefsObservation.from_text(_format_result(result))
+
+
+class HealthGetOperatorPrefsTool(ToolDefinition[HealthGetOperatorPrefsAction, HealthGetOperatorPrefsObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthGetOperatorPrefsTool"]:
+        return [cls(
+            description=(
+                "Get operator preferences including attempt_jumps per lift (j1, j2 in kg). "
+                "Use when calculating competition attempts or checking preferred jump sizes."
+            ),
+            action_type=HealthGetOperatorPrefsAction,
+            observation_type=HealthGetOperatorPrefsObservation,
+            executor=HealthGetOperatorPrefsExecutor(),
+        )]
+
+
+# --- health_get_breaks ---
+
+class HealthGetBreaksAction(Action):
+    pass
+
+
+class HealthGetBreaksObservation(Observation):
+    pass
+
+
+class HealthGetBreaksExecutor(ToolExecutor[HealthGetBreaksAction, HealthGetBreaksObservation]):
+    def __call__(self, action: HealthGetBreaksAction, conversation=None) -> HealthGetBreaksObservation:
+        from health import health_get_breaks
+        result = _run_async(health_get_breaks())
+        return HealthGetBreaksObservation.from_text(_format_result(result))
+
+
+class HealthGetBreaksTool(ToolDefinition[HealthGetBreaksAction, HealthGetBreaksObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthGetBreaksTool"]:
+        return [cls(
+            description=(
+                "Get scheduled break/deload periods: [{start, end}, ...]. "
+                "Use to check if a date falls in a rest week or when the next break is."
+            ),
+            action_type=HealthGetBreaksAction,
+            observation_type=HealthGetBreaksObservation,
+            executor=HealthGetBreaksExecutor(),
+        )]
+
+
+# --- days_until ---
+
+class DaysUntilAction(Action):
+    target_date: str = Field(description="Target date (YYYY-MM-DD)")
+    label: str = Field(default="target", description="Human label for the milestone, e.g. 'comp', 'deload'")
+
+
+class DaysUntilObservation(Observation):
+    pass
+
+
+class DaysUntilExecutor(ToolExecutor[DaysUntilAction, DaysUntilObservation]):
+    def __call__(self, action: DaysUntilAction, conversation=None) -> DaysUntilObservation:
+        from health import days_until
+        result = _run_async(days_until(action.target_date, action.label))
+        return DaysUntilObservation.from_text(_format_result(result))
+
+
+class DaysUntilTool(ToolDefinition[DaysUntilAction, DaysUntilObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["DaysUntilTool"]:
+        return [cls(
+            description=(
+                "Calculate days and weeks until (or since) a target date. "
+                "Returns days_remaining, weeks_remaining, today, is_past."
+            ),
+            action_type=DaysUntilAction,
+            observation_type=DaysUntilObservation,
+            executor=DaysUntilExecutor(),
+        )]
+
+
 # =============================================================================
 # Granular Edit Tools
 # =============================================================================
@@ -686,6 +874,329 @@ class HealthUpdateSupplementsTool(ToolDefinition[HealthUpdateSupplementsAction, 
 
 
 # =============================================================================
+# Session CRUD tools
+# =============================================================================
+
+class HealthCreateSessionAction(Action):
+    date: str = Field(description="Session date (YYYY-MM-DD)")
+    day: str = Field(description="Day label e.g. 'Monday'")
+    week_number: int = Field(description="Training week number")
+    exercises: Optional[List[Dict[str, Any]]] = Field(default=None, description="Optional list of exercises {name, sets, reps, kg, rpe, notes}")
+    session_notes: str = Field(default="", description="Optional session notes")
+
+
+class HealthCreateSessionObservation(Observation):
+    pass
+
+
+class HealthCreateSessionExecutor(ToolExecutor[HealthCreateSessionAction, HealthCreateSessionObservation]):
+    def __call__(self, action: HealthCreateSessionAction, conversation=None) -> HealthCreateSessionObservation:
+        from health import health_create_session
+        result = _run_async(health_create_session(action.date, action.day, action.week_number, action.exercises, action.session_notes))
+        return HealthCreateSessionObservation.from_text(_format_result(result))
+
+
+class HealthCreateSessionTool(ToolDefinition[HealthCreateSessionAction, HealthCreateSessionObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthCreateSessionTool"]:
+        return [cls(
+            description="Create a new training session. Requires date, day label, and week number. Optionally include exercises.",
+            action_type=HealthCreateSessionAction,
+            observation_type=HealthCreateSessionObservation,
+            executor=HealthCreateSessionExecutor(),
+        )]
+
+
+class HealthDeleteSessionAction(Action):
+    date: str = Field(description="Session date to delete (YYYY-MM-DD)")
+
+
+class HealthDeleteSessionObservation(Observation):
+    pass
+
+
+class HealthDeleteSessionExecutor(ToolExecutor[HealthDeleteSessionAction, HealthDeleteSessionObservation]):
+    def __call__(self, action: HealthDeleteSessionAction, conversation=None) -> HealthDeleteSessionObservation:
+        from health import health_delete_session
+        result = _run_async(health_delete_session(action.date))
+        return HealthDeleteSessionObservation.from_text(_format_result(result))
+
+
+class HealthDeleteSessionTool(ToolDefinition[HealthDeleteSessionAction, HealthDeleteSessionObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthDeleteSessionTool"]:
+        return [cls(
+            description="Delete a training session by date. Cannot be undone.",
+            action_type=HealthDeleteSessionAction,
+            observation_type=HealthDeleteSessionObservation,
+            executor=HealthDeleteSessionExecutor(),
+        )]
+
+
+class HealthRescheduleSessionAction(Action):
+    old_date: str = Field(description="Current session date (YYYY-MM-DD)")
+    new_date: str = Field(description="Target date to move to (YYYY-MM-DD)")
+
+
+class HealthRescheduleSessionObservation(Observation):
+    pass
+
+
+class HealthRescheduleSessionExecutor(ToolExecutor[HealthRescheduleSessionAction, HealthRescheduleSessionObservation]):
+    def __call__(self, action: HealthRescheduleSessionAction, conversation=None) -> HealthRescheduleSessionObservation:
+        from health import health_reschedule_session
+        result = _run_async(health_reschedule_session(action.old_date, action.new_date))
+        return HealthRescheduleSessionObservation.from_text(_format_result(result))
+
+
+class HealthRescheduleSessionTool(ToolDefinition[HealthRescheduleSessionAction, HealthRescheduleSessionObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthRescheduleSessionTool"]:
+        return [cls(
+            description="Move a training session to a different date.",
+            action_type=HealthRescheduleSessionAction,
+            observation_type=HealthRescheduleSessionObservation,
+            executor=HealthRescheduleSessionExecutor(),
+        )]
+
+
+class HealthAddExerciseAction(Action):
+    date: str = Field(description="Session date (YYYY-MM-DD)")
+    exercise: Dict[str, Any] = Field(description="Exercise dict: {name (required), sets, reps, kg, rpe, notes}")
+
+
+class HealthAddExerciseObservation(Observation):
+    pass
+
+
+class HealthAddExerciseExecutor(ToolExecutor[HealthAddExerciseAction, HealthAddExerciseObservation]):
+    def __call__(self, action: HealthAddExerciseAction, conversation=None) -> HealthAddExerciseObservation:
+        from health import health_add_exercise
+        result = _run_async(health_add_exercise(action.date, action.exercise))
+        return HealthAddExerciseObservation.from_text(_format_result(result))
+
+
+class HealthAddExerciseTool(ToolDefinition[HealthAddExerciseAction, HealthAddExerciseObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthAddExerciseTool"]:
+        return [cls(
+            description="Add an exercise to a training session. Provide the session date and exercise dict {name, sets, reps, kg, rpe, notes}.",
+            action_type=HealthAddExerciseAction,
+            observation_type=HealthAddExerciseObservation,
+            executor=HealthAddExerciseExecutor(),
+        )]
+
+
+class HealthRemoveExerciseAction(Action):
+    date: str = Field(description="Session date (YYYY-MM-DD)")
+    exercise_index: int = Field(description="Zero-based index of the exercise to remove")
+
+
+class HealthRemoveExerciseObservation(Observation):
+    pass
+
+
+class HealthRemoveExerciseExecutor(ToolExecutor[HealthRemoveExerciseAction, HealthRemoveExerciseObservation]):
+    def __call__(self, action: HealthRemoveExerciseAction, conversation=None) -> HealthRemoveExerciseObservation:
+        from health import health_remove_exercise
+        result = _run_async(health_remove_exercise(action.date, action.exercise_index))
+        return HealthRemoveExerciseObservation.from_text(_format_result(result))
+
+
+class HealthRemoveExerciseTool(ToolDefinition[HealthRemoveExerciseAction, HealthRemoveExerciseObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthRemoveExerciseTool"]:
+        return [cls(
+            description="Remove an exercise from a session by its zero-based index. Fetch the session first to confirm the correct index.",
+            action_type=HealthRemoveExerciseAction,
+            observation_type=HealthRemoveExerciseObservation,
+            executor=HealthRemoveExerciseExecutor(),
+        )]
+
+
+# =============================================================================
+# Competition CRUD tools
+# =============================================================================
+
+class HealthCreateCompetitionAction(Action):
+    competition: Dict[str, Any] = Field(
+        description="Competition dict: name (required), date YYYY-MM-DD (required), federation (required), "
+                    "status (confirmed/optional/skipped), weight_class_kg, location, targets {squat_kg, bench_kg, deadlift_kg, total_kg}, notes"
+    )
+
+
+class HealthCreateCompetitionObservation(Observation):
+    pass
+
+
+class HealthCreateCompetitionExecutor(ToolExecutor[HealthCreateCompetitionAction, HealthCreateCompetitionObservation]):
+    def __call__(self, action: HealthCreateCompetitionAction, conversation=None) -> HealthCreateCompetitionObservation:
+        from health import health_create_competition
+        result = _run_async(health_create_competition(action.competition))
+        return HealthCreateCompetitionObservation.from_text(_format_result(result))
+
+
+class HealthCreateCompetitionTool(ToolDefinition[HealthCreateCompetitionAction, HealthCreateCompetitionObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthCreateCompetitionTool"]:
+        return [cls(
+            description="Create a new competition entry. Required: name, date, federation. Optional: status, weight_class_kg, location, targets, notes.",
+            action_type=HealthCreateCompetitionAction,
+            observation_type=HealthCreateCompetitionObservation,
+            executor=HealthCreateCompetitionExecutor(),
+        )]
+
+
+class HealthDeleteCompetitionAction(Action):
+    date: str = Field(description="Competition date to delete (YYYY-MM-DD)")
+
+
+class HealthDeleteCompetitionObservation(Observation):
+    pass
+
+
+class HealthDeleteCompetitionExecutor(ToolExecutor[HealthDeleteCompetitionAction, HealthDeleteCompetitionObservation]):
+    def __call__(self, action: HealthDeleteCompetitionAction, conversation=None) -> HealthDeleteCompetitionObservation:
+        from health import health_delete_competition
+        result = _run_async(health_delete_competition(action.date))
+        return HealthDeleteCompetitionObservation.from_text(_format_result(result))
+
+
+class HealthDeleteCompetitionTool(ToolDefinition[HealthDeleteCompetitionAction, HealthDeleteCompetitionObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthDeleteCompetitionTool"]:
+        return [cls(
+            description="Delete a competition by date. Cannot be undone.",
+            action_type=HealthDeleteCompetitionAction,
+            observation_type=HealthDeleteCompetitionObservation,
+            executor=HealthDeleteCompetitionExecutor(),
+        )]
+
+
+# =============================================================================
+# Diet note delete tool
+# =============================================================================
+
+class HealthDeleteDietNoteAction(Action):
+    date: str = Field(description="Diet note date to delete (YYYY-MM-DD)")
+
+
+class HealthDeleteDietNoteObservation(Observation):
+    pass
+
+
+class HealthDeleteDietNoteExecutor(ToolExecutor[HealthDeleteDietNoteAction, HealthDeleteDietNoteObservation]):
+    def __call__(self, action: HealthDeleteDietNoteAction, conversation=None) -> HealthDeleteDietNoteObservation:
+        from health import health_delete_diet_note
+        result = _run_async(health_delete_diet_note(action.date))
+        return HealthDeleteDietNoteObservation.from_text(_format_result(result))
+
+
+class HealthDeleteDietNoteTool(ToolDefinition[HealthDeleteDietNoteAction, HealthDeleteDietNoteObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthDeleteDietNoteTool"]:
+        return [cls(
+            description="Delete a diet note by date.",
+            action_type=HealthDeleteDietNoteAction,
+            observation_type=HealthDeleteDietNoteObservation,
+            executor=HealthDeleteDietNoteExecutor(),
+        )]
+
+
+# =============================================================================
+# Meta & Structure update tools
+# =============================================================================
+
+class HealthUpdateMetaAction(Action):
+    updates: Dict[str, Any] = Field(
+        description="Dict of meta fields to update. Allowed: program_name, comp_date, target_squat_kg, "
+                    "target_bench_kg, target_dl_kg, target_total_kg, weight_class_kg, "
+                    "current_body_weight_kg, federation, practicing_for, program_start"
+    )
+
+
+class HealthUpdateMetaObservation(Observation):
+    pass
+
+
+class HealthUpdateMetaExecutor(ToolExecutor[HealthUpdateMetaAction, HealthUpdateMetaObservation]):
+    def __call__(self, action: HealthUpdateMetaAction, conversation=None) -> HealthUpdateMetaObservation:
+        from health import health_update_meta
+        result = _run_async(health_update_meta(action.updates))
+        return HealthUpdateMetaObservation.from_text(_format_result(result))
+
+
+class HealthUpdateMetaTool(ToolDefinition[HealthUpdateMetaAction, HealthUpdateMetaObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthUpdateMetaTool"]:
+        return [cls(
+            description=(
+                "Update program metadata fields: comp_date, target maxes, body weight, weight_class_kg, "
+                "federation, program_start, program_name. Pass only the fields you want to change."
+            ),
+            action_type=HealthUpdateMetaAction,
+            observation_type=HealthUpdateMetaObservation,
+            executor=HealthUpdateMetaExecutor(),
+        )]
+
+
+class HealthUpdatePhasesAction(Action):
+    phases: List[Dict[str, Any]] = Field(
+        description="Complete phases list. Each phase: {name (required), start_week (int), end_week (int), intent (str)}"
+    )
+
+
+class HealthUpdatePhasesObservation(Observation):
+    pass
+
+
+class HealthUpdatePhasesExecutor(ToolExecutor[HealthUpdatePhasesAction, HealthUpdatePhasesObservation]):
+    def __call__(self, action: HealthUpdatePhasesAction, conversation=None) -> HealthUpdatePhasesObservation:
+        from health import health_update_phases
+        result = _run_async(health_update_phases(action.phases))
+        return HealthUpdatePhasesObservation.from_text(_format_result(result))
+
+
+class HealthUpdatePhasesTool(ToolDefinition[HealthUpdatePhasesAction, HealthUpdatePhasesObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthUpdatePhasesTool"]:
+        return [cls(
+            description="Replace the training phases array. Fetch current phases first, modify, then submit the full list.",
+            action_type=HealthUpdatePhasesAction,
+            observation_type=HealthUpdatePhasesObservation,
+            executor=HealthUpdatePhasesExecutor(),
+        )]
+
+
+class HealthUpdateCurrentMaxesAction(Action):
+    squat_kg: Optional[float] = Field(default=None, description="New squat max in kg (omit to leave unchanged)")
+    bench_kg: Optional[float] = Field(default=None, description="New bench max in kg (omit to leave unchanged)")
+    deadlift_kg: Optional[float] = Field(default=None, description="New deadlift max in kg (omit to leave unchanged)")
+
+
+class HealthUpdateCurrentMaxesObservation(Observation):
+    pass
+
+
+class HealthUpdateCurrentMaxesExecutor(ToolExecutor[HealthUpdateCurrentMaxesAction, HealthUpdateCurrentMaxesObservation]):
+    def __call__(self, action: HealthUpdateCurrentMaxesAction, conversation=None) -> HealthUpdateCurrentMaxesObservation:
+        from health import health_update_current_maxes
+        result = _run_async(health_update_current_maxes(action.squat_kg, action.bench_kg, action.deadlift_kg))
+        return HealthUpdateCurrentMaxesObservation.from_text(_format_result(result))
+
+
+class HealthUpdateCurrentMaxesTool(ToolDefinition[HealthUpdateCurrentMaxesAction, HealthUpdateCurrentMaxesObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthUpdateCurrentMaxesTool"]:
+        return [cls(
+            description="Update current competition maxes (squat_kg, bench_kg, deadlift_kg). Pass only the lifts that changed.",
+            action_type=HealthUpdateCurrentMaxesAction,
+            observation_type=HealthUpdateCurrentMaxesObservation,
+            executor=HealthUpdateCurrentMaxesExecutor(),
+        )]
+
+
+# =============================================================================
 # Register all tools
 # =============================================================================
 
@@ -706,10 +1217,31 @@ register_tool("HealthGetDietNotesTool", HealthGetDietNotesTool)
 register_tool("HealthGetSessionTool", HealthGetSessionTool)
 register_tool("HealthGetSessionsRangeTool", HealthGetSessionsRangeTool)
 register_tool("HealthGetSupplementsTool", HealthGetSupplementsTool)
+register_tool("HealthGetMetaTool", HealthGetMetaTool)
+register_tool("HealthGetPhasesTool", HealthGetPhasesTool)
+register_tool("HealthGetCurrentMaxesTool", HealthGetCurrentMaxesTool)
+register_tool("HealthGetOperatorPrefsTool", HealthGetOperatorPrefsTool)
+register_tool("HealthGetBreaksTool", HealthGetBreaksTool)
+register_tool("DaysUntilTool", DaysUntilTool)
 # Granular edit tools
 register_tool("HealthUpdateCompetitionTool", HealthUpdateCompetitionTool)
 register_tool("HealthUpdateDietNoteTool", HealthUpdateDietNoteTool)
 register_tool("HealthUpdateSupplementsTool", HealthUpdateSupplementsTool)
+# Session CRUD
+register_tool("HealthCreateSessionTool", HealthCreateSessionTool)
+register_tool("HealthDeleteSessionTool", HealthDeleteSessionTool)
+register_tool("HealthRescheduleSessionTool", HealthRescheduleSessionTool)
+register_tool("HealthAddExerciseTool", HealthAddExerciseTool)
+register_tool("HealthRemoveExerciseTool", HealthRemoveExerciseTool)
+# Competition CRUD
+register_tool("HealthCreateCompetitionTool", HealthCreateCompetitionTool)
+register_tool("HealthDeleteCompetitionTool", HealthDeleteCompetitionTool)
+# Diet note delete
+register_tool("HealthDeleteDietNoteTool", HealthDeleteDietNoteTool)
+# Meta & structure updates
+register_tool("HealthUpdateMetaTool", HealthUpdateMetaTool)
+register_tool("HealthUpdatePhasesTool", HealthUpdatePhasesTool)
+register_tool("HealthUpdateCurrentMaxesTool", HealthUpdateCurrentMaxesTool)
 
 
 # =============================================================================
@@ -736,8 +1268,29 @@ def get_health_tools() -> List[Tool]:
         Tool(name="HealthGetSessionTool"),
         Tool(name="HealthGetSessionsRangeTool"),
         Tool(name="HealthGetSupplementsTool"),
+        Tool(name="HealthGetMetaTool"),
+        Tool(name="HealthGetPhasesTool"),
+        Tool(name="HealthGetCurrentMaxesTool"),
+        Tool(name="HealthGetOperatorPrefsTool"),
+        Tool(name="HealthGetBreaksTool"),
+        Tool(name="DaysUntilTool"),
         # Granular edit tools
         Tool(name="HealthUpdateCompetitionTool"),
         Tool(name="HealthUpdateDietNoteTool"),
         Tool(name="HealthUpdateSupplementsTool"),
+        # Session CRUD
+        Tool(name="HealthCreateSessionTool"),
+        Tool(name="HealthDeleteSessionTool"),
+        Tool(name="HealthRescheduleSessionTool"),
+        Tool(name="HealthAddExerciseTool"),
+        Tool(name="HealthRemoveExerciseTool"),
+        # Competition CRUD
+        Tool(name="HealthCreateCompetitionTool"),
+        Tool(name="HealthDeleteCompetitionTool"),
+        # Diet note delete
+        Tool(name="HealthDeleteDietNoteTool"),
+        # Meta & structure
+        Tool(name="HealthUpdateMetaTool"),
+        Tool(name="HealthUpdatePhasesTool"),
+        Tool(name="HealthUpdateCurrentMaxesTool"),
     ]

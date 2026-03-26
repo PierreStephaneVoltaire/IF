@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Any, List, Dict
 from dataclasses import dataclass, field
 from collections import defaultdict
 
+from config import REFLECTION_CONTEXT_ID
+
 if TYPE_CHECKING:
     from memory.user_facts import UserFactStore
 
@@ -89,7 +91,7 @@ class MetaAnalyzer:
         
         try:
             # Get all facts for analysis
-            all_facts = self.store.get_all_facts()
+            all_facts = self.store.get_all_facts(REFLECTION_CONTEXT_ID)
             
             # Basic counts
             metrics.total_facts = len(all_facts)
@@ -377,7 +379,8 @@ class MetaAnalyzer:
         from memory.user_facts import FactCategory, FactSource, UserFact
         
         try:
-            fact = UserFact(
+            self.store.add(
+                context_id=REFLECTION_CONTEXT_ID,
                 content=f"Store health: {metrics.total_facts} facts, "
                        f"{len(metrics.category_distribution)} categories, "
                        f"satisfaction {metrics.avg_satisfaction_trend}",
@@ -389,8 +392,6 @@ class MetaAnalyzer:
                     "metrics": metrics.to_dict(),
                 }
             )
-            
-            self.store.add(fact)
             
         except Exception as e:
             logger.warning(f"[MetaAnalyzer] Failed to store metrics: {e}")

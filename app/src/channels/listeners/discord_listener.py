@@ -86,6 +86,7 @@ def create_discord_listener(
                         for att in message.attachments
                     ],
                     "channel_ref": message.channel,
+                    "discord_loop": loop,  # Pass the Discord event loop for delivery
                     "timestamp": message.created_at.isoformat(),
                 },
             )

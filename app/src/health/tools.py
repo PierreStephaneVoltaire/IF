@@ -463,6 +463,62 @@ async def calculate_attempts(
     }
 
 
+async def health_get_meta() -> dict:
+    """Get program metadata without the full program.
+
+    Returns:
+        Dict with comp_date, program_start, targets, version, weight_class,
+        training_notes, change_log, and other meta fields.
+    """
+    store = _get_store()
+    program = await store.get_program()
+    return program.get("meta", {})
+
+
+async def health_get_phases() -> list[dict]:
+    """Get training phases (name, weeks, intent).
+
+    Returns:
+        List of phase dicts sorted by start_week.
+    """
+    store = _get_store()
+    program = await store.get_program()
+    return program.get("phases", [])
+
+
+async def health_get_current_maxes() -> dict:
+    """Get current competition maxes.
+
+    Returns:
+        {squat: kg, bench: kg, deadlift: kg}
+    """
+    store = _get_store()
+    program = await store.get_program()
+    return program.get("current_maxes", {})
+
+
+async def health_get_operator_prefs() -> dict:
+    """Get operator preferences (attempt jumps, etc).
+
+    Returns:
+        Operator preferences dict including attempt_jumps per lift.
+    """
+    store = _get_store()
+    program = await store.get_program()
+    return program.get("operator_prefs", {})
+
+
+async def health_get_breaks() -> list[dict]:
+    """Get scheduled breaks/deload periods.
+
+    Returns:
+        List of {start, end} date strings.
+    """
+    store = _get_store()
+    program = await store.get_program()
+    return program.get("breaks", [])
+
+
 async def days_until(target_date: str, label: str = "target") -> dict:
     """Calculate days until a target date.
     
@@ -837,3 +893,406 @@ async def health_update_supplements(patch: dict) -> dict:
         "supplements": new_program.get("supplements", []),
         "supplement_phases": new_program.get("supplement_phases", []),
     }
+
+
+# =============================================================================
+# Session CRUD
+# =============================================================================
+
+async def health_create_session(
+    date: str,
+    day: str,
+    week_number: int,
+    exercises: list[dict] | None = None,
+    session_notes: str = "",
+) -> dict:
+    """Create a new training session.
+
+    Args:
+        date: Session date (YYYY-MM-DD)
+        day: Day label e.g. "Monday"
+        week_number: Training week number (integer)
+        exercises: Optional list of exercise dicts {name, sets, reps, kg, rpe, notes}
+        session_notes: Optional session notes
+
+    Returns:
+        The created session dict
+
+    Raises:
+        ValueError: If session already exists on that date
+    """
+    import copy
+    # Validate date format
+    datetime.strptime(date, "%Y-%m-%d")
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    sessions = new_program.setdefault("sessions", [])
+    if any(s.get("date") == date for s in sessions):
+        raise ValueError(f"Session already exists on {date}")
+
+    new_session = {
+        "date": date,
+        "day": day,
+        "week_number": week_number,
+        "completed": False,
+        "session_rpe": None,
+        "body_weight_kg": None,
+        "session_notes": session_notes,
+        "exercises": exercises or [],
+    }
+    sessions.append(new_session)
+    sessions.sort(key=lambda s: s.get("date", ""))
+
+    await store._write_new_version(new_program, minor=True)
+    return new_session
+
+
+async def health_delete_session(date: str) -> dict:
+    """Delete a training session by date.
+
+    Args:
+        date: Session date (YYYY-MM-DD)
+
+    Returns:
+        {"deleted": date}
+
+    Raises:
+        ValueError: If session not found
+    """
+    import copy
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    sessions = new_program.get("sessions", [])
+    before = len(sessions)
+    new_program["sessions"] = [s for s in sessions if s.get("date") != date]
+
+    if len(new_program["sessions"]) == before:
+        raise ValueError(f"Session not found: {date}")
+
+    await store._write_new_version(new_program, minor=True)
+    return {"deleted": date}
+
+
+async def health_reschedule_session(old_date: str, new_date: str) -> dict:
+    """Move a session to a different date.
+
+    Args:
+        old_date: Current session date (YYYY-MM-DD)
+        new_date: Target date (YYYY-MM-DD)
+
+    Returns:
+        The updated session dict
+
+    Raises:
+        ValueError: If old session not found or new date already occupied
+    """
+    import copy
+    datetime.strptime(old_date, "%Y-%m-%d")
+    datetime.strptime(new_date, "%Y-%m-%d")
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    sessions = new_program.get("sessions", [])
+
+    if any(s.get("date") == new_date for s in sessions):
+        raise ValueError(f"A session already exists on {new_date}")
+
+    session_idx = next((i for i, s in enumerate(sessions) if s.get("date") == old_date), None)
+    if session_idx is None:
+        raise ValueError(f"Session not found: {old_date}")
+
+    sessions[session_idx]["date"] = new_date
+    sessions.sort(key=lambda s: s.get("date", ""))
+
+    await store._write_new_version(new_program, minor=True)
+    return sessions[next(i for i, s in enumerate(sessions) if s.get("date") == new_date)]
+
+
+async def health_add_exercise(date: str, exercise: dict) -> dict:
+    """Add an exercise to a session.
+
+    Args:
+        date: Session date (YYYY-MM-DD)
+        exercise: Exercise dict with keys: name (required), sets, reps, kg, rpe, notes
+
+    Returns:
+        The updated session exercises list
+
+    Raises:
+        ValueError: If session not found or exercise missing name
+    """
+    import copy
+    if not exercise.get("name"):
+        raise ValueError("exercise.name is required")
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    sessions = new_program.get("sessions", [])
+    session_idx = next((i for i, s in enumerate(sessions) if s.get("date") == date), None)
+    if session_idx is None:
+        raise ValueError(f"Session not found: {date}")
+
+    sessions[session_idx].setdefault("exercises", []).append(exercise)
+
+    await store._write_new_version(new_program, minor=True)
+    return {"date": date, "exercises": sessions[session_idx]["exercises"]}
+
+
+async def health_remove_exercise(date: str, exercise_index: int) -> dict:
+    """Remove an exercise from a session by index.
+
+    Args:
+        date: Session date (YYYY-MM-DD)
+        exercise_index: Zero-based index of the exercise to remove
+
+    Returns:
+        The updated session exercises list
+
+    Raises:
+        ValueError: If session not found or index out of range
+    """
+    import copy
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    sessions = new_program.get("sessions", [])
+    session_idx = next((i for i, s in enumerate(sessions) if s.get("date") == date), None)
+    if session_idx is None:
+        raise ValueError(f"Session not found: {date}")
+
+    exercises = sessions[session_idx].get("exercises", [])
+    if exercise_index < 0 or exercise_index >= len(exercises):
+        raise ValueError(f"Exercise index {exercise_index} out of range (0-{len(exercises)-1})")
+
+    exercises.pop(exercise_index)
+
+    await store._write_new_version(new_program, minor=True)
+    return {"date": date, "exercises": exercises}
+
+
+# =============================================================================
+# Competition CRUD
+# =============================================================================
+
+async def health_create_competition(competition: dict) -> dict:
+    """Create a new competition entry.
+
+    Args:
+        competition: Dict with required fields: name, date (YYYY-MM-DD), federation.
+            Optional: status (default "confirmed"), weight_class_kg, location,
+            targets {squat_kg, bench_kg, deadlift_kg, total_kg}, notes.
+
+    Returns:
+        The created competition dict
+
+    Raises:
+        ValueError: If competition already exists on that date or missing required fields
+    """
+    import copy
+    for field in ("name", "date", "federation"):
+        if not competition.get(field):
+            raise ValueError(f"competition.{field} is required")
+
+    datetime.strptime(competition["date"], "%Y-%m-%d")
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    competitions = new_program.setdefault("competitions", [])
+    if any(c.get("date") == competition["date"] for c in competitions):
+        raise ValueError(f"Competition already exists on {competition['date']}")
+
+    new_comp = {
+        "name": competition["name"],
+        "date": competition["date"],
+        "federation": competition["federation"],
+        "status": competition.get("status", "confirmed"),
+        "weight_class_kg": competition.get("weight_class_kg"),
+        "location": competition.get("location"),
+        "targets": competition.get("targets", {}),
+        "notes": competition.get("notes", ""),
+    }
+    competitions.append(new_comp)
+    competitions.sort(key=lambda c: c.get("date", ""))
+
+    await store._write_new_version(new_program, minor=True)
+    return new_comp
+
+
+async def health_delete_competition(date: str) -> dict:
+    """Delete a competition by date.
+
+    Args:
+        date: Competition date (YYYY-MM-DD)
+
+    Returns:
+        {"deleted": date}
+
+    Raises:
+        ValueError: If competition not found
+    """
+    import copy
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    competitions = new_program.get("competitions", [])
+    before = len(competitions)
+    new_program["competitions"] = [c for c in competitions if c.get("date") != date]
+
+    if len(new_program["competitions"]) == before:
+        raise ValueError(f"Competition not found: {date}")
+
+    await store._write_new_version(new_program, minor=True)
+    return {"deleted": date}
+
+
+# =============================================================================
+# Diet Note Delete
+# =============================================================================
+
+async def health_delete_diet_note(date: str) -> dict:
+    """Delete a diet note by date.
+
+    Args:
+        date: Diet note date (YYYY-MM-DD)
+
+    Returns:
+        {"deleted": date}
+
+    Raises:
+        ValueError: If diet note not found
+    """
+    import copy
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    notes = new_program.get("diet_notes", [])
+    before = len(notes)
+    new_program["diet_notes"] = [n for n in notes if n.get("date") != date]
+
+    if len(new_program["diet_notes"]) == before:
+        raise ValueError(f"Diet note not found: {date}")
+
+    await store._write_new_version(new_program, minor=True)
+    return {"deleted": date}
+
+
+# =============================================================================
+# Meta & Structure Updates
+# =============================================================================
+
+async def health_update_meta(updates: dict) -> dict:
+    """Update program metadata fields.
+
+    Allowed fields: program_name, comp_date, target_squat_kg, target_bench_kg,
+    target_dl_kg, target_total_kg, weight_class_kg, current_body_weight_kg,
+    federation, practicing_for, program_start.
+
+    Args:
+        updates: Dict of field → new value
+
+    Returns:
+        Updated meta dict
+
+    Raises:
+        ValueError: If unknown fields are passed
+    """
+    import copy
+    allowed = {
+        "program_name", "comp_date", "target_squat_kg", "target_bench_kg",
+        "target_dl_kg", "target_total_kg", "weight_class_kg",
+        "current_body_weight_kg", "federation", "practicing_for", "program_start",
+    }
+    unknown = set(updates.keys()) - allowed
+    if unknown:
+        raise ValueError(f"Unknown meta fields: {unknown}. Allowed: {allowed}")
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    meta = new_program.setdefault("meta", {})
+    for key, value in updates.items():
+        meta[key] = value
+
+    await store._write_new_version(new_program, minor=True)
+    return meta
+
+
+async def health_update_phases(phases: list[dict]) -> list[dict]:
+    """Replace the full phases array.
+
+    Each phase dict: name (required), start_week (int), end_week (int), intent (str).
+
+    Args:
+        phases: Complete list of phase dicts
+
+    Returns:
+        The updated phases list
+
+    Raises:
+        ValueError: If any phase is missing required fields
+    """
+    import copy
+    for i, phase in enumerate(phases):
+        if not phase.get("name"):
+            raise ValueError(f"phases[{i}].name is required")
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+    new_program["phases"] = phases
+
+    await store._write_new_version(new_program, minor=True)
+    return phases
+
+
+async def health_update_current_maxes(
+    squat_kg: float | None = None,
+    bench_kg: float | None = None,
+    deadlift_kg: float | None = None,
+) -> dict:
+    """Update current competition maxes.
+
+    Args:
+        squat_kg: New squat max in kg (omit to leave unchanged)
+        bench_kg: New bench max in kg (omit to leave unchanged)
+        deadlift_kg: New deadlift max in kg (omit to leave unchanged)
+
+    Returns:
+        Updated current_maxes dict
+
+    Raises:
+        ValueError: If no fields provided
+    """
+    import copy
+    if squat_kg is None and bench_kg is None and deadlift_kg is None:
+        raise ValueError("At least one max must be provided")
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+
+    maxes = new_program.setdefault("current_maxes", {})
+    if squat_kg is not None:
+        maxes["squat"] = squat_kg
+    if bench_kg is not None:
+        maxes["bench"] = bench_kg
+    if deadlift_kg is not None:
+        maxes["deadlift"] = deadlift_kg
+
+    await store._write_new_version(new_program, minor=True)
+    return maxes

@@ -30,6 +30,7 @@ from config import (
     REFLECTION_THRESHOLD_OPINIONS_NO_RESPONSE,
     CAPABILITY_GAP_PROMOTION_THRESHOLD,
     REFLECTION_MODEL,
+    REFLECTION_CONTEXT_ID,
 )
 from agent.prompts.loader import load_prompt
 
@@ -147,18 +148,18 @@ class ReflectionEngine:
             True if reflection should be triggered by threshold
         """
         try:
+            from memory.user_facts import FactCategory
+            ctx = REFLECTION_CONTEXT_ID
+
             # Check uncategorized facts pressure
             # (facts that were hard to categorize)
-            meta_obs = self.store.list_by_category(
-                category="meta_observation",
-                limit=REFLECTION_THRESHOLD_UNCATEGORIZED
-            )
+            meta_obs = self.store.list_by_category(ctx, FactCategory.MODEL_ASSESSMENT)
             if len(meta_obs) >= REFLECTION_THRESHOLD_UNCATEGORIZED:
                 logger.info(f"[Reflection] Threshold: {len(meta_obs)} uncategorized facts")
                 return True
-            
+
             # Check capability gaps without acceptance criteria
-            gaps = self.store.list_by_category(category="capability_gap")
+            gaps = self.store.list_by_category(ctx, FactCategory.CAPABILITY_GAP)
             gaps_no_criteria = [
                 g for g in gaps
                 if not g.metadata.get("acceptance_criteria")
@@ -166,9 +167,9 @@ class ReflectionEngine:
             if len(gaps_no_criteria) >= REFLECTION_THRESHOLD_GAPS_NO_CRITERIA:
                 logger.info(f"[Reflection] Threshold: {len(gaps_no_criteria)} gaps without criteria")
                 return True
-            
+
             # Check opinions without agent responses
-            opinions = self.store.list_by_category(category="opinion")
+            opinions = self.store.list_by_category(ctx, FactCategory.OPINION)
             opinions_no_response = [
                 o for o in opinions
                 if not o.metadata.get("agent_response")
@@ -176,7 +177,7 @@ class ReflectionEngine:
             if len(opinions_no_response) >= REFLECTION_THRESHOLD_OPINIONS_NO_RESPONSE:
                 logger.info(f"[Reflection] Threshold: {len(opinions_no_response)} opinions without response")
                 return True
-            
+
             return False
             
         except Exception as e:
@@ -294,25 +295,26 @@ class ReflectionEngine:
         promoted_ids = []
         
         try:
-            gaps = self.store.list_by_category(category=FactCategory.CAPABILITY_GAP)
-            
+            ctx = REFLECTION_CONTEXT_ID
+            gaps = self.store.list_by_category(ctx, FactCategory.CAPABILITY_GAP)
+
             for gap_fact in gaps:
                 metadata = gap_fact.metadata or {}
                 trigger_count = metadata.get("trigger_count", 0)
-                
+
                 # Check promotion threshold
                 if trigger_count < CAPABILITY_GAP_PROMOTION_THRESHOLD:
                     continue
-                
+
                 if metadata.get("promoted", False):
                     continue  # Already promoted
-                
+
                 # Compute priority score
-                # priority = (trigger_count / max_triggers) * 0.4 
-                #          + recency_weight * 0.3 
+                # priority = (trigger_count / max_triggers) * 0.4
+                #          + recency_weight * 0.3
                 #          + impact_estimate * 0.3
                 trigger_component = min(trigger_count / 20.0, 1.0) * 0.4
-                
+
                 # Recency weight with exponential decay (lambda = 0.05)
                 last_seen = metadata.get("last_seen", "")
                 if last_seen:
@@ -325,7 +327,7 @@ class ReflectionEngine:
                 else:
                     recency_weight = 0.5
                 recency_component = recency_weight * 0.3
-                
+
                 # Impact estimate based on status and workaround
                 status = metadata.get("status", "open")
                 workaround = metadata.get("workaround")
@@ -336,16 +338,17 @@ class ReflectionEngine:
                 else:
                     impact = 0.8
                 impact_component = impact * 0.3
-                
+
                 priority_score = trigger_component + recency_component + impact_component
-                
+
                 # Generate acceptance criteria (simplified - could use LLM)
                 content = gap_fact.content
                 contexts = metadata.get("trigger_contexts", [])
                 acceptance_criteria = self._generate_acceptance_criteria(content, contexts)
-                
+
                 # Create tool suggestion
-                suggestion = UserFact(
+                self.store.add(
+                    context_id=ctx,
                     content=f"Tool suggestion for: {content}",
                     category=FactCategory.TOOL_SUGGESTION,
                     source=FactSource.MODEL_OBSERVED,
@@ -359,15 +362,7 @@ class ReflectionEngine:
                         "created_from_reflection": True,
                     }
                 )
-                
-                self.store.add(suggestion)
-                
-                # Mark gap as promoted
-                gap_fact.metadata["promoted"] = True
-                gap_fact.metadata["priority_score"] = priority_score
-                gap_fact.metadata["status"] = "workaround_exists"
-                self.store._update_metadata(gap_fact)
-                
+
                 promoted_ids.append(gap_fact.id)
                 logger.info(f"[Reflection] Promoted gap {gap_fact.id} (priority={priority_score:.2f})")
                 
@@ -445,10 +440,11 @@ class ReflectionEngine:
         session_id: str | None = None,
     ) -> None:
         """Store reflection summary as a meta_observation."""
-        from memory.user_facts import FactCategory, FactSource, UserFact
-        
+        from memory.user_facts import FactCategory, FactSource
+
         try:
-            summary = UserFact(
+            self.store.add(
+                context_id=REFLECTION_CONTEXT_ID,
                 content=f"Reflection cycle: {results.get('reason', 'unknown')} - "
                        f"{results.get('patterns_detected', 0)} patterns, "
                        f"{results.get('opinions_formed', 0)} opinions, "
@@ -461,9 +457,7 @@ class ReflectionEngine:
                     "session_id": session_id,
                 }
             )
-            
-            self.store.add(summary)
-            
+
         except Exception as e:
             logger.warning(f"[Reflection] Failed to store summary: {e}")
     

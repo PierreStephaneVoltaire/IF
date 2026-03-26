@@ -311,44 +311,6 @@ spec:
   YAML
 }
 
-resource "kubectl_manifest" "route_fitness_protected" {
-  depends_on = [kubectl_manifest.snippets_auth_and_security]
-
-  yaml_body = <<-YAML
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: fitness-protected
-  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
-spec:
-  parentRefs:
-    - name: ${var.gateway_name}
-      namespace: ${var.gateway_namespace}
-  rules:
-%{for method in ["POST", "PUT", "PATCH", "DELETE"]}
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /fitness
-          method: ${method}
-      filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: gateway.nginx.org
-            kind: SnippetsFilter
-            name: auth-and-security
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /
-      backendRefs:
-        - name: ${kubernetes_service.portal_backends["powerlifting-app"].metadata[0].name}
-          port: 3005
-%{endfor}
-  YAML
-}
-
 resource "kubectl_manifest" "route_public" {
   depends_on = [kubectl_manifest.snippets_security_only]
 
@@ -385,7 +347,6 @@ spec:
         - path:
             type: PathPrefix
             value: /fitness
-          method: GET
       filters:
         - type: ExtensionRef
           extensionRef:
@@ -403,45 +364,7 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /fitness
-          method: HEAD
-      filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: gateway.nginx.org
-            kind: SnippetsFilter
-            name: security-only
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /
-      backendRefs:
-        - name: ${kubernetes_service.portal_backends["powerlifting-app"].metadata[0].name}
-          port: 3005
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /fitness
-          method: OPTIONS
-      filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: gateway.nginx.org
-            kind: SnippetsFilter
-            name: security-only
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /
-      backendRefs:
-        - name: ${kubernetes_service.portal_backends["powerlifting-app"].metadata[0].name}
-          port: 3005
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /api
+            value: /agent
       filters:
         - type: ExtensionRef
           extensionRef:
@@ -496,5 +419,78 @@ spec:
         - name: grafana
           namespace: ${kubernetes_namespace.monitoring.metadata[0].name}
           port: 3000
+  YAML
+}
+
+resource "kubectl_manifest" "route_openwebui" {
+  depends_on = [kubectl_manifest.snippets_security_only]
+
+  yaml_body = <<-YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: openwebui
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  parentRefs:
+    - name: ${var.gateway_name}
+      namespace: ${var.gateway_namespace}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: ${kubernetes_service.open_webui.metadata[0].name}
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /ws
+      backendRefs:
+        - name: ${kubernetes_service.open_webui.metadata[0].name}
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /oauth
+      backendRefs:
+        - name: ${kubernetes_service.open_webui.metadata[0].name}
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /_app
+      backendRefs:
+        - name: ${kubernetes_service.open_webui.metadata[0].name}
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /static
+      backendRefs:
+        - name: ${kubernetes_service.open_webui.metadata[0].name}
+          port: 8080
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      backendRefs:
+        - name: ${kubernetes_service.open_webui.metadata[0].name}
+          port: 8080
+    - matches:
+        - path:
+            type: Exact
+            value: /health
+      backendRefs:
+        - name: ${kubernetes_service.open_webui.metadata[0].name}
+          port: 8080
+    - matches:
+        - path:
+            type: Exact
+            value: /health/db
+      backendRefs:
+        - name: ${kubernetes_service.open_webui.metadata[0].name}
+          port: 8080
   YAML
 }

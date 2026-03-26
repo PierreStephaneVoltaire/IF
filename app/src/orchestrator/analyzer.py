@@ -29,7 +29,7 @@ from config import (
     ORCHESTRATOR_SYNTHESIS_MODEL,
     ORCHESTRATOR_ANALYSIS_MAX_TURNS,
 )
-from terminal import get_lifecycle_manager
+from terminal import get_static_manager
 
 from .executor import run_subagent, StepResult
 

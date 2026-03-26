@@ -24,19 +24,21 @@ async def deliver_to_channel(
     channel_ref: Any,
     chunks: List[str],
     attachments: List[Dict[str, Any]],
+    discord_loop: Any = None,
 ) -> None:
     """Deliver response chunks to a platform channel.
-    
+
     Routes to the appropriate platform-specific delivery function.
-    
+
     Args:
         platform: Platform name ("discord" or "openwebui")
         channel_ref: Platform-specific channel reference
         chunks: List of text chunks to send
         attachments: List of attachment dicts with filename, url, local_path
+        discord_loop: Discord event loop (required for Discord platform)
     """
     if platform == "discord":
-        await _deliver_discord(channel_ref, chunks, attachments)
+        await _deliver_discord(channel_ref, chunks, attachments, discord_loop)
     elif platform == "openwebui":
         await _deliver_openwebui(channel_ref, chunks, attachments)
     else:
@@ -47,19 +49,25 @@ async def _deliver_discord(
     channel: "discord.TextChannel",
     chunks: List[str],
     attachments: List[Dict[str, Any]],
+    discord_loop: Any = None,
 ) -> None:
     """Send chunks to Discord channel.
-    
+
     Sends chunks sequentially with files attached to the last chunk.
     Falls back to URL references if file download fails.
-    
+
+    When discord_loop is provided, sends are scheduled on the Discord
+    event loop via run_coroutine_threadsafe (the channel object is bound
+    to that loop, not the main/FastAPI loop).
+
     Args:
         channel: Discord TextChannel object
         chunks: List of text chunks to send
         attachments: List of attachment dicts
+        discord_loop: The Discord client's event loop (required for cross-thread delivery)
     """
     import discord
-    
+
     for i, chunk in enumerate(chunks):
         is_last = i == len(chunks) - 1
         files: List[discord.File] = []
@@ -70,7 +78,7 @@ async def _deliver_discord(
                 local_path = att.get("local_path")
                 filename = att.get("filename", "attachment")
                 url = att.get("url", "")
-                
+
                 if local_path:
                     try:
                         files.append(
@@ -87,10 +95,16 @@ async def _deliver_discord(
                     chunk += f"\n📎 {filename}: {url}"
 
         try:
-            await channel.send(
+            send_coro = channel.send(
                 content=chunk,
                 files=files if files else None,
             )
+            if discord_loop:
+                # Schedule on Discord's event loop and await the result
+                future = asyncio.run_coroutine_threadsafe(send_coro, discord_loop)
+                await asyncio.wrap_future(future)
+            else:
+                await send_coro
             logger.debug(f"Sent Discord chunk {i+1}/{len(chunks)}")
         except discord.HTTPException as e:
             logger.error(f"Discord send failed: {e}")

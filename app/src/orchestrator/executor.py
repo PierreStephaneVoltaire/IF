@@ -31,7 +31,7 @@ from config import (
     ORCHESTRATOR_SUBAGENT_MODEL,
     ORCHESTRATOR_MAX_TURNS,
 )
-from terminal import strip_files_line, FileRef, get_lifecycle_manager
+from terminal import strip_files_line, FileRef, get_static_manager
 
 if TYPE_CHECKING:
     from openhands.sdk.conversation.state import ConversationState

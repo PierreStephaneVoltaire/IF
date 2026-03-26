@@ -497,6 +497,15 @@ class SpawnSpecialistExecutor(ToolExecutor):
         )
 
 
+SPAWN_SPECIALIST_DESCRIPTION = """Spawn a single specialist subagent to handle a specific task.
+
+Use this when you need expert help in a specific domain. The specialist will
+work independently and return results.
+
+Available specialists include: security, performance, architecture, debugger, secops.
+Choose the specialist that best matches your task."""
+
+
 class SpawnSpecialistTool(ToolDefinition[SpawnSpecialistAction, SpawnSpecialistObservation]):
     """Tool for spawning specialist subagent."""
 

@@ -14,6 +14,8 @@ from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING, Any, List, Dict
 from collections import defaultdict
 
+from config import REFLECTION_CONTEXT_ID
+
 if TYPE_CHECKING:
     from memory.user_facts import UserFactStore
 
@@ -98,8 +100,8 @@ class GrowthTracker:
         gaps = []
         
         try:
-            misconceptions = self.store.list_by_category(FactCategory.MISCONCEPTION)
-            
+            misconceptions = self.store.list_by_category(REFLECTION_CONTEXT_ID, FactCategory.MISCONCEPTION)
+
             # Filter to time period
             cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
             recent = []
@@ -197,8 +199,9 @@ class GrowthTracker:
         
         try:
             # Get skill facts and topic logs
-            skills = self.store.list_by_category(FactCategory.SKILL)
-            topics = self.store.list_by_category(FactCategory.TOPIC_LOG)
+            ctx = REFLECTION_CONTEXT_ID
+            skills = self.store.list_by_category(ctx, FactCategory.SKILL)
+            topics = self.store.list_by_category(ctx, FactCategory.TOPIC_LOG)
             
             # Combine for analysis
             all_facts = skills + topics
@@ -273,8 +276,9 @@ class GrowthTracker:
         
         try:
             # Get all topic-related facts
-            topics = self.store.list_by_category(FactCategory.TOPIC_LOG)
-            interests = self.store.list_by_category(FactCategory.INTEREST_AREA)
+            ctx = REFLECTION_CONTEXT_ID
+            topics = self.store.list_by_category(ctx, FactCategory.TOPIC_LOG)
+            interests = self.store.list_by_category(ctx, FactCategory.INTEREST_AREA)
             
             all_facts = topics + interests
             
@@ -459,8 +463,8 @@ class GrowthTracker:
         lines = ["# Misconception Report", ""]
         
         try:
-            misconceptions = self.store.list_by_category(FactCategory.MISCONCEPTION)
-            
+            misconceptions = self.store.list_by_category(REFLECTION_CONTEXT_ID, FactCategory.MISCONCEPTION)
+
             # Group by domain
             by_domain: Dict[str, List[Any]] = defaultdict(list)
             for misc in misconceptions:
