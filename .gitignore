@@ -34,5 +34,4 @@ yarn-error.log*
 *.swp
 app/venv/*
 app/src/data/*
-.claude*
 app/sandbox/*
