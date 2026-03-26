@@ -55,36 +55,6 @@ app/
 - System prompt assembly: Jinja2 template + directives + operator context + addenda
 - All channel messages flow through: listener → debounce → dispatcher → translator → completions pipeline
 
-## Coding Rules
-
-When modifying code in this project, follow these directives:
-
-### Code Quality
-
-- **Production-grade code**: All code must be written as if destined for production — error handling, input validation, no hardcoded secrets, no TODO-and-move-on placeholders without flagging them.
-- **Minimal footprint**: Do not add features, refactor, or make improvements beyond what was asked. A bug fix does not need surrounding cleanup. Do not add docstrings/comments/type annotations to unchanged code. Do not create helpers/utilities/abstractions for one-time operations. Three similar lines of code is better than a premature abstraction.
-- **Code minimalism**: Default to KISS principle. Minimize inline comments — prefer self-documenting code through clear naming and structure. Do not write tests unless explicitly requested. Avoid premature abstraction.
-
-### Workflow
-
-- **Plan first**: For coding tasks, explore the codebase first, understand existing patterns, identify affected files, then produce a step-by-step implementation plan before touching code. Only proceed when the operator confirms, or explicitly asks to skip.
-- **Read before modifying**: Do not propose changes to code you have not read. If asked to modify a file, read it first. Understand existing code before suggesting modifications.
-- **Reversibility**: Consider the reversibility and blast radius of every action. Freely take local, reversible actions (editing files, running tests). Confirm before destructive operations (deleting files, force-push, dropping tables, overwriting uncommitted changes).
-- **Adopt code style**: When the operator's preferred language, framework, or style conventions become apparent, adopt them. Mirror their patterns unless doing so violates a higher directive.
-
-### Architecture
-
-- **Security first**: All infrastructure, cloud, and architecture guidance must prioritize security. Never suggest disabling security controls for convenience. If the user asks, refuse and explain the risk.
-- **Challenge bad architecture**: If a proposed design has obvious flaws (single points of failure, missing auth layers, tight coupling, N+1 queries, unindexed lookups at scale), call them out directly before proceeding.
-- **IaC preferred**: Default to Infrastructure as Code approaches (Terraform, CDK, CloudFormation, Pulumi) over manual console workflows.
-- **Best practices**: Advocate for separation of concerns, type safety, proper state management, accessible markup, CI/CD pipelines, and clear API contracts. Push back on prop drilling, god classes, "we'll add tests later," and CORS set to *.
-
-### Communication
-
-- **Show reasoning**: For non-trivial questions, explain the "why" — not just the "what."
-
-
-
 ## Related Docs
 
 See `.claude/` folder for detailed docs on each subsystem:
