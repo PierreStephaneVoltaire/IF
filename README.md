@@ -2,7 +2,7 @@
 
 A single main agent with context-aware tiering and specialist subagent delegation. The system uses a general-purpose preset as the main agent, automatically upgrading tiers based on context size, and can spawn specialized subagents for deep domain expertise.
 
-The agent runs on the OpenHands SDK with access to MCP servers for extended capabilities (AWS docs, financial data, file system), a persistent RAG-backed memory store, conversation persistence, and a file-based attachment system.
+The agent runs on the OpenHands SDK with access to MCP servers for extended capabilities (AWS docs, financial data, time), a persistent LanceDB-backed user facts store, conversation persistence, a terminal system for shell access, and a file-based attachment system.
 
 ---
 
@@ -48,8 +48,6 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
 - [Kubernetes Deployment](#kubernetes-deployment)
 - [Development and Running](#development-and-running)
 - [Common Issues & Solutions](#common-issues--solutions)
-- [Future Improvements](#future-improvements)
-- [Quick Start](#quick-start)
 
 ---
 
@@ -129,7 +127,7 @@ The agent runs on the OpenHands SDK with access to MCP servers for extended capa
 │                                                                              │
 │  ┌────────────────┐    ┌────────────────┐    ┌────────────────┐            │
 │  │  LLM Config    │    │  MCP Servers   │    │ Memory Tools   │            │
-│  │  @preset/slug  │    │  (uvx-based)   │    │  (ChromaDB)    │            │
+│  │  @preset/slug  │    │  (uvx-based)   │    │  (LanceDB)     │            │
 │  └────────────────┘    └────────────────┘    └────────────────┘            │
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────┐            │
@@ -326,8 +324,13 @@ The main agent can spawn specialist subagents for domain-specific expertise.
 | `secops` | Security operations and vulnerability analysis | security, code | - |
 | `devops` | Infrastructure and deployment automation | code, architecture | - |
 | `financial_analyst` | Financial data analysis and market research | finance, competition | yahoo_finance, alpha_vantage |
-| `health_coach` | Health program analysis and coaching | health | google_sheets |
+| `finance_write` | Validated write agent for finance snapshot mutations | finance | - |
+| `health_write` | Validated write agent for training program mutations | health | - |
 | `web_researcher` | Web research and information synthesis | core, competition | - |
+| `proofreader` | General prose editing — grammar, clarity, tone, flow | writing, core | - |
+| `jira_writer` | Jira ticket writing with AC, subtasks, and metadata | writing, code | - |
+| `email_writer` | Professional email drafting with tone matching | writing | - |
+| `constrained_writer` | Character-limited content  | writing | - |
 
 ### Skills (Mode Modifiers)
 
@@ -365,8 +368,13 @@ src/agent/prompts/
     ├── secops.j2
     ├── devops.j2
     ├── financial_analyst.j2
-    ├── health_coach.j2
-    └── web_researcher.j2
+    ├── finance_write.j2      # Finance snapshot write agent
+    ├── health_write.j2       # Health program write agent
+    ├── web_researcher.j2
+    ├── proofreader.j2        # General prose editing
+    ├── jira_writer.j2        # Jira ticket writing
+    ├── email_writer.j2       # Professional email drafting
+    └── constrained_writer.j2 # Character-limited content
 ```
 
 ---
@@ -611,14 +619,11 @@ Returns system health status.
     "preset_count": 10,
     "channel_system": "active",
     "active_listeners": 2,
+    "pending_messages": 0,
     "heartbeat": "active",
     "heartbeat_idle_hours": 6.0,
     "cached_conversations": 5,
-    "pinned_conversations": 1,
-    "reflection_engine": "active",
-    "reflection_periodic_hours": 6.0,
-    "capability_gaps": 3,
-    "tool_suggestions": 1
+    "pinned_conversations": 1
   }
 }
 ```
@@ -694,7 +699,7 @@ if cached and cached.pinned:
 
 ## User Facts Store
 
-The user facts store replaces the simpler memory store with a structured fact system supporting categories, sources, and supersession. It uses ChromaDB for semantic search.
+The user facts store replaces the simpler memory store with a structured fact system supporting categories, sources, supersession, and context isolation. It uses LanceDB for semantic search.
 
 **Module:** [`src/memory/user_facts.py`](src/memory/user_facts.py)
 
@@ -704,6 +709,7 @@ The user facts store replaces the simpler memory store with a structured fact sy
 @dataclass
 class UserFact:
     id: str                    # UUID
+    context_id: str            # Scope: "openwebui_{chat_id}" or "discord_{channel_id}"
     username: str              # Operator identifier
     content: str               # The fact content
     category: FactCategory     # Classification category
@@ -714,6 +720,7 @@ class UserFact:
     updated_at: str            # ISO timestamp
     superseded_by: str | None  # ID of replacement fact
     active: bool               # False if superseded
+    metadata: dict             # Structured data storage
 ```
 
 ### Categories
@@ -1443,7 +1450,7 @@ The channel system enables multi-platform integration with Discord and OpenWebUI
 │      └─────────┬───────────────┘                                │
 │                ▼                                                 │
 │         debounce.py                                             │
-│    (30s batching window)                                        │
+│    (configurable batching window)                               │
 │                │                                                 │
 │                ▼                                                 │
 │         dispatcher.py                                           │
@@ -1507,7 +1514,7 @@ def stop_all() -> None  # Called at shutdown
 Thread-safe message batching with configurable window.
 
 **Configuration:**
-- `CHANNEL_DEBOUNCE_SECONDS`: Inactivity window (default: 30s)
+- `CHANNEL_DEBOUNCE_SECONDS`: Inactivity window (default: 5s)
 - Messages are accumulated and flushed after silence period
 
 **Threading Model:**
@@ -1578,7 +1585,7 @@ The terminal system provides persistent Docker containers for command execution 
 **Modules:**
 - [`src/terminal/__init__.py`](src/terminal/__init__.py) — Module exports
 - [`src/terminal/config.py`](src/terminal/config.py) — Configuration dataclass
-- [`src/terminal/lifecycle.py`](src/terminal/lifecycle.py) — Container lifecycle management
+- [`src/terminal/static_client.py`](src/terminal/static_client.py) — Static terminal manager (singleton lifecycle)
 - [`src/terminal/client.py`](src/terminal/client.py) — HTTP client for terminal API
 - [`src/terminal/files.py`](src/terminal/files.py) — File reference handling
 
@@ -1589,12 +1596,12 @@ The terminal system provides persistent Docker containers for command execution 
 │                    TERMINAL SYSTEM                                │
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │               TerminalLifecycleManager                    │    │
+│  │               StaticTerminalManager                       │    │
 │  │                                                           │    │
-│  │  - Per-chat Docker containers (open-webui/open-terminal) │    │
-│  │  - Named volumes for persistent filesystems               │    │
-│  │  - Idle cleanup with configurable timeout                 │    │
-│  │  - Container recovery on restart                          │    │
+│  │  - Connects to pre-deployed terminal instance (HTTP)     │    │
+│  │  - Conversation-scoped working directories               │    │
+│  │  - /home/user/conversations/{chat_id}                    │    │
+│  │  - Initialized when TERMINAL_API_KEY is configured       │    │
 │  └──────────────────────────┬──────────────────────────────┘    │
 │                             │                                    │
 │                             ▼                                    │
@@ -1942,7 +1949,8 @@ class Preset:
 | `STORE_BACKEND` | `sqlite` | Storage backend type |
 | `STORAGE_DB_PATH` | `./data/store.db` | SQLite database path |
 | `SANDBOX_PATH` | `./sandbox` | File output directory |
-| `MEMORY_DB_PATH` | `./data/memory_db` | ChromaDB path |
+| `MEMORY_DB_PATH` | `./data/memory_db` | ChromaDB path (legacy) |
+| `FACTS_BASE_PATH` | `./data/facts` | LanceDB user facts storage |
 | `PERSISTENCE_DIR` | `./data/conversations` | Conversation persistence |
 
 ### Directive Store Configuration
@@ -1958,7 +1966,7 @@ class Preset:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CHANNEL_DEBOUNCE_SECONDS` | `30` | Message batching window |
+| `CHANNEL_DEBOUNCE_SECONDS` | `5` | Message batching window |
 | `CHANNEL_MAX_CHUNK_CHARS` | `1500` | Max chars per response chunk |
 | `OPENWEBUI_POLL_INTERVAL` | `5.0` | OpenWebUI polling interval |
 
@@ -1970,6 +1978,13 @@ class Preset:
 | `HEARTBEAT_IDLE_HOURS` | `6.0` | Hours of inactivity before heartbeat |
 | `HEARTBEAT_COOLDOWN_HOURS` | `6.0` | Hours between heartbeats on same channel |
 | `HEARTBEAT_QUIET_HOURS` | `23:00-07:00` | UTC time range to skip heartbeats |
+
+### LLM Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_REASONING_EFFORT` | `high` | Reasoning effort for main agent LLM (high/medium/low) |
+| `TOOL_OUTPUT_CHAR_LIMIT` | `200000` | Max chars for tool output before SDK truncation |
 
 ### Reflection Engine Configuration
 
@@ -2025,16 +2040,31 @@ class Preset:
 
 ## Project Structure
 
+### Repository Root
+
 ```
-if-prototype-a1/
+discord-ai-bot/
 ├── README.md                    # This file
+├── .github/workflows/           # CI/CD pipelines (build-deploy, terraform-validate)
+├── app/                         # Main application (Python backend + utility portals)
+├── docker/                      # Packer build configurations for container images
+├── terraform/                   # Infrastructure-as-code (K8s, AWS, networking)
+└── .gitignore
+```
+
+### Application (`app/`)
+
+```
+app/
 ├── requirements.txt             # Python dependencies
-├── .env.example                 # Environment template
-├── main_system_prompt.txt       # Base system prompt for agent
-├── plan.md                      # Implementation plan
+├── .env.example                 # Environment template (367 lines)
+├── main_system_prompt.txt       # Base system prompt for agent personality
+├── scripts/                     # Shell scripts (start_all, stop_all, seed_*, create_dynamo_tables)
+├── utils/                       # Utility portal applications (see Utility Applications section)
 │
 ├── data/                        # Runtime data directory
-│   ├── memory_db/               # ChromaDB vector storage (user facts)
+│   ├── facts/                   # LanceDB vector storage (user facts, primary)
+│   ├── memory_db/               # ChromaDB vector storage (legacy memory)
 │   ├── conversations/           # OpenHands persistence
 │   │   └── {conversation_id}/
 │   │       ├── base_state.json
@@ -2086,10 +2116,11 @@ if-prototype-a1/
     │   │   ├── directive_tools.py     # Directive management tools
     │   │   ├── subagents.py          # Subagent spawning tools
     │   │   ├── terminal_tools.py     # Terminal execution tools
-    │   │   ├── context_tools.py      # Context management tools
+    │   │   ├── context_tools.py      # Context/signals tools
     │   │   ├── diary_tools.py        # Diary entry tools
     │   │   ├── proposal_tools.py     # Proposal management tools
-    │   │   └── health_tools.py       # Health program tools
+    │   │   ├── health_tools.py       # Health program tools
+    │   │   └── finance_tools.py      # Finance data read/write tools
     │   ├── reflection/          # Metacognitive analysis layer
     │   │   ├── __init__.py
     │   │   ├── engine.py        # Core reflection engine
@@ -2098,8 +2129,26 @@ if-prototype-a1/
     │   │   ├── meta_analysis.py       # Store health analysis
     │   │   └── growth_tracker.py      # Operator growth tracking
     │   └── prompts/
-    │       ├── system_prompt.j2 # Jinja2 template for system prompt
-    │       └── pondering_addendum.md  # Pondering mode instructions
+    │       ├── system_prompt.j2       # Jinja2 template for system prompt
+    │       ├── pondering_addendum.md  # Pondering mode instructions
+    │       ├── deep_thinker.j2        # Extended reasoning prompt
+    │       ├── summary.j2             # Conversation summary template
+    │       ├── topic_shift.j2         # Topic shift detection
+    │       ├── directive_rewrite.j2   # Directive rewriting
+    │       ├── opinion_formation.j2   # Opinion formation analysis
+    │       └── specialists/           # Specialist prompt templates
+    │           ├── debugger.j2
+    │           ├── architect.j2
+    │           ├── secops.j2
+    │           ├── devops.j2
+    │           ├── financial_analyst.j2
+    │           ├── finance_write.j2
+    │           ├── health_write.j2
+    │           ├── web_researcher.j2
+    │           ├── proofreader.j2
+    │           ├── jira_writer.j2
+    │           ├── email_writer.j2
+    │           └── constrained_writer.j2
     │
     ├── channels/                # Channel system
     │   ├── __init__.py
@@ -2127,10 +2176,21 @@ if-prototype-a1/
     │   ├── directive_model.py   # Directive data model
     │   └── directive_store.py   # DynamoDB directive store
     │
-    ├── memory/                  # Memory store
+    ├── memory/                  # Memory & knowledge stores
     │   ├── __init__.py
-    │   ├── user_facts.py        # ChromaDB user facts store
-    │   └── summarizer.py        # Background conversation summarization
+    │   ├── user_facts.py        # LanceDB user facts store (primary)
+    │   ├── lancedb_store.py     # LanceDB vector store backend
+    │   ├── embeddings.py        # Embedding model management (all-MiniLM-L6-v2)
+    │   ├── store.py             # Legacy ChromaDB memory store
+    │   ├── summarizer.py        # Background conversation summarization
+    │   └── migrate_chroma.py    # ChromaDB → LanceDB migration utility
+    │
+    ├── health/                  # Health/fitness module
+    │   ├── __init__.py
+    │   ├── program_store.py     # DynamoDB program persistence
+    │   ├── rag.py               # Health docs RAG (ChromaDB)
+    │   ├── renderer.py          # Program rendering
+    │   └── tools.py             # Health agent tools
     │
     ├── heartbeat/               # Heartbeat system
     │   ├── __init__.py
@@ -2140,7 +2200,7 @@ if-prototype-a1/
     ├── terminal/                # Terminal system
     │   ├── __init__.py
     │   ├── config.py            # Terminal configuration
-    │   ├── lifecycle.py         # Docker container lifecycle
+    │   ├── static_client.py     # Static terminal manager (singleton)
     │   ├── client.py            # HTTP client for terminal API
     │   └── files.py             # File reference handling
     │
@@ -2162,49 +2222,27 @@ if-prototype-a1/
 
 ## Startup Sequence
 
-The application startup in [`src/main.py`](src/main.py:34) follows this sequence:
+The application startup in [`src/main.py`](src/main.py) follows this sequence:
 
-```mermaid
-sequenceDiagram
-    participant App as FastAPI App
-    participant HTTP as HTTP Client
-    participant Presets as PresetManager
-    participant Memory as MemoryStore
-    participant Storage as SQLite Store
-    participant Debounce as Debounce System
-    participant Channels as Channel Manager
+| Step | Component | Description |
+|------|-----------|-------------|
+| 1 | HTTP Client | `httpx.AsyncClient` with connection pooling (20 keepalive, 100 max) |
+| 2 | PresetManager | Load static presets from `presets/loader.py` |
+| 3 | Directories | Create `sandbox/`, `data/memory_db/`, `data/conversations/` |
+| 4 | MCP Config | Validate MCP server configurations |
+| 5 | User Facts Store | Initialize LanceDB store + warm up embedding model (`all-MiniLM-L6-v2`) |
+| 6 | Legacy Memory | Initialize ChromaDB memory store (if available) |
+| 7 | Health Module | Initialize `ProgramStore` (DynamoDB) + `HealthDocsRAG` (ChromaDB), index docs, warm program cache |
+| 8 | NLTK | Check/download stopwords corpus (used for topic shift detection) |
+| 9 | Storage Backend | Initialize SQLite (WAL mode) for webhooks, routing cache, activity log |
+| 10 | Directive Store | Load directives from DynamoDB into in-memory cache |
+| 11 | Debounce System | Register message batching on main asyncio loop |
+| 12 | Channel Listeners | Resume active Discord/OpenWebUI listeners from database |
+| 13 | Heartbeat Runner | Start background idle detection + pondering (if `HEARTBEAT_ENABLED`) |
+| 14 | Reflection Engine | Start periodic metacognitive analysis (if `REFLECTION_ENABLED`) |
+| 15 | Terminal Manager | Connect to pre-deployed terminal instance (if `TERMINAL_API_KEY` set) |
 
-    App->>HTTP: Initialize HTTP client
-    App->>HTTP: Configure connection pooling
-
-    App->>Presets: load_presets
-    Presets-->>App: Static presets loaded
-
-    App->>App: Create directories
-    Note over App: sandbox, memory_db, conversations
-
-    App->>App: validate_mcp_config
-
-    App->>Memory: get_memory_store
-    Memory->>Memory: Initialize ChromaDB
-    Memory-->>App: Store ready
-
-    App->>Storage: init_store
-    Storage->>Storage: Create SQLite with WAL
-    Storage-->>App: Store initialized
-
-    App->>Debounce: init_debounce
-    Debounce-->>App: Main loop registered
-
-    App->>Storage: get_webhook_store
-    Storage-->>App: WebhookStore instance
-
-    App->>Channels: start_all_active
-    Channels->>Channels: Resume listeners from DB
-    Channels-->>App: Listeners started
-
-    App-->>App: Server ready
-```
+**Shutdown** reverses the order: terminal → reflection → heartbeat → listeners → storage → HTTP client.
 
 **Startup Log Output:**
 ```
@@ -2215,10 +2253,19 @@ sequenceDiagram
 [Startup] Memory database directory: /path/to/data/memory_db
 [Startup] Conversation persistence directory: /path/to/data/conversations
 [Startup] MCP configuration validated
-[Startup] Memory store initialized (0 memories)
+[Startup] User facts store initialized (47 active facts)
+[Startup] Embedding model ready
+[Startup] Legacy memory store initialized (12 memories)
+[Startup] Health module initialized
+[Startup] Health program cache warmed
+[Startup] NLTK stopwords corpus found
 [Startup] Storage backend initialized at ./data/store.db
-[Startup] Debounce system initialized (window=30.0s)
-[Startup] Resumed 0 active channel listeners
+[Startup] Directive store initialized successfully
+[Startup] Debounce system initialized
+[Startup] Resumed 2 active channel listeners
+[Startup] Heartbeat system started (idle=6.0h, cooldown=6.0h)
+[Startup] Reflection engine started
+[Terminal] Static terminal manager initialized: https://terminal.example.com
 [Startup] Server ready on 0.0.0.0:8000
 ```
 
@@ -2299,6 +2346,25 @@ app/utils/main-portal/
 - Goals tracking with progress bars
 - Version history for financial snapshots
 - Asset allocation charts
+
+**Agent Tool Parity:**
+
+The agent has granular tools matching every portal read and write operation. Use targeted tools rather than `GetFinancialContextTool` for efficiency:
+
+| Section | Read Tool | Write Tool |
+|---------|-----------|------------|
+| Profile & employment | `finance_get_profile` | `finance_update_profile` |
+| Goals | `finance_get_goals` | `finance_update_goals` |
+| Risk profile | `finance_get_risk_profile` | `finance_update_risk_profile` |
+| Net worth | `finance_get_net_worth` | `finance_update_net_worth` |
+| Accounts (chequing/savings/credit/LOC/loans) | `finance_get_accounts` | `finance_update_account` |
+| Investments & holdings | `finance_get_investments` | `finance_add_holding`, `finance_update_holding`, `finance_update_watchlist` |
+| Cashflow | `finance_get_cashflow` | `finance_update_cashflow` |
+| Tax (RRSP/TFSA) | `finance_get_tax` | `finance_update_tax` |
+| Insurance | `finance_get_insurance` | `finance_update_insurance` |
+| Agent context | `finance_get_agent_context` | — |
+
+For complex multi-field mutations spawn the `finance_write` specialist.
 - Tax and insurance tracking
 
 **Directory Structure:**
@@ -2636,7 +2702,7 @@ DISCORD_BOT_TOKEN=your-bot-token
 │  │                                                                         │ │
 │  │   • OpenAI-compatible /v1/chat/completions                             │ │
 │  │   • OpenHands SDK with MCP servers                                     │ │
-│  │   • ChromaDB/LanceDB for memory                                        │ │
+│  │   • LanceDB for user facts, ChromaDB for legacy memory                  │ │
 │  │   • DynamoDB for directives                                            │ │
 │  │   • Kubernetes terminal pods                                           │ │
 │  └────────────────────────────────┬───────────────────────────────────────┘ │
@@ -2659,7 +2725,7 @@ DISCORD_BOT_TOKEN=your-bot-token
 │  │   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐                  │ │
 │  │   │ Proposals   │   │Powerlifting │   │  Discord    │                  │ │
 │  │   │   Portal    │   │    App      │   │  Webhook    │                  │ │
-│  │   │  Port 3004  │   │  Standalone │   │   Server    │                  │ │
+│  │   │  Port 3004  │   │  Port 3005  │   │   Server    │                  │ │
 │  │   │             │   │             │   │             │                  │ │
 │  │   │ Kanban for  │   │ Training    │   │ Channel     │                  │ │
 │  │   │ directives  │   │ tracking    │   │ management  │                  │ │
@@ -2763,17 +2829,19 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
 
 ### DynamoDB Schema
 
-All utility apps use DynamoDB with a single-table design pattern:
+The system uses multiple DynamoDB tables:
 
 | Table | PK | SK Pattern | Purpose |
 |-------|----|-----------:|---------|
-| `if-core` | `operator` | `finance#v001`, `finance#current` | Finance snapshots |
-| `if-core` | `operator` | `program#v001`, `program#current` | Powerlifting programs |
-| `if-core` | `operator` | `session#YYYY-MM-DD` | Training sessions |
-| `if-core` | `operator` | `weight#YYYY-MM-DD` | Body weight log |
-| `if-core` | `operator` | `maxes#history` | Max history |
-| `if-core` | `operator` | `directive#alpha#beta` | Agent directives |
-| `if-diary` | `operator` | `entry#id` | Diary entries |
+| `if-core` | `DIR` | `{alpha}-{beta}-{version}` | Versioned behavioral directives |
+| `if-core` | `operator` | `webhook#*`, `activity#*` | Webhooks, activity logs, operator facts |
+| `if-health` | `operator` | `program#current`, `program#v001` | Versioned training programs |
+| `if-health` | `operator` | `session#YYYY-MM-DD` | Training sessions |
+| `if-finance` | `user#<id>` | `finance#current`, `finance#v001` | Versioned financial snapshots |
+| `if-diary-entries` | `user#<id>` | `entry#<ISO8601>` | Write-only diary entries (3-day TTL) |
+| `if-diary-signals` | `user#<id>` | `signal#<ISO8601>`, `signal#latest` | Distilled mood/wellness signals |
+| `if-proposals` | `user#<id>` | `proposal#<ISO8601>` | Agent-proposed changes (pending/approved/rejected) |
+| `powerlifting` | `operator` | `program#*`, `session#*`, `weight#*`, `maxes#*` | Powerlifting programs, sessions, body weight, maxes |
 
 ### Version Pointer Pattern
 
@@ -3055,9 +3123,46 @@ All services are deployed to Kubernetes via Terraform configurations in the `ter
 | `terraform/k8s-namespace.tf` | Namespace definitions |
 | `terraform/k8s-deployments.tf` | Deployment configurations |
 | `terraform/k8s-services.tf` | Service definitions |
-| `terraform/k8s-ingress.tf` | Ingress routing |
+| `terraform/k8s-ingress.tf` | Ingress routing (NGINX Gateway Fabric, rate limiting, auth) |
 | `terraform/k8s-rbac.tf` | RBAC configuration |
-| `terraform/image.tf` | Container image references |
+| `terraform/k8s-storage.tf` | Persistent volume claims (data, sandbox, conversations, facts) |
+| `terraform/k8s-secrets.tf` | API keys, tokens, OAuth credentials |
+| `terraform/k8s-observability.tf` | Loki (logs), Prometheus (metrics), Grafana (dashboards) |
+| `terraform/k8s-tinyauth.tf` | Authentication (Google OAuth + local users) |
+| `terraform/k8s-terminal.tf` | Terminal pod management |
+| `terraform/image.tf` | ECR container image references |
+| `terraform/videos.tf` | Lambda function for video processing |
+| `terraform/variables.tf` | All configurable variables (648 lines) |
+| `terraform/backend.tf` | S3 state backend (ca-central-1) |
+
+### Observability
+
+Deployed via `k8s-observability.tf`:
+
+| Component | Purpose | Storage | Retention |
+|-----------|---------|---------|-----------|
+| Loki | Log aggregation | 10Gi | 7 days |
+| Prometheus | Metrics collection | 10Gi | 15 days |
+| Grafana | Dashboards and visualization | 2Gi | — |
+
+### Authentication
+
+Tinyauth (`k8s-tinyauth.tf`) provides authentication for all portal frontends:
+- Google OAuth integration with email whitelist
+- Local user accounts as fallback
+- Session-based auth via `/_tinyauth` location block
+- NGINX Gateway Fabric `auth_request` directive for enforcement
+
+### CI/CD Pipeline
+
+GitHub Actions workflows in `.github/workflows/`:
+
+| Workflow | Trigger | Jobs |
+|----------|---------|------|
+| `build-deploy.yml` | Push to main | Build API image (Packer), build portal backends/frontends (matrix), Terraform plan |
+| `terraform-validate.yml` | PR to `terraform/**` | Format check, init, validate, PR comment |
+
+Images are pushed to AWS ECR (private registry). Terraform uses OIDC for AWS authentication.
 
 ### Docker Image Building
 
@@ -3071,7 +3176,7 @@ Images are built using Packer configurations in `docker/`:
 | `docker/dev-sandbox.pkr.hcl` | Development sandbox |
 
 **Base Images:**
-- Main API: `python:3.11-slim`
+- Main API: `python:3.12-slim`
 - Portal backends: Node.js LTS
 - Portal frontends: nginx (for serving static files)
 

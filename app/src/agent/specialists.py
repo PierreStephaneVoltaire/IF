@@ -106,6 +106,72 @@ SPECIALISTS: Dict[str, SpecialistConfig] = {
         mcp_servers=[],
         directive_types=["core", "competition"],
     ),
+    "finance_write": SpecialistConfig(
+        slug="finance_write",
+        description=(
+            "Use finance_write when a mutation to the finance snapshot is required: "
+            "updating account balances, modifying goals, changing cashflow entries, "
+            "updating investment holdings, recording tax room, or any other write "
+            "to the finance DynamoDB record. Do not use for read-only queries."
+        ),
+        template="specialists/finance_write.j2",
+        tools=[
+            "finance_get_profile", "finance_get_goals", "finance_get_accounts",
+            "finance_get_investments", "finance_get_cashflow", "finance_get_tax",
+            "finance_get_insurance", "finance_get_net_worth",
+            "finance_update_profile", "finance_update_goals", "finance_update_risk_profile",
+            "finance_update_net_worth", "finance_update_account",
+            "finance_add_holding", "finance_update_holding", "finance_update_watchlist",
+            "finance_update_cashflow", "finance_update_tax", "finance_update_insurance",
+        ],
+        mcp_servers=[],
+        directive_types=["finance"],
+    ),
+    "proofreader": SpecialistConfig(
+        slug="proofreader",
+        description=(
+            "General prose proofreading, editing, and rewriting. Use for grammar, "
+            "clarity, tone, flow, and structure improvements on any non-code text."
+        ),
+        template="specialists/proofreader.j2",
+        tools=[],
+        mcp_servers=[],
+        directive_types=["writing", "core"],
+    ),
+    "jira_writer": SpecialistConfig(
+        slug="jira_writer",
+        description=(
+            "Jira ticket writing specialist. Use when the operator needs a well-structured "
+            "issue with summary, description, acceptance criteria, subtasks, and metadata."
+        ),
+        template="specialists/jira_writer.j2",
+        tools=[],
+        mcp_servers=[],
+        directive_types=["writing", "code"],
+    ),
+    "email_writer": SpecialistConfig(
+        slug="email_writer",
+        description=(
+            "Professional and formal email drafting. Use for emails requiring careful "
+            "tone, relationship-aware structure, or sensitive subject matter."
+        ),
+        template="specialists/email_writer.j2",
+        tools=[],
+        mcp_servers=[],
+        directive_types=["writing"],
+    ),
+    "constrained_writer": SpecialistConfig(
+        slug="constrained_writer",
+        description=(
+            "Character-limited content specialist. Use for tweets (280), YouTube superchats (200), "
+            "Discord messages, SMS, Bluesky (300), or any content with a hard character limit. "
+            "Always include character count in output."
+        ),
+        template="specialists/constrained_writer.j2",
+        tools=[],
+        mcp_servers=[],
+        directive_types=["writing"],
+    ),
 }
 
 

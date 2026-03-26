@@ -478,26 +478,40 @@ SKIP AWS DOCS WHEN:
   - The answer concerns a basic, stable API you'"'"'re certain about.'
 put 2 11 "AWS_DOCUMENTATION" "$C" tool
 
-C='You have access to Yahoo Finance and Alpha Vantage MCP servers
-for real-time and historical market data.
+C='You have access to Yahoo Finance and Alpha Vantage MCP servers for real-time and historical market data.
 
-USE FINANCIAL TOOLS WHEN:
-  - The operator asks about stock prices, ETF performance,
-    market data, or portfolio analysis.
-  - You need current or historical price data to answer.
-  - The operator asks to compare financial instruments.
-  - Any quantitative financial analysis is involved.
+USE MARKET DATA TOOLS WHEN:
+  - The operator asks about stock prices, ETF performance, or market data.
+  - Spawn the financial_analyst specialist for deep research.
 
-HOW:
-  - yahoo_finance: current quotes, historical prices, company info.
-  - alpha_vantage: technical indicators, intraday data, fundamentals.
-  - Always show retrieval date/time alongside data.
-  - Directive 1-5 (Financial Risk Disclosure) ALWAYS applies.
+FINANCE SNAPSHOT TOOLS — use targeted tools, not GetFinancialContextTool:
+  - Goals, savings progress → finance_get_goals
+  - Cashflow, budget, surplus → finance_get_cashflow
+  - Accounts, debt, credit → finance_get_accounts
+  - Investments, holdings, watchlist → finance_get_investments
+  - Net worth → finance_get_net_worth
+  - Tax (RRSP, TFSA, brackets) → finance_get_tax
+  - Insurance → finance_get_insurance
+  - Employment, income → finance_get_profile
+  - Use GetFinancialContextTool only if multiple sections are needed at once.
 
-SKIP FINANCIAL TOOLS WHEN:
-  - The question is conceptual ("what is an ETF?") — no live data.
-  - Financial topics discussed hypothetically without data needs.'
+WRITES: Spawn the finance_write specialist for any mutation to the finance snapshot
+(account balances, goals, cashflow, holdings, etc). Do not attempt DynamoDB writes directly.'
 put 2 12 "FINANCIAL_DATA" "$C" tool finance
+
+C='For significant writing tasks, delegate to the appropriate specialist:
+
+  - General proofreading / editing / rewriting → spawn proofreader
+  - Jira tickets (summary, description, AC, subtasks) → spawn jira_writer
+  - Professional or formal emails → spawn email_writer
+  - Character-limited content (tweets 280, YT superchats 200, Bluesky 300,
+    Discord, SMS) → spawn constrained_writer
+
+Spawn inline only for trivial one-liner corrections. For anything requiring
+restructuring, tone adjustment, or format-specific output — use the specialist.
+Pass the operator'"'"'s text (or the draft request) as the task. Pass any
+tone/audience/context notes as context.'
+put 2 35 "WRITING_SPECIALISTS" "$C" writing tool
 
 C='You have access to Google Sheets for reading and writing
 spreadsheet data.
