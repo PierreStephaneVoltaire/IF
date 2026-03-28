@@ -27,6 +27,10 @@ Multi-platform integration with Discord and OpenWebUI.
 │  discord_translator  openwebui_translator                       │
 │      │                   │                                      │
 │      └─────────┬─────────┘                                      │
+│                │  (text refs + _pending_uploads)                │
+│                ▼                                                 │
+│    _upload_attachments()  ──► terminal /uploads/                │
+│                │                                                 │
 │                ▼                                                 │
 │    process_chat_completion_internal()                           │
 │                │                                                 │
@@ -103,12 +107,26 @@ def translate_discord_batch(messages: list[dict], conversation_id: str) -> dict:
     #     "stream": True,
     #     "messages": [{"role": "user", "content": content_parts}],
     #     "_conversation_id": conversation_id,
+    #     "_pending_uploads": [{"filename": str, "url": str, "content_type": str}, ...],
     # }
 ```
 
 - Prepends sender attribution: `[Alice]: message text`
-- Converts image attachments to `image_url` content parts
-- References non-image attachments as text with URL
+- All attachments (images and non-images) become text references: `[Attachment: filename — uploads/filename]`
+- Queues attachment metadata in `_pending_uploads` for the dispatcher to upload to the terminal filesystem
+- `_pending_uploads` is stripped from the dict by the dispatcher before the message reaches the completions pipeline
+
+### Attachment Upload (Dispatcher)
+
+**File:** `src/channels/dispatcher.py` — `_upload_attachments()`
+
+After translation, before the completions pipeline, the dispatcher:
+1. Pops `_pending_uploads` from the request dict
+2. Downloads each file from its source URL (Discord CDN, OpenWebUI, etc.)
+3. Uploads the bytes to `/home/user/conversations/{conversation_id}/uploads/{filename}` in the terminal
+4. Failures are logged as warnings and never block the pipeline — the text reference remains
+
+The agent sees `[Attachment: filename — uploads/filename]` and can call `read_media` to inspect any file on demand.
 
 ### Response Chunker
 
@@ -177,6 +195,7 @@ Platform-specific response delivery.
 | `CHANNEL_DEBOUNCE_SECONDS` | `5` | Message batching window |
 | `CHANNEL_MAX_CHUNK_CHARS` | `1500` | Max chars per response chunk |
 | `OPENWEBUI_POLL_INTERVAL` | `5.0` | OpenWebUI polling interval |
+| `MEDIA_UPLOAD_DIR` | `uploads` | Subdirectory within conversation dir for uploaded attachments |
 
 ## How to Add a New Platform
 

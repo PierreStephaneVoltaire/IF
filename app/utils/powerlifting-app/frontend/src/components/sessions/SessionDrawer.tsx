@@ -179,7 +179,7 @@ export default function SessionDrawer({
 
         <div className="fixed inset-0 overflow-hidden">
           <div className="absolute inset-0 overflow-hidden">
-            <div className="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-10">
+            <div className="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-0 sm:pl-10">
               <Transition.Child
                 as={Fragment}
                 enter="transform transition ease-in-out duration-300"
@@ -189,7 +189,7 @@ export default function SessionDrawer({
                 leaveFrom="translate-x-0"
                 leaveTo="translate-x-full"
               >
-                <Dialog.Panel className="pointer-events-auto w-screen max-w-md">
+                <Dialog.Panel className="pointer-events-auto w-screen max-w-full sm:max-w-md">
                   <div className="flex h-full flex-col bg-background shadow-xl">
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -245,15 +245,21 @@ export default function SessionDrawer({
                         >
                           <div className="flex items-start gap-2">
                             <GripVertical className="w-4 h-4 text-muted-foreground mt-2 cursor-move" />
-                            <div className="flex-1 grid grid-cols-4 gap-2">
-                              <div className="col-span-4">
+                            <div className="flex-1 grid grid-cols-3 sm:grid-cols-4 gap-2">
+                              <div className="col-span-3 sm:col-span-4 flex items-center gap-1">
                                 <input
                                   type="text"
                                   value={exercise.name}
                                   onChange={(e) => updateExercise(index, 'name', e.target.value)}
                                   placeholder="Exercise name"
-                                  className="w-full px-2 py-1 border border-border rounded bg-background text-sm"
+                                  className="flex-1 px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
                                 />
+                                <button
+                                  onClick={() => removeExercise(index)}
+                                  className="sm:hidden p-2 text-destructive hover:bg-destructive/10 rounded"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                               <div>
                                 <label className="text-xs text-muted-foreground">Sets</label>
@@ -261,7 +267,7 @@ export default function SessionDrawer({
                                   type="number"
                                   value={exercise.sets || ''}
                                   onChange={(e) => updateExercise(index, 'sets', Number(e.target.value) || 0)}
-                                  className="w-full px-2 py-1 border border-border rounded bg-background text-sm"
+                                  className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
                                 />
                               </div>
                               <div>
@@ -270,7 +276,7 @@ export default function SessionDrawer({
                                   type="number"
                                   value={exercise.reps || ''}
                                   onChange={(e) => updateExercise(index, 'reps', Number(e.target.value) || 0)}
-                                  className="w-full px-2 py-1 border border-border rounded bg-background text-sm"
+                                  className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
                                 />
                               </div>
                               <div>
@@ -286,13 +292,13 @@ export default function SessionDrawer({
                                       e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null
                                     )
                                   }
-                                  className="w-full px-2 py-1 border border-border rounded bg-background text-sm"
+                                  className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
                                 />
                               </div>
-                              <div className="flex items-end">
+                              <div className="hidden sm:flex items-end">
                                 <button
                                   onClick={() => removeExercise(index)}
-                                  className="p-1 text-destructive hover:bg-destructive/10 rounded"
+                                  className="p-2 sm:p-1 text-destructive hover:bg-destructive/10 rounded"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -302,7 +308,7 @@ export default function SessionDrawer({
                                 value={exercise.notes || ''}
                                 onChange={(e) => updateExercise(index, 'notes', e.target.value)}
                                 placeholder="Notes"
-                                className="w-full px-2 py-1 border border-border rounded bg-background text-sm col-span-4"
+                                className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm col-span-3 sm:col-span-4"
                               />
                             </div>
                           </div>
@@ -361,7 +367,7 @@ export default function SessionDrawer({
                             value={localSession.session_rpe || ''}
                             onChange={(e) => updateRpe(Number(e.target.value) || null)}
                             placeholder="1-10"
-                            className="w-full px-2 py-1 border border-border rounded bg-background text-sm"
+                            className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
                           />
                         </div>
                         <div>
@@ -376,7 +382,7 @@ export default function SessionDrawer({
                             }
                             onChange={(e) => updateBodyWeight(e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null)}
                             placeholder={unit}
-                            className="w-full px-2 py-1 border border-border rounded bg-background text-sm"
+                            className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
                           />
                         </div>
                       </div>
@@ -388,7 +394,7 @@ export default function SessionDrawer({
                           onChange={(e) => updateNotes(e.target.value)}
                           placeholder="How did the session feel?"
                           rows={2}
-                          className="w-full px-2 py-1 border border-border rounded bg-background text-sm resize-none"
+                          className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm resize-none"
                         />
                       </div>
 
@@ -398,7 +404,7 @@ export default function SessionDrawer({
                           onClick={handleDelete}
                           disabled={isDeleting}
                           className={clsx(
-                            'py-2 px-3 rounded-md text-sm font-medium transition-colors',
+                            'flex items-center justify-center min-w-[44px] min-h-[44px] py-2 px-3 rounded-md text-sm font-medium transition-colors',
                             'text-destructive hover:bg-destructive/10',
                             isDeleting && 'opacity-50 cursor-not-allowed'
                           )}

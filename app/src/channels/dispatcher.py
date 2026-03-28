@@ -6,12 +6,64 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
+import httpx
+
 from channels.translators.discord_translator import translate_discord_batch
 from channels.translators.openwebui_translator import translate_openwebui_batch
 from channels.chunker import chunk_response
 from channels.delivery import deliver_to_channel
 
 logger = logging.getLogger(__name__)
+
+
+async def _upload_attachments(
+    request_data: Dict[str, Any],
+    conversation_id: str,
+    http_client: httpx.AsyncClient,
+) -> None:
+    """Download attachment URLs and upload to terminal filesystem.
+
+    Pops _pending_uploads from request_data and processes each one.
+    Failures are logged as warnings and never block the pipeline.
+    """
+    pending = request_data.pop("_pending_uploads", [])
+    if not pending:
+        return
+
+    try:
+        from terminal.static_client import get_static_manager
+        from terminal.client import create_terminal_client
+        from config import MEDIA_UPLOAD_DIR
+    except ImportError as e:
+        logger.warning(f"[Upload] Import error, skipping attachment upload: {e}")
+        return
+
+    manager = get_static_manager()
+    if manager is None:
+        logger.warning("[Upload] Terminal not available, skipping attachment upload")
+        return
+
+    try:
+        container = await manager.get_or_create(conversation_id)
+        client = create_terminal_client(container, http_client)
+        upload_dir = f"/home/user/conversations/{conversation_id}/{MEDIA_UPLOAD_DIR}"
+
+        await client.execute_command(f"mkdir -p {upload_dir}", timeout=5.0)
+    except Exception as e:
+        logger.warning(f"[Upload] Terminal setup failed, skipping attachment upload: {e}")
+        return
+
+    for att in pending:
+        filename = att["filename"]
+        url = att["url"]
+        try:
+            resp = await http_client.get(url, timeout=30.0)
+            resp.raise_for_status()
+            remote_path = f"{upload_dir}/{filename}"
+            await client.upload_file(remote_path, resp.content)
+            logger.info(f"[Upload] Uploaded {filename} ({len(resp.content)} bytes) to {remote_path}")
+        except Exception as e:
+            logger.warning(f"[Upload] Failed to upload {filename}: {e}")
 
 
 async def dispatch_channel_batch(
@@ -56,6 +108,9 @@ async def dispatch_channel_batch(
 
     # Get HTTP client from app state
     http_client = app.state.http_client
+
+    # Step 1.5: Upload attachments to terminal filesystem
+    await _upload_attachments(request_data, conversation_id, http_client)
 
     # Get webhook record for this conversation
     webhook = None

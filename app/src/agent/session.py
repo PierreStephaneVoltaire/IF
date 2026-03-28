@@ -44,6 +44,7 @@ from agent.tools.health_tools import get_health_tools
 from agent.tools.context_tools import get_context_tools
 from agent.tools.finance_tools import get_finance_tools
 from agent.tools.subagents import get_subagent_tools
+from agent.tools.media_tools import get_media_tools
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
 
 
@@ -93,13 +94,15 @@ class AgentSession:
     model: str  # OpenRouter model ID
     system_prompt: str
     mcp_servers: List[str]
+    conversation_id: str = ""  # Raw conversation_id (cache_key) for file path resolution
     created_at: datetime = field(default_factory=datetime.now)
     message_count: int = 0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize session to dictionary."""
         return {
             "session_id": self.session_id,
+            "conversation_id": self.conversation_id,
             "preset_slug": self.preset_slug,
             "model": self.model,
             "system_prompt": self.system_prompt,
@@ -318,7 +321,22 @@ DO NOT USE memory_add FOR:
   - Information the operator might want to forget.
 """
     prompt_parts.append(memory_protocol)
-    
+
+    media_protocol = """
+MEDIA PROTOCOL:
+When the operator sends files or images, they appear as [Attachment: filename — uploads/filename].
+The file is stored in your terminal workspace under uploads/.
+
+USE read_media WHEN:
+  - You need to examine the contents of an image or file
+  - The operator asks about a specific attachment
+  - You need visual information from a screenshot, diagram, or photo
+
+Each call to read_media spawns a vision model. Ask specific, targeted questions.
+Multiple questions about the same file require separate calls.
+"""
+    prompt_parts.append(media_protocol)
+
     # Add memory context if provided
     if memory_context:
         prompt_parts.append(f"\nRELEVANT MEMORIES:\n{memory_context}\n")
@@ -430,6 +448,8 @@ async def execute_agent(
         tools.extend(get_finance_tools())
         # Get subagent tools (specialist spawning, deep thinking)
         tools.extend(get_subagent_tools(session.session_id))
+        # Get media tools (on-demand file/image analysis)
+        tools.extend(get_media_tools(session.conversation_id))
         # Create shared HTTP client for orchestrator tools (connection pooling)
         shared_http_client = httpx.AsyncClient(timeout=120.0)
         # Get orchestrator tools (Parts7-9) with shared HTTP client
@@ -603,10 +623,11 @@ def get_or_create_session(
     
     session = AgentSession(
         session_id=session_id,
+        conversation_id=conversation_id,
         preset_slug=preset_slug,
         model=model,
         system_prompt=system_prompt,
-        mcp_servers=mcp_servers
+        mcp_servers=mcp_servers,
     )
     
     # Cache session

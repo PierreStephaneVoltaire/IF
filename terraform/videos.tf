@@ -109,7 +109,7 @@ data "aws_caller_identity" "current" {}
 data "archive_file" "video_lambda" {
   type        = "zip"
   output_path = "${path.module}/video-lambda.zip"
-  source_dir  = "${path.module}/../utils/video-lambda"
+  source_dir  = "${path.module}/../app/utils/video-lambda"
 }
 
 resource "aws_lambda_function" "video_thumbnail" {

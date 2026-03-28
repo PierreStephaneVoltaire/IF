@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar'
+import { Calendar, dateFnsLocalizer, Views, View } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay, endOfDay, startOfDay } from 'date-fns'
 import { enUS } from 'date-fns/locale/en-US'
 import { useProgramStore } from '@/store/programStore'
@@ -35,6 +35,7 @@ interface CalendarEvent {
 export default function CalendarPage() {
   const { program, isLoading } = useProgramStore()
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [view, setView] = useState<View>(Views.AGENDA)
 
   const events: CalendarEvent[] = useMemo(() => {
     if (!program) return []
@@ -93,14 +94,14 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-180px)] md:h-[calc(100vh-140px)]">
+    <div className="flex flex-col h-[calc(100dvh-220px)] md:h-[calc(100dvh-140px)]">
       <div className="flex items-center justify-between mb-2 shrink-0">
         <h1 className="text-2xl font-bold">Calendar</h1>
 
         {/* Phase Legend */}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex gap-3 overflow-x-auto">
           {program.phases.map((phase, idx) => (
-            <div key={idx} className="flex items-center gap-1">
+            <div key={idx} className="flex items-center gap-1 shrink-0">
               <div
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: phaseColor(phase, program.phases) }}
@@ -111,14 +112,17 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-lg p-4 flex-1 min-h-0">
+      <div className="bg-card border border-border rounded-lg p-2 sm:p-4 flex-1 min-h-0 overflow-hidden">
         <Calendar
           localizer={localizer}
           events={events}
           startAccessor="start"
           endAccessor="end"
           style={{ height: '100%' }}
-          views={[Views.MONTH, Views.WEEK]}
+          views={[Views.AGENDA, Views.WEEK]}
+          view={view}
+          onView={setView}
+          length={30}
           eventPropGetter={eventStyleGetter}
           tooltipAccessor={(event) =>
             `${event.resource.exercises.map((e) => e.name).join(', ')}${event.resource.completed ? ' ✓' : ''}`

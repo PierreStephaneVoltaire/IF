@@ -40,7 +40,7 @@ app/
 
 ## Conventions
 
-- All agent tools are in `app/src/agent/tools/` as Python functions
+- All agent tools are in `app/src/agent/tools/` using the OpenHands SDK Action/Observation/Executor/ToolDefinition pattern
 - Specialist templates are Jinja2 files in `app/src/agent/prompts/specialists/`
 - New specialists: add to `specialists.py` registry + create `.j2` template
 - Presets are static (loaded at startup from `app/src/presets/loader.py`)
@@ -70,6 +70,7 @@ See `.claude/` folder for detailed docs on each subsystem:
 | Add a new directive | [directives.md](directives.md) |
 | Fix terminal container issue | [terminal.md](terminal.md) |
 | Add a new channel listener | [channels.md](channels.md) |
+| Work with file/image attachments | [channels.md](channels.md) |
 | Understand the full request flow | [architecture.md](architecture.md) |
 | Work with the orchestrator | [orchestrator.md](orchestrator.md) |
 | Understand storage backends | [storage.md](storage.md) |

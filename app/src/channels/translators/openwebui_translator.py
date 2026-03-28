@@ -27,6 +27,7 @@ def translate_openwebui_batch(
         Dict matching ChatCompletionRequest shape with messages and metadata
     """
     content_parts: List[Dict[str, Any]] = []
+    pending_uploads: List[Dict[str, Any]] = []
 
     for msg in messages:
         # Add text content with sender attribution
@@ -39,26 +40,22 @@ def translate_openwebui_batch(
                 "text": f"[{author}]: {text}",
             })
 
-        # Handle attachments
+        # Handle attachments — all become text references; queued for upload
         for att in msg.get("attachments", []):
             ct = att.get("content_type", "")
             url = att.get("url", "")
             filename = att.get("filename", "attachment")
-            
-            if ct.startswith("image/") and url:
-                # Image attachments become image_url content
-                content_parts.append({
-                    "type": "image_url",
-                    "image_url": {"url": url},
-                })
-            else:
-                # Non-image attachments become text references
-                content_parts.append({
-                    "type": "text",
-                    "text": (
-                        f"[Attachment: {filename} "
-                        f"({ct}) — {url}]"
-                    ),
+
+            content_parts.append({
+                "type": "text",
+                "text": f"[Attachment: {filename} — uploads/{filename}]",
+            })
+
+            if url:
+                pending_uploads.append({
+                    "filename": filename,
+                    "url": url,
+                    "content_type": ct,
                 })
 
     return {
@@ -66,4 +63,5 @@ def translate_openwebui_batch(
         "stream": True,
         "messages": [{"role": "user", "content": content_parts}],
         "_conversation_id": conversation_id,
+        "_pending_uploads": pending_uploads,
     }

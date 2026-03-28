@@ -20,6 +20,7 @@ Specialists are domain-specific subagents spawned by the main agent for deep exp
 | `jira_writer` | Jira ticket writing with AC, subtasks, and metadata | writing, code | - |
 | `email_writer` | Professional email drafting with tone matching | writing | - |
 | `constrained_writer` | Character-limited content | writing | - |
+| `media_reader` | On-demand file and image analysis (vision) | core | - |
 
 ## Skills (Mode Modifiers)
 
@@ -62,20 +63,23 @@ You are a {{ specialist_type }} specialist.
 
 ### Step 2: Register in specialists.py
 
-Add to `SPECIALIST_REGISTRY`:
+Add to `SPECIALISTS`:
 
 ```python
-SPECIALIST_REGISTRY = {
+SPECIALISTS: Dict[str, SpecialistConfig] = {
     # ... existing entries ...
     "your_specialist": SpecialistConfig(
-        name="Your Specialist",
+        slug="your_specialist",
         description="What this specialist does",
-        template_name="your_specialist",  # matches .j2 filename
+        template="specialists/your_specialist.j2",
+        tools=[],           # list of terminal tool names if needed
+        mcp_servers=[],     # list of MCP server slugs if needed
         directive_types=["relevant", "types"],
-        mcp_servers=[],  # or list of MCP server names
     ),
 }
 ```
+
+`max_turns` defaults to `SPECIALIST_MAX_TURNS` (15). Set `max_turns=1` for single-shot specialists that need no tool loop (e.g. `media_reader`).
 
 ### Step 3: Test
 

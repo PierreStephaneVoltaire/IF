@@ -172,6 +172,15 @@ SPECIALISTS: Dict[str, SpecialistConfig] = {
         mcp_servers=[],
         directive_types=["writing"],
     ),
+    "media_reader": SpecialistConfig(
+        slug="media_reader",
+        description="On-demand file and image analysis",
+        template="specialists/media_reader.j2",
+        tools=[],
+        mcp_servers=[],
+        directive_types=["core"],
+        max_turns=1,
+    ),
 }
 
 

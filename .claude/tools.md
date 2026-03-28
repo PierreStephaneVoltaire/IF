@@ -6,82 +6,73 @@ Agent tools are Python functions registered with the OpenHands SDK.
 
 ## Tool Registration Pattern
 
-Tools are registered in `src/agent/session.py`:
+Tools follow the **OpenHands SDK** pattern using Action/Observation/Executor/ToolDefinition classes. They are registered module-level with `register_tool()` and loaded into sessions via getter functions.
+
+In `src/agent/session.py` `execute_agent()`:
 
 ```python
-def _register_tools(self, agent: CodeActAgent) -> None:
-    """Register all agent tools."""
-    # Memory tools
-    from .tools.user_facts import register_user_facts_tools
-    register_user_facts_tools(agent, self.user_fact_store)
-
-    # Terminal tools
-    from .tools.terminal_tools import register_terminal_tools
-    register_terminal_tools(agent, self.terminal_client)
-
-    # ... more tool registrations
+tools = get_memory_tools()
+tools.extend(get_terminal_tools(session.session_id))
+tools.extend(get_media_tools(session.conversation_id))
+# ... etc
+agent = Agent(llm=llm, tools=tools, ...)
 ```
 
 ## Writing a New Tool
 
-### Step 1: Create the Tool Function
+### Step 1: Create Action, Observation, Executor, ToolDefinition
 
 Create or add to a file in `src/agent/tools/`:
 
 ```python
-from openhands.events.action.message import MessageAction
-from openhands.events.observation.message import MessageObservation
+from openhands.sdk.tool.tool import Action, Observation, ToolAnnotations, ToolDefinition, ToolExecutor
+from openhands.sdk import register_tool
+from pydantic import Field
 
-def my_new_tool(
-    param1: str,
-    param2: int = 10,
-) -> str:
-    """
-    Brief description of what the tool does.
+class MyAction(Action):
+    param1: str = Field(description="Description shown to the LLM")
+    param2: int = Field(default=10, description="Optional param")
 
-    Args:
-        param1: Description of param1
-        param2: Description of param2 (default: 10)
+class MyObservation(Observation):
+    result: str = Field(default="")
 
-    Returns:
-        Description of return value
-    """
-    # Implementation
-    result = do_something(param1, param2)
-    return f"Result: {result}"
+class MyExecutor(ToolExecutor):
+    def __init__(self, dependency: str):
+        self.dependency = dependency
+
+    def __call__(self, action: MyAction, conversation=None) -> MyObservation:
+        # Async tools use ThreadPoolExecutor + asyncio.run (see terminal_tools.py)
+        result = do_something(action.param1, self.dependency)
+        return MyObservation(result=result)
+
+class MyTool(ToolDefinition[MyAction, MyObservation]):
+    @classmethod
+    def create(cls, conv_state=None, dependency: str = "", **params) -> Sequence[Self]:
+        return [cls(
+            action_type=MyAction,
+            observation_type=MyObservation,
+            description="What this tool does — shown to the LLM",
+            executor=MyExecutor(dependency=dependency),
+            annotations=ToolAnnotations(title="my_tool", readOnlyHint=True, ...),
+        )]
 ```
 
-### Step 2: Create Registration Function
+### Step 2: Register and expose a getter
 
 ```python
-def register_my_tools(agent: CodeActAgent, dependency: SomeDependency) -> None:
-    """Register tools with the agent."""
+register_tool("my_tool", MyTool)
 
-    @agent.tool
-    def my_new_tool(param1: str, param2: int = 10) -> str:
-        """
-        Brief description for LLM.
-
-        Args:
-            param1: Description
-            param2: Description (default: 10)
-
-        Returns:
-            Description
-        """
-        # Use dependency
-        result = dependency.do_something(param1, param2)
-        return f"Result: {result}"
+def get_my_tools(dependency: str):
+    from openhands.sdk import Tool
+    return [Tool(name="my_tool", params={"dependency": dependency})]
 ```
 
-### Step 3: Register in session.py
+### Step 3: Add to session.py
 
 ```python
-def _register_tools(self, agent: CodeActAgent) -> None:
-    # ... existing registrations ...
-
-    from .tools.my_tools import register_my_tools
-    register_my_tools(agent, self.my_dependency)
+from agent.tools.my_tools import get_my_tools
+# In execute_agent():
+tools.extend(get_my_tools(session.session_id))
 ```
 
 ## Tool Categories
@@ -91,6 +82,7 @@ def _register_tools(self, agent: CodeActAgent) -> None:
 | User Facts | `user_facts.py` | Store/search operator facts |
 | Subagents | `subagents.py` | Spawn specialists, deep think |
 | Terminal | `terminal_tools.py` | Shell execution, file ops |
+| Media | `media_tools.py` | On-demand file/image analysis via vision model |
 | Directives | `directive_tools.py` | Directive CRUD |
 | Finance | `finance_tools.py` | Financial data access |
 | Health | `health_tools.py` | Training program management |
@@ -133,8 +125,9 @@ def user_facts_search(query: str, category: str = None, limit: int = 5) -> str:
 - Tool output is truncated at `TOOL_OUTPUT_CHAR_LIMIT` (default: 200K chars)
 - Use type hints — they're included in the tool schema
 - Default values should be sensible for most use cases
-- Return strings, not complex objects — the LLM reads the output
-- Tools run synchronously within the agent loop
+- The `Observation.result` (or equivalent field) is what the LLM reads — keep it a string
+- Tools execute synchronously within the agent loop; for async work, use `ThreadPoolExecutor` + `asyncio.run` (see `terminal_tools.py` or `media_tools.py` for the pattern)
+- `session.conversation_id` is the raw cache_key; `session.session_id` adds preset slug + random hex — use the right one for file path resolution
 
 ## Configuration
 

@@ -235,11 +235,63 @@ export default function SupplementsPage() {
 
                       {phase.items.length > 0 ? (
                         <div className="border border-border rounded-lg overflow-hidden">
-                          <table className="w-full text-sm table-fixed">
+                          {/* Mobile: card per row */}
+                          <div className="sm:hidden divide-y divide-border">
+                            {phase.items.map((item, itemIndex) => (
+                              <div key={itemIndex} className="p-3 space-y-2">
+                                <div className="flex gap-2">
+                                  <div className="flex-1">
+                                    <label className="text-xs text-muted-foreground">Name</label>
+                                    <input
+                                      type="text"
+                                      value={item.name}
+                                      onChange={(e) =>
+                                        updateItem(originalIndex, itemIndex, { name: e.target.value })
+                                      }
+                                      className="w-full px-2 py-2 border border-border rounded bg-background text-sm"
+                                    />
+                                  </div>
+                                  <div className="flex-1">
+                                    <label className="text-xs text-muted-foreground">Dose</label>
+                                    <input
+                                      type="text"
+                                      value={item.dose}
+                                      onChange={(e) =>
+                                        updateItem(originalIndex, itemIndex, { dose: e.target.value })
+                                      }
+                                      className="w-full px-2 py-2 border border-border rounded bg-background text-sm"
+                                    />
+                                  </div>
+                                  <div className="flex items-end pb-0.5">
+                                    <button
+                                      onClick={() => removeItem(originalIndex, itemIndex)}
+                                      className="p-2 text-muted-foreground hover:text-destructive"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                                <textarea
+                                  value={item.notes || ''}
+                                  onChange={(e) =>
+                                    updateItem(originalIndex, itemIndex, { notes: e.target.value })
+                                  }
+                                  className="w-full px-2 py-2 border border-border rounded bg-background resize-none overflow-hidden text-sm"
+                                  placeholder="Notes (optional)"
+                                  rows={Math.max(1, (item.notes || '').split('\n').length)}
+                                  onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
+                                  ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Desktop: table */}
+                          <table className="hidden sm:table w-full text-sm">
                             <thead>
                               <tr className="bg-muted/50">
-                                <th className="text-left px-3 py-2 font-medium w-[15%]">Name</th>
-                                <th className="text-left px-3 py-2 font-medium w-[15%]">Dose</th>
+                                <th className="text-left px-3 py-2 font-medium w-2/5">Name</th>
+                                <th className="text-left px-3 py-2 font-medium w-1/5">Dose</th>
                                 <th className="text-left px-3 py-2 font-medium">Notes</th>
                                 <th className="w-10"></th>
                               </tr>

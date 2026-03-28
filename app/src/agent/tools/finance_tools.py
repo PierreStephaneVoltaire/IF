@@ -561,99 +561,234 @@ async def finance_update_insurance(policies: List[Dict[str, Any]]) -> List[Dict[
 # OpenHands Tool Wrappers — Reads
 # =============================================================================
 
-class _SimpleFinanceAction(Action):
+class FinanceGetProfileAction(Action):
     pass
 
+class FinanceGetProfileObservation(Observation):
+    pass
 
-def _make_read_tool(name, fn, description):
-    """Factory for no-argument read tools."""
-    action_cls = type(f"{name}Action", (_SimpleFinanceAction,), {})
-    obs_cls = type(f"{name}Observation", (Observation,), {})
+class FinanceGetProfileExecutor(ToolExecutor[FinanceGetProfileAction, FinanceGetProfileObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_profile())
+        return FinanceGetProfileObservation.from_text(_fmt(result))
 
-    class _Executor(ToolExecutor[action_cls, obs_cls]):
-        def __call__(self, action, conversation=None):
-            result = _run_async(fn())
-            return obs_cls.from_text(_fmt(result))
-
-    class _Tool(ToolDefinition[action_cls, obs_cls]):
-        @classmethod
-        def create(cls, conv_state=None, **params):
-            return [cls(description=description, action_type=action_cls,
-                        observation_type=obs_cls, executor=_Executor())]
-
-    _Tool.__name__ = name
-    return action_cls, obs_cls, _Tool
+class FinanceGetProfileTool(ToolDefinition[FinanceGetProfileAction, FinanceGetProfileObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get operator profile: age, employment (role, company, income, trajectory), "
+                        "secondary income, tax brackets. Use instead of GetFinancialContextTool for profile queries.",
+            action_type=FinanceGetProfileAction,
+            observation_type=FinanceGetProfileObservation,
+            executor=FinanceGetProfileExecutor(),
+        )]
 
 
-FinanceGetProfileAction, FinanceGetProfileObs, FinanceGetProfileTool = _make_read_tool(
-    "FinanceGetProfileTool",
-    finance_get_profile,
-    "Get operator profile: age, employment (role, company, income, trajectory), "
-    "secondary income, tax brackets. Use instead of GetFinancialContextTool for profile queries."
-)
+class FinanceGetGoalsAction(Action):
+    pass
 
-FinanceGetGoalsAction, FinanceGetGoalsObs, FinanceGetGoalsTool = _make_read_tool(
-    "FinanceGetGoalsTool",
-    finance_get_goals,
-    "Get all financial goals grouped by time horizon: short_term (<1yr), "
-    "medium_term (1-5yr), long_term (5yr+). Each goal has title, target_amount, "
-    "current_amount, deadline, priority, category."
-)
+class FinanceGetGoalsObservation(Observation):
+    pass
 
-FinanceGetRiskProfileAction, FinanceGetRiskProfileObs, FinanceGetRiskProfileTool = _make_read_tool(
-    "FinanceGetRiskProfileTool",
-    finance_get_risk_profile,
-    "Get risk profile: tolerance (conservative/moderate/aggressive), time_horizon_years, "
-    "investment_philosophy, max_drawdown_comfort_pct, notes."
-)
+class FinanceGetGoalsExecutor(ToolExecutor[FinanceGetGoalsAction, FinanceGetGoalsObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_goals())
+        return FinanceGetGoalsObservation.from_text(_fmt(result))
 
-FinanceGetNetWorthAction, FinanceGetNetWorthObs, FinanceGetNetWorthTool = _make_read_tool(
-    "FinanceGetNetWorthTool",
-    finance_get_net_worth,
-    "Get net worth snapshot: total_assets, total_liabilities, net_worth, as_of date."
-)
+class FinanceGetGoalsTool(ToolDefinition[FinanceGetGoalsAction, FinanceGetGoalsObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get all financial goals grouped by time horizon: short_term (<1yr), "
+                        "medium_term (1-5yr), long_term (5yr+). Each goal has title, target_amount, "
+                        "current_amount, deadline, priority, category.",
+            action_type=FinanceGetGoalsAction,
+            observation_type=FinanceGetGoalsObservation,
+            executor=FinanceGetGoalsExecutor(),
+        )]
 
-FinanceGetAccountsAction, FinanceGetAccountsObs, FinanceGetAccountsTool = _make_read_tool(
-    "FinanceGetAccountsTool",
-    finance_get_accounts,
-    "Get all accounts: chequing, savings, credit_cards (with utilization), "
-    "lines_of_credit, loans. Use for debt/balance questions."
-)
 
-FinanceGetInvestmentsAction, FinanceGetInvestmentsObs, FinanceGetInvestmentsTool = _make_read_tool(
-    "FinanceGetInvestmentsTool",
-    finance_get_investments,
-    "Get investment accounts (RRSP, TFSA, non-reg) with holdings, target allocation, "
-    "and global watchlist."
-)
+class FinanceGetRiskProfileAction(Action):
+    pass
 
-FinanceGetCashflowAction, FinanceGetCashflowObs, FinanceGetCashflowTool = _make_read_tool(
-    "FinanceGetCashflowTool",
-    finance_get_cashflow,
-    "Get monthly cashflow: income, fixed expenses, debt payments, savings/investments, "
-    "variable budget, and computed totals (surplus, outflow)."
-)
+class FinanceGetRiskProfileObservation(Observation):
+    pass
 
-FinanceGetTaxAction, FinanceGetTaxObs, FinanceGetTaxTool = _make_read_tool(
-    "FinanceGetTaxTool",
-    finance_get_tax,
-    "Get tax situation: federal/provincial brackets, RRSP room and YTD contributions, "
-    "TFSA room and used amount, filing status, capital gains."
-)
+class FinanceGetRiskProfileExecutor(ToolExecutor[FinanceGetRiskProfileAction, FinanceGetRiskProfileObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_risk_profile())
+        return FinanceGetRiskProfileObservation.from_text(_fmt(result))
 
-FinanceGetInsuranceAction, FinanceGetInsuranceObs, FinanceGetInsuranceTool = _make_read_tool(
-    "FinanceGetInsuranceTool",
-    finance_get_insurance,
-    "Get all insurance policies: type, provider, coverage amount, premium, "
-    "deductible, renewal date, beneficiaries."
-)
+class FinanceGetRiskProfileTool(ToolDefinition[FinanceGetRiskProfileAction, FinanceGetRiskProfileObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get risk profile: tolerance (conservative/moderate/aggressive), time_horizon_years, "
+                        "investment_philosophy, max_drawdown_comfort_pct, notes.",
+            action_type=FinanceGetRiskProfileAction,
+            observation_type=FinanceGetRiskProfileObservation,
+            executor=FinanceGetRiskProfileExecutor(),
+        )]
 
-FinanceGetAgentContextAction, FinanceGetAgentContextObs, FinanceGetAgentContextTool = _make_read_tool(
-    "FinanceGetAgentContextTool",
-    finance_get_agent_context,
-    "Get agent context about this operator's financial behaviour: known biases, "
-    "recurring questions, and advisory notes."
-)
+
+class FinanceGetNetWorthAction(Action):
+    pass
+
+class FinanceGetNetWorthObservation(Observation):
+    pass
+
+class FinanceGetNetWorthExecutor(ToolExecutor[FinanceGetNetWorthAction, FinanceGetNetWorthObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_net_worth())
+        return FinanceGetNetWorthObservation.from_text(_fmt(result))
+
+class FinanceGetNetWorthTool(ToolDefinition[FinanceGetNetWorthAction, FinanceGetNetWorthObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get net worth snapshot: total_assets, total_liabilities, net_worth, as_of date.",
+            action_type=FinanceGetNetWorthAction,
+            observation_type=FinanceGetNetWorthObservation,
+            executor=FinanceGetNetWorthExecutor(),
+        )]
+
+
+class FinanceGetAccountsAction(Action):
+    pass
+
+class FinanceGetAccountsObservation(Observation):
+    pass
+
+class FinanceGetAccountsExecutor(ToolExecutor[FinanceGetAccountsAction, FinanceGetAccountsObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_accounts())
+        return FinanceGetAccountsObservation.from_text(_fmt(result))
+
+class FinanceGetAccountsTool(ToolDefinition[FinanceGetAccountsAction, FinanceGetAccountsObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get all accounts: chequing, savings, credit_cards (with utilization), "
+                        "lines_of_credit, loans. Use for debt/balance questions.",
+            action_type=FinanceGetAccountsAction,
+            observation_type=FinanceGetAccountsObservation,
+            executor=FinanceGetAccountsExecutor(),
+        )]
+
+
+class FinanceGetInvestmentsAction(Action):
+    pass
+
+class FinanceGetInvestmentsObservation(Observation):
+    pass
+
+class FinanceGetInvestmentsExecutor(ToolExecutor[FinanceGetInvestmentsAction, FinanceGetInvestmentsObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_investments())
+        return FinanceGetInvestmentsObservation.from_text(_fmt(result))
+
+class FinanceGetInvestmentsTool(ToolDefinition[FinanceGetInvestmentsAction, FinanceGetInvestmentsObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get investment accounts (RRSP, TFSA, non-reg) with holdings, target allocation, "
+                        "and global watchlist.",
+            action_type=FinanceGetInvestmentsAction,
+            observation_type=FinanceGetInvestmentsObservation,
+            executor=FinanceGetInvestmentsExecutor(),
+        )]
+
+
+class FinanceGetCashflowAction(Action):
+    pass
+
+class FinanceGetCashflowObservation(Observation):
+    pass
+
+class FinanceGetCashflowExecutor(ToolExecutor[FinanceGetCashflowAction, FinanceGetCashflowObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_cashflow())
+        return FinanceGetCashflowObservation.from_text(_fmt(result))
+
+class FinanceGetCashflowTool(ToolDefinition[FinanceGetCashflowAction, FinanceGetCashflowObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get monthly cashflow: income, fixed expenses, debt payments, savings/investments, "
+                        "variable budget, and computed totals (surplus, outflow).",
+            action_type=FinanceGetCashflowAction,
+            observation_type=FinanceGetCashflowObservation,
+            executor=FinanceGetCashflowExecutor(),
+        )]
+
+
+class FinanceGetTaxAction(Action):
+    pass
+
+class FinanceGetTaxObservation(Observation):
+    pass
+
+class FinanceGetTaxExecutor(ToolExecutor[FinanceGetTaxAction, FinanceGetTaxObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_tax())
+        return FinanceGetTaxObservation.from_text(_fmt(result))
+
+class FinanceGetTaxTool(ToolDefinition[FinanceGetTaxAction, FinanceGetTaxObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get tax situation: federal/provincial brackets, RRSP room and YTD contributions, "
+                        "TFSA room and used amount, filing status, capital gains.",
+            action_type=FinanceGetTaxAction,
+            observation_type=FinanceGetTaxObservation,
+            executor=FinanceGetTaxExecutor(),
+        )]
+
+
+class FinanceGetInsuranceAction(Action):
+    pass
+
+class FinanceGetInsuranceObservation(Observation):
+    pass
+
+class FinanceGetInsuranceExecutor(ToolExecutor[FinanceGetInsuranceAction, FinanceGetInsuranceObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_insurance())
+        return FinanceGetInsuranceObservation.from_text(_fmt(result))
+
+class FinanceGetInsuranceTool(ToolDefinition[FinanceGetInsuranceAction, FinanceGetInsuranceObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get all insurance policies: type, provider, coverage amount, premium, "
+                        "deductible, renewal date, beneficiaries.",
+            action_type=FinanceGetInsuranceAction,
+            observation_type=FinanceGetInsuranceObservation,
+            executor=FinanceGetInsuranceExecutor(),
+        )]
+
+
+class FinanceGetAgentContextAction(Action):
+    pass
+
+class FinanceGetAgentContextObservation(Observation):
+    pass
+
+class FinanceGetAgentContextExecutor(ToolExecutor[FinanceGetAgentContextAction, FinanceGetAgentContextObservation]):
+    def __call__(self, action, conversation=None):
+        result = _run_async(finance_get_agent_context())
+        return FinanceGetAgentContextObservation.from_text(_fmt(result))
+
+class FinanceGetAgentContextTool(ToolDefinition[FinanceGetAgentContextAction, FinanceGetAgentContextObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params):
+        return [cls(
+            description="Get agent context about this operator's financial behaviour: known biases, "
+                        "recurring questions, and advisory notes.",
+            action_type=FinanceGetAgentContextAction,
+            observation_type=FinanceGetAgentContextObservation,
+            executor=FinanceGetAgentContextExecutor(),
+        )]
 
 
 # =============================================================================
