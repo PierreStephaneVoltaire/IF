@@ -138,7 +138,9 @@ resource "kubernetes_deployment" "if_agent_api" {
               port = 8000
             }
             initial_delay_seconds = 30
-            period_seconds        = 10
+            period_seconds        = 120
+            timeout_seconds       = 30
+            failure_threshold     = 3
           }
 
           readiness_probe {
@@ -146,8 +148,8 @@ resource "kubernetes_deployment" "if_agent_api" {
               path = "/health"
               port = 8000
             }
-            initial_delay_seconds = 5
-            period_seconds        = 5
+            initial_delay_seconds = 30
+            period_seconds        = 60
           }
         }
       }
@@ -372,132 +374,4 @@ resource "kubernetes_deployment" "portal_frontends" {
     null_resource.packer_build_portal_frontends,
     kubernetes_deployment.portal_backends,
   ]
-}
-
-# =============================================================================
-# OpenWebUI Deployment
-# =============================================================================
-
-resource "kubernetes_persistent_volume_claim" "open_webui_data" {
-  metadata {
-    name      = "open-webui-data"
-    namespace = kubernetes_namespace.if_portals.metadata[0].name
-  }
-
-  spec {
-    access_modes       = ["ReadWriteOnce"]
-    storage_class_name = var.storage_class
-
-    resources {
-      requests = {
-        storage = "2Gi"
-      }
-    }
-  }
-}
-
-resource "kubernetes_deployment" "open_webui" {
-  metadata {
-    name      = "open-webui"
-    namespace = kubernetes_namespace.if_portals.metadata[0].name
-    labels = {
-      app = "open-webui"
-    }
-  }
-
-  spec {
-    replicas = 1
-
-    selector {
-      match_labels = {
-        app = "open-webui"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "open-webui"
-        }
-      }
-
-      spec {
-        volume {
-          name = "data-storage"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.open_webui_data.metadata[0].name
-          }
-        }
-
-        container {
-          name              = "webui"
-          image             = "ghcr.io/open-webui/open-webui:main"
-          image_pull_policy = "Always"
-
-          port {
-            container_port = 8080
-          }
-
-          resources {
-            limits = {
-              memory = "1024Mi"
-              cpu    = "500m"
-            }
-            requests = {
-              memory = "256Mi"
-              cpu    = "100m"
-            }
-          }
-
-          env {
-            name  = "OPENAI_API_BASE_URL"
-            value = "http://if-agent-api.${kubernetes_namespace.if_portals.metadata[0].name}.svc.cluster.local:8000/v1"
-          }
-
-          env {
-            name  = "OPENAI_API_KEY"
-            value = "unused"
-          }
-
-          env {
-            name  = "WEBUI_URL"
-            value = "https://${var.domain}/chat"
-          }
-
-          env {
-            name  = "ENABLE_OLLAMA_API"
-            value = "false"
-          }
-
-          env {
-            name  = "ENABLE_OPENAI_API"
-            value = "true"
-          }
-
-          volume_mount {
-            name       = "data-storage"
-            mount_path = "/app/backend/data"
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
-
-          readiness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 5
-            period_seconds        = 5
-          }
-        }
-      }
-    }
-  }
 }

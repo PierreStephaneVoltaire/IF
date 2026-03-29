@@ -1,5 +1,11 @@
 # Kubernetes Secrets for IF Agent API
 
+# Auto-generated terminal API key
+resource "random_password" "terminal_api_key" {
+  length  = 32
+  special = false
+}
+
 data "aws_ecr_authorization_token" "private" {}
 
 locals {
@@ -43,7 +49,7 @@ resource "kubernetes_secret" "if_agent_api_secrets" {
   data = {
     OPENROUTER_API_KEY = var.openrouter_api_key
     DISCORD_TOKEN      = var.discord_token
-    TERMINAL_API_KEY   = var.terminal_api_key
+    TERMINAL_API_KEY   = random_password.terminal_api_key.result
   }
 
   type = "Opaque"
@@ -108,7 +114,6 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     # Channel configuration
     CHANNEL_DEBOUNCE_SECONDS = tostring(var.channel_debounce_seconds)
     CHANNEL_MAX_CHUNK_CHARS  = tostring(var.channel_max_chunk_chars)
-    OPENWEBUI_POLL_INTERVAL  = tostring(var.openwebui_poll_interval)
     LLM_REASONING_EFFORT     = var.llm_reasoning_effort
 
     # Heartbeat configuration

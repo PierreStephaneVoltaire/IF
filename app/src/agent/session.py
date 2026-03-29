@@ -494,6 +494,17 @@ async def execute_agent(
         
         conversation.run()
         events = conversation.state.events
+
+        # Log tool invocations for observability
+        for event in events:
+            if hasattr(event, 'tool_call') and event.tool_call:
+                tc = event.tool_call
+                tool_name = getattr(tc, 'name', getattr(tc, 'function', 'unknown'))
+                tool_args = str(getattr(tc, 'arguments', getattr(tc, 'args', {})))[:200]
+                logger.info(f"[ToolCall] name={tool_name} | args={tool_args}")
+            elif hasattr(event, 'tool_name'):
+                logger.info(f"[ToolCall] name={event.tool_name} | args={str(getattr(event, 'args', {}))[:200]}")
+
         last_agent_message:MessageEvent = None
         for event in events:
           if isinstance(event, MessageEvent) and event.source == "agent":

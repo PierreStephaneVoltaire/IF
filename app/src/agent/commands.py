@@ -298,7 +298,7 @@ class CommandHandler:
         if not self.context_id:
             return "Error: No context ID set for this session."
 
-        analyzer = MetaAnalyzer(self.store, self.context_id)
+        analyzer = MetaAnalyzer(self.store)
         return analyzer.get_category_report()
     
     def _handle_tools(self, args: str) -> str:

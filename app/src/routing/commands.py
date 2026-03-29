@@ -31,6 +31,7 @@ class CommandAction(Enum):
     GROWTH = "growth"
     META = "meta"
     TOOLS = "tools"
+    CLEAR_CHAT = "clear_chat"
 
 
 @dataclass

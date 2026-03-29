@@ -66,24 +66,3 @@ resource "kubernetes_service" "portal_frontends" {
     type = "ClusterIP"
   }
 }
-
-# OpenWebUI Service
-resource "kubernetes_service" "open_webui" {
-  metadata {
-    name      = "open-webui"
-    namespace = kubernetes_namespace.if_portals.metadata[0].name
-  }
-
-  spec {
-    selector = {
-      app = "open-webui"
-    }
-
-    port {
-      port        = 8080
-      target_port = 8080
-    }
-
-    type = "ClusterIP"
-  }
-}

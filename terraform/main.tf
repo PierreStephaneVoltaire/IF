@@ -2,6 +2,8 @@ provider "aws" {
   region = var.region
 }
 
+provider "random" {}
+
 # k3s Kubernetes provider configuration
 # Uses kubeconfig from the EC2 host where k3s is running
 provider "kubernetes" {

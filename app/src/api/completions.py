@@ -242,7 +242,9 @@ async def process_chat_completion_internal(
 
     cache_key = resolve_cache_key(request_data, webhook)
     context_id = build_context_id(request_data, webhook)
-    
+    last_user_message = extract_last_user_message(messages)
+    logger.info(f"[Request] cache_key={cache_key} | user={request_data.get('user', '?')} | prompt={last_user_message[:80]}")
+
     try:
         from heartbeat.activity import ActivityTracker
         from storage.factory import get_webhook_store
@@ -256,9 +258,7 @@ async def process_chat_completion_internal(
     
     preset_manager = get_preset_manager()
     cache = get_cache()
-    
-    last_user_message = extract_last_user_message(messages)
-    
+
     cmd = parse_command(last_user_message, preset_manager.slugs())
     if cmd is not None:
         if cmd.action == CommandAction.RESET_CACHE:
@@ -452,6 +452,7 @@ async def process_chat_completion_internal(
                 "content_type": "application/octet-stream",
             })
     
+    logger.info(f"[Response] cache_key={cache_key} | content_len={len(agent_response.content)} | attachments={len(attachments)}")
     return agent_response.content, attachments
 
 

@@ -436,6 +436,8 @@ class SpawnSpecialistExecutor(ToolExecutor):
             if action.skill and action.skill not in SKILLS:
                 return f"Unknown skill: {action.skill}. Available: {SKILLS}", None
 
+            logger.info(f"[Subagents] Spawning: slug={action.specialist_type} | skill={action.skill} | task={action.task[:100]}")
+
             # Resolve directives
             directives = _resolve_directives(
                 specialist.directive_types,
@@ -468,6 +470,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                     http_client=http_client,
                 )
 
+            logger.info(f"[Subagents] Completed: slug={specialist.slug} | result_len={len(result)}")
             return result, specialist.slug
 
         # Handle async in sync context
@@ -594,10 +597,11 @@ class SpawnSpecialistsExecutor(ToolExecutor):
                 tasks = []
                 valid_specialists = []
 
+                logger.info(f"[Subagents] Spawning parallel: slugs={action.specialist_types} | task={action.task[:100]}")
                 for slug in action.specialist_types:
                     specialist = get_specialist(slug)
                     if not specialist:
-                        logger.warning(f"[SpawnSpecialists] Unknown specialist: {slug}")
+                        logger.warning(f"[Subagents] Unknown specialist: {slug}")
                         continue
 
                     valid_specialists.append(specialist)
@@ -636,6 +640,7 @@ class SpawnSpecialistsExecutor(ToolExecutor):
                     else:
                         combined.append(f"## {specialist.slug}\n\n{result}")
 
+                logger.info(f"[Subagents] Parallel completed: slugs={[s.slug for s in valid_specialists]} | results={len(combined)}")
                 return "\n\n---\n\n".join(combined), [s.slug for s in valid_specialists]
 
         # Handle async in sync context

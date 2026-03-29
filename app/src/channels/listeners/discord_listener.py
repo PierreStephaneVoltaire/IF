@@ -2,6 +2,7 @@
 
 Runs a bot client in its own thread with its own event loop.
 Captures messages from the registered channel and pushes to debounce queue.
+Registers slash commands as guild commands on first connect (deduped).
 """
 from __future__ import annotations
 import asyncio
@@ -10,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Callable
 
 import discord
+from discord import app_commands
 
 if TYPE_CHECKING:
     from storage.models import WebhookRecord
@@ -22,14 +24,14 @@ def create_discord_listener(
     stop_event: threading.Event,
 ) -> Callable[[], None]:
     """Create a Discord listener function for threading.
-    
+
     Returns a callable to be used as a Thread target. Runs a discord.py
     client that listens to a single channel.
-    
+
     Args:
         record: WebhookRecord containing Discord configuration
         stop_event: Threading event to signal listener shutdown
-        
+
     Returns:
         Callable that runs the Discord bot listener
     """
@@ -48,11 +50,46 @@ def create_discord_listener(
         intents.message_content = True
         client = discord.Client(intents=intents)
 
+        # Set up slash command tree
+        tree = app_commands.CommandTree(client)
+
+        from channels.slash_commands import setup_command_tree, should_sync
+
+        setup_command_tree(tree, channel_id, conversation_id, webhook_id)
+
         @client.event
         async def on_ready():
             logger.info(
                 f"Discord listener {webhook_id} connected as {client.user}"
             )
+
+            # Sync slash commands to guild (deduped)
+            channel = client.get_channel(channel_id)
+            if channel and hasattr(channel, "guild") and channel.guild:
+                guild = channel.guild
+                if should_sync(client.user.id, guild.id):
+                    try:
+                        tree.copy_global_to(guild=guild)
+                        await tree.sync(guild=guild)
+                        logger.info(
+                            f"Synced slash commands to guild "
+                            f"{guild.name} ({guild.id})"
+                        )
+                    except discord.HTTPException as e:
+                        logger.error(
+                            f"Failed to sync slash commands to "
+                            f"{guild.name}: {e}"
+                        )
+                else:
+                    logger.debug(
+                        f"Slash commands already synced for guild "
+                        f"{guild.name} ({guild.id}), skipping"
+                    )
+            else:
+                logger.warning(
+                    f"Could not resolve guild for channel {channel_id} "
+                    f"in {webhook_id}"
+                )
 
         @client.event
         async def on_message(message: discord.Message):

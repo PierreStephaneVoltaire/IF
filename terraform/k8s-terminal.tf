@@ -83,8 +83,8 @@ resource "kubernetes_deployment" "open_terminal" {
               cpu    = "${var.terminal_cpu_quota}m"
             }
             requests = {
-              memory = "256Mi"
-              cpu    = "250m"
+              memory = "2048i"
+              cpu    = "1000m"
             }
           }
 
@@ -99,7 +99,7 @@ resource "kubernetes_deployment" "open_terminal" {
               port = 7681
             }
             initial_delay_seconds = 10
-            period_seconds        = 30
+            period_seconds        = 60
           }
 
           readiness_probe {

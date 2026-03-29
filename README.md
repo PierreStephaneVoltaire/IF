@@ -92,18 +92,20 @@ Versioned behavioral directives stored in DynamoDB. Tiered by priority (0-5), wi
 
 ## Commands
 
-Slash commands for manual control:
+Registered as Discord guild slash commands (autocomplete) and also work as plain text messages.
 
 | Command | Action |
 |---------|--------|
-| `/end_convo` | Clear conversation state |
-| `/pondering` | Enter operator profiling mode |
-| `/{preset}` | Pin to specific preset |
-| `/reflect` | Trigger reflection cycle |
-| `/gaps` | List capability gaps |
-| `/patterns` | Show detected patterns |
-| `/opinions` | Show opinion pairs |
-| `/growth` | Operator growth report |
+| `/end_convo` | Clear conversation state and force reclassification |
+| `/clear [amount]` | Delete recent messages from channel (default 100, requires Manage Messages) |
+| `/pondering` | Enter reflective conversation mode (heavy tier) |
+| `/reflect` | Trigger manual reflection cycle |
+| `/gaps [min_triggers]` | List capability gaps ranked by priority |
+| `/patterns` | Show detected behavioral patterns |
+| `/opinions` | Show opinion pairs (operator vs agent positions) |
+| `/growth [days]` | Show operator growth report (default 30 days) |
+| `/meta` | Show store health metrics and category suggestions |
+| `/tools` | Show tool suggestions from capability gaps |
 
 ---
 

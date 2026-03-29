@@ -190,7 +190,7 @@ variable "embedding_model" {
 }
 
 variable "suggestion_model" {
-  description = "Model for OpenWebUI suggestions/titles"
+  description = "Model for suggestions and title generation"
   type        = string
   default     = "mistralai/mistral-nemo"
 }
@@ -299,12 +299,6 @@ variable "channel_max_chunk_chars" {
   default     = 1500
 }
 
-variable "openwebui_poll_interval" {
-  description = "OpenWebUI polling interval (seconds)"
-  type        = number
-  default     = 5.0
-}
-
 # =============================================================================
 # Heartbeat Configuration
 # =============================================================================
@@ -411,12 +405,6 @@ variable "terminal_storage_gb" {
   description = "Storage size for terminal workspace (GB)"
   type        = number
   default     = 10
-}
-
-variable "terminal_api_key" {
-  description = "API key for OpenTerminal authentication"
-  type        = string
-  sensitive   = true
 }
 
 # =============================================================================
