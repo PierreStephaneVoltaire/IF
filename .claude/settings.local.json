@@ -6,7 +6,8 @@
       "Bash(kubectl rollout:*)",
       "Bash(kubectl get:*)",
       "Bash(kubectl describe:*)",
-      "Bash(kubectl patch:*)"
+      "Bash(kubectl patch:*)",
+      "WebSearch"
     ]
   }
 }

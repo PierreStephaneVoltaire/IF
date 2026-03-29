@@ -2,6 +2,39 @@
 
 A single main agent with context-aware tiering and specialist subagent delegation. Built on the OpenHands SDK, routes through OpenRouter, persists knowledge in LanceDB.
 
+---
+
+## Philosophy: IF vs Traditional Agent Frameworks
+
+Most agent frameworks (OpenAI Agents SDK, LangGraph, CrewAI) follow a **design-time** philosophy: you architect the agent's behavior upfront through careful prompt engineering, define handoffs between agents, and deploy. Changes require code modifications and redeployment.
+
+IF takes an **evolutionary** approach: start with a base agent and let behavior emerge through interaction.
+
+| Aspect | Traditional Frameworks | IF |
+|--------|------------------------|-----|
+| **Prompt Engineering** | Heavy upfront investment; static instructions baked into code | Iterative refinement; directives stored in DynamoDB, editable at runtime |
+| **Iteration Speed** | Slow: edit → commit → test → deploy cycle | Fast: DynamoDB edit → immediate effect |
+| **Knowledge Accumulation** | Stateless between sessions (unless you build custom persistence) | Built-in: user facts accumulate, context enriches over time |
+| **Behavior Shaping** | Prompt versioning and rollback | Directive versioning + reflection engine auto-detects issues |
+| **Personalization** | Generic assistant; custom memory is your problem | Operator context injected automatically from LanceDB facts |
+| **Failure Recovery** | Rollback to previous code version | Directive rollback + metacognitive triggers |
+| **Learning** | None (you redesign prompts) | Reflection engine, opinion formation, capability gap tracking |
+
+### The Incremental Advantage
+
+Traditional: *"Let me design the perfect system prompt, define all handoffs, and ship it."*
+
+IF: *"Here's a base agent. Through conversation, it will learn the operator's preferences, accumulate context, and I can nudge its behavior with directive edits without touching code."*
+
+This makes IF better suited for:
+- **Long-running relationships** where the agent should learn and adapt
+- **Solo operators** who want a personalized assistant without building custom memory systems
+- **Rapid iteration** where you want to shape behavior through interaction, not prompt engineering sessions
+
+The trade-off: IF requires more infrastructure (DynamoDB, LanceDB, Docker) and has higher complexity. Traditional frameworks are simpler to get started with but remain static unless you build your own persistence layer.
+
+---
+
 
 ## Core Components
 
@@ -15,19 +48,48 @@ Context-aware model selection based on conversation size:
 - **Heavy**: Complex tasks (< 200K tokens)
 
 ### Specialist Subagents
-Domain experts spawned by the main agent for deep tasks:
 
-| Specialist | Purpose |
-|------------|---------|
-| `debugger` | Code debugging and error analysis |
-| `architect` | System design and architecture |
-| `secops` | Security operations and vulnerabilities |
-| `devops` | Infrastructure and deployment |
-| `financial_analyst` | Financial data and market research |
-| `web_researcher` | Web research and synthesis |
-| `proofreader` | Prose editing and review |
-| `health_write` | Training program mutations |
-| `finance_write` | Finance snapshot mutations |
+Domain experts spawned by the main agent for deep tasks. Each specialist has its own prompt template, filtered directives, and tool access.
+
+#### Code & Infrastructure
+
+| Specialist | Purpose | Tools |
+|------------|---------|-------|
+| `debugger` | Deep code debugging and error analysis | `terminal_execute`, `read_file`, `write_file`, `search_files` |
+| `architect` | System design and architecture patterns | `read_file`, `write_file`, `search_files` + AWS docs MCP |
+| `secops` | Security operations and vulnerability analysis | `terminal_execute`, `read_file`, `search_files` |
+| `devops` | Infrastructure and deployment automation | `terminal_execute`, `read_file`, `write_file` |
+
+#### Writing & Communication
+
+| Specialist | Purpose | Use Case |
+|------------|---------|----------|
+| `proofreader` | Prose editing, grammar, clarity, tone | General text improvement |
+| `email_writer` | Professional email drafting | Formal tone, sensitive subjects |
+| `jira_writer` | Jira ticket creation | Structured issues with acceptance criteria |
+| `constrained_writer` | Character-limited content | Tweets (280), Discord, SMS, Bluesky (300) |
+
+#### Domain-Specific
+
+| Specialist | Purpose | Tools |
+|------------|---------|-------|
+| `health_write` | Training program mutations (log sessions, update RPE, body weight) | Health DynamoDB tools |
+| `finance_write` | Finance snapshot mutations (balances, holdings, goals) | Finance DynamoDB tools |
+| `financial_analyst` | Market research and financial analysis | Yahoo Finance + Alpha Vantage MCPs |
+| `web_researcher` | Web research and information synthesis | `read_file`, `write_file` |
+| `media_reader` | On-demand file and image analysis | Vision model (single turn) |
+
+#### Skills (Mode Modifiers)
+
+Specialists can be invoked with skill modes that change their perspective:
+
+| Skill | Effect |
+|-------|--------|
+| `red_team` | Adversarial/attack perspective |
+| `blue_team` | Defensive/protection perspective |
+| `pro_con` | Balanced pros and cons analysis |
+
+Example: `spawn_specialist(specialist_type="architect", skill="red_team")` produces an adversarial architecture review.
 
 ### Memory System
 - **User Facts Store**: LanceDB with semantic search for operator context
