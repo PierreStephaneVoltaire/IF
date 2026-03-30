@@ -58,15 +58,20 @@ class WebhookRecord(SQLModel, table=True):
 
 class RoutingCacheEntry(SQLModel, table=True):
     """Persistent routing cache entry.
-    
+
     Survives server restarts. Entries expire after 24 hours.
     Stores conversation routing state including pinned presets.
     """
     __tablename__ = "routing_cache"
 
     cache_key: str = Field(primary_key=True)  # chat_id or channel_id
-    active_preset: str
+    active_preset: str = ""  # Preset name, empty if not set = ""
+    current_tier: int = 0  # 0=air, 1=standard, 2=heavy
+    context_tokens: int = 0
+    condensation_count: int = 0
     pinned: int = 0  # SQLite doesn't have bool, use 0/1
+    pinned_tier: int | None = None  # Tier when pinned
+    pondering: int = 0  # SQLite doesn't have bool, use 0/1
     pin_message_count: int = 0
     anchor_window: str = ""  # JSON array of strings
     last_scores: str | None = None  # JSON blob, nullable

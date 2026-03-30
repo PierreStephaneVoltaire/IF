@@ -38,6 +38,28 @@ def init_sqlite() -> None:
         conn.commit()
 
     SQLModel.metadata.create_all(_engine)
+
+    # Migration: Add missing columns to routing_cache if they don't exist
+    with _engine.connect() as conn:
+        # Check existing columns
+        result = conn.execute(text("PRAGMA table_info(routing_cache)"))
+        existing_cols = {row[1] for row in result.fetchall()}
+
+        migrations = [
+            ("current_tier", "INTEGER DEFAULT 0"),
+            ("context_tokens", "INTEGER DEFAULT 0"),
+            ("condensation_count", "INTEGER DEFAULT 0"),
+            ("pinned_tier", "INTEGER"),
+            ("pondering", "INTEGER DEFAULT 0"),
+        ]
+
+        for col_name, col_def in migrations:
+            if col_name not in existing_cols:
+                conn.execute(text(f"ALTER TABLE routing_cache ADD COLUMN {col_name} {col_def}"))
+                logger.info(f"[Migration] Added column {col_name} to routing_cache")
+
+        conn.commit()
+
     logger.info(f"SQLite store initialized at {STORAGE_DB_PATH} (WAL mode)")
 
 

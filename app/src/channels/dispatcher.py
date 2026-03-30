@@ -4,7 +4,7 @@ Translates platform messages → calls core pipeline → delivers response back.
 """
 from __future__ import annotations
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -14,6 +14,9 @@ from channels.chunker import chunk_response
 from channels.delivery import deliver_to_channel
 
 logger = logging.getLogger(__name__)
+
+# Number of historical messages to fetch from Discord channel
+DISCORD_HISTORY_LIMIT = 100
 
 
 async def _upload_attachments(
@@ -66,6 +69,49 @@ async def _upload_attachments(
             logger.warning(f"[Upload] Failed to upload {filename}: {e}")
 
 
+async def _fetch_discord_history(
+    channel_ref: Any,
+    discord_loop: Any,
+) -> List[Any]:
+    """Fetch recent messages from Discord channel history.
+
+    Args:
+        channel_ref: Discord TextChannel object
+        discord_loop: The Discord client's event loop
+
+    Returns:
+        List of discord.Message objects (newest first)
+    """
+    if channel_ref is None:
+        return []
+
+    try:
+        import asyncio
+        import discord
+
+        async def fetch():
+            messages = []
+            async for msg in channel_ref.history(limit=DISCORD_HISTORY_LIMIT):
+                messages.append(msg)
+            return messages
+
+        # Run the fetch in the Discord event loop
+        if discord_loop and discord_loop.is_running():
+            # Schedule the coroutine in the Discord loop
+            future = asyncio.run_coroutine_threadsafe(fetch(), discord_loop)
+            # Wait for result with timeout
+            messages = future.result(timeout=10.0)
+            logger.info(f"[Discord] Fetched {len(messages)} history messages")
+            return messages
+        else:
+            logger.warning("[Discord] Discord loop not running, skipping history fetch")
+            return []
+
+    except Exception as e:
+        logger.warning(f"[Discord] Failed to fetch channel history: {e}")
+        return []
+
+
 async def dispatch_channel_batch(
     messages: List[Dict[str, Any]],
     conversation_id: str,
@@ -93,7 +139,13 @@ async def dispatch_channel_batch(
 
     # Step 1: Translate messages to request format
     if platform == "discord":
-        request_data = translate_discord_batch(messages, conversation_id)
+        # Fetch channel history for context
+        history_messages = await _fetch_discord_history(channel_ref, discord_loop)
+        request_data = translate_discord_batch(
+            messages,
+            conversation_id,
+            history_messages=history_messages,
+        )
     elif platform == "openwebui":
         request_data = translate_openwebui_batch(messages, conversation_id)
     else:
