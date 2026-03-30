@@ -468,7 +468,6 @@ scrape_configs:
       - targets: ['tinyauth.${kubernetes_namespace.if_portals.metadata[0].name}.svc.cluster.local:3000']
     metrics_path: /metrics
 
-  # Portal backends require prometheus.io annotations and /metrics endpoint
   - job_name: 'portal-backends'
     kubernetes_sd_configs:
       - role: pod

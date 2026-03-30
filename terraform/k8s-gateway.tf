@@ -36,8 +36,6 @@ resource "helm_release" "nginx_gateway_fabric" {
   depends_on = [null_resource.gateway_api_crds]
 }
 
-# NGF v2.0.0 chart bug: snippetsFilters.enable helm value doesn't propagate
-# the --snippets-filters flag or RBAC. Patch both manually after helm install.
 resource "null_resource" "ngf_snippets_enable" {
   depends_on = [helm_release.nginx_gateway_fabric]
 

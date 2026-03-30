@@ -1,6 +1,3 @@
-# Kubernetes Services for all applications
-
-# Main API Service
 resource "kubernetes_service" "if_agent_api" {
   metadata {
     name      = "if-agent-api"
@@ -21,7 +18,6 @@ resource "kubernetes_service" "if_agent_api" {
   }
 }
 
-# Portal Backend Services
 resource "kubernetes_service" "portal_backends" {
   for_each = local.portals
 
@@ -44,7 +40,6 @@ resource "kubernetes_service" "portal_backends" {
   }
 }
 
-# Portal Frontend Services
 resource "kubernetes_service" "portal_frontends" {
   for_each = local.portals
 

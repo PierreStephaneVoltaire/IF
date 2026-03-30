@@ -1,6 +1,3 @@
-# ECR Repositories for all container images
-
-# Main API
 resource "aws_ecr_repository" "if_agent_api" {
   name                 = "${var.ecr_repository_prefix}-agent-api"
   image_tag_mutability = "MUTABLE"
@@ -10,7 +7,6 @@ resource "aws_ecr_repository" "if_agent_api" {
   }
 }
 
-# Portal Backends
 resource "aws_ecr_repository" "portal_backends" {
   for_each = toset([
     "main-portal-backend",
@@ -28,7 +24,6 @@ resource "aws_ecr_repository" "portal_backends" {
   }
 }
 
-# Portal Frontends
 resource "aws_ecr_repository" "portal_frontends" {
   for_each = toset([
     "main-portal-frontend",
@@ -46,7 +41,6 @@ resource "aws_ecr_repository" "portal_frontends" {
   }
 }
 
-# Lifecycle policy - keep last 5 images
 resource "aws_ecr_lifecycle_policy" "keep_5" {
   for_each = merge(
     { "if-agent-api" = aws_ecr_repository.if_agent_api.name },
@@ -74,20 +68,14 @@ resource "aws_ecr_lifecycle_policy" "keep_5" {
   })
 }
 
-# ===========================================
-# Packer Build Triggers
-# ===========================================
-
 locals {
   docker_hash = filesha1("${path.module}/../docker/build.pkr.hcl")
 
-  # Main API source code hash
   main_api_hash = sha1(join("", [
     for f in fileset("${path.module}/../app/src", "**/*") :
     filesha1("${path.module}/../app/src/${f}")
   ]))
 
-  # Source code hashes for each portal (triggers rebuild on any code change)
   portal_backend_hashes = {
     for name, config in local.portals : name => sha1(join("", [
       for f in fileset("${path.module}/../app/utils/${name}/backend", "**/*") :
@@ -102,8 +90,6 @@ locals {
     ]))
   }
 
-  # Map portal names to ingress paths for API URLs
-  # These are the full API base URLs including /api suffix where applicable
   portal_api_paths = {
     "main-portal"      = "/main"
     "finance-portal"   = "/finance"
@@ -113,7 +99,6 @@ locals {
   }
 }
 
-# Main API Packer Build
 resource "null_resource" "packer_build_main_api" {
   triggers = {
     dir_sha1    = local.docker_hash
@@ -133,7 +118,6 @@ resource "null_resource" "packer_build_main_api" {
   depends_on = [aws_ecr_repository.if_agent_api]
 }
 
-# Portal Backend Packer Builds
 resource "null_resource" "packer_build_portal_backends" {
   for_each = local.portals
 
@@ -158,7 +142,6 @@ resource "null_resource" "packer_build_portal_backends" {
   depends_on = [aws_ecr_repository.portal_backends]
 }
 
-# Portal Frontend Packer Builds
 resource "null_resource" "packer_build_portal_frontends" {
   for_each = local.portals
 

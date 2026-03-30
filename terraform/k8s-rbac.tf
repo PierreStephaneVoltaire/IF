@@ -1,6 +1,3 @@
-# RBAC resources for terminal pod management
-
-# ServiceAccount for the main API
 resource "kubernetes_service_account" "if_agent_api" {
   metadata {
     name      = "if-agent-api"
@@ -14,28 +11,24 @@ resource "kubernetes_service_account" "if_agent_api" {
   automount_service_account_token = true
 }
 
-# Role for terminal pod management (namespace-scoped)
 resource "kubernetes_role" "terminal_manager" {
   metadata {
     name      = "terminal-manager"
     namespace = kubernetes_namespace.if_portals.metadata[0].name
   }
 
-  # Pod management
   rule {
     api_groups = [""]
     resources  = ["pods"]
     verbs      = ["get", "list", "watch", "create", "delete", "patch"]
   }
 
-  # Pod logs and status
   rule {
     api_groups = [""]
     resources  = ["pods/log", "pods/status"]
     verbs      = ["get"]
   }
 
-  # PVC management
   rule {
     api_groups = [""]
     resources  = ["persistentvolumeclaims"]
@@ -43,7 +36,6 @@ resource "kubernetes_role" "terminal_manager" {
   }
 }
 
-# RoleBinding for the terminal manager role
 resource "kubernetes_role_binding" "terminal_manager" {
   metadata {
     name      = "terminal-manager"

@@ -1,5 +1,3 @@
-# Kubernetes namespace for all IF applications
-
 resource "kubernetes_namespace" "if_portals" {
   metadata {
     name = "if-portals"

@@ -1,7 +1,3 @@
-# =============================================================================
-# Session Videos S3 Bucket - Powerlifting App
-# =============================================================================
-
 resource "aws_s3_bucket" "session_videos" {
   bucket = "powerlifting-session-videos"
 
@@ -17,7 +13,7 @@ resource "aws_s3_bucket_cors_configuration" "session_videos_cors" {
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["PUT", "GET", "DELETE"]
-    allowed_origins = ["*"] # TODO: Restrict to frontend domain in production
+    allowed_origins = ["*"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3600
   }
@@ -40,10 +36,6 @@ resource "aws_s3_bucket_lifecycle_configuration" "session_videos_lifecycle" {
     }
   }
 }
-
-# =============================================================================
-# Lambda IAM Role for Video Thumbnail Generation
-# =============================================================================
 
 resource "aws_iam_role" "video_thumbnail_lambda" {
   name = "video-thumbnail-lambda-role"
@@ -99,13 +91,8 @@ resource "aws_iam_role_policy" "video_thumbnail_lambda" {
   })
 }
 
-# =============================================================================
-# Lambda Function for Thumbnail Generation
-# =============================================================================
-
 data "aws_caller_identity" "current" {}
 
-# Create the Lambda deployment package from Python source
 data "archive_file" "video_lambda" {
   type        = "zip"
   output_path = "${path.module}/video-lambda.zip"
@@ -135,10 +122,6 @@ resource "aws_lambda_function" "video_thumbnail" {
   }
 }
 
-# =============================================================================
-# S3 Event Notification -> Lambda Trigger
-# =============================================================================
-
 resource "aws_lambda_permission" "s3_invoke" {
   statement_id   = "AllowS3Invoke"
   action         = "lambda:InvokeFunction"
@@ -159,20 +142,3 @@ resource "aws_s3_bucket_notification" "session_videos" {
 
   depends_on = [aws_lambda_permission.s3_invoke]
 }
-
-# =============================================================================
-# FFmpeg Layer (using public layer)
-# =============================================================================
-
-# Option 1: Use a public FFmpeg layer
-# Uncomment and replace with actual layer ARN if using a public layer
-# resource "aws_lambda_layer_version" "ffmpeg" {
-#   ...
-# }
-
-# Option 2: Reference an existing layer
-# variable "ffmpeg_layer_arn" {
-#   description = "ARN of FFmpeg Lambda layer"
-#   type        = string
-#   default     = ""
-# }

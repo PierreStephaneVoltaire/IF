@@ -1,9 +1,3 @@
-# OpenTerminal Deployment - shared terminal for all conversations
-#
-# This deploys a single shared OpenTerminal instance that all conversations
-# use with path-based isolation (/home/user/conversations/{chat_id}).
-
-# PVC for terminal workspace persistence
 resource "kubernetes_persistent_volume_claim" "terminal_workspace" {
   metadata {
     name      = "terminal-workspace"
@@ -28,7 +22,6 @@ resource "kubernetes_persistent_volume_claim" "terminal_workspace" {
   }
 }
 
-# OpenTerminal Deployment
 resource "kubernetes_deployment" "open_terminal" {
   metadata {
     name      = "open-terminal"
@@ -71,7 +64,7 @@ resource "kubernetes_deployment" "open_terminal" {
           }
 
           env {
-            name  = "OPEN_TERMINAL_API_KEY"
+            name = "OPEN_TERMINAL_API_KEY"
             value_from {
               secret_key_ref {
                 name = kubernetes_secret.if_agent_api_secrets.metadata[0].name
@@ -126,7 +119,6 @@ resource "kubernetes_deployment" "open_terminal" {
   }
 }
 
-# Service for OpenTerminal
 resource "kubernetes_service" "open_terminal" {
   metadata {
     name      = "open-terminal"

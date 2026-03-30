@@ -1,5 +1,3 @@
-# gateway-global-setup injects rate limiting and the internal /_tinyauth forward-auth location.
-# Only one HTTPRoute needs to reference it for these to be available to all routes on the listener.
 resource "kubectl_manifest" "snippets_gateway_global" {
   depends_on = [
     null_resource.ngf_snippets_enable,
@@ -400,7 +398,6 @@ spec:
   YAML
 }
 
-# Grafana uses cross-namespace backendRef, requires ReferenceGrant in monitoring ns
 resource "kubectl_manifest" "route_grafana" {
   depends_on = [
     kubectl_manifest.snippets_auth_and_security,

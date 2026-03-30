@@ -1,6 +1,3 @@
-# Kubernetes Deployments for all applications
-
-# Main API Deployment
 resource "kubernetes_deployment" "if_agent_api" {
   metadata {
     name      = "if-agent-api"
@@ -33,7 +30,6 @@ resource "kubernetes_deployment" "if_agent_api" {
           name = kubernetes_secret.ecr_registry.metadata[0].name
         }
 
-        # Volume definitions for persistent storage
         volume {
           name = "data-storage"
           persistent_volume_claim {
@@ -62,7 +58,6 @@ resource "kubernetes_deployment" "if_agent_api" {
           }
         }
 
-        # Mount host AWS credentials - k3s on Ubuntu, no IRSA
         volume {
           name = "aws-credentials"
           host_path {
@@ -91,21 +86,18 @@ resource "kubernetes_deployment" "if_agent_api" {
             }
           }
 
-          # Reference ConfigMap for non-sensitive config
           env_from {
             config_map_ref {
               name = kubernetes_config_map.if_agent_api_config.metadata[0].name
             }
           }
 
-          # Reference Secret for sensitive data
           env_from {
             secret_ref {
               name = kubernetes_secret.if_agent_api_secrets.metadata[0].name
             }
           }
 
-          # Volume mounts for persistent storage (match local dev: CWD = /app/src)
           volume_mount {
             name       = "data-storage"
             mount_path = "/app/src/data"
@@ -159,7 +151,6 @@ resource "kubernetes_deployment" "if_agent_api" {
   depends_on = [null_resource.packer_build_main_api]
 }
 
-# Portal configurations
 locals {
   portals = {
     main-portal = {
@@ -190,7 +181,6 @@ locals {
   }
 }
 
-# Portal Backend Deployments
 resource "kubernetes_deployment" "portal_backends" {
   for_each = local.portals
 
@@ -228,7 +218,6 @@ resource "kubernetes_deployment" "portal_backends" {
           name = kubernetes_secret.ecr_registry.metadata[0].name
         }
 
-        # Mount host AWS credentials - k3s on Ubuntu, no IRSA
         volume {
           name = "aws-credentials"
           host_path {
@@ -257,7 +246,6 @@ resource "kubernetes_deployment" "portal_backends" {
             }
           }
 
-          # Reference portal-specific ConfigMap
           env_from {
             config_map_ref {
               name = "${each.key}-config"
@@ -295,7 +283,6 @@ resource "kubernetes_deployment" "portal_backends" {
   depends_on = [null_resource.packer_build_portal_backends]
 }
 
-# Portal Frontend Deployments
 resource "kubernetes_deployment" "portal_frontends" {
   for_each = local.portals
 

@@ -1,6 +1,3 @@
-# Persistent Volume Claims for IF Agent API
-
-# Main data storage - for memory, facts, and other persistent data
 resource "kubernetes_persistent_volume_claim" "if_agent_data" {
   metadata {
     name      = "if-agent-data"
@@ -22,7 +19,6 @@ resource "kubernetes_persistent_volume_claim" "if_agent_data" {
   }
 }
 
-# Sandbox storage - for file outputs
 resource "kubernetes_persistent_volume_claim" "if_agent_sandbox" {
   metadata {
     name      = "if-agent-sandbox"
@@ -44,7 +40,6 @@ resource "kubernetes_persistent_volume_claim" "if_agent_sandbox" {
   }
 }
 
-# Conversations storage - for OpenHands persistence
 resource "kubernetes_persistent_volume_claim" "if_agent_conversations" {
   metadata {
     name      = "if-agent-conversations"
@@ -66,7 +61,6 @@ resource "kubernetes_persistent_volume_claim" "if_agent_conversations" {
   }
 }
 
-# Facts storage - for LanceDB facts database
 resource "kubernetes_persistent_volume_claim" "if_agent_facts" {
   metadata {
     name      = "if-agent-facts"

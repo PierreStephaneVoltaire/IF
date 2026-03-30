@@ -4,7 +4,6 @@ variable "region" {
   default     = "ca-central-1"
 }
 
-# k3s cluster configuration
 variable "kubeconfig_path" {
   description = "Path to kubeconfig file for k3s cluster"
   type        = string
@@ -17,16 +16,11 @@ variable "kubeconfig_context" {
   default     = "default"
 }
 
-# ECR repository prefix
 variable "ecr_repository_prefix" {
   description = "Prefix for ECR repository names"
   type        = string
   default     = "if"
 }
-
-# =============================================================================
-# API Keys (Secrets)
-# =============================================================================
 
 variable "openrouter_api_key" {
   description = "OpenRouter API key"
@@ -46,10 +40,6 @@ variable "alphavantage_api_key" {
   default     = ""
   sensitive   = true
 }
-
-# =============================================================================
-# DynamoDB Table Names
-# =============================================================================
 
 variable "dynamodb_core_table" {
   description = "DynamoDB table for core directives"
@@ -93,10 +83,6 @@ variable "dynamodb_powerlifting_table" {
   default     = "powerlifting"
 }
 
-# =============================================================================
-# Tiering Configuration
-# =============================================================================
-
 variable "tier_upgrade_threshold" {
   description = "Fraction of context limit before tier upgrade"
   type        = number
@@ -139,10 +125,6 @@ variable "tier_heavy_preset" {
   default     = "@preset/heavy"
 }
 
-# =============================================================================
-# Specialist Configuration
-# =============================================================================
-
 variable "specialist_preset" {
   description = "Default preset for specialist subagents"
   type        = string
@@ -166,10 +148,6 @@ variable "thinking_max_turns" {
   type        = number
   default     = 20
 }
-
-# =============================================================================
-# Model Configuration
-# =============================================================================
 
 variable "api_model_name" {
   description = "API model identifier for external clients"
@@ -243,10 +221,6 @@ variable "diary_signal_model" {
   default     = "openrouter/@preset/air"
 }
 
-# =============================================================================
-# Orchestrator Configuration
-# =============================================================================
-
 variable "orchestrator_max_turns" {
   description = "Maximum turns per orchestrator subagent"
   type        = number
@@ -277,10 +251,6 @@ variable "tool_output_char_limit" {
   default     = 200000
 }
 
-# =============================================================================
-# Channel Configuration
-# =============================================================================
-
 variable "channel_debounce_seconds" {
   description = "Message batching window (seconds)"
   type        = number
@@ -298,10 +268,6 @@ variable "channel_max_chunk_chars" {
   type        = number
   default     = 1500
 }
-
-# =============================================================================
-# Heartbeat Configuration
-# =============================================================================
 
 variable "heartbeat_enabled" {
   description = "Enable heartbeat system"
@@ -327,10 +293,6 @@ variable "heartbeat_quiet_hours" {
   default     = "23:00-07:00"
 }
 
-# =============================================================================
-# Reflection Configuration
-# =============================================================================
-
 variable "reflection_enabled" {
   description = "Enable reflection engine"
   type        = bool
@@ -354,10 +316,6 @@ variable "reflection_threshold_uncategorized" {
   type        = number
   default     = 20
 }
-
-# =============================================================================
-# Terminal Configuration
-# =============================================================================
 
 variable "terminal_image" {
   description = "Docker image for terminal containers"
@@ -407,10 +365,6 @@ variable "terminal_storage_gb" {
   default     = 10
 }
 
-# =============================================================================
-# User/Operator Configuration
-# =============================================================================
-
 variable "health_program_pk" {
   description = "Partition key for health program storage"
   type        = string
@@ -435,19 +389,11 @@ variable "diary_signal_compute_interval_hours" {
   default     = 6.0
 }
 
-# =============================================================================
-# Logging Configuration
-# =============================================================================
-
 variable "log_level" {
   description = "Logging level"
   type        = string
   default     = "INFO"
 }
-
-# =============================================================================
-# Persistent Storage Configuration
-# =============================================================================
 
 variable "storage_class" {
   description = "Kubernetes storage class for persistent volumes"
@@ -485,10 +431,6 @@ variable "facts_storage_gb" {
   default     = 2
 }
 
-# =============================================================================
-# Resource limits - Portals
-# =============================================================================
-
 variable "portal_memory_mb" {
   description = "Memory limit for portal backends (MB)"
   type        = number
@@ -501,7 +443,6 @@ variable "portal_cpu_millicores" {
   default     = 500
 }
 
-# Resource limits - Main API
 variable "api_memory_mb" {
   description = "Memory limit for main API (MB)"
   type        = number
@@ -514,7 +455,6 @@ variable "api_cpu_millicores" {
   default     = 1000
 }
 
-# Resource limits - Frontends
 variable "frontend_memory_mb" {
   description = "Memory limit for portal frontends (MB)"
   type        = number
@@ -527,19 +467,11 @@ variable "frontend_cpu_millicores" {
   default     = 100
 }
 
-# =============================================================================
-# Host Paths
-# =============================================================================
-
 variable "aws_credentials_host_path" {
   description = "Path to AWS credentials directory on the k3s node (mounted into pods)"
   type        = string
   default     = "/root/.aws"
 }
-
-# =============================================================================
-# Domain & Gateway
-# =============================================================================
 
 variable "domain" {
   description = "Primary domain for the cluster (Tailscale MagicDNS or custom domain)"
@@ -558,10 +490,6 @@ variable "gateway_namespace" {
   type        = string
   default     = "default"
 }
-
-# =============================================================================
-# Tinyauth Configuration
-# =============================================================================
 
 variable "tinyauth_secret" {
   description = "Tinyauth session secret (min 32 chars)"
@@ -598,10 +526,6 @@ variable "tinyauth_image_tag" {
   type        = string
   default     = "v5"
 }
-
-# =============================================================================
-# Observability Configuration
-# =============================================================================
 
 variable "loki_storage_gb" {
   description = "Storage size for Loki log data (GB)"
