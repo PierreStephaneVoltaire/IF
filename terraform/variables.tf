@@ -374,7 +374,7 @@ variable "terminal_network" {
 variable "terminal_mem_limit" {
   description = "Memory limit per terminal container"
   type        = string
-  default     = "512m"
+  default     = "2Gi"
 }
 
 variable "terminal_cpu_quota" {
@@ -452,7 +452,13 @@ variable "log_level" {
 variable "storage_class" {
   description = "Kubernetes storage class for persistent volumes"
   type        = string
-  default     = "local-path-wait"
+  default     = "local-path"
+}
+
+variable "node_name" {
+  description = "Node name for local-path provisioner with Immediate binding"
+  type        = string
+  default     = "sirsimpalot-g5-5000"
 }
 
 variable "data_storage_gb" {

@@ -11,6 +11,9 @@ resource "kubernetes_persistent_volume_claim" "terminal_workspace" {
     labels = {
       app = "open-terminal"
     }
+    annotations = {
+      "volume.kubernetes.io/selected-node" = var.node_name
+    }
   }
 
   spec {
@@ -83,7 +86,7 @@ resource "kubernetes_deployment" "open_terminal" {
               cpu    = "${var.terminal_cpu_quota}m"
             }
             requests = {
-              memory = "2048i"
+              memory = "2048Mi"
               cpu    = "1000m"
             }
           }

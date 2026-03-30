@@ -16,6 +16,9 @@ resource "kubernetes_persistent_volume_claim" "tinyauth_data" {
   metadata {
     name      = "tinyauth-data"
     namespace = kubernetes_namespace.if_portals.metadata[0].name
+    annotations = {
+      "volume.kubernetes.io/selected-node" = var.node_name
+    }
   }
 
   spec {

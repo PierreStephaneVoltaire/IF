@@ -64,6 +64,9 @@ resource "kubernetes_persistent_volume_claim" "loki_data" {
   metadata {
     name      = "loki-data"
     namespace = kubernetes_namespace.monitoring.metadata[0].name
+    annotations = {
+      "volume.kubernetes.io/selected-node" = var.node_name
+    }
   }
 
   spec {
@@ -499,6 +502,9 @@ resource "kubernetes_persistent_volume_claim" "prometheus_data" {
   metadata {
     name      = "prometheus-data"
     namespace = kubernetes_namespace.monitoring.metadata[0].name
+    annotations = {
+      "volume.kubernetes.io/selected-node" = var.node_name
+    }
   }
 
   spec {
@@ -660,6 +666,9 @@ resource "kubernetes_persistent_volume_claim" "grafana_data" {
   metadata {
     name      = "grafana-data"
     namespace = kubernetes_namespace.monitoring.metadata[0].name
+    annotations = {
+      "volume.kubernetes.io/selected-node" = var.node_name
+    }
   }
 
   spec {
