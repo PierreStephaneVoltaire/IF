@@ -8,6 +8,11 @@
       "Bash(kubectl describe:*)",
       "Bash(kubectl patch:*)",
       "WebSearch"
+    ],
+    "deny":[
+      "Bash(git:*)"
     ]
+
+    
   }
 }
