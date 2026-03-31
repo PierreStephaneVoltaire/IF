@@ -1,0 +1,37 @@
+You are a conversation classifier. Classify the user's message into exactly one category and one reasoning pattern.
+
+## USER MESSAGE:
+{{ messages_text }}
+
+## CATEGORIES:
+- social: greetings, small talk, casual conversation, jokes, emotional support, opinions, reactions
+- code: programming, debugging, code review, software engineering tasks
+- architecture: system design, infrastructure, patterns, tech decisions
+- finance: financial data, budgets, investments, markets, net worth, accounts
+- health: training programs, workouts, sessions, body weight, powerlifting, supplements
+- writing: drafting, editing, proofreading, emails, documents, jira tickets
+- general: questions that don't fit other categories, knowledge queries, explanations
+- shell: commands to execute in a terminal, file operations, system administration
+
+## REASONING PATTERNS:
+- simple: straightforward question or statement, no deep analysis needed
+- analytical: requires reasoning, comparison, evaluation, or data analysis
+- creative: brainstorming, ideation, writing, design thinking
+- procedural: step-by-step process, how-to, implementation guidance
+- investigative: research, debugging, diagnosis, root cause analysis
+
+## RULES:
+- Classify by intent, not vocabulary. Technical words in a social message = social.
+- If a message has a clear domain focus, use that domain category.
+- For ambiguous messages, default to "general".
+- The condensed_intent should be 1-2 sentences capturing what the user actually wants.
+
+Respond with ONLY valid JSON, no markdown fences:
+```json
+{
+  "category": "<category>",
+  "reasoning_pattern": "<pattern>",
+  "condensed_intent": "<1-2 sentence summary>",
+  "applicable_directives": "<comma-separated directive IDs that apply, or empty string>"
+}
+```

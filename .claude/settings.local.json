@@ -7,12 +7,19 @@
       "Bash(kubectl get:*)",
       "Bash(kubectl describe:*)",
       "Bash(kubectl patch:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(kubectl exec:*)",
+      "Bash(kubectl logs:*)",
+      "Bash(kubectl delete:*)",
+      "Bash(pip show:*)",
+      "Bash(pip list:*)",
+      "Bash(python3 -c \"import openhands.sdk; print\\(openhands.sdk.__file__\\)\")",
+      "Bash(python3 -c \"from openhands.sdk import Tool; print\\(Tool.__module__\\)\")",
+      "Bash(ls -la /home/sirsimpalot/Downloads/discord-ai-bot/app/.venv/lib/python*/site-packages/)",
+      "Bash(ls -la /home/sirsimpalot/Downloads/discord-ai-bot/.venv/lib/python*/site-packages/)"
     ],
-    "deny":[
+    "deny": [
       "Bash(git:*)"
     ]
-
-    
   }
 }

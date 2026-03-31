@@ -4,6 +4,8 @@ import json
 import uuid
 import hashlib
 import logging
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Any, Optional, Tuple, AsyncGenerator
 
 from fastapi import APIRouter, HTTPException, Request
@@ -196,6 +198,35 @@ def build_context_id(
         return f"openwebui_{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
     return "openwebui_default"
+
+
+def format_conversation_history(messages: List[Dict], max_messages: int = 50) -> str:
+    """Format message history (excluding the last message) into a labeled block.
+
+    Args:
+        messages: Full message list in OpenAI format
+        max_messages: Maximum number of history messages to include
+
+    Returns:
+        Formatted history string with [role] labels, or empty string
+    """
+    history = messages[:-1] if len(messages) > 1 else []
+    if not history:
+        return ""
+    history = history[-max_messages:]
+    lines = []
+    for msg in history:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text_parts.append(part.get("text", ""))
+            content = "\n".join(text_parts)
+        if content.strip():
+            lines.append(f"[{role}] {content}")
+    return "\n".join(lines)
 
 
 def extract_message_window(messages: List[Dict], window_size: int = 5) -> List[str]:
@@ -394,12 +425,18 @@ async def process_chat_completion_internal(
     except Exception as e:
         logger.warning(f"[Cache] Failed to persist entry: {e}")
 
+    # Format conversation history for system prompt injection
+    conversation_history = format_conversation_history(messages)
+    if conversation_history:
+        logger.info(f"[History] Injecting {len(messages) - 1} history messages into system prompt")
+
     session = get_or_create_session(
         conversation_id=cache_key,
         preset_slug=selected_preset,
         preset_manager=preset_manager,
         messages=messages,
         context_id=context_id,
+        conversation_history=conversation_history,
     )
     
     agent_response = await execute_agent(
@@ -432,13 +469,32 @@ async def process_chat_completion_internal(
         logger.debug(f"Failed to queue conversation summary: {e}")
     
     attachments = []
-    
+
     for ref in file_refs:
         filename = ref.path.split("/")[-1] if "/" in ref.path else ref.path
+        local_path = None
+
+        try:
+            from terminal import get_static_manager, create_terminal_client
+            manager = get_static_manager()
+            if manager:
+                import httpx as _httpx
+                container = await manager.get_or_create(cache_key)
+                async with _httpx.AsyncClient(timeout=30.0) as client:
+                    terminal_client = create_terminal_client(container, client)
+                    content = await terminal_client.download_file(ref.path)
+                    temp_dir = Path(tempfile.gettempdir()) / "if-attachments" / cache_key
+                    temp_dir.mkdir(parents=True, exist_ok=True)
+                    local_file = temp_dir / filename
+                    local_file.write_bytes(content)
+                    local_path = str(local_file)
+        except Exception as e:
+            logger.warning(f"Failed to download attachment {ref.path}: {e}")
+
         attachments.append({
             "filename": filename,
             "url": f"/files/workspace/{cache_key}/{ref.path}",
-            "local_path": ref.path,
+            "local_path": local_path,
             "content_type": "application/octet-stream",
             "description": ref.description,
         })

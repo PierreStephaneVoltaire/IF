@@ -1,0 +1,9 @@
+description: General software engineering for writing code, features, and modifications
+tools:
+  - terminal_execute
+  - read_file
+  - write_file
+  - search_files
+mcp_servers: []
+directive_types:
+  - code

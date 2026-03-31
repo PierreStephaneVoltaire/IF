@@ -1,0 +1,23 @@
+category_directive_map:
+  code: [code, architecture]
+  architecture: [architecture, code]
+  finance: [finance, competition]
+  health: [health]
+  writing: [writing]
+  social: [core, personality]
+  general: [core]
+  shell: [code]
+
+category_specialist_map:
+  code: coder
+  architecture: architect
+  finance: financial_analyst
+  health: health_write
+  writing: proofreader
+  shell: scripter
+  general: null
+  social: null
+
+pattern_specialist_overrides:
+  simple: scripter
+  investigative: debugger

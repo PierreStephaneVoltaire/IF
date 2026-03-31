@@ -34,12 +34,31 @@ Specialists can operate in different modes:
 
 ## How to Add a New Specialist
 
-### Step 1: Create the Template
+Specialists are file-based — no Python code changes needed.
 
-Create `src/agent/prompts/specialists/{name}.j2`:
+### Step 1: Create the Specialist Folder
+
+Create `src/agent/prompts/specialists/{name}/` with two files:
+
+**`specialist.yaml`** (config):
+
+```yaml
+description: "What this specialist does"
+tools:
+  - terminal_execute
+  - read_file
+mcp_servers: []
+directive_types:
+  - relevant
+  - types
+# max_turns: 3  # optional, defaults to SPECIALIST_MAX_TURNS (15)
+# preset: specialist  # optional, defaults to SPECIALIST_PRESET
+```
+
+**`agent.j2`** (prompt template):
 
 ```jinja2
-You are a {{ specialist_type }} specialist.
+You are a specialist.
 
 ## Your Task
 {{ task }}
@@ -49,9 +68,13 @@ You are a {{ specialist_type }} specialist.
 {{ context }}
 {% endif %}
 
-{% if extra_directives %}
-## Additional Directives
-{{ extra_directives }}
+{% if directives %}
+## Directives
+{{ directives }}
+{% endif %}
+
+{% if skill %}
+## Mode: {{ skill }}
 {% endif %}
 
 ## Your Role
@@ -61,25 +84,16 @@ You are a {{ specialist_type }} specialist.
 [Describe expected output format]
 ```
 
-### Step 2: Register in specialists.py
+The folder name becomes the specialist slug. The template is always `agent.j2`.
 
-Add to `SPECIALISTS`:
+### Step 2: (Optional) Update Delegation Routing
 
-```python
-SPECIALISTS: Dict[str, SpecialistConfig] = {
-    # ... existing entries ...
-    "your_specialist": SpecialistConfig(
-        slug="your_specialist",
-        description="What this specialist does",
-        template="specialists/your_specialist.j2",
-        tools=[],           # list of terminal tool names if needed
-        mcp_servers=[],     # list of MCP server slugs if needed
-        directive_types=["relevant", "types"],
-    ),
-}
+Add to `src/agent/prompts/specialists/delegation.yaml` if you want auto-routing:
+
+```yaml
+category_specialist_map:
+  your_category: your_name
 ```
-
-`max_turns` defaults to `SPECIALIST_MAX_TURNS` (15). Set `max_turns=1` for single-shot specialists that need no tool loop (e.g. `media_reader`).
 
 ### Step 3: Test
 

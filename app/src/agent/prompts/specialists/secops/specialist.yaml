@@ -1,0 +1,9 @@
+description: Security operations and vulnerability analysis specialist
+tools:
+  - terminal_execute
+  - read_file
+  - search_files
+mcp_servers: []
+directive_types:
+  - security
+  - code

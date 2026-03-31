@@ -39,11 +39,10 @@ from agent.tools.capability_tracker import get_capability_tracker_tools
 from agent.tools.opinion_tools import get_opinion_tools
 from agent.tools.session_reflection import get_session_reflection_tools
 from agent.tools.directive_tools import get_directive_tools
-from agent.tools.terminal_tools import get_terminal_tools, get_terminal_system_prompt
-from agent.tools.health_tools import get_health_tools
+from agent.tools.terminal_tools import get_terminal_system_prompt
 from agent.tools.context_tools import get_context_tools
-from agent.tools.finance_tools import get_finance_tools
 from agent.tools.subagents import get_subagent_tools
+from agent.tools.delegation import get_delegation_tools
 from agent.tools.media_tools import get_media_tools
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
 
@@ -225,7 +224,8 @@ def assemble_system_prompt(
     preset_slug: str,
     memory_context: Optional[str] = None,
     operator_context: Optional[str] = None,
-    signals: Optional[Dict[str, Any]] = None
+    signals: Optional[Dict[str, Any]] = None,
+    conversation_history: Optional[str] = None,
 ) -> str:
     """Assemble the complete system prompt for a preset.
 
@@ -233,7 +233,7 @@ def assemble_system_prompt(
     1. Current signals block (mental health, life load, training status)
     2. Base system prompt (personality/speech patterns from main_system_prompt.txt)
     3. Operator context block (auto-retrieved from user facts)
-    4. Memory context block (if provided)
+    4. Conversation history block (from channel history)
     5. Directives block (from DynamoDB directive store)
     6. Preset-specific instructions (sandbox rules, etc.)
 
@@ -242,6 +242,7 @@ def assemble_system_prompt(
         memory_context: Optional memory context to inject
         operator_context: Optional operator context from user facts
         signals: Optional signals dict from get_signals() for context injection
+        conversation_history: Optional conversation history block
 
     Returns:
         Complete system prompt string
@@ -270,7 +271,11 @@ def assemble_system_prompt(
     # Add operator context if provided (from user facts)
     if operator_context:
         prompt_parts.append(f"\n{operator_context}\n")
-    
+
+    # Add conversation history if provided (from channel history)
+    if conversation_history:
+        prompt_parts.append(f"\n<conversation_history>\n{conversation_history}\n</conversation_history>\n")
+
     # Add directives block from DirectiveStore
     try:
         from storage.factory import get_directive_store
@@ -437,15 +442,10 @@ async def execute_agent(
         tools.extend(get_session_reflection_tools())
         # Get directive management tools
         tools.extend(get_directive_tools())
-        # Get terminal tools (Phase 3)
-        # Use session.session_id as chat_id for consistent terminal container scoping
-        tools.extend(get_terminal_tools(session.session_id))
-        # Get health tools
-        tools.extend(get_health_tools())
         # Get context tools (date/time, signals, finance snapshot)
         tools.extend(get_context_tools())
-        # Get granular finance tools
-        tools.extend(get_finance_tools())
+        # Get delegation tools (categorize, directives, condense, spawn)
+        tools.extend(get_delegation_tools(session.session_id))
         # Get subagent tools (specialist spawning, deep thinking)
         tools.extend(get_subagent_tools(session.session_id))
         # Get media tools (on-demand file/image analysis)
@@ -455,7 +455,7 @@ async def execute_agent(
         # Get orchestrator tools (Parts7-9) with shared HTTP client
         tools.extend(get_orchestrator_tools(session.session_id, http_client=shared_http_client))
         tools.extend(get_analyzer_tools(session.session_id, http_client=shared_http_client))
-        logger.info("Loaded memory, user facts, capability, opinion, reflection, directive, terminal, and orchestrator tools")
+        logger.info(f"Loaded {len(tools)} tools: memory, user facts, capability, opinion, reflection, directive, context, delegation, subagent, media, orchestrator")
         # Create OpenHands Agent
         # Pass the assembled system prompt (which includes directives) to the Agent
         # Use the custom system_prompt.j2 template that renders {{ system_prompt }}
@@ -479,11 +479,12 @@ async def execute_agent(
         )
         logger.info(f"Conversation initialized with ID: {session.session_id}")
         # Format messages for the agent
-        # OpenHands expects messages in a specific format
-        # The system prompt is already included in session.system_prompt
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
+        # OpenHands send_message() only accepts user role — all history is
+        # already injected into the system prompt via assemble_system_prompt().
+        # Send only the last (current) message.
+        if messages:
+            last_msg = messages[-1]
+            content = last_msg.get("content", "")
             if isinstance(content, list):
                 text_parts = []
                 for part in content:
@@ -578,6 +579,7 @@ def get_or_create_session(
     memory_context: Optional[str] = None,
     messages: Optional[List[Dict[str, Any]]] = None,
     context_id: Optional[str] = None,
+    conversation_history: Optional[str] = None,
 ) -> AgentSession:
     """Get existing session or create new one.
 
@@ -591,6 +593,7 @@ def get_or_create_session(
         memory_context: Optional memory context
         messages: Optional messages for operator context retrieval
         context_id: Optional context ID for LanceDB storage (format: openwebui_{id} or discord_{id})
+        conversation_history: Optional conversation history for system prompt
 
     Returns:
         AgentSession instance
@@ -623,7 +626,8 @@ def get_or_create_session(
         preset_slug,
         memory_context,
         operator_context,
-        signals
+        signals,
+        conversation_history=conversation_history,
     )
     mcp_servers = resolve_mcp_servers(preset_slug)
 

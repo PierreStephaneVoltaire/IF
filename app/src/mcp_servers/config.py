@@ -1,59 +1,38 @@
 
 from __future__ import annotations
-import os
-import logging
-from typing import Dict, Any, Optional, Set
-from dataclasses import dataclass
 
-from config import SANDBOX_PATH, ALPHAVANTAGE_API_KEY
+import logging
+import os
+from pathlib import Path
+from typing import Dict, Any, Optional, Set
+
+from agent.prompts.yaml_loader import load_yaml
+
+from config import SANDBOX_PATH
 
 logger = logging.getLogger(__name__)
 
+_MCP_SERVERS_PATH = Path(__file__).parent.parent / "agent" / "prompts" / "specialists" / "mcp_servers.yaml"
 
 
-MCP_SERVERS: Dict[str, Dict[str, Any]] = {
-    "time": {
-        "command": "uvx",
-        "args": ["mcp-server-time@latest"],
-        "env": {
-            "FASTMCP_LOG_LEVEL": "ERROR"
-        }
-    },
-    "aws_docs": {
-        "command": "uvx",
-        "args": ["awslabs.aws-documentation-mcp-server@latest"],
-        "env": {
-            "FASTMCP_LOG_LEVEL": "ERROR",
-            "AWS_DOCUMENTATION_PARTITION": "aws",
-            "MCP_USER_AGENT": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            )
-        }
-    },
-    "yahoo_finance": {
-        "command": "uvx",
-        "args": ["mcp-yahoo-finance"],
-        "env": {
-            "FASTMCP_LOG_LEVEL": "ERROR"
-        }
-    },
-    "alpha_vantage": {
-        "command": "uvx",
-        "args": ["alphavantage-mcp"],
-        "env": {
-            "ALPHAVANTAGE_API_KEY": ALPHAVANTAGE_API_KEY,
-            "FASTMCP_LOG_LEVEL": "ERROR"
-        }
-    }
-}
+def _load_mcp_servers() -> Dict[str, Dict[str, Any]]:
+    """Load MCP server definitions from YAML with env var interpolation."""
+    try:
+        return load_yaml(_MCP_SERVERS_PATH)
+    except FileNotFoundError:
+        logger.error(f"MCP servers config not found: {_MCP_SERVERS_PATH}")
+        return {}
+    except Exception as e:
+        logger.error(f"Failed to load MCP servers config: {e}")
+        return {}
 
+
+MCP_SERVERS: Dict[str, Dict[str, Any]] = _load_mcp_servers()
 
 
 PRESET_MCP_MAP: Dict[str, list] = {
     "__all__": ["time"],
-    
+
     "architecture": ["aws_docs"],
     "code": [],
     "health": [],
@@ -61,7 +40,7 @@ PRESET_MCP_MAP: Dict[str, list] = {
     "social": [],
     "finance": ["yahoo_finance", "alpha_vantage"],
     "pondering": [],
-    
+
 }
 
 
@@ -69,9 +48,9 @@ PRESET_MCP_MAP: Dict[str, list] = {
 def resolve_mcp_config(preset_slug: str, conversation_id: str = "") -> Dict[str, Any]:
 
     server_keys: Set[str] = set(PRESET_MCP_MAP.get("__all__", []))
-    
+
     server_keys.update(PRESET_MCP_MAP.get(preset_slug, []))
-    
+
     mcp_servers = {}
     for key in server_keys:
         if key in MCP_SERVERS:
@@ -79,7 +58,7 @@ def resolve_mcp_config(preset_slug: str, conversation_id: str = "") -> Dict[str,
             mcp_servers[key] = server_def
         else:
             logger.warning(f"Server '{key}' referenced but not defined in MCP_SERVERS")
-    
+
     return {
         "mcpServers": mcp_servers
     }
@@ -126,23 +105,23 @@ def get_sandbox_instruction(preset_slug: str, conversation_id: str = "") -> Opti
 def validate_mcp_config() -> bool:
 
     errors = []
-    
+
     all_referenced_servers = set()
     for servers in PRESET_MCP_MAP.values():
         all_referenced_servers.update(servers)
-    
+
     for server_name in all_referenced_servers:
         if server_name not in MCP_SERVERS:
             errors.append(f"Server '{server_name}' referenced in PRESET_MCP_MAP but not defined in MCP_SERVERS")
-    
+
     if not os.path.exists(SANDBOX_PATH):
         try:
             os.makedirs(SANDBOX_PATH, exist_ok=True)
             logger.info(f"Created sandbox directory: {SANDBOX_PATH}")
         except Exception as e:
             errors.append(f"Cannot create SANDBOX_PATH '{SANDBOX_PATH}': {e}")
-    
+
     if errors:
         raise ValueError("MCP configuration errors:\n" + "\n".join(errors))
-    
+
     return True

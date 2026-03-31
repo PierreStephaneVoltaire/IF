@@ -102,6 +102,7 @@ async def _run_subagent(
     model: str,
     max_turns: int,
     chat_id: str,
+    tool_schemas: Optional[List[Dict[str, Any]]] = None,
     http_client: Optional[httpx.AsyncClient] = None,
 ) -> str:
     """Run a subagent with the given configuration.
@@ -112,6 +113,7 @@ async def _run_subagent(
         model: OpenRouter model/preset slug
         max_turns: Maximum turns before timeout
         chat_id: Chat ID for terminal container scoping
+        tool_schemas: Optional domain tool schemas (health, finance, etc.)
         http_client: Optional shared HTTP client
 
     Returns:
@@ -121,7 +123,7 @@ async def _run_subagent(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_message},
     ]
-    tools = [TERMINAL_EXECUTE_SCHEMA]
+    tools = list(tool_schemas) if tool_schemas else [TERMINAL_EXECUTE_SCHEMA]
 
     should_close = False
     if http_client is None:
@@ -147,30 +149,30 @@ async def _run_subagent(
                     tool_name = func.get("name", "")
                     tool_id = tc.get("id", "")
 
-                    if tool_name == "terminal_execute":
-                        import json
-                        try:
-                            args = json.loads(func.get("arguments", "{}"))
-                        except json.JSONDecodeError:
-                            args = {}
+                    import json
+                    try:
+                        args = json.loads(func.get("arguments", "{}"))
+                    except json.JSONDecodeError:
+                        args = {}
 
+                    if tool_name == "terminal_execute":
                         output = await _execute_terminal_command(
                             command=args.get("command", ""),
                             workdir=args.get("workdir", "/home/user/workspace"),
                             chat_id=chat_id,
                             http_client=http_client,
                         )
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_id,
-                            "content": output
-                        })
+                    elif tool_name.startswith("health_") or tool_name.startswith("finance_"):
+                        from agent.tools.tool_schemas import execute_domain_tool
+                        output = await execute_domain_tool(tool_name, args)
                     else:
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_id,
-                            "content": f"Unknown tool: {tool_name}"
-                        })
+                        output = f"Unknown tool: {tool_name}"
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": output
+                    })
             else:
                 return response.content or ""
 
@@ -349,6 +351,8 @@ register_tool("deep_think", DeepThinkTool)
 SPAWN_SPECIAListDescription = """Spawn a specialist subagent for domain-specific work.
 
 Available specialists:
+- coder: General software engineering (writing code, features, modifications)
+- scripter: Quick tasks completable in 3-5 commands (files, scripts, one-liners)
 - debugger: Deep code debugging and error analysis
 - architect: System architecture and design patterns
 - secops: Security operations and vulnerability analysis
@@ -367,7 +371,7 @@ class SpawnSpecialistAction(Action):
     """Action for spawning a specialist subagent."""
 
     specialist_type: str = Field(
-        description="Type of specialist to spawn (debugger, architect, secops, devops, financial_analyst, health_write, web_researcher)"
+        description="Type of specialist to spawn (coder, scripter, debugger, architect, secops, devops, financial_analyst, health_write, web_researcher)"
     )
     task: str = Field(
         description="Detailed task description for the specialist"
@@ -460,6 +464,10 @@ class SpawnSpecialistExecutor(ToolExecutor):
             if action.write_to_file:
                 user_message = f"{action.task}\n\nSave your output to: {action.write_to_file}"
 
+            # Resolve tool schemas for this specialist
+            from agent.tools.tool_schemas import get_schemas_for_specialist
+            tool_schemas = get_schemas_for_specialist(specialist.tools)
+
             async with httpx.AsyncClient(timeout=120.0) as http_client:
                 result = await _run_subagent(
                     system_prompt=system_prompt,
@@ -467,6 +475,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                     model=specialist.preset,
                     max_turns=specialist.max_turns,
                     chat_id=self.chat_id,
+                    tool_schemas=tool_schemas,
                     http_client=http_client,
                 )
 
@@ -505,7 +514,7 @@ SPAWN_SPECIALIST_DESCRIPTION = """Spawn a single specialist subagent to handle a
 Use this when you need expert help in a specific domain. The specialist will
 work independently and return results.
 
-Available specialists include: security, performance, architecture, debugger, secops.
+Available specialists include: coder, scripter, debugger, architect, secops, devops.
 Choose the specialist that best matches your task."""
 
 
@@ -598,6 +607,7 @@ class SpawnSpecialistsExecutor(ToolExecutor):
                 valid_specialists = []
 
                 logger.info(f"[Subagents] Spawning parallel: slugs={action.specialist_types} | task={action.task[:100]}")
+                from agent.tools.tool_schemas import get_schemas_for_specialist
                 for slug in action.specialist_types:
                     specialist = get_specialist(slug)
                     if not specialist:
@@ -617,12 +627,14 @@ class SpawnSpecialistsExecutor(ToolExecutor):
                         directives=directives,
                     )
 
+                    tool_schemas = get_schemas_for_specialist(specialist.tools)
                     tasks.append(_run_subagent(
                         system_prompt=system_prompt,
                         user_message=action.task,
                         model=specialist.preset,
                         max_turns=specialist.max_turns,
                         chat_id=self.chat_id,
+                        tool_schemas=tool_schemas,
                         http_client=http_client,
                     ))
 

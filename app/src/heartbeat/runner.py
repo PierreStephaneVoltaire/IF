@@ -246,12 +246,14 @@ class HeartbeatRunner:
         """
         # Pull relevant user facts
         future = await self._list_facts_async(
-            category=FactCategory.FUTURE_DIRECTION
+            category=FactCategory.FUTURE_DIRECTION,
+            context_id=cache_key,
         )
         project = await self._list_facts_async(
-            category=FactCategory.PROJECT_DIRECTION
+            category=FactCategory.PROJECT_DIRECTION,
+            context_id=cache_key,
         )
-        general = await self._search_facts_async("recent activity goals", limit=3)
+        general = await self._search_facts_async("recent activity goals", context_id=cache_key, limit=3)
         
         all_context = future + project + general
         
@@ -305,18 +307,20 @@ class HeartbeatRunner:
     
     async def _list_facts_async(
         self,
-        category: FactCategory
+        category: FactCategory,
+        context_id: str = "__global__",
     ) -> list:
         """Async wrapper for listing facts by category."""
-        return self.user_facts_store.list_facts(category=category)
+        return self.user_facts_store.list_facts(context_id=context_id, category=category)
     
     async def _search_facts_async(
         self,
         query: str,
+        context_id: str = "__global__",
         limit: int = 5
     ) -> list:
         """Async wrapper for searching facts."""
-        return self.user_facts_store.search(query, limit=limit)
+        return self.user_facts_store.search(context_id, query, limit=limit)
     
     def _in_quiet_hours(self) -> bool:
         """Check if current time is within quiet hours.

@@ -1,0 +1,9 @@
+description: Infrastructure and deployment automation specialist
+tools:
+  - terminal_execute
+  - read_file
+  - write_file
+mcp_servers: []
+directive_types:
+  - code
+  - architecture

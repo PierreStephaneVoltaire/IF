@@ -463,7 +463,7 @@ class TerminalListExecutor(ToolExecutor):
                 # Resolve path relative to conversation directory
                 path = action.path or get_conversation_workdir(self.chat_id)
 
-                async with httpx.AsyncClient() as http_client:
+                async with httpx.AsyncClient(timeout=30.0) as http_client:
                     client = create_terminal_client(container, http_client)
                     result = await client.list_files(path)
 
@@ -599,7 +599,7 @@ class TerminalDownloadExecutor(ToolExecutor):
                     conv_dir = get_conversation_workdir(self.chat_id)
                     path = f"{conv_dir}/{path}"
 
-                async with httpx.AsyncClient() as http_client:
+                async with httpx.AsyncClient(timeout=30.0) as http_client:
                     client = create_terminal_client(container, http_client)
                     content = await client.download_text_file(path)
 

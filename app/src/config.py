@@ -225,6 +225,9 @@ PRESET_FALLBACK_MODEL = os.getenv("PRESET_FALLBACK_MODEL", "openrouter/@preset/g
 # Model for reflection engine and opinion formation
 REFLECTION_MODEL = os.getenv("REFLECTION_MODEL", "openrouter/@preset/general")
 
+# Model for conversation categorization (cheap/fast)
+CATEGORIZATION_MODEL = os.getenv("CATEGORIZATION_MODEL", "openrouter/z-ai/glm-4.7-flash")
+
 # Reasoning effort passed to the OpenHands LLM for the main agent.
 # Valid values: "high", "medium", "low" (silently ignored for models that don't support it).
 LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "high")

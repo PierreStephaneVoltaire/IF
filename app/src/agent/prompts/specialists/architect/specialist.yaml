@@ -1,0 +1,10 @@
+description: System architecture and design patterns specialist
+tools:
+  - read_file
+  - write_file
+  - search_files
+mcp_servers:
+  - aws_docs
+directive_types:
+  - architecture
+  - code

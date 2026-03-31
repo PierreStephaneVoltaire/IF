@@ -425,92 +425,87 @@ class DirectiveStore:
         versions.sort(key=lambda d: d.version, reverse=True)
         return versions
 
+    # Types that should be excluded from subagent auto-injection
+    MAIN_AGENT_ONLY_TYPES = {"tool", "memory", "metacognition"}
 
-# =========================================================================
-# Type-based filtering methods for subagent directive injection
-# =========================================================================
+    def get_by_types(self, types: List[str]) -> List[Directive]:
+        """Return all active cached directives that have ANY of the given types.
 
-# Types that should be excluded from subagent auto-injection
-MAIN_AGENT_ONLY_TYPES = {"tool", "memory", "metacognition"}
+        Union logic -- types=["code", "security"] returns directives tagged
+        code OR security (or both).
+        """
+        result = []
+        type_set = set(types)
+        for d in self._cache:
+            if not d.active:
+                continue
+            d_types = set(d.types)
+            if d_types & type_set:
+                result.append(d)
+        result.sort(key=lambda d: (d.alpha, d.beta))
+        return result
 
-def get_by_types(self, types: List[str]) -> List[Directive]:
-    """Return all active cached directives that have ANY of the given types.
+    def get_for_subagent(self, types: List[str]) -> List[Directive]:
+        """Build directive set for a subagent.
 
-    Union logic -- types=["code", "security"] returns directives tagged
-    code OR security (or both).
-    """
-    result = []
-    type_set = set(types)
-    for d in self._cache:
-        if not d.active:
-            continue
-        d_types = set(d.types)
-        if d_types & type_set:
-            result.append(d)
-    result.sort(key=lambda d: (d.alpha, d.beta))
-    return result
+        1. All tier 0 directives (always included for safety)
+        2. All directives matching any of the given types
+        3. Exclude directives whose ONLY types are in main-agent-only set:
+           (tool, memory, metacognition)
+        4. Deduplicate by alpha-beta
 
-def get_for_subagent(self, types: List[str]) -> List[Directive]:
-    """Build directive set for a subagent.
+        Args:
+            types: List of directive types to include (e.g., ["code", "architecture"])
 
-    1. All tier 0 directives (always included for safety)
-    2. All directives matching any of the given types
-    3. Exclude directives whose ONLY types are in main-agent-only set:
-       (tool, memory, metacognition)
-    4. Deduplicate by alpha-beta
+        Returns:
+            List of Directive objects sorted by alpha then beta
+        """
+        result_by_key = {}  # Use dict for deduplication
 
-    Args:
-        types: List of directive types to include (e.g., ["code", "architecture"])
+        type_set = set(types) if types else set()
 
-    Returns:
-        List of Directive objects sorted by alpha then beta
-    """
-    result_by_key = {}  # Use dict for deduplication
+        for d in self._cache:
+            if not d.active:
+                continue
 
-    type_set = set(types) if types else set()
+            d_types = set(d.types)
 
-    for d in self._cache:
-        if not d.active:
-            continue
+            # Always include tier 0 directives
+            if d.alpha == 0:
+                result_by_key[(d.alpha, d.beta)] = d
+                continue
 
-        d_types = set(d.types)
+            # Skip main-agent-only directives (those with ONLY tool/memory/metacognition)
+            if d_types.issubset(self.MAIN_AGENT_ONLY_TYPES):
+                continue
 
-        # Always include tier 0 directives
-        if d.alpha == 0:
-            result_by_key[(d.alpha, d.beta)] = d
-            continue
+            # Include if any type matches
+            if d_types & type_set:
+                result_by_key[(d.alpha, d.beta)] = d
 
-        # Skip main-agent-only directives (those with ONLY tool/memory/metacognition)
-        if d_types & d_types.issubset(self.MAIN_AGENT_ONLY_TYPES):
-            continue
+        result = list(result_by_key.values())
+        result.sort(key=lambda d: (d.alpha, d.beta))
+        return result
 
-        # Include if any type matches
-        if d_types & type_set:
-            result_by_key[(d.alpha, d.beta)] = d
+    def format_directives(self, directives: List[Directive]) -> str:
+        """Format a list of directives for injection into a subagent prompt.
 
-    result = list(result_by_key.values())
-    result.sort(key=lambda d: (d.alpha, d.beta))
-    return result
+        Args:
+            directives: List of Directive objects to format
 
-def format_directives(self, directives: List[Directive]) -> str:
-    """Format a list of directives for injection into a subagent prompt.
+        Returns:
+            Formatted directive block string
+        """
+        if not directives:
+            return ""
 
-    Args:
-        directives: List of Directive objects to format
+        lines = []
+        for d in directives:
+            lines.append(
+                f"{d.alpha}-{d.beta}  {d.label} "
+                f"(Directive {self._number_to_text(d.alpha)}-{self._number_to_text(d.beta)})"
+            )
+            lines.append(d.content)
+            lines.append("")  # Blank line between directives
 
-    Returns:
-        Formatted directive block string
-    """
-    if not directives:
-        return ""
-
-    lines = []
-    for d in directives:
-        lines.append(
-            f"{d.alpha}-{d.beta}  {d.label} "
-            f"(Directive {self._number_to_text(d.alpha)}-{self._number_to_text(d.beta)})"
-        )
-        lines.append(d.content)
-        lines.append("")  # Blank line between directives
-
-    return "\n".join(lines)
+        return "\n".join(lines)

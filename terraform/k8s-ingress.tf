@@ -83,6 +83,28 @@ spec:
   YAML
 }
 
+resource "kubectl_manifest" "snippets_terminal" {
+  depends_on = [null_resource.ngf_snippets_enable]
+
+  yaml_body = <<-YAML
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
+metadata:
+  name: terminal
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  snippets:
+    - context: http.server.location
+      value: |
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://fastapi.tiangolo.com; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';" always;
+        limit_req zone=portal_limit burst=20 nodelay;
+  YAML
+}
+
 resource "kubectl_manifest" "route_tinyauth" {
   depends_on = [kubectl_manifest.snippets_gateway_global]
 
@@ -132,19 +154,6 @@ spec:
     - name: ${var.gateway_name}
       namespace: ${var.gateway_namespace}
   rules:
-    - matches:
-        - path:
-            type: Exact
-            value: /
-      filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: gateway.nginx.org
-            kind: SnippetsFilter
-            name: auth-and-security
-      backendRefs:
-        - name: ${kubernetes_service.portal_frontends["main-portal"].metadata[0].name}
-          port: 3001
     - matches:
         - path:
             type: PathPrefix
@@ -237,7 +246,7 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /main
+            value: /app/main
       filters:
         - type: ExtensionRef
           extensionRef:
@@ -380,18 +389,13 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /terminal
+            value: /
       filters:
         - type: ExtensionRef
           extensionRef:
             group: gateway.nginx.org
             kind: SnippetsFilter
-            name: security-only
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /
+            name: terminal
       backendRefs:
         - name: ${kubernetes_service.open_terminal.metadata[0].name}
           port: 7681

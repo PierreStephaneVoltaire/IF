@@ -58,6 +58,8 @@ resource "kubernetes_deployment" "open_terminal" {
           name  = "terminal"
           image = var.terminal_image
 
+          args = ["run", "--port", "7681"]
+
           port {
             container_port = 7681
             name           = "api"
@@ -71,6 +73,26 @@ resource "kubernetes_deployment" "open_terminal" {
                 key  = "TERMINAL_API_KEY"
               }
             }
+          }
+
+          env {
+            name  = "OPEN_TERMINAL_PACKAGES"
+            value = "vim curl wget git unzip ca-certificates dnsutils iputils-ping netcat-openbsd iproute2 procps htop jq yq"
+          }
+
+          env {
+            name  = "OPEN_TERMINAL_PIP_PACKAGES"
+            value = "black flake8 isort mypy pylint python-lsp-server"
+          }
+
+          env {
+            name  = "OPEN_TERMINAL_MULTI_USER"
+            value = "true"
+          }
+
+          env {
+            name  = "OPEN_TERMINAL_NPM_PACKAGES"
+            value = "typescript eslint prettier @typescript-eslint/parser @typescript-eslint/eslint-plugin"
           }
 
           resources {
@@ -91,7 +113,7 @@ resource "kubernetes_deployment" "open_terminal" {
 
           liveness_probe {
             http_get {
-              path = "/api/health"
+              path = "/health"
               port = 7681
             }
             initial_delay_seconds = 10
@@ -100,7 +122,7 @@ resource "kubernetes_deployment" "open_terminal" {
 
           readiness_probe {
             http_get {
-              path = "/api/health"
+              path = "/health"
               port = 7681
             }
             initial_delay_seconds = 5

@@ -35,3 +35,6 @@ yarn-error.log*
 app/venv/*
 app/src/data/*
 app/sandbox/*
+
+# Worktrees
+.worktrees/
