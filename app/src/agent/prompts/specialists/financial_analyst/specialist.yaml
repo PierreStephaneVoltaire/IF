@@ -1,4 +1,5 @@
 description: Financial data analysis and market research specialist
+preset: "@preset/finance"
 tools:
   - read_file
 mcp_servers:

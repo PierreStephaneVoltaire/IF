@@ -1,4 +1,5 @@
 description: Security operations and vulnerability analysis specialist
+preset: "@preset/security"
 tools:
   - terminal_execute
   - read_file

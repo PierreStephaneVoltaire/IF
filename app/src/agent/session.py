@@ -131,10 +131,7 @@ class AgentResponse:
 
 def resolve_mcp_servers(preset_slug: str) -> List[str]:
     """Resolve MCP servers for a preset.
-    
-    Part6: Updated to use mcp_servers.config.get_preset_servers() instead of
-    the legacy PRESET_MCP_MAP from config.py.
-    
+
     Args:
         preset_slug: Preset identifier
         

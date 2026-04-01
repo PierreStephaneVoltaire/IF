@@ -1,4 +1,5 @@
 description: Deep code debugging and error analysis specialist
+preset: "@preset/code"
 tools:
   - terminal_execute
   - read_file

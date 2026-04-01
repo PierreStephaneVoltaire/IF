@@ -2,13 +2,10 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, Set
 
 from agent.prompts.yaml_loader import load_yaml
-
-from config import SANDBOX_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -76,32 +73,6 @@ def get_preset_servers(preset_slug: str) -> list:
     return list(all_servers | preset_servers)
 
 
-def has_sandbox_access(preset_slug: str) -> bool:
-
-    return False
-
-
-
-SANDBOX_INSTRUCTION = """DEPRECATED: Use terminal_execute for file operations instead.
-
-Sandbox path: {sandbox_path}
-
-Supported file types:
-- Code: .py, .ts, .js, .jsx, .tsx, .go, .rs, .rb, .java, .c, .cpp, .cs, .swift, .kt
-- IaC/DevOps: .tf, .hcl, .yaml, .yml, .json, .toml, .Dockerfile, .helmfile, .tfvars
-- Config: .env.example, .ini, .cfg, .conf, .properties, .xml
-- Shell: .sh, .bash, .zsh, .ps1, .bat
-- Documents: .md, .txt, .pdf, .rst, .adoc
-- Images: .png, .svg, .jpg, .webp, .drawio
-- Data: .csv, .parquet, .sql"""
-
-
-def get_sandbox_instruction(preset_slug: str, conversation_id: str = "") -> Optional[str]:
-
-    return None
-
-
-
 def validate_mcp_config() -> bool:
 
     errors = []
@@ -113,13 +84,6 @@ def validate_mcp_config() -> bool:
     for server_name in all_referenced_servers:
         if server_name not in MCP_SERVERS:
             errors.append(f"Server '{server_name}' referenced in PRESET_MCP_MAP but not defined in MCP_SERVERS")
-
-    if not os.path.exists(SANDBOX_PATH):
-        try:
-            os.makedirs(SANDBOX_PATH, exist_ok=True)
-            logger.info(f"Created sandbox directory: {SANDBOX_PATH}")
-        except Exception as e:
-            errors.append(f"Cannot create SANDBOX_PATH '{SANDBOX_PATH}': {e}")
 
     if errors:
         raise ValueError("MCP configuration errors:\n" + "\n".join(errors))

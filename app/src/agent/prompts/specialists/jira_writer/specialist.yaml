@@ -1,4 +1,5 @@
 description: "Jira ticket writing specialist. Use when the operator needs a well-structured issue with summary, description, acceptance criteria, subtasks, and metadata."
+preset: "@preset/standard"
 tools: []
 mcp_servers: []
 directive_types:

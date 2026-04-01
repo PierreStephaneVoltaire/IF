@@ -1,4 +1,5 @@
 description: Infrastructure and deployment automation specialist
+preset: "@preset/architecture"
 tools:
   - terminal_execute
   - read_file

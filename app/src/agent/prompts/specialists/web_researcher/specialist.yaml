@@ -1,4 +1,5 @@
 description: Web research and information synthesis specialist
+preset: "@preset/code"
 tools:
   - read_file
   - write_file

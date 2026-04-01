@@ -1,4 +1,5 @@
 description: "Quick tasks completable in 3-5 commands: create files, run scripts, one-liners"
+preset: "@preset/code"
 tools:
   - terminal_execute
   - read_file

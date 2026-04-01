@@ -42,10 +42,6 @@ SCORING_MODELS: List[str] = [
     model.strip() for model in SCORING_MODELS_STR.split(",") if model.strip()
 ]
 
-MENTAL_HEALTH_PRESET = os.getenv("MENTAL_HEALTH_PRESET", "mental-health")
-
-
-
 # Google Sheets MCP server
 GOOGLE_SHEETS_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS", "")
 
@@ -172,28 +168,6 @@ OPENWEBUI_TASK_MARKERS = [
     "### Task:\nGenerate a concise, 3-5 word title",
     "### Task:\nGenerate 1-3 broad tags",
 ]
-
-
-# Part6: This map is deprecated. Import from mcp_servers.config instead.
-# The actual PRESET_MCP_MAP is in src/mcp_servers/config.py which has been
-# updated to remove the sandbox MCP server.
-#
-# This is kept only for backward compatibility with any code that hasn't
-# been migrated yet. New code should use:
-#   from mcp_servers.config import PRESET_MCP_MAP, resolve_mcp_config
-#
-# Note: Sandbox MCP server removed - terminal tools now provide file access
-PRESET_MCP_MAP = {
-    "__all__": ["time"],  # Memory tools are registered separately, not via MCP
-    "architecture": ["aws_docs"],  # sandbox removed (Part6)
-    "code": [],  # sandbox removed (Part6) - use terminal_execute
-    "health": ["google_sheets"],
-    "mental_health": [],  # No MCP servers for mental health
-    "social": [],  # No MCP servers for social
-    "finance": ["yahoo_finance", "alpha_vantage"],  # Finance preset gets stock data servers
-    "pondering": [],  # Only gets time via __all__
-}
-
 
 
 DIRECTIVE_STORE_ENABLED: bool = os.getenv("DIRECTIVE_STORE_ENABLED", "true").lower() == "true"
