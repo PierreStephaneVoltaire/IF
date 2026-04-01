@@ -86,9 +86,9 @@ TOOL_OUTPUT_CHAR_LIMIT = int(os.getenv("TOOL_OUTPUT_CHAR_LIMIT", "200000"))
 TIER_UPGRADE_THRESHOLD = float(os.getenv("TIER_UPGRADE_THRESHOLD", "0.65"))
 
 # Context limits per tier (in tokens)
-TIER_AIR_LIMIT = int(os.getenv("TIER_AIR_LIMIT", "30000"))
-TIER_STANDARD_LIMIT = int(os.getenv("TIER_STANDARD_LIMIT", "120000"))
-TIER_HEAVY_LIMIT = int(os.getenv("TIER_HEAVY_LIMIT", "200000"))
+TIER_AIR_LIMIT = int(os.getenv("TIER_AIR_LIMIT", "100000"))
+TIER_STANDARD_LIMIT = int(os.getenv("TIER_STANDARD_LIMIT", "200000"))
+TIER_HEAVY_LIMIT = int(os.getenv("TIER_HEAVY_LIMIT", "1000000"))
 
 # OpenRouter presets per tier
 TIER_AIR_PRESET = os.getenv("TIER_AIR_PRESET", "@preset/air")

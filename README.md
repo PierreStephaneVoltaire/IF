@@ -1,4 +1,4 @@
-# IF — Discord bot built with OpenHands SDK
+# IF — Intelligent Agent API
 
 A single main agent with context-aware tiering and specialist subagent delegation. Built on the OpenHands SDK, routes through OpenRouter, persists knowledge in LanceDB.
 
@@ -43,18 +43,20 @@ Single main agent using OpenHands SDK with automatic context-based tiering (air 
 
 ### Tiering System
 Context-aware model selection based on conversation size:
-- **Air**: Simple queries (< 30K tokens)
-- **Standard**: Most conversations (< 120K tokens)
-- **Heavy**: Complex tasks (< 200K tokens)
+- **Air**: Simple queries (< 100K tokens)
+- **Standard**: Most conversations (< 200K tokens)
+- **Heavy**: Complex tasks (≥ 200K tokens)
 
 ### Specialist Subagents
 
-Domain experts spawned by the main agent for deep tasks. Each specialist has its own prompt template, filtered directives, and tool access.
+Domain experts spawned by the main agent for deep tasks. Each specialist has its own prompt template, filtered directives, and tool access. Auto-discovered from YAML configs — no code changes needed to add specialists.
 
 #### Code & Infrastructure
 
 | Specialist | Purpose | Tools |
 |------------|---------|-------|
+| `coder` | General software engineering — writing code, features, modifications | `terminal_execute`, `read_file`, `write_file`, `search_files` |
+| `scripter` | Quick tasks completable in 3-5 commands (max 3 turns) | `terminal_execute`, `read_file`, `write_file` |
 | `debugger` | Deep code debugging and error analysis | `terminal_execute`, `read_file`, `write_file`, `search_files` |
 | `architect` | System design and architecture patterns | `read_file`, `write_file`, `search_files` + AWS docs MCP |
 | `secops` | Security operations and vulnerability analysis | `terminal_execute`, `read_file`, `search_files` |
@@ -91,8 +93,12 @@ Specialists can be invoked with skill modes that change their perspective:
 
 Example: `spawn_specialist(specialist_type="architect", skill="red_team")` produces an adversarial architecture review.
 
+### Delegation Pipeline
+
+Automatic message routing: categorize → directives → condense → spawn. The main agent classifies each message domain, retrieves filtered directives, rewrites the intent, and routes to the appropriate specialist subagent.
+
 ### Memory System
-- **User Facts Store**: LanceDB with semantic search for operator context
+- **User Facts Store**: LanceDB with semantic search for operator context (22 fact categories)
 - **Metacognitive Layer**: Pattern detection, opinion formation, growth tracking
 - **Reflection Engine**: Post-session analysis and self-improvement
 
@@ -135,7 +141,6 @@ Extended capabilities via MCP servers:
 - `aws_docs` — AWS documentation lookup
 - `yahoo_finance` — Stock quotes
 - `alpha_vantage` — Financial indicators
-- `google_sheets` — Spreadsheet access
 
 ---
 

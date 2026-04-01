@@ -1,15 +1,15 @@
 # IF — Intelligent Agent API
 
-## What This Is
-
-A single main agent with context-aware tiering and specialist subagent delegation, built on the OpenHands SDK. Routes through OpenRouter. Persists knowledge in LanceDB.
+A single main agent with context-aware tiering and specialist subagent delegation, built on the OpenHands SDK. Routes through OpenRouter. Persists knowledge in LanceDB. Behavior evolves through runtime directives stored in DynamoDB.
 
 ## Tech Stack
 
-- Python 3.12, FastAPI, OpenHands SDK
-- LanceDB (user facts), SQLite (webhooks, activity), DynamoDB (directives)
-- Docker terminal containers for shell access
-- MCP servers for extended capabilities
+- Python 3.12, FastAPI, OpenHands SDK 1.11.4
+- LanceDB (user facts, all-MiniLM-L6-v2 embeddings), ChromaDB (health docs RAG)
+- SQLite (webhooks, activity via SQLModel), DynamoDB (directives, health, finance, diary, proposals)
+- Docker terminal containers for shell access (via OpenTerminal)
+- MCP servers for extended capabilities (time, AWS docs, Yahoo Finance, Alpha Vantage)
+- Kubernetes deployment via Terraform, Docker images via Packer
 
 ## How to Run
 
@@ -19,60 +19,392 @@ pip install -r requirements.txt
 python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
+Requires `OPENROUTER_API_KEY` in environment (or `.env` file). See `app/src/config.py` for full configuration.
+
 ## Project Layout
 
 ```
 app/
 ├── src/
-│   ├── api/           # FastAPI endpoints (completions, webhooks, directives, files)
-│   ├── agent/         # Agent session, tiering, specialists, tools, reflection
-│   ├── channels/      # Discord + OpenWebUI listeners, translators, delivery
-│   ├── memory/        # LanceDB user facts, embeddings, summarizer
-│   ├── storage/       # SQLite + DynamoDB backends
-│   ├── terminal/      # Docker container shell access
-│   ├── orchestrator/  # Multi-step plan execution, parallel analysis
-│   ├── presets/       # Static preset definitions
-│   ├── mcp_servers/   # MCP server config
-│   ├── heartbeat/     # Proactive engagement
-│   └── health/        # Fitness module (DynamoDB + ChromaDB RAG)
-└── utils/             # TypeScript utility apps (portals)
+│   ├── main.py              # FastAPI app entry point, lifespan init
+│   ├── config.py            # All env vars (plain module-level, os.getenv defaults)
+│   ├── logging_config.py    # Centralized logging configuration
+│   ├── api/                 # FastAPI routers
+│   │   ├── completions.py   # POST /v1/chat/completions (OpenAI-compatible)
+│   │   ├── models.py        # GET /v1/models
+│   │   ├── files.py         # File serving from sandbox
+│   │   ├── webhooks.py      # Channel registration
+│   │   └── directives.py    # Directive CRUD API
+│   ├── agent/               # Core agent system
+│   │   ├── session.py       # AgentSession, system prompt assembly, execute_agent()
+│   │   ├── specialists.py   # YAML-based specialist auto-discovery + rendering
+│   │   ├── tiering.py       # Context-aware model selection (air/standard/heavy)
+│   │   ├── condenser.py     # Conversation summarization
+│   │   ├── commands.py      # Slash command definitions
+│   │   ├── memory_tools.py  # ChromaDB memory search/add/remove/list
+│   │   ├── prompts/         # Jinja2 templates + specialist definitions
+│   │   │   ├── system_prompt.j2
+│   │   │   ├── specialists/ # One subdir per specialist (specialist.yaml + agent.j2)
+│   │   │   ├── delegation.yaml   # Category→specialist + category→directive mapping
+│   │   │   └── mcp_servers.yaml   # MCP server command definitions
+│   │   ├── reflection/      # Metacognitive layer
+│   │   │   ├── engine.py           # ReflectionEngine (periodic, post-session, on-demand)
+│   │   │   ├── pattern_detector.py # Behavioral pattern detection
+│   │   │   ├── opinion_formation.py
+│   │   │   ├── meta_analysis.py
+│   │   │   └── growth_tracker.py
+│   │   └── tools/           # OpenHands SDK tools (Action/Observation/Executor/ToolDefinition)
+│   ├── channels/            # Multi-platform message handling
+│   │   ├── dispatcher.py    # Message flow bridge (translate → agent → chunk → deliver)
+│   │   ├── delivery.py      # Send responses back to platforms
+│   │   ├── chunker.py       # Split responses into 1500-char chunks
+│   │   ├── debounce.py      # 5-second message batching window
+│   │   ├── manager.py       # Listener lifecycle management
+│   │   ├── slash_commands.py
+│   │   ├── listeners/       # discord_listener.py, openwebui_listener.py
+│   │   └── translators/     # discord_translator.py, openwebui_translator.py
+│   ├── memory/              # Persistent memory
+│   │   ├── user_facts.py    # UserFact dataclass + UserFactStore (LanceDB-backed)
+│   │   ├── lancedb_store.py # LanceDB table management, context-scoped storage
+│   │   ├── store.py         # Legacy ChromaDB MemoryStore
+│   │   ├── embeddings.py    # Sentence transformer embedding generation
+│   │   └── summarizer.py    # Conversation summarization (fire-and-forget)
+│   ├── storage/             # Storage abstraction
+│   │   ├── factory.py       # Backend factory
+│   │   ├── sqlite_backend.py    # SQLite (WAL mode) for webhooks
+│   │   ├── dynamodb_backend.py  # DynamoDB stub
+│   │   └── directive_store.py   # DynamoDB directive storage + cache
+│   ├── routing/             # Request routing
+│   │   ├── interceptor.py   # Bypass routing
+│   │   ├── cache.py         # Conversation cache
+│   │   └── commands.py      # Command parsing (/reset, /pondering, /reflect, etc.)
+│   ├── terminal/            # Docker container shell access
+│   │   ├── client.py        # TerminalClient for API calls
+│   │   ├── static_client.py # StaticTerminalManager (shared OpenTerminal deployment)
+│   │   ├── files.py         # File operations on terminal volumes
+│   │   └── config.py        # Terminal URL, API key, volume paths
+│   ├── orchestrator/        # Multi-step task execution
+│   │   ├── executor.py      # execute_plan tool (sequential steps with subagents)
+│   │   └── analyzer.py      # analyze_parallel tool (parallel perspective analysis)
+│   ├── presets/             # OpenRouter preset definitions
+│   │   └── loader.py        # PresetManager (loaded at startup)
+│   ├── mcp_servers/         # MCP server config
+│   │   └── config.py        # PRESET_MCP_MAP, server resolution
+│   ├── heartbeat/           # Proactive engagement
+│   │   ├── runner.py        # Idle detection, cooldown, quiet hours
+│   │   └── activity.py      # Activity log queries
+│   └── health/              # Fitness/training module
+│       ├── program_store.py # DynamoDB program storage
+│       ├── rag.py           # ChromaDB RAG for PDF documents (IPF rulebook, etc.)
+│       ├── renderer.py      # Program rendering
+│       └── tools.py         # Health CRUD tools + RAG search
+├── utils/                   # TypeScript/Node.js utility apps
+│   ├── main-portal/         # Hub dashboard (port 3000)
+│   ├── finance-portal/      # Net worth, investments (port 3002)
+│   ├── diary-portal/        # Mental health journaling (port 3003)
+│   ├── proposals-portal/    # Directive proposal kanban (port 3004)
+│   ├── powerlifting-app/    # Training tracking (port 3005)
+│   └── video-lambda/        # Lambda function for video processing
+├── docker/                  # Packer build files (.pkr.hcl)
+├── terraform/               # Kubernetes, AWS infra
+└── main_system_prompt.txt   # Agent personality base prompt
 ```
 
-## Conventions
+## Architecture
 
-- All agent tools are in `app/src/agent/tools/` using the OpenHands SDK Action/Observation/Executor/ToolDefinition pattern
-- Specialist templates are Jinja2 files in `app/src/agent/prompts/specialists/`
-- New specialists: add to `specialists.py` registry + create `.j2` template
-- Presets are static (loaded at startup from `app/src/presets/loader.py`)
-- Directives are dynamic (DynamoDB, loaded into memory cache)
-- User facts use LanceDB with all-MiniLM-L6-v2 embeddings
-- Environment config lives in `app/src/config.py` (dataclass with defaults)
+```
+Client (Discord / OpenWebUI / HTTP)
+  → Channel Listener
+    → Debounce (5s batching)
+      → Dispatcher (translate to ChatCompletionRequest)
+        → Completions Pipeline
+          → Command parsing (/reset, /pondering, /reflect, etc.)
+          → Interceptor (bypass routing)
+          → Tier tracking (context token estimation)
+          → Session creation
+            → System prompt assembly:
+                base prompt + directives + operator context (LanceDB facts)
+                + signals (diary, financial) + addenda
+          → Agent execution (OpenHands SDK → OpenRouter)
+          → Response extraction (FILES: metadata stripping)
+        → Chunker (1500 char chunks)
+      → Delivery (back to platform)
+```
+
+### Request Processing (completions.py)
+
+`process_chat_completion_internal()` is the core pipeline:
+1. Resolve `cache_key` (from webhook channel_id, chat_id, or content hash) and `context_id`
+2. Parse slash commands (`/reset`, `/pondering`, `/reflect`, `/gaps`, `/patterns`, `/opinions`, `/growth`, `/meta`, `/tools`)
+3. Run interceptor for bypass routing
+4. Track tier with context token estimation
+5. Create session with signals injection
+6. Execute agent via OpenHands SDK
+7. Extract file attachments from `FILES:` metadata
+8. Trigger async conversation summarization
+
+### System Prompt Assembly (session.py)
+
+`assemble_system_prompt()` builds the complete prompt from:
+1. Current signals (mental health, life load, training status from `context_tools.py`)
+2. Base personality prompt (`main_system_prompt.txt`)
+3. Operator context from user facts (LanceDB)
+4. Conversation history
+5. Directives from DynamoDB DirectiveStore
+6. Memory protocol instructions
+7. Media protocol instructions
+8. Terminal environment instructions
+9. Pondering addendum (if in pondering mode)
+
+## Agent System
+
+### Tiering
+
+Context-aware model selection based on conversation size:
+- **Air**: Simple queries (< 100K tokens), `@preset/air`
+- **Standard**: Most conversations (< 200K tokens), `@preset/standard`
+- **Heavy**: Complex tasks (≥ 200K tokens), `@preset/heavy`
+
+Upgrade at 65% capacity (`TIER_UPGRADE_THRESHOLD`). Context estimated at ~4 chars per token.
+
+### Specialists
+
+Domain experts spawned by the main agent. Each has its own `specialist.yaml` config and `agent.j2` prompt template. Auto-discovered from `prompts/specialists/*/specialist.yaml` at import time — no Python changes needed to add a specialist.
+
+| Specialist | Purpose | Tools | Preset |
+|------------|---------|-------|--------|
+| `coder` | General software engineering | terminal_execute, read/write/search files | `@preset/code` |
+| `scripter` | Quick tasks (3-5 commands), max 3 turns | terminal_execute, read/write files | `@preset/code` |
+| `debugger` | Deep code debugging and error analysis | terminal_execute, read/write/search files | standard |
+| `architect` | System design and architecture patterns | read/write/search files + AWS docs MCP | standard |
+| `secops` | Security operations and vulnerability analysis | terminal_execute, read/search files | standard |
+| `devops` | Infrastructure and deployment automation | terminal_execute, read/write files | standard |
+| `proofreader` | Prose editing, grammar, clarity, tone | — | standard |
+| `email_writer` | Professional email drafting | — | standard |
+| `jira_writer` | Structured Jira tickets with acceptance criteria | — | standard |
+| `constrained_writer` | Character-limited content (tweets, Discord, SMS) | — | standard |
+| `health_write` | Training program mutations (log sessions, RPE, body weight) | Health DynamoDB tools | standard |
+| `finance_write` | Finance snapshot mutations (balances, holdings, goals) | Finance DynamoDB tools | standard |
+| `financial_analyst` | Market research and financial analysis | Yahoo Finance + Alpha Vantage MCPs | standard |
+| `web_researcher` | Web research and information synthesis | read/write files | standard |
+| `media_reader` | On-demand file and image analysis (vision model, single turn) | — | media preset |
+
+**Skills** (mode modifiers for specialists): `red_team` (adversarial), `blue_team` (defensive), `pro_con` (balanced analysis)
+
+### Delegation Pipeline
+
+Automatic message routing in `delegation.py`: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent`. Uses `delegation.yaml` for category→specialist mapping.
+
+Categories: `code` → coder, `architecture` → architect, `finance` → financial_analyst, `health` → health_write, `writing` → proofreader, `shell` → scripter. Pattern overrides: `simple` → scripter, `investigative` → debugger.
+
+## Tools
+
+All tools use the OpenHands SDK Action/Observation/Executor/ToolDefinition pattern, registered via `register_tool()`.
+
+### Main Agent Tools (loaded in session.py)
+
+| Category | Module | Tools |
+|----------|--------|-------|
+| User Facts | `agent/tools/user_facts.py` | search, add, update, list, remove |
+| Capability | `agent/tools/capability_tracker.py` | log_gap, list_gaps |
+| Opinion | `agent/tools/opinion_tools.py` | log_opinion_pair, log_misconception |
+| Session Reflection | `agent/tools/session_reflection.py` | store_session_reflection |
+| Directives | `agent/tools/directive_tools.py` | add, revise, deactivate, list |
+| Context | `agent/tools/context_tools.py` | get_signals, get_financial_context, get_context_snapshot, get_current_date |
+| Delegation | `agent/tools/delegation.py` | categorize_conversation, get_directives, condense_intent, spawn_subagent |
+| Subagents | `agent/tools/subagents.py` | deep_think, spawn_specialist, spawn_specialists |
+| Media | `agent/tools/media_tools.py` | read_media |
+| Orchestrator | `orchestrator/executor.py` | execute_plan, analyze_parallel |
+| Memory | `agent/memory_tools.py` | search, add, remove, list (ChromaDB) |
+
+### Specialist-Only Tools (via tool_schemas.py)
+
+NOT loaded into the main agent. Dispatched to specialist subagents via OpenRouter function schemas:
+
+| Module | Description |
+|--------|-------------|
+| `agent/tools/finance_tools.py` | Financial read + write tools (DynamoDB) |
+| `agent/tools/health_tools.py` | Health program CRUD + RAG search |
+| `agent/tools/diary_tools.py` | Diary entry tools |
+| `agent/tools/proposal_tools.py` | Proposal management tools |
+
+### Tool Authoring
+
+Python classes with Action (params), Observation (result), Executor (logic), ToolDefinition (metadata). Exposed via `get_*_tools()` getter functions in each module, loaded in `session.py`. `TOOL_OUTPUT_CHAR_LIMIT` is 200K chars (SDK default 50K causes silent clipping).
+
+## Channels
+
+| Platform | Type | Description |
+|----------|------|-------------|
+| Discord | Bot (discord.py) | Listens to registered channels, slash commands, thread support |
+| OpenWebUI | Polling | Chat interface integration (5s poll interval) |
+| HTTP API | REST | Direct OpenAI-compatible API access |
+
+Flow: listener → debounce (5s) → dispatcher → translator → completions pipeline → chunker (1500 chars) → delivery.
+
+### Attachment Handling
+
+Discord attachments are downloaded by the dispatcher, uploaded to the terminal filesystem, and referenced via `FILES:` metadata in agent output. The `FilesStripBuffer` strips these lines from responses delivered to users.
+
+### Discord History
+
+The dispatcher fetches up to 100 historical messages from Discord for context enrichment.
+
+## Memory System
+
+### User Facts (LanceDB)
+
+`UserFact` dataclass with: id, context_id, username, content, category, source, confidence, cache_key, timestamps, metadata.
+
+**Categories** (22): personal, preference, opinion, skill, life_event, future_direction, project_direction, mental_state, interest_area, conversation_summary, topic_log, model_assessment, agent_identity, agent_opinion, agent_principle, capability_gap, tool_suggestion, opinion_pair, misconception, session_reflection, health, finance.
+
+**Sources**: user_stated, model_observed, model_assessed, conversation_derived.
+
+Context-scoped: each context_id gets its own LanceDB table. Supports semantic search within context, supersession for fact updates, and capability gap logging with priority scoring.
+
+### Legacy Memory (ChromaDB)
+
+`MemoryStore` in `store.py` — older RAG-backed semantic search. Categories: preference, personal, skill_level, opinion, life_event, future_plan, mental_state.
+
+### Conversation Summarization
+
+Fire-and-forget summarization in `summarizer.py` after conversations end.
+
+## Directives
+
+Versioned behavioral rules stored in DynamoDB (`if-core` table). Tiered by priority (0-5):
+
+| Tier | Label | Purpose |
+|------|-------|---------|
+| 0 | Core Identity | Fundamental personality traits |
+| 1 | Behavioral Rules | How to respond/act |
+| 2 | Style & Tone | Voice adjustments |
+| 3 | Domain Knowledge | Topic-specific guidance |
+| 4 | Situational | Context-dependent rules |
+| 5 | Temporary | Time-limited adjustments |
+
+Content is rewritten through LLM for consistent voice. Cached in memory with periodic refresh. Injected into system prompt during assembly. Specialist subagents receive filtered directives based on their `directive_types` config.
+
+Agent tools: `directive_add`, `directive_revise`, `directive_deactivate`, `directive_list`.
+
+## Reflection Engine
+
+Metacognitive layer in `agent/reflection/`. Analyzes interactions for self-improvement.
+
+**Triggers**: post-session (>5 turns), periodic (6h), on-demand (`/reflect`), threshold-based (uncategorized facts, gaps, opinions).
+
+**Cycle**: Pattern Detection → Opinion Formation → Capability Gap Analysis → Meta-Analysis → Growth Tracking.
+
+**Capability gaps**: logged with priority score `(frequency * 0.4) + (recency * 0.3) + (impact * 0.3)`. High-frequency gaps are promoted to tool suggestions via `CAPABILITY_GAP_PROMOTION_THRESHOLD` (default 3).
+
+## Orchestrator
+
+Multi-step task execution in `orchestrator/`:
+
+- **`execute_plan`**: Sequential multi-step plan with subagents. Each step sees filesystem state from previous steps.
+- **`analyze_parallel`**: Spawns parallel analysis subagents across perspectives (security, performance, architecture, testing, documentation). Each writes to `/home/user/workspace/findings/{perspective}.md`. Synthesizer combines into prioritized report.
+
+## Terminal System
+
+Docker containers for shell access via shared OpenTerminal deployment (`TERMINAL_URL`). Each conversation gets isolated working directory at `/home/user/conversations/{conversation_id}/`.
+
+Tools: `terminal_execute`, `terminal_read_file`, `terminal_write_file`, `terminal_list_files`.
+
+`FILES:` lines in agent output reference terminal files for artifact tracking and attachment delivery.
+
+## Health Module
+
+Training program management with DynamoDB storage (`if-health` table) and ChromaDB RAG for PDF documents (IPF rulebook, anti-doping list, supplement PDFs).
+
+Tools: program CRUD, session logging, competition management, RAG search, unit conversions. Uses Apache Tika for PDF extraction, 500-token chunks with 50-token overlap.
+
+## Heartbeat
+
+Proactive engagement system. Monitors channel activity, initiates pondering conversations after idle threshold.
+
+Config: idle 6h, cooldown 6h, quiet hours 23:00-07:00 UTC. Opening message uses stored user facts. Integrates with pondering preset.
+
+## MCP Servers
+
+Extended capabilities via MCP servers (defined in `prompts/specialists/mcp_servers.yaml`):
+
+| Server | Purpose |
+|--------|---------|
+| `time` | Current date/time |
+| `aws_docs` | AWS documentation lookup |
+| `yahoo_finance` | Stock quotes |
+| `alpha_vantage` | Financial indicators |
+
+Server assignment per specialist is configured in each `specialist.yaml` under `mcp_servers`.
+
+## Storage
+
+| Store | Backend | Purpose |
+|-------|---------|---------|
+| User Facts | LanceDB | Operator context with semantic search |
+| Webhooks | SQLite (WAL) | Channel registration and activity |
+| Directives | DynamoDB (`if-core`) | Behavioral rules with versioning |
+| Health | DynamoDB (`if-health`) | Training programs |
+| Finance | DynamoDB (`if-finance`) | Financial snapshots |
+| Diary | DynamoDB (`if-diary-entries`, `if-diary-signals`) | Journaling + distilled signals |
+| Proposals | DynamoDB (`if-proposals`) | Agent-proposed directives |
+
+## Utility Applications
+
+TypeScript/Node.js apps in `app/utils/`:
+
+| App | Port | Purpose | DynamoDB Table |
+|-----|------|---------|----------------|
+| Hub | 3000 | Central dashboard aggregating all portals | — |
+| Finance | 3002 | Net worth, investments, cashflow | `if-finance` |
+| Diary | 3003 | Mental health journaling and signals | `if-diary-entries`, `if-diary-signals` |
+| Proposals | 3004 | Kanban for agent-proposed directives | `if-proposals` |
+| Powerlifting | 3005 | Training tracking and analytics | `if-health` |
+
+## Commands
+
+Discord guild slash commands (autocomplete) and plain text messages:
+
+| Command | Action |
+|---------|--------|
+| `/end_convo` | Clear conversation state and force reclassification |
+| `/clear [amount]` | Delete recent messages from channel (default 100, requires Manage Messages) |
+| `/pondering` | Enter reflective conversation mode (heavy tier) |
+| `/reflect` | Trigger manual reflection cycle |
+| `/gaps [min_triggers]` | List capability gaps ranked by priority |
+| `/patterns` | Show detected behavioral patterns |
+| `/opinions` | Show opinion pairs (operator vs agent positions) |
+| `/growth [days]` | Show operator growth report (default 30 days) |
+| `/meta` | Show store health metrics and category suggestions |
+| `/tools` | Show tool suggestions from capability gaps |
+
+## Environment Variables
+
+Key configuration (see `app/src/config.py` for full list):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENROUTER_API_KEY` | required | API key for model access |
+| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | LLM endpoint |
+| `TIER_UPGRADE_THRESHOLD` | 0.65 | Context fraction before tier upgrade |
+| `TIER_AIR_LIMIT` | 100000 | Air tier token limit |
+| `TIER_STANDARD_LIMIT` | 200000 | Standard tier token limit |
+| `TIER_HEAVY_LIMIT` | 1000000 | Heavy tier token limit |
+| `HEARTBEAT_ENABLED` | true | Enable proactive engagement |
+| `HEARTBEAT_IDLE_HOURS` | 6.0 | Hours idle before heartbeat |
+| `DIRECTIVE_STORE_ENABLED` | true | Enable DynamoDB directives |
+| `REFLECTION_ENABLED` | true | Enable reflection engine |
+| `TERMINAL_URL` | `http://open-terminal:7681` | OpenTerminal deployment URL |
+| `TOOL_OUTPUT_CHAR_LIMIT` | 200000 | Max tool output chars before SDK truncation |
 
 ## Key Patterns
 
-- Subagent spawning: `spawn_specialist(type, task, context)` in `app/src/agent/tools/subagents.py`
-- Tool authoring: Python function with docstring → registered in `app/src/agent/session.py`
-- System prompt assembly: Jinja2 template + directives + operator context + addenda
-- All channel messages flow through: listener → debounce → dispatcher → translator → completions pipeline
-
-## Related Docs
-
-See `.claude/` folder for detailed docs on each subsystem:
-
-| Task | Read |
-|------|------|
-| Add a new specialist | [specialists.md](specialists.md) |
-| Fix a bug in the channel system | [channels.md](channels.md) |
-| Add a new tool to the agent | [tools.md](tools.md) |
-| Modify the tiering logic | [presets.md](presets.md) |
-| Add a new fact category | [memory.md](memory.md) |
-| Change reflection behavior | [metacognition.md](metacognition.md) |
-| Add a new directive | [directives.md](directives.md) |
-| Fix terminal container issue | [terminal.md](terminal.md) |
-| Add a new channel listener | [channels.md](channels.md) |
-| Work with file/image attachments | [channels.md](channels.md) |
-| Understand the full request flow | [architecture.md](architecture.md) |
-| Work with the orchestrator | [orchestrator.md](orchestrator.md) |
-| Understand storage backends | [storage.md](storage.md) |
-| Modify heartbeat behavior | [heartbeat.md](heartbeat.md) |
-| Work with utility apps | [portals.md](portals.md) |
+- **Specialist auto-discovery**: `specialists.py` scans `prompts/specialists/*/specialist.yaml` at import time — no code changes needed to add specialists
+- **Delegation pipeline**: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent` in `delegation.py`
+- **Subagent spawning**: `spawn_specialist(type, task, context)` in `subagents.py`; `_run_subagent()` gives subagents terminal access
+- **Tool authoring**: Python classes (Action/Observation/Executor/ToolDefinition) registered with `register_tool()`, exposed via `get_*_tools()` getters
+- **Context/signal injection**: `context_tools.py` auto-injects diary signals, financial context, and snapshots into every system prompt
+- **FILES metadata pattern**: `FILES:` lines in agent output are stripped by `FilesStripBuffer` for artifact tracking
+- **Channel message flow**: listener → debounce → dispatcher → translator → completions → chunker → delivery
+- **Directive injection**: System prompt includes directives from DynamoDB, filtered by specialist type for subagents
+- **MCP server config**: `mcp_servers.yaml` defines servers; specialist `specialist.yaml` lists which servers each specialist gets
