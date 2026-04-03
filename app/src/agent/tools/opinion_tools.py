@@ -12,6 +12,7 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 from memory.user_facts import (
     FactCategory,
@@ -194,11 +195,11 @@ class LogMisconceptionAction(Action):
 
 
 
-class LogOpinionPairObservation(Observation):
+class LogOpinionPairObservation(TextObservation):
     pass
 
 
-class LogMisconceptionObservation(Observation):
+class LogMisconceptionObservation(TextObservation):
     pass
 
 

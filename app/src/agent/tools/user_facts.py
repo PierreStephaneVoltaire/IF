@@ -12,6 +12,7 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 from memory.user_facts import (
     FactCategory,
@@ -257,23 +258,23 @@ class UserFactsRemoveAction(Action):
 
 
 
-class UserFactsSearchObservation(Observation):
+class UserFactsSearchObservation(TextObservation):
     pass
 
 
-class UserFactsAddObservation(Observation):
+class UserFactsAddObservation(TextObservation):
     pass
 
 
-class UserFactsUpdateObservation(Observation):
+class UserFactsUpdateObservation(TextObservation):
     pass
 
 
-class UserFactsListObservation(Observation):
+class UserFactsListObservation(TextObservation):
     pass
 
 
-class UserFactsRemoveObservation(Observation):
+class UserFactsRemoveObservation(TextObservation):
     pass
 
 

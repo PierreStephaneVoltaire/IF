@@ -25,6 +25,7 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 logger = logging.getLogger(__name__)
 
@@ -393,7 +394,7 @@ class CreateProposalAction(Action):
     user_pk: str = Field(default="operator", description="User partition key")
 
 
-class CreateProposalObservation(Observation):
+class CreateProposalObservation(TextObservation):
     pass
 
 
@@ -431,7 +432,7 @@ class ListProposalsAction(Action):
     limit: int = Field(default=20, description="Maximum number of proposals to return")
 
 
-class ListProposalsObservation(Observation):
+class ListProposalsObservation(TextObservation):
     pass
 
 
@@ -466,7 +467,7 @@ class ResolveProposalAction(Action):
     user_pk: str = Field(default="operator", description="User partition key")
 
 
-class ResolveProposalObservation(Observation):
+class ResolveProposalObservation(TextObservation):
     pass
 
 
@@ -500,7 +501,7 @@ class GenerateImplementationPlanAction(Action):
     user_pk: str = Field(default="operator", description="User partition key")
 
 
-class GenerateImplementationPlanObservation(Observation):
+class GenerateImplementationPlanObservation(TextObservation):
     pass
 
 

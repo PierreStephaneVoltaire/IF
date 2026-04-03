@@ -25,6 +25,7 @@ from openhands.sdk.tool.tool import (
     ToolExecutor,
 )
 from openhands.sdk import register_tool
+from agent.tools.base import TextObservation
 
 from config import MEDIA_AIR_PRESET, MEDIA_STANDARD_PRESET, MEDIA_HEAVY_PRESET, MEDIA_UPLOAD_DIR
 
@@ -78,7 +79,7 @@ class ReadMediaAction(Action):
         return content
 
 
-class ReadMediaObservation(Observation):
+class ReadMediaObservation(TextObservation):
     """Observation from media analysis."""
 
     result: str = Field(default="", description="The specialist's answer")

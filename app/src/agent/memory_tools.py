@@ -12,6 +12,7 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 from memory.store import get_memory_store
 
@@ -128,19 +129,19 @@ class MemoryListAction(Action):
 
 
 
-class MemorySearchObservation(Observation):
+class MemorySearchObservation(TextObservation):
     pass
 
 
-class MemoryAddObservation(Observation):
+class MemoryAddObservation(TextObservation):
     pass
 
 
-class MemoryRemoveObservation(Observation):
+class MemoryRemoveObservation(TextObservation):
     pass
 
 
-class MemoryListObservation(Observation):
+class MemoryListObservation(TextObservation):
     pass
 
 

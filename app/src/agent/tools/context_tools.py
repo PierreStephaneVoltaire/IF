@@ -23,6 +23,7 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,7 @@ class GetSignalsAction(Action):
     user_pk: str = Field(default="operator", description="User partition key")
 
 
-class GetSignalsObservation(Observation):
+class GetSignalsObservation(TextObservation):
     pass
 
 
@@ -246,7 +247,7 @@ class GetFinancialContextAction(Action):
     user_pk: str = Field(default="operator", description="User partition key")
 
 
-class GetFinancialContextObservation(Observation):
+class GetFinancialContextObservation(TextObservation):
     pass
 
 
@@ -299,7 +300,7 @@ class GetContextSnapshotAction(Action):
     user_pk: str = Field(default="operator", description="User partition key")
 
 
-class GetContextSnapshotObservation(Observation):
+class GetContextSnapshotObservation(TextObservation):
     pass
 
 
@@ -348,7 +349,7 @@ class GetCurrentDateAction(Action):
     pass
 
 
-class GetCurrentDateObservation(Observation):
+class GetCurrentDateObservation(TextObservation):
     pass
 
 

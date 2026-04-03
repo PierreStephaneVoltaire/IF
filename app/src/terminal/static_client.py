@@ -65,6 +65,12 @@ class StaticTerminalManager:
         # Use container.internal_url for API calls
     """
 
+    # Directories that must exist for terminal tools to work
+    REQUIRED_DIRS = [
+        "/home/user/workspace",
+        "/home/user/conversations",
+    ]
+
     def __init__(self, url: str, api_key: str):
         """Initialize the static terminal manager.
 
@@ -76,12 +82,49 @@ class StaticTerminalManager:
         self._api_key = api_key
         self._container: Optional[StaticTerminalContainer] = None
         self._http_client: Optional[httpx.AsyncClient] = None
+        self._dirs_ensured: bool = False
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client for health checks."""
         if self._http_client is None:
             self._http_client = httpx.AsyncClient(timeout=5.0)
         return self._http_client
+
+    async def ensure_directories(self) -> bool:
+        """Ensure required directories exist in the terminal.
+
+        Creates /home/user/workspace and /home/user/conversations if they
+        don't exist. This is called automatically on first get_or_create().
+
+        Returns:
+            True if directories exist (created or already present), False on error
+        """
+        if self._dirs_ensured:
+            return True
+
+        try:
+            client = await self._get_http_client()
+            # Create all required directories in one command
+            dirs_cmd = "mkdir -p " + " ".join(self.REQUIRED_DIRS)
+            resp = await client.post(
+                f"{self._url}/execute",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"command": dirs_cmd, "timeout": 10},
+                timeout=15.0,
+            )
+            if resp.status_code == 200:
+                self._dirs_ensured = True
+                logger.info(f"[Terminal] Ensured directories exist: {self.REQUIRED_DIRS}")
+                return True
+            else:
+                logger.warning(f"[Terminal] Failed to create directories: {resp.status_code} {resp.text}")
+                return False
+        except Exception as e:
+            logger.error(f"[Terminal] Error creating directories: {e}")
+            return False
 
     async def close(self) -> None:
         """Clean up resources.
@@ -110,6 +153,10 @@ class StaticTerminalManager:
                 api_key=self._api_key,
             )
             logger.info(f"[Terminal] Connected to static terminal at {self._url}")
+
+        # Ensure base directories exist (idempotent, only runs once)
+        await self.ensure_directories()
+
         return self._container
 
     async def health_check(self) -> bool:

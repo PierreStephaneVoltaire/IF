@@ -12,6 +12,7 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 from memory.user_facts import (
     FactCategory,
@@ -87,11 +88,11 @@ class ListCapabilityGapsAction(Action):
 
 
 
-class LogCapabilityGapObservation(Observation):
+class LogCapabilityGapObservation(TextObservation):
     pass
 
 
-class ListCapabilityGapsObservation(Observation):
+class ListCapabilityGapsObservation(TextObservation):
     pass
 
 

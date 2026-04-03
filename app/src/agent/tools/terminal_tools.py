@@ -24,6 +24,7 @@ from openhands.sdk.tool.tool import (
     ToolExecutor,
 )
 from openhands.sdk import register_tool
+from agent.tools.base import TextObservation
 
 from terminal import (
     CommandResult,
@@ -131,7 +132,7 @@ class TerminalExecuteAction(Action):
         return content
 
 
-class TerminalExecuteObservation(Observation):
+class TerminalExecuteObservation(TextObservation):
     """Observation from terminal command execution."""
 
     output: str = Field(default="", description="The command output (stdout/stderr)")
@@ -288,7 +289,7 @@ class TerminalUploadAction(Action):
         return content
 
 
-class TerminalUploadObservation(Observation):
+class TerminalUploadObservation(TextObservation):
     """Observation from file upload."""
 
     message: str = Field(default="", description="Upload result message")
@@ -424,7 +425,7 @@ class TerminalListAction(Action):
         return content
 
 
-class TerminalListObservation(Observation):
+class TerminalListObservation(TextObservation):
     """Observation from listing files."""
 
     output: str = Field(default="", description="Directory listing output")
@@ -555,10 +556,10 @@ class TerminalDownloadAction(Action):
         return content
 
 
-class TerminalDownloadObservation(Observation):
+class TerminalDownloadObservation(TextObservation):
     """Observation from file download."""
 
-    content: str = Field(default="", description="File content")
+    file_content: str = Field(default="", description="File content")
 
     @property
     def visualize(self) -> Text:
@@ -589,7 +590,7 @@ class TerminalDownloadExecutor(ToolExecutor):
             try:
                 manager = get_static_manager()
                 if manager is None:
-                    return TerminalDownloadObservation(content="ERROR: Terminal system not initialized")
+                    return TerminalDownloadObservation(file_content="ERROR: Terminal system not initialized")
 
                 container = await manager.get_or_create(self.chat_id)
 
@@ -607,16 +608,16 @@ class TerminalDownloadExecutor(ToolExecutor):
                         content = truncate_output(content)
                         content = f"[File truncated - {len(content)} chars shown]\n\n{content}"
 
-                    return TerminalDownloadObservation(content=content)
+                    return TerminalDownloadObservation(file_content=content)
 
             except httpx.HTTPStatusError as e:
                 return TerminalDownloadObservation(
-                    content=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
+                    file_content=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
                 )
 
             except Exception as e:
                 logger.error(f"[terminal_download] Error: {e}")
-                return TerminalDownloadObservation(content=f"ERROR: {type(e).__name__}: {e}")
+                return TerminalDownloadObservation(file_content=f"ERROR: {type(e).__name__}: {e}")
 
         try:
             loop = asyncio.get_running_loop()

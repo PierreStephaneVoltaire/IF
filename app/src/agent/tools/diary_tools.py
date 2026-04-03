@@ -27,6 +27,7 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +289,7 @@ class WriteDiaryEntryAction(Action):
     user_pk: str = Field(default="operator", description="User partition key")
 
 
-class WriteDiaryEntryObservation(Observation):
+class WriteDiaryEntryObservation(TextObservation):
     pass
 
 
@@ -316,7 +317,7 @@ class ComputeDiarySignalAction(Action):
     user_pk: str = Field(default="operator", description="User partition key")
 
 
-class ComputeDiarySignalObservation(Observation):
+class ComputeDiarySignalObservation(TextObservation):
     pass
 
 

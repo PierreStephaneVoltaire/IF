@@ -24,6 +24,7 @@ from openhands.sdk.tool.tool import (
     ToolExecutor,
 )
 from openhands.sdk import Tool, register_tool
+from agent.tools.base import TextObservation
 
 from config import (
     LLM_BASE_URL,
@@ -402,7 +403,7 @@ class ExecutePlanAction(Action):
         return content
 
 
-class ExecutePlanObservation(Observation):
+class ExecutePlanObservation(TextObservation):
     """Observation from plan execution."""
     
     result: str = Field(default="", description="Execution result summary")

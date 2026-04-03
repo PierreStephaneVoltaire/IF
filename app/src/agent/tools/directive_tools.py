@@ -12,6 +12,7 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 from config import (
     OPENROUTER_BASE_URL,
@@ -235,7 +236,7 @@ class DirectiveAddAction(Action):
     types: List[str] = Field(description="Domain types (e.g., ['code', 'security']). Valid: core, code, architecture, security, health, competition, finance, communication, personality, metacognition, memory, tool")
 
 
-class DirectiveAddObservation(Observation):
+class DirectiveAddObservation(TextObservation):
     pass
 
 
@@ -280,7 +281,7 @@ class DirectiveReviseAction(Action):
     reason: str = Field(description="Reason for revision (required)")
 
 
-class DirectiveReviseObservation(Observation):
+class DirectiveReviseObservation(TextObservation):
     pass
 
 
@@ -321,7 +322,7 @@ class DirectiveDeactivateAction(Action):
     beta: int = Field(description="Beta number")
 
 
-class DirectiveDeactivateObservation(Observation):
+class DirectiveDeactivateObservation(TextObservation):
     pass
 
 
@@ -356,7 +357,7 @@ class DirectiveListAction(Action):
     alpha: Optional[int] = Field(default=None, description="Optional alpha tier filter (0-5)")
 
 
-class DirectiveListObservation(Observation):
+class DirectiveListObservation(TextObservation):
     pass
 
 

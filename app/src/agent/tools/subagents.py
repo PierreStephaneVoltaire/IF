@@ -30,6 +30,7 @@ from openhands.sdk.tool.tool import (
     ToolExecutor,
 )
 from openhands.sdk import Tool, register_tool
+from agent.tools.base import TextObservation
 
 from agent.tools.subagent_sdk import run_subagent_sdk
 
@@ -239,7 +240,7 @@ class DeepThinkAction(Action):
     )
 
 
-class DeepThinkObservation(Observation):
+class DeepThinkObservation(TextObservation):
     """Observation from deep thinking subagent."""
 
     result: str = Field(default="", description="Analysis or plan produced")
@@ -404,7 +405,7 @@ class SpawnSpecialistAction(Action):
     )
 
 
-class SpawnSpecialistObservation(Observation):
+class SpawnSpecialistObservation(TextObservation):
     """Observation from specialist subagent."""
 
     result: str = Field(default="", description="Specialist's output")
@@ -588,7 +589,7 @@ class SpawnSpecialistsAction(Action):
     )
 
 
-class SpawnSpecialistsObservation(Observation):
+class SpawnSpecialistsObservation(TextObservation):
     """Observation from parallel specialist execution."""
 
     results: str = Field(default="", description="Combined results from all specialists")

@@ -144,7 +144,7 @@ class FilesStripBuffer:
 
 def log_file_refs(conversation_id: str, refs: List[FileRef]) -> None:
     """Log extracted file references for debugging.
-    
+
     Args:
         conversation_id: The conversation/chat ID
         refs: List of file references to log
@@ -154,3 +154,28 @@ def log_file_refs(conversation_id: str, refs: List[FileRef]) -> None:
         logger.info(f"[FILES] {conversation_id}: {paths}")
         for ref in refs:
             logger.debug(f"[FILES]   - {ref.path}: {ref.description}")
+
+
+# ---------------------------------------------------------------------------
+# Per-request file ref accumulator
+# Collects FILES: refs emitted by specialist subagents so the completions
+# pipeline can attach them even though they don't appear in the main
+# agent's final response.
+# ---------------------------------------------------------------------------
+import threading
+_ref_lock = threading.Lock()
+_pending_refs: dict[str, list[FileRef]] = {}
+
+
+def accumulate_file_refs(chat_id: str, refs: List[FileRef]) -> None:
+    """Accumulate file refs from a subagent run for later retrieval."""
+    if not refs:
+        return
+    with _ref_lock:
+        _pending_refs.setdefault(chat_id, []).extend(refs)
+
+
+def consume_file_refs(chat_id: str) -> List[FileRef]:
+    """Drain and return all accumulated file refs for this chat_id."""
+    with _ref_lock:
+        return _pending_refs.pop(chat_id, [])

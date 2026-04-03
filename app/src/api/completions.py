@@ -31,7 +31,7 @@ from agent.tiering import (
     get_preset_for_tier,
     get_tier_for_context,
 )
-from terminal.files import strip_files_line, log_file_refs, FilesStripBuffer, FileRef
+from terminal.files import strip_files_line, log_file_refs, consume_file_refs, FilesStripBuffer, FileRef
 from config import API_MODEL_NAME
 
 if TYPE_CHECKING:
@@ -303,17 +303,16 @@ async def process_chat_completion_internal(
                 logger.warning(f"[Cache] Failed to persist eviction: {e}")
             logger.info(f"[Cache] Evicted cache key: {cache_key}")
 
-            # Clean up terminal resources (stop pod, delete PVC for full cleanup)
+            # Stop the terminal pod so the next session gets a clean container.
+            # PVC is intentionally preserved so files persist across resets.
             try:
                 from terminal import get_k8s_lifecycle_manager
                 terminal_mgr = get_k8s_lifecycle_manager()
                 if terminal_mgr:
-                    # Stop the pod (PVC persists by default, but we delete it for full cleanup)
-                    await terminal_mgr.stop(chat_id)
-                    await terminal_mgr.delete_pvc(chat_id)
-                    logger.info(f"[Terminal] Cleaned up terminal resources for chat: {chat_id}")
+                    await terminal_mgr.stop(cache_key)
+                    logger.info(f"[Terminal] Stopped terminal pod for chat: {cache_key}")
             except Exception as e:
-                logger.warning(f"[Terminal] Failed to clean up terminal resources: {e}")
+                logger.warning(f"[Terminal] Failed to stop terminal pod: {e}")
 
             return cmd.response_text, []
         
@@ -451,7 +450,12 @@ async def process_chat_completion_internal(
     
     if file_refs:
         log_file_refs(cache_key, file_refs)
-    
+
+    subagent_refs = consume_file_refs(cache_key)
+    if subagent_refs:
+        logger.info(f"[Attachments] Merging {len(subagent_refs)} subagent file refs")
+        file_refs = list(file_refs) + subagent_refs
+
     try:
         import asyncio
         from memory.summarizer import summarize_and_store

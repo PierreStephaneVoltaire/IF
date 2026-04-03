@@ -22,6 +22,7 @@ from pydantic import Field
 from config import IF_FINANCE_TABLE_NAME, IF_USER_PK, AWS_REGION
 from openhands.sdk import Action, Observation, Tool, ToolDefinition, register_tool
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 logger = logging.getLogger(__name__)
 
@@ -564,7 +565,7 @@ async def finance_update_insurance(policies: List[Dict[str, Any]]) -> List[Dict[
 class FinanceGetProfileAction(Action):
     pass
 
-class FinanceGetProfileObservation(Observation):
+class FinanceGetProfileObservation(TextObservation):
     pass
 
 class FinanceGetProfileExecutor(ToolExecutor[FinanceGetProfileAction, FinanceGetProfileObservation]):
@@ -587,7 +588,7 @@ class FinanceGetProfileTool(ToolDefinition[FinanceGetProfileAction, FinanceGetPr
 class FinanceGetGoalsAction(Action):
     pass
 
-class FinanceGetGoalsObservation(Observation):
+class FinanceGetGoalsObservation(TextObservation):
     pass
 
 class FinanceGetGoalsExecutor(ToolExecutor[FinanceGetGoalsAction, FinanceGetGoalsObservation]):
@@ -611,7 +612,7 @@ class FinanceGetGoalsTool(ToolDefinition[FinanceGetGoalsAction, FinanceGetGoalsO
 class FinanceGetRiskProfileAction(Action):
     pass
 
-class FinanceGetRiskProfileObservation(Observation):
+class FinanceGetRiskProfileObservation(TextObservation):
     pass
 
 class FinanceGetRiskProfileExecutor(ToolExecutor[FinanceGetRiskProfileAction, FinanceGetRiskProfileObservation]):
@@ -634,7 +635,7 @@ class FinanceGetRiskProfileTool(ToolDefinition[FinanceGetRiskProfileAction, Fina
 class FinanceGetNetWorthAction(Action):
     pass
 
-class FinanceGetNetWorthObservation(Observation):
+class FinanceGetNetWorthObservation(TextObservation):
     pass
 
 class FinanceGetNetWorthExecutor(ToolExecutor[FinanceGetNetWorthAction, FinanceGetNetWorthObservation]):
@@ -656,7 +657,7 @@ class FinanceGetNetWorthTool(ToolDefinition[FinanceGetNetWorthAction, FinanceGet
 class FinanceGetAccountsAction(Action):
     pass
 
-class FinanceGetAccountsObservation(Observation):
+class FinanceGetAccountsObservation(TextObservation):
     pass
 
 class FinanceGetAccountsExecutor(ToolExecutor[FinanceGetAccountsAction, FinanceGetAccountsObservation]):
@@ -679,7 +680,7 @@ class FinanceGetAccountsTool(ToolDefinition[FinanceGetAccountsAction, FinanceGet
 class FinanceGetInvestmentsAction(Action):
     pass
 
-class FinanceGetInvestmentsObservation(Observation):
+class FinanceGetInvestmentsObservation(TextObservation):
     pass
 
 class FinanceGetInvestmentsExecutor(ToolExecutor[FinanceGetInvestmentsAction, FinanceGetInvestmentsObservation]):
@@ -702,7 +703,7 @@ class FinanceGetInvestmentsTool(ToolDefinition[FinanceGetInvestmentsAction, Fina
 class FinanceGetCashflowAction(Action):
     pass
 
-class FinanceGetCashflowObservation(Observation):
+class FinanceGetCashflowObservation(TextObservation):
     pass
 
 class FinanceGetCashflowExecutor(ToolExecutor[FinanceGetCashflowAction, FinanceGetCashflowObservation]):
@@ -725,7 +726,7 @@ class FinanceGetCashflowTool(ToolDefinition[FinanceGetCashflowAction, FinanceGet
 class FinanceGetTaxAction(Action):
     pass
 
-class FinanceGetTaxObservation(Observation):
+class FinanceGetTaxObservation(TextObservation):
     pass
 
 class FinanceGetTaxExecutor(ToolExecutor[FinanceGetTaxAction, FinanceGetTaxObservation]):
@@ -748,7 +749,7 @@ class FinanceGetTaxTool(ToolDefinition[FinanceGetTaxAction, FinanceGetTaxObserva
 class FinanceGetInsuranceAction(Action):
     pass
 
-class FinanceGetInsuranceObservation(Observation):
+class FinanceGetInsuranceObservation(TextObservation):
     pass
 
 class FinanceGetInsuranceExecutor(ToolExecutor[FinanceGetInsuranceAction, FinanceGetInsuranceObservation]):
@@ -771,7 +772,7 @@ class FinanceGetInsuranceTool(ToolDefinition[FinanceGetInsuranceAction, FinanceG
 class FinanceGetAgentContextAction(Action):
     pass
 
-class FinanceGetAgentContextObservation(Observation):
+class FinanceGetAgentContextObservation(TextObservation):
     pass
 
 class FinanceGetAgentContextExecutor(ToolExecutor[FinanceGetAgentContextAction, FinanceGetAgentContextObservation]):
@@ -803,7 +804,7 @@ class FinanceUpdateProfileAction(Action):
                     "secondary_income (list)."
     )
 
-class FinanceUpdateProfileObservation(Observation):
+class FinanceUpdateProfileObservation(TextObservation):
     pass
 
 class FinanceUpdateProfileExecutor(ToolExecutor[FinanceUpdateProfileAction, FinanceUpdateProfileObservation]):
@@ -827,7 +828,7 @@ class FinanceUpdateGoalsAction(Action):
     medium_term: Optional[List[Dict[str, Any]]] = Field(default=None, description="Replace medium-term goals array (1-5yr)")
     long_term: Optional[List[Dict[str, Any]]] = Field(default=None, description="Replace long-term goals array (5yr+)")
 
-class FinanceUpdateGoalsObservation(Observation):
+class FinanceUpdateGoalsObservation(TextObservation):
     pass
 
 class FinanceUpdateGoalsExecutor(ToolExecutor[FinanceUpdateGoalsAction, FinanceUpdateGoalsObservation]):
@@ -856,7 +857,7 @@ class FinanceUpdateRiskProfileAction(Action):
                     "time_horizon_years, investment_philosophy, max_drawdown_comfort_pct, notes."
     )
 
-class FinanceUpdateRiskProfileObservation(Observation):
+class FinanceUpdateRiskProfileObservation(TextObservation):
     pass
 
 class FinanceUpdateRiskProfileExecutor(ToolExecutor[FinanceUpdateRiskProfileAction, FinanceUpdateRiskProfileObservation]):
@@ -880,7 +881,7 @@ class FinanceUpdateNetWorthAction(Action):
     total_liabilities: Optional[float] = Field(default=None, description="Total liabilities in dollars")
     as_of: Optional[str] = Field(default=None, description="Snapshot date (YYYY-MM-DD)")
 
-class FinanceUpdateNetWorthObservation(Observation):
+class FinanceUpdateNetWorthObservation(TextObservation):
     pass
 
 class FinanceUpdateNetWorthExecutor(ToolExecutor[FinanceUpdateNetWorthAction, FinanceUpdateNetWorthObservation]):
@@ -904,7 +905,7 @@ class FinanceUpdateAccountAction(Action):
     account_id: str = Field(description="Account id field value")
     updates: Dict[str, Any] = Field(description="Fields to update on the account")
 
-class FinanceUpdateAccountObservation(Observation):
+class FinanceUpdateAccountObservation(TextObservation):
     pass
 
 class FinanceUpdateAccountExecutor(ToolExecutor[FinanceUpdateAccountAction, FinanceUpdateAccountObservation]):
@@ -935,7 +936,7 @@ class FinanceAddHoldingAction(Action):
     current_price: Optional[float] = Field(default=None, description="Current market price per share")
     notes: str = Field(default="", description="Optional notes")
 
-class FinanceAddHoldingObservation(Observation):
+class FinanceAddHoldingObservation(TextObservation):
     pass
 
 class FinanceAddHoldingExecutor(ToolExecutor[FinanceAddHoldingAction, FinanceAddHoldingObservation]):
@@ -962,7 +963,7 @@ class FinanceUpdateHoldingAction(Action):
     ticker: str = Field(description="Ticker symbol to update")
     updates: Dict[str, Any] = Field(description="Fields: shares, avg_cost, current_price, notes")
 
-class FinanceUpdateHoldingObservation(Observation):
+class FinanceUpdateHoldingObservation(TextObservation):
     pass
 
 class FinanceUpdateHoldingExecutor(ToolExecutor[FinanceUpdateHoldingAction, FinanceUpdateHoldingObservation]):
@@ -984,7 +985,7 @@ class FinanceUpdateHoldingTool(ToolDefinition[FinanceUpdateHoldingAction, Financ
 class FinanceUpdateWatchlistAction(Action):
     watchlist: List[Dict[str, Any]] = Field(description="New watchlist array. Each item: {ticker, notes}")
 
-class FinanceUpdateWatchlistObservation(Observation):
+class FinanceUpdateWatchlistObservation(TextObservation):
     pass
 
 class FinanceUpdateWatchlistExecutor(ToolExecutor[FinanceUpdateWatchlistAction, FinanceUpdateWatchlistObservation]):
@@ -1011,7 +1012,7 @@ class FinanceUpdateCashflowAction(Action):
                     "Omit sections you don't want to change. Totals are recomputed automatically."
     )
 
-class FinanceUpdateCashflowObservation(Observation):
+class FinanceUpdateCashflowObservation(TextObservation):
     pass
 
 class FinanceUpdateCashflowExecutor(ToolExecutor[FinanceUpdateCashflowAction, FinanceUpdateCashflowObservation]):
@@ -1040,7 +1041,7 @@ class FinanceUpdateTaxAction(Action):
                     "capital_gains_ytd, tax_refund_owing, or others."
     )
 
-class FinanceUpdateTaxObservation(Observation):
+class FinanceUpdateTaxObservation(TextObservation):
     pass
 
 class FinanceUpdateTaxExecutor(ToolExecutor[FinanceUpdateTaxAction, FinanceUpdateTaxObservation]):
@@ -1065,7 +1066,7 @@ class FinanceUpdateInsuranceAction(Action):
                     "{type, provider, coverage_amount, premium, deductible, renewal_date, beneficiaries, notes}."
     )
 
-class FinanceUpdateInsuranceObservation(Observation):
+class FinanceUpdateInsuranceObservation(TextObservation):
     pass
 
 class FinanceUpdateInsuranceExecutor(ToolExecutor[FinanceUpdateInsuranceAction, FinanceUpdateInsuranceObservation]):

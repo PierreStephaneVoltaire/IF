@@ -22,7 +22,7 @@ from openhands.sdk.conversation.state import ConversationExecutionStatus
 from openhands.sdk.event.conversation_error import ConversationErrorEvent
 
 from config import LLM_API_KEY, LLM_BASE_URL, SPECIALIST_REASONING_EFFORT
-from terminal.files import strip_files_line, log_file_refs
+from terminal.files import strip_files_line, log_file_refs, accumulate_file_refs
 from agent.tools.terminal_tools import get_terminal_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -197,6 +197,7 @@ def _extract_response(conversation, max_turns: int, chat_id: str) -> str:
     cleaned, refs = strip_files_line(content)
     if refs:
         log_file_refs(chat_id, refs)
+        accumulate_file_refs(chat_id, refs)
         logger.info(f"[SDK Subagent] Extracted {len(refs)} file references: {[r.path for r in refs]}")
 
     return cleaned or ""

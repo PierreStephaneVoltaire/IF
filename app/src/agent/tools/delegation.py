@@ -32,6 +32,7 @@ from openhands.sdk.tool.tool import (
     ToolExecutor,
 )
 from openhands.sdk import Tool, register_tool
+from agent.tools.base import TextObservation
 
 from config import CATEGORIZATION_MODEL
 from orchestrator.executor import call_openrouter
@@ -87,7 +88,7 @@ class CategorizeConversationAction(Action):
     )
 
 
-class CategorizeConversationObservation(Observation):
+class CategorizeConversationObservation(TextObservation):
     category: str = Field(default="general", description="Classified category")
     reasoning_pattern: str = Field(default="simple", description="Detected reasoning pattern")
     condensed_intent: str = Field(default="", description="1-2 sentence summary of intent")
@@ -201,7 +202,7 @@ class GetDirectivesAction(Action):
     reasoning_pattern: str = Field(description="Reasoning pattern from categorize_conversation")
 
 
-class GetDirectivesObservation(Observation):
+class GetDirectivesObservation(TextObservation):
     directives_block: str = Field(default="", description="Formatted directive text")
 
     @property
@@ -267,7 +268,7 @@ class CondenseIntentAction(Action):
     context_summary: str = Field(default="", description="Relevant context from conversation history")
 
 
-class CondenseIntentObservation(Observation):
+class CondenseIntentObservation(TextObservation):
     condensed_prompt: str = Field(default="", description="Focused task description for specialist")
 
     @property
@@ -365,7 +366,7 @@ class SpawnSubagentAction(Action):
     context: str = Field(default="", description="Background context for the specialist")
 
 
-class SpawnSubagentObservation(Observation):
+class SpawnSubagentObservation(TextObservation):
     result: str = Field(default="", description="The specialist's output")
     specialist_type: str = Field(default="", description="Which specialist was used")
 

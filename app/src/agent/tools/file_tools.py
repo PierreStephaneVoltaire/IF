@@ -22,6 +22,7 @@ from openhands.sdk.tool.tool import (
     ToolExecutor,
 )
 from openhands.sdk import register_tool
+from agent.tools.base import TextObservation
 
 from terminal import (
     TerminalAPIError,
@@ -90,18 +91,18 @@ class ReadFileAction(Action):
         return content
 
 
-class ReadFileObservation(Observation):
+class ReadFileObservation(TextObservation):
     """Observation from file read."""
 
-    content: str = Field(default="", description="File content")
+    file_content: str = Field(default="", description="File content")
 
     @property
     def visualize(self) -> Text:
         content = Text()
         content.append("File content:\n", style="bold blue")
-        content.append(self.content[:500])
-        if len(self.content) > 500:
-            content.append(f"\n... ({len(self.content) - 500} more chars)", style="dim")
+        content.append(self.file_content[:500])
+        if len(self.file_content) > 500:
+            content.append(f"\n... ({len(self.file_content) - 500} more chars)", style="dim")
         return content
 
 
@@ -122,9 +123,9 @@ class ReadFileExecutor(ToolExecutor):
             try:
                 manager = get_static_manager()
                 if manager is None:
-                    return ReadFileObservation(content="ERROR: Terminal system not initialized")
+                    return ReadFileObservation(file_content="ERROR: Terminal system not initialized")
 
-                container = manager.get_or_create(self.chat_id)
+                container = await manager.get_or_create(self.chat_id)
                 path = _resolve_path(action.path, self.chat_id)
 
                 async with httpx.AsyncClient(timeout=30.0) as http_client:
@@ -142,15 +143,15 @@ class ReadFileExecutor(ToolExecutor):
                     if len(content) > MAX_OUTPUT_LENGTH:
                         content = _truncate(content)
 
-                    return ReadFileObservation(content=content)
+                    return ReadFileObservation(file_content=content)
 
             except TerminalAPIError as e:
                 return ReadFileObservation(
-                    content=f"ERROR: Terminal API returned {e.status_code}: {e.message}"
+                    file_content=f"ERROR: Terminal API returned {e.status_code}: {e.message}"
                 )
             except Exception as e:
                 logger.error(f"[read_file] Error: {e}")
-                return ReadFileObservation(content=f"ERROR: {type(e).__name__}: {e}")
+                return ReadFileObservation(file_content=f"ERROR: {type(e).__name__}: {e}")
 
         try:
             loop = asyncio.get_running_loop()
@@ -224,7 +225,7 @@ class WriteFileAction(Action):
         return content
 
 
-class WriteFileObservation(Observation):
+class WriteFileObservation(TextObservation):
     """Observation from file write."""
 
     message: str = Field(default="", description="Write result message")
@@ -256,7 +257,7 @@ class WriteFileExecutor(ToolExecutor):
                 if manager is None:
                     return WriteFileObservation(message="ERROR: Terminal system not initialized")
 
-                container = manager.get_or_create(self.chat_id)
+                container = await manager.get_or_create(self.chat_id)
                 path = _resolve_path(action.path, self.chat_id)
 
                 async with httpx.AsyncClient(timeout=30.0) as http_client:
@@ -375,7 +376,7 @@ class SearchFilesAction(Action):
         return content
 
 
-class SearchFilesObservation(Observation):
+class SearchFilesObservation(TextObservation):
     """Observation from file search."""
 
     output: str = Field(default="", description="Search results")
@@ -409,7 +410,7 @@ class SearchFilesExecutor(ToolExecutor):
                 if manager is None:
                     return SearchFilesObservation(output="ERROR: Terminal system not initialized")
 
-                container = manager.get_or_create(self.chat_id)
+                container = await manager.get_or_create(self.chat_id)
                 search_path = _resolve_path(action.path, self.chat_id) if action.path else _get_conversation_workdir(self.chat_id)
 
                 async with httpx.AsyncClient(timeout=30.0) as http_client:

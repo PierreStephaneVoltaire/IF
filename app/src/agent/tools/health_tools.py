@@ -18,6 +18,7 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
+from agent.tools.base import TextObservation
 
 
 # =============================================================================
@@ -56,7 +57,7 @@ class HealthGetProgramAction(Action):
     pass
 
 
-class HealthGetProgramObservation(Observation):
+class HealthGetProgramObservation(TextObservation):
     pass
 
 
@@ -89,7 +90,7 @@ class HealthCompCountdownAction(Action):
     pass
 
 
-class HealthCompCountdownObservation(Observation):
+class HealthCompCountdownObservation(TextObservation):
     pass
 
 
@@ -125,7 +126,7 @@ class HealthUpdateSessionAction(Action):
     )
 
 
-class HealthUpdateSessionObservation(Observation):
+class HealthUpdateSessionObservation(TextObservation):
     pass
 
 
@@ -161,7 +162,7 @@ class HealthNewVersionAction(Action):
     )
 
 
-class HealthNewVersionObservation(Observation):
+class HealthNewVersionObservation(TextObservation):
     pass
 
 
@@ -194,7 +195,7 @@ class KgToLbAction(Action):
     kg: float = Field(description="Weight in kilograms")
 
 
-class KgToLbObservation(Observation):
+class KgToLbObservation(TextObservation):
     pass
 
 
@@ -224,7 +225,7 @@ class LbToKgAction(Action):
     lb: float = Field(description="Weight in pounds")
 
 
-class LbToKgObservation(Observation):
+class LbToKgObservation(TextObservation):
     pass
 
 
@@ -254,7 +255,7 @@ class IpfWeightClassesAction(Action):
     sex: str = Field(description="Sex for weight classes: 'M' or 'F'")
 
 
-class IpfWeightClassesObservation(Observation):
+class IpfWeightClassesObservation(TextObservation):
     pass
 
 
@@ -288,7 +289,7 @@ class PctOfMaxAction(Action):
     pct: float = Field(description="Percentage (0-150, not 0-1). E.g., 85 for 85%")
 
 
-class PctOfMaxObservation(Observation):
+class PctOfMaxObservation(TextObservation):
     pass
 
 
@@ -325,7 +326,7 @@ class CalculateAttemptsAction(Action):
     last_felt: Optional[str] = Field(default=None, description="If 'hard', halve j2 for conservative third attempt")
 
 
-class CalculateAttemptsObservation(Observation):
+class CalculateAttemptsObservation(TextObservation):
     pass
 
 
@@ -365,7 +366,7 @@ class HealthRagSearchAction(Action):
     n_results: int = Field(default=4, description="Number of results to return")
 
 
-class HealthRagSearchObservation(Observation):
+class HealthRagSearchObservation(TextObservation):
     pass
 
 
@@ -400,7 +401,7 @@ class HealthGetCompetitionAction(Action):
     date: str = Field(description="Competition date (YYYY-MM-DD)")
 
 
-class HealthGetCompetitionObservation(Observation):
+class HealthGetCompetitionObservation(TextObservation):
     pass
 
 
@@ -431,7 +432,7 @@ class HealthListCompetitionsAction(Action):
     pass
 
 
-class HealthListCompetitionsObservation(Observation):
+class HealthListCompetitionsObservation(TextObservation):
     pass
 
 
@@ -463,7 +464,7 @@ class HealthGetDietNotesAction(Action):
     end_date: Optional[str] = Field(default=None, description="Optional end of date range (YYYY-MM-DD)")
 
 
-class HealthGetDietNotesObservation(Observation):
+class HealthGetDietNotesObservation(TextObservation):
     pass
 
 
@@ -494,7 +495,7 @@ class HealthGetSessionAction(Action):
     date: str = Field(description="Session date (YYYY-MM-DD)")
 
 
-class HealthGetSessionObservation(Observation):
+class HealthGetSessionObservation(TextObservation):
     pass
 
 
@@ -526,7 +527,7 @@ class HealthGetSessionsRangeAction(Action):
     end_date: str = Field(description="End of date range (YYYY-MM-DD)")
 
 
-class HealthGetSessionsRangeObservation(Observation):
+class HealthGetSessionsRangeObservation(TextObservation):
     pass
 
 
@@ -557,7 +558,7 @@ class HealthGetSupplementsAction(Action):
     pass
 
 
-class HealthGetSupplementsObservation(Observation):
+class HealthGetSupplementsObservation(TextObservation):
     pass
 
 
@@ -588,7 +589,7 @@ class HealthGetMetaAction(Action):
     pass
 
 
-class HealthGetMetaObservation(Observation):
+class HealthGetMetaObservation(TextObservation):
     pass
 
 
@@ -620,7 +621,7 @@ class HealthGetPhasesAction(Action):
     pass
 
 
-class HealthGetPhasesObservation(Observation):
+class HealthGetPhasesObservation(TextObservation):
     pass
 
 
@@ -651,7 +652,7 @@ class HealthGetCurrentMaxesAction(Action):
     pass
 
 
-class HealthGetCurrentMaxesObservation(Observation):
+class HealthGetCurrentMaxesObservation(TextObservation):
     pass
 
 
@@ -682,7 +683,7 @@ class HealthGetOperatorPrefsAction(Action):
     pass
 
 
-class HealthGetOperatorPrefsObservation(Observation):
+class HealthGetOperatorPrefsObservation(TextObservation):
     pass
 
 
@@ -713,7 +714,7 @@ class HealthGetBreaksAction(Action):
     pass
 
 
-class HealthGetBreaksObservation(Observation):
+class HealthGetBreaksObservation(TextObservation):
     pass
 
 
@@ -745,7 +746,7 @@ class DaysUntilAction(Action):
     label: str = Field(default="target", description="Human label for the milestone, e.g. 'comp', 'deload'")
 
 
-class DaysUntilObservation(Observation):
+class DaysUntilObservation(TextObservation):
     pass
 
 
@@ -783,7 +784,7 @@ class HealthUpdateCompetitionAction(Action):
     )
 
 
-class HealthUpdateCompetitionObservation(Observation):
+class HealthUpdateCompetitionObservation(TextObservation):
     pass
 
 
@@ -815,7 +816,7 @@ class HealthUpdateDietNoteAction(Action):
     notes: str = Field(description="The diet notes content (replaces existing)")
 
 
-class HealthUpdateDietNoteObservation(Observation):
+class HealthUpdateDietNoteObservation(TextObservation):
     pass
 
 
@@ -848,7 +849,7 @@ class HealthUpdateSupplementsAction(Action):
     )
 
 
-class HealthUpdateSupplementsObservation(Observation):
+class HealthUpdateSupplementsObservation(TextObservation):
     pass
 
 
@@ -885,7 +886,7 @@ class HealthCreateSessionAction(Action):
     session_notes: str = Field(default="", description="Optional session notes")
 
 
-class HealthCreateSessionObservation(Observation):
+class HealthCreateSessionObservation(TextObservation):
     pass
 
 
@@ -911,7 +912,7 @@ class HealthDeleteSessionAction(Action):
     date: str = Field(description="Session date to delete (YYYY-MM-DD)")
 
 
-class HealthDeleteSessionObservation(Observation):
+class HealthDeleteSessionObservation(TextObservation):
     pass
 
 
@@ -938,7 +939,7 @@ class HealthRescheduleSessionAction(Action):
     new_date: str = Field(description="Target date to move to (YYYY-MM-DD)")
 
 
-class HealthRescheduleSessionObservation(Observation):
+class HealthRescheduleSessionObservation(TextObservation):
     pass
 
 
@@ -965,7 +966,7 @@ class HealthAddExerciseAction(Action):
     exercise: Dict[str, Any] = Field(description="Exercise dict: {name (required), sets, reps, kg, rpe, notes}")
 
 
-class HealthAddExerciseObservation(Observation):
+class HealthAddExerciseObservation(TextObservation):
     pass
 
 
@@ -992,7 +993,7 @@ class HealthRemoveExerciseAction(Action):
     exercise_index: int = Field(description="Zero-based index of the exercise to remove")
 
 
-class HealthRemoveExerciseObservation(Observation):
+class HealthRemoveExerciseObservation(TextObservation):
     pass
 
 
@@ -1025,7 +1026,7 @@ class HealthCreateCompetitionAction(Action):
     )
 
 
-class HealthCreateCompetitionObservation(Observation):
+class HealthCreateCompetitionObservation(TextObservation):
     pass
 
 
@@ -1051,7 +1052,7 @@ class HealthDeleteCompetitionAction(Action):
     date: str = Field(description="Competition date to delete (YYYY-MM-DD)")
 
 
-class HealthDeleteCompetitionObservation(Observation):
+class HealthDeleteCompetitionObservation(TextObservation):
     pass
 
 
@@ -1081,7 +1082,7 @@ class HealthDeleteDietNoteAction(Action):
     date: str = Field(description="Diet note date to delete (YYYY-MM-DD)")
 
 
-class HealthDeleteDietNoteObservation(Observation):
+class HealthDeleteDietNoteObservation(TextObservation):
     pass
 
 
@@ -1115,7 +1116,7 @@ class HealthUpdateMetaAction(Action):
     )
 
 
-class HealthUpdateMetaObservation(Observation):
+class HealthUpdateMetaObservation(TextObservation):
     pass
 
 
@@ -1146,7 +1147,7 @@ class HealthUpdatePhasesAction(Action):
     )
 
 
-class HealthUpdatePhasesObservation(Observation):
+class HealthUpdatePhasesObservation(TextObservation):
     pass
 
 
@@ -1174,7 +1175,7 @@ class HealthUpdateCurrentMaxesAction(Action):
     deadlift_kg: Optional[float] = Field(default=None, description="New deadlift max in kg (omit to leave unchanged)")
 
 
-class HealthUpdateCurrentMaxesObservation(Observation):
+class HealthUpdateCurrentMaxesObservation(TextObservation):
     pass
 
 

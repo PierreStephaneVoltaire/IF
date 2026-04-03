@@ -443,16 +443,16 @@ async def execute_agent(
         # Get context tools (date/time, signals, finance snapshot)
         tools.extend(get_context_tools())
         # Get delegation tools (categorize, directives, condense, spawn)
-        tools.extend(get_delegation_tools(session.session_id))
+        tools.extend(get_delegation_tools(session.conversation_id))
         # Get subagent tools (specialist spawning, deep thinking)
-        tools.extend(get_subagent_tools(session.session_id))
+        tools.extend(get_subagent_tools(session.conversation_id))
         # Get media tools (on-demand file/image analysis)
         tools.extend(get_media_tools(session.conversation_id))
         # Create shared HTTP client for orchestrator tools (connection pooling)
         shared_http_client = httpx.AsyncClient(timeout=120.0)
         # Get orchestrator tools (Parts7-9) with shared HTTP client
-        tools.extend(get_orchestrator_tools(session.session_id, http_client=shared_http_client))
-        tools.extend(get_analyzer_tools(session.session_id, http_client=shared_http_client))
+        tools.extend(get_orchestrator_tools(session.conversation_id, http_client=shared_http_client))
+        tools.extend(get_analyzer_tools(session.conversation_id, http_client=shared_http_client))
         logger.info(f"Loaded {len(tools)} tools: memory, user facts, capability, opinion, reflection, directive, context, delegation, subagent, media, orchestrator")
         # Create OpenHands Agent
         # Pass the assembled system prompt (which includes directives) to the Agent
