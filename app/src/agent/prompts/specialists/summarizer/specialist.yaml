@@ -1,0 +1,8 @@
+description: "Condensing long content into structured summaries — key points, decisions, action items, open questions"
+preset: "@preset/air"
+tools:
+  - read_file
+  - write_file
+mcp_servers: []
+directive_types:
+  - core

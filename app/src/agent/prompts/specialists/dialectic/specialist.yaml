@@ -1,0 +1,7 @@
+description: "Structured adversarial reasoning — thesis-antithesis-synthesis, steelmanning, devil's advocate analysis"
+preset: "@preset/standard"
+tools:
+  - read_file
+mcp_servers: []
+directive_types:
+  - core

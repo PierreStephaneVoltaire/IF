@@ -389,7 +389,7 @@ class SpawnSpecialistAction(Action):
     )
     skill: Optional[str] = Field(
         default=None,
-        description="Optional skill mode: red_team, blue_team, or pro_con"
+        description="Optional skill mode: red_team, blue_team, pro_con, steelman, devils_advocate, backcast, rubber_duck, eli5, formal, speed, teach"
     )
     write_to_file: Optional[str] = Field(
         default=None,

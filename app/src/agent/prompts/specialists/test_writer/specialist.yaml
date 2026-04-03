@@ -1,0 +1,12 @@
+agentic: true
+max_iterations: 25
+description: "Test generation — unit tests, integration tests, edge cases. Matches project framework and conventions."
+preset: "@preset/code"
+tools:
+  - terminal_execute
+  - read_file
+  - write_file
+  - search_files
+mcp_servers: []
+directive_types:
+  - code

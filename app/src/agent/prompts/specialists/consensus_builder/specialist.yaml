@@ -1,0 +1,9 @@
+description: "Multi-source synthesis — spawns 2-3 specialists, collects outputs, identifies agreement/disagreement, synthesizes"
+preset: "@preset/standard"
+tools:
+  - spawn_specialist
+  - spawn_specialists
+  - write_file
+mcp_servers: []
+directive_types:
+  - core
