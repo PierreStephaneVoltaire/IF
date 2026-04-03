@@ -19,7 +19,7 @@
       "Bash(ls -la /home/sirsimpalot/Downloads/discord-ai-bot/.venv/lib/python*/site-packages/)"
     ],
     "deny": [
-      "Bash(git:*)"
+      "Bash(git:commit)"
     ]
   }
 }

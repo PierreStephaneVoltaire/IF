@@ -121,7 +121,7 @@ class StaticTerminalManager:
         try:
             client = await self._get_http_client()
             resp = await client.get(
-                f"{self._url}/api/health",
+                f"{self._url}/health",
                 headers={"Authorization": f"Bearer {self._api_key}"},
                 timeout=5.0,
             )

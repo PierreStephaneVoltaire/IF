@@ -38,6 +38,7 @@ from orchestrator.executor import call_openrouter
 from agent.prompts.loader import render_template
 from agent.prompts.yaml_loader import load_yaml
 from agent.tools.subagents import _resolve_directives, _run_subagent
+from agent.tools.subagent_sdk import run_subagent_sdk
 
 if TYPE_CHECKING:
     from openhands.sdk.conversation.state import ConversationState
@@ -415,15 +416,25 @@ class SpawnSubagentExecutor(ToolExecutor):
                 directives=directives,
             )
 
-            async with httpx.AsyncClient(timeout=120.0) as http_client:
-                result = await _run_subagent(
+            if specialist.agentic:
+                result = await run_subagent_sdk(
                     system_prompt=system_prompt,
                     user_message=action.condensed_intent,
                     model=specialist.preset,
-                    max_turns=specialist.max_turns,
+                    max_turns=specialist.max_iterations,
                     chat_id=self.chat_id,
-                    http_client=http_client,
+                    tool_names=specialist.tools,
                 )
+            else:
+                async with httpx.AsyncClient(timeout=120.0) as http_client:
+                    result = await _run_subagent(
+                        system_prompt=system_prompt,
+                        user_message=action.condensed_intent,
+                        model=specialist.preset,
+                        max_turns=specialist.max_turns,
+                        chat_id=self.chat_id,
+                        http_client=http_client,
+                    )
 
             logger.info(
                 f"[Delegation] spawn_subagent: category={action.category} "

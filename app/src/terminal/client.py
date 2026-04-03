@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -120,13 +121,14 @@ class TerminalClient:
         timeout: float = DEFAULT_TIMEOUT,
     ) -> CommandResult:
 
-        url = f"{self._base_url}/api/execute"
-        
+        url = f"{self._base_url}/execute"
+
         try:
+            # Start the process (async — returns immediately)
             resp = await self._http.post(
                 url,
                 headers=self._headers,
-                json={"command": command, "workdir": workdir},
+                json={"command": command, "cwd": workdir},
                 timeout=timeout + 5,
             )
             resp.raise_for_status()
@@ -136,15 +138,69 @@ class TerminalClient:
             raise TerminalAPIError(
                 e.response.status_code,
                 e.response.text,
-                endpoint="/api/execute"
+                endpoint="/execute"
             )
-        
+
         data = resp.json()
+        process_id = data.get("id")
+
+        if data.get("status") == "done":
+            # Synchronous completion (rare for fast commands)
+            return self._parse_execute_result(data)
+
+        # Poll for completion
+        status_url = f"{self._base_url}/execute/{process_id}/status"
+        poll_interval = 0.5
+        elapsed = 0.0
+
+        while elapsed < timeout:
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+
+            try:
+                status_resp = await self._http.get(
+                    status_url,
+                    headers=self._headers,
+                    timeout=timeout + 5,
+                )
+                status_resp.raise_for_status()
+                status_data = status_resp.json()
+            except httpx.TimeoutException:
+                raise TerminalTimeoutError(timeout, command)
+            except httpx.HTTPStatusError as e:
+                raise TerminalAPIError(
+                    e.response.status_code,
+                    e.response.text,
+                    endpoint=f"/execute/{process_id}/status",
+                )
+
+            if status_data.get("status") == "done":
+                return self._parse_execute_result(status_data)
+
+        raise TerminalTimeoutError(timeout, command)
+
+    @staticmethod
+    def _parse_execute_result(data: dict) -> CommandResult:
+        """Parse an OpenTerminal execute result into a CommandResult.
+
+        The API returns output as [{"type": "output", "data": "..."}] or
+        [{"type": "error", "data": "..."}] arrays.
+        """
+        stdout_parts = []
+        stderr_parts = []
+        for chunk in data.get("output", []):
+            chunk_type = chunk.get("type", "")
+            chunk_data = chunk.get("data", "")
+            if chunk_type == "error":
+                stderr_parts.append(chunk_data)
+            else:
+                stdout_parts.append(chunk_data)
+
         return CommandResult(
             exit_code=data.get("exit_code", -1),
-            stdout=data.get("stdout", ""),
-            stderr=data.get("stderr", ""),
-            duration_ms=data.get("duration_ms", 0),
+            stdout="".join(stdout_parts),
+            stderr="".join(stderr_parts),
+            duration_ms=0,
         )
     
     
@@ -155,20 +211,13 @@ class TerminalClient:
         timeout: float = 30.0,
     ) -> None:
 
-        url = f"{self._base_url}/api/files/upload"
-        
-        dir_path = os.path.dirname(remote_path)
-        filename = os.path.basename(remote_path)
-        
+        url = f"{self._base_url}/files/write"
+
         try:
-            files = {"file": (filename, content)}
-            data = {"path": dir_path}
-            
             resp = await self._http.post(
                 url,
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                files=files,
-                data=data,
+                headers=self._headers,
+                json={"path": remote_path, "content": content.decode("utf-8", errors="replace")},
                 timeout=timeout,
             )
             resp.raise_for_status()
@@ -176,9 +225,9 @@ class TerminalClient:
             raise TerminalAPIError(
                 e.response.status_code,
                 e.response.text,
-                endpoint="/api/files/upload"
+                endpoint="/files/write"
             )
-    
+
     async def upload_text_file(
         self,
         remote_path: str,
@@ -194,8 +243,8 @@ class TerminalClient:
         timeout: float = 30.0,
     ) -> bytes:
 
-        url = f"{self._base_url}/api/files/download"
-        
+        url = f"{self._base_url}/files/read"
+
         try:
             resp = await self._http.get(
                 url,
@@ -204,12 +253,14 @@ class TerminalClient:
                 timeout=timeout,
             )
             resp.raise_for_status()
-            return resp.content
+            data = resp.json()
+            content = data.get("content", "")
+            return content.encode("utf-8")
         except httpx.HTTPStatusError as e:
             raise TerminalAPIError(
                 e.response.status_code,
                 e.response.text,
-                endpoint="/api/files/download"
+                endpoint="/files/read"
             )
     
     async def download_text_file(
@@ -227,13 +278,13 @@ class TerminalClient:
         timeout: float = 30.0,
     ) -> list[FileEntry]:
 
-        url = f"{self._base_url}/api/files/list"
+        url = f"{self._base_url}/files/list"
         
         try:
             resp = await self._http.get(
                 url,
                 headers=self._headers,
-                params={"path": path},
+                params={"directory": path},
                 timeout=timeout,
             )
             resp.raise_for_status()
@@ -241,7 +292,7 @@ class TerminalClient:
             raise TerminalAPIError(
                 e.response.status_code,
                 e.response.text,
-                endpoint="/api/files/list"
+                endpoint="/files/list"
             )
         
         data = resp.json()
@@ -255,13 +306,13 @@ class TerminalClient:
         timeout: float = 30.0,
     ) -> list[FileEntry]:
 
-        url = f"{self._base_url}/api/files/search"
+        url = f"{self._base_url}/files/glob"
         
         try:
             resp = await self._http.get(
                 url,
                 headers=self._headers,
-                params={"query": query, "path": path},
+                params={"pattern": query, "path": path},
                 timeout=timeout,
             )
             resp.raise_for_status()
@@ -269,7 +320,7 @@ class TerminalClient:
             raise TerminalAPIError(
                 e.response.status_code,
                 e.response.text,
-                endpoint="/api/files/search"
+                endpoint="/files/glob"
             )
         
         data = resp.json()
@@ -279,13 +330,138 @@ class TerminalClient:
     
     async def health(self, timeout: float = 5.0) -> bool:
 
-        url = f"{self._base_url}/api/health"
-        
+        url = f"{self._base_url}/health"
+
         try:
             resp = await self._http.get(url, timeout=timeout)
             return resp.status_code == 200
         except httpx.HTTPError:
             return False
+
+    async def read_file(
+        self,
+        path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+        timeout: float = 30.0,
+    ) -> dict:
+        """Read a file with optional line range via the /files/read endpoint.
+
+        Args:
+            path: Absolute path to the file
+            start_line: 1-indexed start line (inclusive). None for beginning.
+            end_line: 1-indexed end line (inclusive). None for end.
+            timeout: Request timeout in seconds
+
+        Returns:
+            Dict with 'content' key containing file text
+        """
+        url = f"{self._base_url}/files/read"
+        params: dict = {"path": path}
+        if start_line is not None:
+            params["start_line"] = start_line
+        if end_line is not None:
+            params["end_line"] = end_line
+
+        try:
+            resp = await self._http.get(
+                url,
+                headers=self._headers,
+                params=params,
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            raise TerminalAPIError(
+                e.response.status_code,
+                e.response.text,
+                endpoint="/files/read"
+            )
+
+    async def write_file(
+        self,
+        path: str,
+        content: str,
+        timeout: float = 30.0,
+    ) -> None:
+        """Write content to a file via the /files/write endpoint.
+
+        Args:
+            path: Absolute path to the file
+            content: File content as string
+            timeout: Request timeout in seconds
+        """
+        url = f"{self._base_url}/files/write"
+
+        try:
+            resp = await self._http.post(
+                url,
+                headers=self._headers,
+                json={"path": path, "content": content},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise TerminalAPIError(
+                e.response.status_code,
+                e.response.text,
+                endpoint="/files/write"
+            )
+
+    async def grep_files(
+        self,
+        query: str,
+        path: str = ".",
+        include: list[str] | None = None,
+        case_insensitive: bool = False,
+        regex: bool = False,
+        match_per_line: bool = True,
+        max_results: int = 50,
+        timeout: float = 30.0,
+    ) -> dict:
+        """Search file contents via the /files/grep endpoint.
+
+        Args:
+            query: Text or regex pattern to search for
+            path: Directory or file to search in
+            include: Glob patterns to filter files
+            case_insensitive: Case-insensitive matching
+            regex: Treat query as regex
+            match_per_line: Return matching lines with line numbers
+            max_results: Maximum matches to return
+            timeout: Request timeout in seconds
+
+        Returns:
+            Dict with 'results' key containing match list
+        """
+        url = f"{self._base_url}/files/grep"
+        params: dict = {
+            "query": query,
+            "path": path,
+            "regex": regex,
+            "case_insensitive": case_insensitive,
+            "match_per_line": match_per_line,
+            "max_results": max_results,
+        }
+        if include:
+            params["include"] = include
+
+        try:
+            resp = await self._http.get(
+                url,
+                headers=self._headers,
+                params=params,
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            raise TerminalAPIError(
+                e.response.status_code,
+                e.response.text,
+                endpoint="/files/grep"
+            )
 
 
 

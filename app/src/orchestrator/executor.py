@@ -117,25 +117,28 @@ async def call_openrouter(
     tools: Optional[List[Dict[str, Any]]] = None,
     http_client: Optional[httpx.AsyncClient] = None,
 ) -> LLMResponse:
+    # Strip SDK provider prefix — OpenRouter's raw API doesn't understand it
+    model_for_api = model.removeprefix("openrouter/")
+
     body: Dict[str, Any] = {
-        "model": model,
+        "model": model_for_api,
         "messages": messages,
         "stream": False
     }
-    
+
     if tools:
         body["tools"] = [{"type": "function", "function": t} for t in tools]
-    
+
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
     }
-    
+
     should_close = False
     if http_client is None:
         http_client = httpx.AsyncClient(timeout=120.0)
         should_close = True
-    
+
     try:
         resp = await http_client.post(
             f"{LLM_BASE_URL}/chat/completions",
@@ -145,6 +148,9 @@ async def call_openrouter(
         )
         resp.raise_for_status()
         return parse_llm_response(resp.json())
+    except httpx.HTTPStatusError as e:
+        logger.error(f"[OpenRouter] {e.response.status_code} for model={model_for_api}: {e.response.text[:500]}")
+        raise
     finally:
         if should_close:
             await http_client.aclose()

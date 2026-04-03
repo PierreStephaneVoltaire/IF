@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from config import SPECIALIST_PRESET, SPECIALIST_MAX_TURNS
+from config import SPECIALIST_PRESET, SPECIALIST_MAX_TURNS, AGENTIC_MAX_ITERATIONS
 from agent.prompts.loader import render_template
 from agent.prompts.yaml_loader import load_yaml
 
@@ -33,7 +33,9 @@ class SpecialistConfig:
         mcp_servers: List of MCP server slugs to attach
         directive_types: Types of directives to inject
         preset: OpenRouter preset to use
-        max_turns: Maximum turns before timeout
+        max_turns: Maximum turns before timeout (non-agentic path)
+        agentic: Whether to use the SDK agentic loop (Conversation.run())
+        max_iterations: Maximum iterations for the SDK agentic loop
     """
     slug: str
     description: str
@@ -43,6 +45,8 @@ class SpecialistConfig:
     directive_types: List[str] = field(default_factory=lambda: ["core"])
     preset: str = SPECIALIST_PRESET
     max_turns: int = SPECIALIST_MAX_TURNS
+    agentic: bool = False
+    max_iterations: int = AGENTIC_MAX_ITERATIONS
 
 
 def _load_specialists() -> Dict[str, SpecialistConfig]:
@@ -86,6 +90,8 @@ def _load_specialists() -> Dict[str, SpecialistConfig]:
             directive_types=data.get("directive_types", ["core"]),
             preset=data.get("preset", SPECIALIST_PRESET),
             max_turns=data.get("max_turns", SPECIALIST_MAX_TURNS),
+            agentic=data.get("agentic", False),
+            max_iterations=data.get("max_iterations", AGENTIC_MAX_ITERATIONS),
         )
 
     logger.info(f"Loaded {len(registry)} specialists: {list(registry.keys())}")

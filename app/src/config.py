@@ -105,6 +105,9 @@ SPECIALIST_PRESET = os.getenv("SPECIALIST_PRESET", "@preset/standard")
 # Maximum turns per specialist subagent
 SPECIALIST_MAX_TURNS = int(os.getenv("SPECIALIST_MAX_TURNS", "15"))
 
+# Agentic specialist configuration (SDK Conversation.run() loop)
+AGENTIC_MAX_ITERATIONS = int(os.getenv("AGENTIC_MAX_ITERATIONS", "25"))
+
 # Deep thinker (pondering) configuration
 THINKING_PRESET = os.getenv("THINKING_PRESET", "@preset/general")
 THINKING_MAX_TURNS = int(os.getenv("THINKING_MAX_TURNS", "20"))
@@ -205,6 +208,10 @@ CATEGORIZATION_MODEL = os.getenv("CATEGORIZATION_MODEL", "openrouter/z-ai/glm-4.
 # Reasoning effort passed to the OpenHands LLM for the main agent.
 # Valid values: "high", "medium", "low" (silently ignored for models that don't support it).
 LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "high")
+
+# Reasoning effort for specialist subagents using the SDK agentic loop.
+# Defaults to the same value as the main agent.
+SPECIALIST_REASONING_EFFORT = os.getenv("SPECIALIST_REASONING_EFFORT", LLM_REASONING_EFFORT)
 
 
 # =============================================================================

@@ -44,6 +44,7 @@ from agent.tools.context_tools import get_context_tools
 from agent.tools.subagents import get_subagent_tools
 from agent.tools.delegation import get_delegation_tools
 from agent.tools.media_tools import get_media_tools
+from agent.tools import file_tools  # registers read_file, write_file, search_files
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
 
 

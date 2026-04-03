@@ -118,6 +118,21 @@ resource "null_resource" "packer_build_main_api" {
   depends_on = [aws_ecr_repository.if_agent_api]
 }
 
+resource "null_resource" "rollout_restart_main_api" {
+  triggers = {
+    source_sha1 = local.main_api_hash
+  }
+
+  provisioner "local-exec" {
+    command = "kubectl rollout restart deployment/if-agent-api -n if-portals"
+  }
+
+  depends_on = [
+    null_resource.packer_build_main_api,
+    kubernetes_deployment.if_agent_api,
+  ]
+}
+
 resource "null_resource" "packer_build_portal_backends" {
   for_each = local.portals
 
@@ -140,6 +155,23 @@ resource "null_resource" "packer_build_portal_backends" {
   }
 
   depends_on = [aws_ecr_repository.portal_backends]
+}
+
+resource "null_resource" "rollout_restart_portal_backends" {
+  for_each = local.portals
+
+  triggers = {
+    source_sha1 = local.portal_backend_hashes[each.key]
+  }
+
+  provisioner "local-exec" {
+    command = "kubectl rollout restart deployment/${each.key}-backend -n if-portals"
+  }
+
+  depends_on = [
+    null_resource.packer_build_portal_backends,
+    kubernetes_deployment.portal_backends,
+  ]
 }
 
 resource "null_resource" "packer_build_portal_frontends" {
@@ -165,5 +197,22 @@ resource "null_resource" "packer_build_portal_frontends" {
   }
 
   depends_on = [aws_ecr_repository.portal_frontends]
+}
+
+resource "null_resource" "rollout_restart_portal_frontends" {
+  for_each = local.portals
+
+  triggers = {
+    source_sha1 = local.portal_frontend_hashes[each.key]
+  }
+
+  provisioner "local-exec" {
+    command = "kubectl rollout restart deployment/${each.key}-frontend -n if-portals"
+  }
+
+  depends_on = [
+    null_resource.packer_build_portal_frontends,
+    kubernetes_deployment.portal_frontends,
+  ]
 }
 

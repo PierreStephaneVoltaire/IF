@@ -31,6 +31,8 @@ from openhands.sdk.tool.tool import (
 )
 from openhands.sdk import Tool, register_tool
 
+from agent.tools.subagent_sdk import run_subagent_sdk
+
 from config import (
     LLM_BASE_URL,
     OPENROUTER_API_KEY,
@@ -464,20 +466,31 @@ class SpawnSpecialistExecutor(ToolExecutor):
             if action.write_to_file:
                 user_message = f"{action.task}\n\nSave your output to: {action.write_to_file}"
 
-            # Resolve tool schemas for this specialist
-            from agent.tools.tool_schemas import get_schemas_for_specialist
-            tool_schemas = get_schemas_for_specialist(specialist.tools)
-
-            async with httpx.AsyncClient(timeout=120.0) as http_client:
-                result = await _run_subagent(
+            # Route to SDK agentic loop for agentic specialists
+            if specialist.agentic:
+                result = await run_subagent_sdk(
                     system_prompt=system_prompt,
                     user_message=user_message,
                     model=specialist.preset,
-                    max_turns=specialist.max_turns,
+                    max_turns=specialist.max_iterations,
                     chat_id=self.chat_id,
-                    tool_schemas=tool_schemas,
-                    http_client=http_client,
+                    tool_names=specialist.tools,
                 )
+            else:
+                # Non-agentic: use raw OpenRouter path
+                from agent.tools.tool_schemas import get_schemas_for_specialist
+                tool_schemas = get_schemas_for_specialist(specialist.tools)
+
+                async with httpx.AsyncClient(timeout=120.0) as http_client:
+                    result = await _run_subagent(
+                        system_prompt=system_prompt,
+                        user_message=user_message,
+                        model=specialist.preset,
+                        max_turns=specialist.max_turns,
+                        chat_id=self.chat_id,
+                        tool_schemas=tool_schemas,
+                        http_client=http_client,
+                    )
 
             logger.info(f"[Subagents] Completed: slug={specialist.slug} | result_len={len(result)}")
             return result, specialist.slug
@@ -627,16 +640,26 @@ class SpawnSpecialistsExecutor(ToolExecutor):
                         directives=directives,
                     )
 
-                    tool_schemas = get_schemas_for_specialist(specialist.tools)
-                    tasks.append(_run_subagent(
-                        system_prompt=system_prompt,
-                        user_message=action.task,
-                        model=specialist.preset,
-                        max_turns=specialist.max_turns,
-                        chat_id=self.chat_id,
-                        tool_schemas=tool_schemas,
-                        http_client=http_client,
-                    ))
+                    if specialist.agentic:
+                        tasks.append(run_subagent_sdk(
+                            system_prompt=system_prompt,
+                            user_message=action.task,
+                            model=specialist.preset,
+                            max_turns=specialist.max_iterations,
+                            chat_id=self.chat_id,
+                            tool_names=specialist.tools,
+                        ))
+                    else:
+                        tool_schemas = get_schemas_for_specialist(specialist.tools)
+                        tasks.append(_run_subagent(
+                            system_prompt=system_prompt,
+                            user_message=action.task,
+                            model=specialist.preset,
+                            max_turns=specialist.max_turns,
+                            chat_id=self.chat_id,
+                            tool_schemas=tool_schemas,
+                            http_client=http_client,
+                        ))
 
                 if not tasks:
                     return "No valid specialists to spawn", []

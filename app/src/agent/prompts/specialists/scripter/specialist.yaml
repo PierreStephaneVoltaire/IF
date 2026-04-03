@@ -1,3 +1,5 @@
+agentic: true
+max_iterations: 10
 description: "Quick tasks completable in 3-5 commands: create files, run scripts, one-liners"
 preset: "@preset/code"
 tools:
