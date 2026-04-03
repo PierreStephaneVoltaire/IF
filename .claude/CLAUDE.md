@@ -179,6 +179,7 @@ Domain experts spawned by the main agent. Each has its own `specialist.yaml` con
 | `architect` | System design and architecture patterns | read/write/search files + AWS docs MCP | standard |
 | `secops` | Security operations and vulnerability analysis | terminal_execute, read/search files | standard |
 | `devops` | Infrastructure and deployment automation | terminal_execute, read/write files | standard |
+| `file_generator` | Structured file generation with syntax validation — scripts, configs, IaC, code modules. Agentic loop (PLAN→GENERATE→VALIDATE→VERIFY→DELIVER). `agentic: true` | terminal_execute, write/read files | `@preset/code` |
 | `proofreader` | Prose editing, grammar, clarity, tone | — | standard |
 | `email_writer` | Professional email drafting | — | standard |
 | `jira_writer` | Structured Jira tickets with acceptance criteria | — | standard |
@@ -190,6 +191,8 @@ Domain experts spawned by the main agent. Each has its own `specialist.yaml` con
 | `media_reader` | On-demand file and image analysis (vision model, single turn) | — | media preset |
 
 **Skills** (mode modifiers for specialists): `red_team` (adversarial), `blue_team` (defensive), `pro_con` (balanced analysis)
+
+Specialists with `agentic: true` in their `specialist.yaml` are routed to `run_subagent_sdk()` (`agent/tools/subagent_sdk.py`) instead of the raw OpenRouter call loop. This enables proper SDK tool dispatch, stuck detection, and event-based iteration via `Conversation.run()`.
 
 ### Delegation Pipeline
 
@@ -213,6 +216,7 @@ All tools use the OpenHands SDK Action/Observation/Executor/ToolDefinition patte
 | Context | `agent/tools/context_tools.py` | get_signals, get_financial_context, get_context_snapshot, get_current_date |
 | Delegation | `agent/tools/delegation.py` | categorize_conversation, get_directives, condense_intent, spawn_subagent |
 | Subagents | `agent/tools/subagents.py` | deep_think, spawn_specialist, spawn_specialists |
+| Subagent SDK | `agent/tools/subagent_sdk.py` | run_subagent_sdk (SDK agentic loop for specialists with `agentic: true`) |
 | Media | `agent/tools/media_tools.py` | read_media |
 | Orchestrator | `orchestrator/executor.py` | execute_plan, analyze_parallel |
 | Memory | `agent/memory_tools.py` | search, add, remove, list (ChromaDB) |
@@ -231,6 +235,8 @@ NOT loaded into the main agent. Dispatched to specialist subagents via OpenRoute
 ### Tool Authoring
 
 Python classes with Action (params), Observation (result), Executor (logic), ToolDefinition (metadata). Exposed via `get_*_tools()` getter functions in each module, loaded in `session.py`. `TOOL_OUTPUT_CHAR_LIMIT` is 200K chars (SDK default 50K causes silent clipping).
+
+All Observation subclasses inherit from `TextObservation` (`agent/tools/base.py`) instead of the raw SDK `Observation`. This fixes an SDK bug where `to_llm_content` returns empty content because custom Observations store results in named fields but don't override `to_llm_content`. `TextObservation` wires `to_llm_content` through `visualize.plain`, so subclasses only need a correct `visualize` implementation.
 
 ## Channels
 
@@ -307,6 +313,10 @@ Multi-step task execution in `orchestrator/`:
 ## Terminal System
 
 Docker containers for shell access via shared OpenTerminal deployment (`TERMINAL_URL`). Each conversation gets isolated working directory at `/home/user/conversations/{conversation_id}/`.
+
+Two client modes:
+- **`TerminalClient`** (`terminal/client.py`) — dynamic per-conversation containers
+- **`StaticTerminalManager`** (`terminal/static_client.py`) — single shared IaC-managed deployment (Kubernetes-friendly); exposes the same interface via `StaticTerminalContainer`
 
 Tools: `terminal_execute`, `terminal_read_file`, `terminal_write_file`, `terminal_list_files`.
 

@@ -61,6 +61,7 @@ Domain experts spawned by the main agent for deep tasks. Each specialist has its
 | `architect` | System design and architecture patterns | `read_file`, `write_file`, `search_files` + AWS docs MCP |
 | `secops` | Security operations and vulnerability analysis | `terminal_execute`, `read_file`, `search_files` |
 | `devops` | Infrastructure and deployment automation | `terminal_execute`, `read_file`, `write_file` |
+| `file_generator` | Structured file generation with syntax validation (scripts, configs, IaC, code modules) — agentic loop, validates syntax before delivery | `terminal_execute`, `write_file`, `read_file`, `terminal_list_files` |
 
 #### Writing & Communication
 
@@ -130,7 +131,9 @@ Messages flow through: listener → debounce → translator → agent → chunke
 
 ## Terminal System
 
-Docker containers for shell access. Each conversation gets isolated working directory. Tools: `terminal_execute`, `terminal_read_file`, `terminal_write_file`, `terminal_list_files`.
+Docker containers for shell access. Each conversation gets isolated working directory at `/home/user/conversations/{chat_id}/`. Tools: `terminal_execute`, `terminal_read_file`, `terminal_write_file`, `terminal_list_files`.
+
+Two client modes: dynamic (`TerminalClient` — per-conversation containers) and static (`StaticTerminalManager` — single shared deployment managed via IaC, Kubernetes-friendly).
 
 ---
 
