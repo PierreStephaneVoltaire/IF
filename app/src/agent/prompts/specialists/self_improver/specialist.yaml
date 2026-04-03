@@ -1,0 +1,9 @@
+description: "Analyzes IF's own performance and proposes improvements to directives, specialist prompts, and configurations"
+preset: "@preset/standard"
+tools:
+  - read_file
+  - write_file
+  - search_files
+mcp_servers: []
+directive_types:
+  - core

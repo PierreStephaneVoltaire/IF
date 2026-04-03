@@ -104,6 +104,14 @@ SKILLS: List[str] = [
     "red_team",
     "blue_team",
     "pro_con",
+    "steelman",
+    "devils_advocate",
+    "backcast",
+    "rubber_duck",
+    "eli5",
+    "formal",
+    "speed",
+    "teach",
 ]
 
 

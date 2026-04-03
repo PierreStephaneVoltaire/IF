@@ -1,0 +1,9 @@
+description: "Writing, refining, and testing prompts for LLMs — including IF's own specialist prompts"
+preset: "@preset/standard"
+tools:
+  - read_file
+  - write_file
+  - search_files
+mcp_servers: []
+directive_types:
+  - core

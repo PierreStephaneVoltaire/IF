@@ -1,0 +1,10 @@
+description: "Performance profiling, optimization, and benchmarking — MEASURE, IDENTIFY, OPTIMIZE, VERIFY"
+preset: "@preset/code"
+tools:
+  - terminal_execute
+  - read_file
+  - write_file
+  - search_files
+mcp_servers: []
+directive_types:
+  - code

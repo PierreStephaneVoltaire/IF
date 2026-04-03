@@ -1,0 +1,13 @@
+agentic: true
+max_iterations: 25
+description: "Technical documentation generation — READMEs, ADRs, RFCs, API docs, changelogs, runbooks, onboarding guides"
+preset: "@preset/code"
+tools:
+  - terminal_execute
+  - read_file
+  - write_file
+  - search_files
+mcp_servers: []
+directive_types:
+  - code
+  - architecture

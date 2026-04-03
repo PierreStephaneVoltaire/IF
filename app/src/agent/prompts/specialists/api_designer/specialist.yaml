@@ -1,0 +1,10 @@
+description: "REST/GraphQL/gRPC API design — endpoint structure, schemas, error handling, versioning, OpenAPI specs"
+preset: "@preset/architecture"
+tools:
+  - read_file
+  - write_file
+  - search_files
+mcp_servers: []
+directive_types:
+  - code
+  - architecture
