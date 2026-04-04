@@ -62,8 +62,33 @@ Domain experts spawned by the main agent for deep tasks. Each specialist has its
 | `secops` | Security operations and vulnerability analysis | `terminal_execute`, `read_file`, `search_files` |
 | `devops` | Infrastructure and deployment automation | `terminal_execute`, `read_file`, `write_file` |
 | `file_generator` | Structured file generation with syntax validation (scripts, configs, IaC, code modules) — agentic loop, validates syntax before delivery | `terminal_execute`, `write_file`, `read_file`, `terminal_list_files` |
+| `git_ops` | Git operations — rebasing, conflict resolution, PR workflows, history rewriting | `terminal_execute`, `read_file`, `write_file`, `search_files` |
+| `code_reviewer` | Structured code review — correctness, security, performance, maintainability | `terminal_execute`, `read_file`, `search_files` |
+| `code_explorer` | Codebase navigation, dependency mapping, "how does X work?" | `terminal_execute`, `read_file`, `search_files` |
+| `doc_generator` | Technical documentation — READMEs, ADRs, RFCs, API docs, runbooks | `terminal_execute`, `read_file`, `write_file`, `search_files` |
+| `test_writer` | Test generation — unit, integration, edge cases (agentic: GENERATE→RUN→FIX→VERIFY) | `terminal_execute`, `read_file`, `write_file`, `search_files` |
+| `refactorer` | Code refactoring without behavior change — extract, rename, decouple | `terminal_execute`, `read_file`, `write_file`, `search_files` |
+| `api_designer` | REST/GraphQL/gRPC API design, OpenAPI specs | `read_file`, `write_file`, `search_files` |
+| `migration_planner` | Database/infrastructure migration planning with rollback strategies | `terminal_execute`, `read_file`, `write_file`, `search_files` |
+| `incident_responder` | Production incident triage — fast, action-first, no preamble | `terminal_execute`, `read_file`, `search_files` |
+| `performance_analyst` | Performance profiling, optimization — MEASURE→IDENTIFY→OPTIMIZE→VERIFY | `terminal_execute`, `read_file`, `write_file`, `search_files` |
 
-#### Writing & Communication
+#### Reasoning & Planning
+
+| Specialist | Purpose | Tools |
+|------------|---------|-------|
+| `planner` | Decomposes goals into sequenced, dependency-aware plans (produces plans; does not execute) | `read_file`, `write_file`, `search_files` |
+| `dialectic` | Structured adversarial reasoning — thesis-antithesis-synthesis | `read_file` |
+| `decision_analyst` | Multi-criteria decision analysis with weighted scoring and tradeoff matrices | `write_file` |
+
+#### Project & Task Management
+
+| Specialist | Purpose | Tools |
+|------------|---------|-------|
+| `project_manager` | Implementation verification — confirms planned work exists in codebase | `terminal_execute`, `read_file`, `search_files` |
+| `todo_generator` | Extracts actionable task lists from conversations and documents | `read_file`, `write_file` |
+
+#### Communication & Writing
 
 | Specialist | Purpose | Use Case |
 |------------|---------|----------|
@@ -71,6 +96,50 @@ Domain experts spawned by the main agent for deep tasks. Each specialist has its
 | `email_writer` | Professional email drafting | Formal tone, sensitive subjects |
 | `jira_writer` | Jira ticket creation | Structured issues with acceptance criteria |
 | `constrained_writer` | Character-limited content | Tweets (280), Discord, SMS, Bluesky (300) |
+| `interviewer` | Requirements gathering through structured questioning | Underspecified requests |
+| `summarizer` | Condensing long content into structured summaries | Documents, threads, transcripts |
+| `meeting_prep` | Meeting preparation — talking points, background research | Pre-meeting briefings |
+| `negotiation_advisor` | Negotiation strategy — BATNA analysis, concession planning | Salary, contracts, vendors |
+
+#### Document Generation
+
+| Specialist | Purpose | Tools |
+|------------|---------|-------|
+| `resume` | Resume tailoring via LaTeX, JD analysis, compile to PDF | `terminal_execute`, `read_file`, `write_file`, `search_files` |
+| `cover_letter` | Cover letter generation — JD-specific, one page max | `terminal_execute`, `read_file`, `write_file` |
+| `workday` | Workday/ATS application form input — copy-paste-ready text blocks | `read_file`, `write_file` |
+| `pdf_generator` | Formatted PDF creation via WeasyPrint/Pandoc/LaTeX | `terminal_execute`, `read_file`, `write_file` |
+| `changelog_writer` | Release notes and changelogs from git history | `terminal_execute`, `read_file`, `write_file` |
+
+#### Analytical
+
+| Specialist | Purpose | Tools |
+|------------|---------|-------|
+| `data_analyst` | Data exploration, analysis, visualization — CSV, JSON, logs | `terminal_execute`, `read_file`, `write_file`, `search_files` |
+| `legal_reader` | Contract, ToS, and policy analysis — NOT legal advice | `read_file` |
+| `prompt_engineer` | Writing, refining, and testing prompts for LLMs | `read_file`, `write_file`, `search_files` |
+| `sql_analyst` | Database query specialist — optimization, schema analysis | `terminal_execute`, `read_file`, `write_file` |
+
+#### Learning & Education
+
+| Specialist | Purpose | Tools |
+|------------|---------|-------|
+| `math_tutor` | Mathematics instruction — algebra, calculus, linear algebra, ML/AI math | `write_file` |
+| `language_tutor` | Language learning — Japanese, Spanish, French | `write_file` |
+| `ml_tutor` | ML/AI instruction — architectures, training, practical implementation | `terminal_execute`, `read_file`, `write_file` |
+
+#### Career
+
+| Specialist | Purpose | Tools |
+|------------|---------|-------|
+| `career_advisor` | Career strategy — trajectory analysis, skill gaps, market positioning | `write_file`, user facts |
+
+#### Meta & System
+
+| Specialist | Purpose | Tools |
+|------------|---------|-------|
+| `consensus_builder` | Multi-source synthesis — spawns 2-3 specialists, collects, synthesizes | `spawn_specialist(s)`, `write_file` |
+| `self_improver` | Analyzes IF's own performance, proposes directive/prompt improvements | `read_file`, `write_file`, `search_files` |
 
 #### Domain-Specific
 
@@ -91,6 +160,14 @@ Specialists can be invoked with skill modes that change their perspective:
 | `red_team` | Adversarial/attack perspective |
 | `blue_team` | Defensive/protection perspective |
 | `pro_con` | Balanced pros and cons analysis |
+| `steelman` | Strongest possible version of a given position |
+| `devils_advocate` | Deliberately attacks the operator's preferred option |
+| `backcast` | Start from desired outcome, work backward |
+| `rubber_duck` | Ask questions instead of answers — force articulation |
+| `eli5` | Explain like I'm five — simplify maximally |
+| `formal` | Formal/professional register for external output |
+| `speed` | Compressed output, skip rationale, action-only |
+| `teach` | Explain the why alongside the what — educational mode |
 
 Example: `spawn_specialist(specialist_type="architect", skill="red_team")` produces an adversarial architecture review.
 

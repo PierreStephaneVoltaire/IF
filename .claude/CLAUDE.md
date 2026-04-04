@@ -179,18 +179,52 @@ Domain experts spawned by the main agent. Each has its own `specialist.yaml` con
 | `architect` | System design and architecture patterns | read/write/search files + AWS docs MCP | standard |
 | `secops` | Security operations and vulnerability analysis | terminal_execute, read/search files | standard |
 | `devops` | Infrastructure and deployment automation | terminal_execute, read/write files | standard |
-| `file_generator` | Structured file generation with syntax validation — scripts, configs, IaC, code modules. Agentic loop (PLAN→GENERATE→VALIDATE→VERIFY→DELIVER). `agentic: true` | terminal_execute, write/read files | `@preset/code` |
+| `file_generator` | Structured file generation with syntax validation — scripts, configs, IaC, code modules. `agentic: true` | terminal_execute, write/read files | `@preset/code` |
+| `git_ops` | Git operations — rebasing, conflict resolution, PR workflows, history rewriting. `agentic: true` | terminal_execute, read/write/search files | `@preset/code` |
+| `code_reviewer` | Structured code review — correctness, security, performance, maintainability. `agentic: true` | terminal_execute, read/search files | `@preset/code` |
+| `code_explorer` | Codebase navigation, dependency mapping, "how does X work?". `agentic: true` | terminal_execute, read/search files | `@preset/code` |
+| `doc_generator` | Technical documentation — READMEs, ADRs, RFCs, API docs, runbooks. `agentic: true` | terminal_execute, read/write/search files | `@preset/code` |
+| `test_writer` | Test generation — unit, integration, edge cases. Agentic: GENERATE→RUN→FIX→VERIFY. `agentic: true` | terminal_execute, read/write/search files | `@preset/code` |
+| `refactorer` | Code refactoring without behavior change — extract, rename, decouple. `agentic: true` | terminal_execute, read/write/search files | `@preset/code` |
+| `api_designer` | REST/GraphQL/gRPC API design, OpenAPI specs | read/write/search files | `@preset/architecture` |
+| `migration_planner` | Database/infrastructure migration planning with rollback strategies | terminal_execute, read/write/search files | `@preset/architecture` |
+| `incident_responder` | Production incident triage — fast, action-first, no preamble | terminal_execute, read/search files | `@preset/code` |
+| `performance_analyst` | Performance profiling, optimization, benchmarking — MEASURE→IDENTIFY→OPTIMIZE→VERIFY | terminal_execute, read/write/search files | `@preset/code` |
+| `planner` | Decomposes goals into sequenced, dependency-aware plans. Produces plans; does not execute | read/write/search files | standard |
+| `dialectic` | Structured adversarial reasoning — thesis-antithesis-synthesis | read_file | standard |
+| `decision_analyst` | Multi-criteria decision analysis with weighted scoring and tradeoff matrices | write_file | standard |
+| `project_manager` | Implementation verification — confirms planned work exists in codebase. `agentic: true` | terminal_execute, read/search files | `@preset/code` |
+| `todo_generator` | Extracts actionable task lists from conversations and documents | read/write files | standard |
 | `proofreader` | Prose editing, grammar, clarity, tone | — | standard |
 | `email_writer` | Professional email drafting | — | standard |
 | `jira_writer` | Structured Jira tickets with acceptance criteria | — | standard |
 | `constrained_writer` | Character-limited content (tweets, Discord, SMS) | — | standard |
+| `interviewer` | Requirements gathering through structured questioning — asks, does not answer | — | `@preset/air` |
+| `summarizer` | Condensing long content into structured summaries | read/write files | `@preset/air` |
+| `meeting_prep` | Meeting preparation — talking points, background research, anticipated questions | read/write files, user facts | standard |
+| `negotiation_advisor` | Negotiation strategy — BATNA analysis, concession planning | user facts | standard |
+| `resume` | Resume tailoring via LaTeX, JD analysis, compile to PDF. `agentic: true` | terminal_execute, read/write/search files | `@preset/air` |
+| `cover_letter` | Cover letter generation — JD-specific, one page max. `agentic: true` | terminal_execute, read/write files | `@preset/air` |
+| `workday` | Workday/ATS application form input — copy-paste-ready text blocks | read/write files | `@preset/air` |
+| `pdf_generator` | Formatted PDF creation via WeasyPrint/Pandoc/LaTeX. `agentic: true` | terminal_execute, read/write files | `@preset/code` |
+| `changelog_writer` | Release notes and changelogs from git history | terminal_execute, read/write files | `@preset/code` |
+| `data_analyst` | Data exploration, analysis, visualization — CSV, JSON, logs. `agentic: true` | terminal_execute, read/write/search files | `@preset/code` |
+| `legal_reader` | Contract, ToS, and policy analysis — extracts obligations and risks. NOT legal advice | read_file | standard |
+| `prompt_engineer` | Writing, refining, and testing prompts for LLMs — including IF's own | read/write/search files | standard |
+| `sql_analyst` | Database query specialist — optimization, schema analysis, explain plans | terminal_execute, read/write files | `@preset/code` |
+| `math_tutor` | Mathematics instruction — algebra, calculus, linear algebra, ML/AI math foundations | write_file | standard |
+| `language_tutor` | Language learning — Japanese, Spanish, French. Vocabulary, grammar, conversation | write_file | standard |
+| `ml_tutor` | ML/AI instruction — architectures, training, practical implementation | terminal_execute, read/write files | `@preset/code` |
+| `career_advisor` | Career strategy — trajectory analysis, skill gaps, market positioning | write_file, user facts | standard |
+| `consensus_builder` | Multi-source synthesis — spawns 2-3 specialists, collects outputs, synthesizes | spawn_specialist(s), write_file | standard |
+| `self_improver` | Analyzes IF's own performance and proposes improvements to directives and prompts | read/write/search files | standard |
 | `health_write` | Training program mutations (log sessions, RPE, body weight) | Health DynamoDB tools | standard |
 | `finance_write` | Finance snapshot mutations (balances, holdings, goals) | Finance DynamoDB tools | standard |
 | `financial_analyst` | Market research and financial analysis | Yahoo Finance + Alpha Vantage MCPs | standard |
 | `web_researcher` | Web research and information synthesis | read/write files | standard |
 | `media_reader` | On-demand file and image analysis (vision model, single turn) | — | media preset |
 
-**Skills** (mode modifiers for specialists): `red_team` (adversarial), `blue_team` (defensive), `pro_con` (balanced analysis)
+**Skills** (mode modifiers for specialists): `red_team` (adversarial), `blue_team` (defensive), `pro_con` (balanced analysis), `steelman` (strongest version of a position), `devils_advocate` (attacks preferred option), `backcast` (start from outcome, work backward), `rubber_duck` (ask questions instead of answers), `eli5` (simplify maximally), `formal` (professional register), `speed` (compressed action-only), `teach` (explain why alongside what)
 
 Specialists with `agentic: true` in their `specialist.yaml` are routed to `run_subagent_sdk()` (`agent/tools/subagent_sdk.py`) instead of the raw OpenRouter call loop. This enables proper SDK tool dispatch, stuck detection, and event-based iteration via `Conversation.run()`.
 
@@ -198,7 +232,7 @@ Specialists with `agentic: true` in their `specialist.yaml` are routed to `run_s
 
 Automatic message routing in `delegation.py`: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent`. Uses `delegation.yaml` for category→specialist mapping.
 
-Categories: `code` → coder, `architecture` → architect, `finance` → financial_analyst, `health` → health_write, `writing` → proofreader, `shell` → scripter. Pattern overrides: `simple` → scripter, `investigative` → debugger.
+Categories: `code` → coder, `architecture` → architect, `finance` → financial_analyst, `health` → health_write, `writing` → proofreader, `shell` → scripter, `planning` → planner, `reasoning` → dialectic, `decision` → decision_analyst, `git` → git_ops, `review` → code_reviewer, `exploration` → code_explorer, `documentation` → doc_generator, `testing` → test_writer, `refactoring` → refactorer, `api_design` → api_designer, `migration` → migration_planner, `incident` → incident_responder, `performance` → performance_analyst, `project_tracking` → project_manager, `tasks` → todo_generator, `requirements` → interviewer, `summarization` → summarizer, `meeting` → meeting_prep, `negotiation` → negotiation_advisor, `pdf` → pdf_generator, `resume` → resume, `cover_letter` → cover_letter, `workday` → workday, `changelog` → changelog_writer, `data` → data_analyst, `legal` → legal_reader, `prompting` → prompt_engineer, `sql` → sql_analyst, `math` → math_tutor, `language` → language_tutor, `ml_learning` → ml_tutor, `career` → career_advisor. Pattern overrides: `simple` → scripter, `investigative` → debugger, `multi_perspective` → consensus_builder, `self_assessment` → self_improver, `adversarial_reasoning` → dialectic, `implementation_check` → project_manager, `production_down` → incident_responder, `job_application` → resume, `study_math` → math_tutor, `study_language` → language_tutor, `study_ml` → ml_tutor.
 
 ## Tools
 
