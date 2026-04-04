@@ -5,6 +5,8 @@ on:
     branches: [main, master]
     paths:
       - 'app/**'
+      - 'specialists/**'
+      - 'utils/**'
       - 'docker/**'
       - 'terraform/**'
       - '.github/workflows/build-deploy.yml'
@@ -12,6 +14,8 @@ on:
     branches: [main, master]
     paths:
       - 'app/**'
+      - 'specialists/**'
+      - 'utils/**'
       - 'docker/**'
       - 'terraform/**'
       - '.github/workflows/build-deploy.yml'
@@ -151,7 +155,7 @@ jobs:
           node-version: '20'
 
       - name: Build Frontend
-        working-directory: ./app/utils/${{ matrix.portal.name }}/frontend
+        working-directory: ./utils/${{ matrix.portal.name }}/frontend
         run: |
           npm ci
           npm run build

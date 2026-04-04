@@ -70,6 +70,12 @@ build {
     destination = "/app/"
   }
 
+  # Copy specialists (source of truth at project root) into expected runtime location
+  provisioner "file" {
+    source      = "../specialists"
+    destination = "/app/src/agent/prompts/"
+  }
+
   # Copy main system prompt to /app/ (code resolves via Path(__file__).parent…parent…parent)
   provisioner "file" {
     source      = "../app/main_system_prompt.txt"

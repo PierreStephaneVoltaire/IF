@@ -44,7 +44,6 @@ app/
 │   │   ├── memory_tools.py  # ChromaDB memory search/add/remove/list
 │   │   ├── prompts/         # Jinja2 templates + specialist definitions
 │   │   │   ├── system_prompt.j2
-│   │   │   ├── specialists/ # One subdir per specialist (specialist.yaml + agent.j2)
 │   │   │   ├── delegation.yaml   # Category→specialist + category→directive mapping
 │   │   │   └── mcp_servers.yaml   # MCP server command definitions
 │   │   ├── reflection/      # Metacognitive layer
@@ -98,16 +97,17 @@ app/
 │       ├── rag.py           # ChromaDB RAG for PDF documents (IPF rulebook, etc.)
 │       ├── renderer.py      # Program rendering
 │       └── tools.py         # Health CRUD tools + RAG search
-├── utils/                   # TypeScript/Node.js utility apps
-│   ├── main-portal/         # Hub dashboard (port 3000)
-│   ├── finance-portal/      # Net worth, investments (port 3002)
-│   ├── diary-portal/        # Mental health journaling (port 3003)
-│   ├── proposals-portal/    # Directive proposal kanban (port 3004)
-│   ├── powerlifting-app/    # Training tracking (port 3005)
-│   └── video-lambda/        # Lambda function for video processing
 ├── docker/                  # Packer build files (.pkr.hcl)
 ├── terraform/               # Kubernetes, AWS infra
 └── main_system_prompt.txt   # Agent personality base prompt
+specialists/                 # One subdir per specialist (specialist.yaml + agent.j2)
+utils/                       # TypeScript/Node.js utility apps
+├── main-portal/             # Hub dashboard (port 3000)
+├── finance-portal/          # Net worth, investments (port 3002)
+├── diary-portal/            # Mental health journaling (port 3003)
+├── proposals-portal/        # Directive proposal kanban (port 3004)
+├── powerlifting-app/        # Training tracking (port 3005)
+└── video-lambda/            # Lambda function for video processing
 ```
 
 ## Architecture

@@ -51,7 +51,7 @@ build {
 
   # Copy entire portal workspace (needed for npm workspaces + shared types package)
   provisioner "file" {
-    source      = "../app/utils/${var.portal_name}/"
+    source      = "../utils/${var.portal_name}/"
     destination = "/workspace"
   }
 

@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 
 # Get the app directory (parent of scripts folder)
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-UTILS_DIR="$APP_DIR/utils"
+UTILS_DIR="$(cd "$APP_DIR/.." && pwd)/utils"
 
 echo -e "${BLUE}============================================================${NC}"
 echo -e "${BLUE}       IF Prototype A1 - Starting All Services${NC}"

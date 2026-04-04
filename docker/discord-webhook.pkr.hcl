@@ -51,7 +51,7 @@ build {
 
   # Copy requirements first for better caching
   provisioner "file" {
-    source      = "../app/utils/discord-webhook-server/backend/requirements.txt"
+    source      = "../utils/discord-webhook-server/backend/requirements.txt"
     destination = "/app/requirements.txt"
   }
 
@@ -65,7 +65,7 @@ build {
 
   # Copy source code
   provisioner "file" {
-    source      = "../app/utils/discord-webhook-server/backend/src"
+    source      = "../utils/discord-webhook-server/backend/src"
     destination = "/app/src"
   }
 

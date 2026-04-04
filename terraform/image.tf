@@ -78,15 +78,15 @@ locals {
 
   portal_backend_hashes = {
     for name, config in local.portals : name => sha1(join("", [
-      for f in fileset("${path.module}/../app/utils/${name}/backend", "**/*") :
-      filesha1("${path.module}/../app/utils/${name}/backend/${f}")
+      for f in fileset("${path.module}/../utils/${name}/backend", "**/*") :
+      filesha1("${path.module}/../utils/${name}/backend/${f}")
     ]))
   }
 
   portal_frontend_hashes = {
     for name, config in local.portals : name => sha1(join("", [
-      for f in fileset("${path.module}/../app/utils/${name}/frontend", "**/*") :
-      filesha1("${path.module}/../app/utils/${name}/frontend/${f}")
+      for f in fileset("${path.module}/../utils/${name}/frontend", "**/*") :
+      filesha1("${path.module}/../utils/${name}/frontend/${f}")
     ]))
   }
 

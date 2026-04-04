@@ -36,5 +36,8 @@ app/venv/*
 app/src/data/*
 app/sandbox/*
 
+# Local dev copies (source of truth at project root)
+app/src/agent/prompts/specialists/
+
 # Worktrees
 .worktrees/
