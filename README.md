@@ -273,7 +273,7 @@ Key configuration (see `app/src/config.py` for full list):
 
 ## Utility Applications
 
-TypeScript/Node.js apps in `app/utils/`:
+TypeScript/Node.js apps in `utils/`:
 
 | App | Port | Purpose |
 |-----|------|---------|

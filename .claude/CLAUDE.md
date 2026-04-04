@@ -169,7 +169,7 @@ Upgrade at 65% capacity (`TIER_UPGRADE_THRESHOLD`). Context estimated at ~4 char
 
 ### Specialists
 
-Domain experts spawned by the main agent. Each has its own `specialist.yaml` config and `agent.j2` prompt template. Auto-discovered from `prompts/specialists/*/specialist.yaml` at import time — no Python changes needed to add a specialist.
+Domain experts spawned by the main agent. Each has its own `specialist.yaml` config and `agent.j2` prompt template. Auto-discovered from `specialists/*/specialist.yaml` at import time — no Python changes needed to add a specialist.
 
 | Specialist | Purpose | Tools | Preset |
 |------------|---------|-------|--------|
@@ -370,7 +370,7 @@ Config: idle 6h, cooldown 6h, quiet hours 23:00-07:00 UTC. Opening message uses 
 
 ## MCP Servers
 
-Extended capabilities via MCP servers (defined in `prompts/specialists/mcp_servers.yaml`):
+Extended capabilities via MCP servers (defined in `specialists/mcp_servers.yaml`):
 
 | Server | Purpose |
 |--------|---------|
@@ -443,7 +443,7 @@ Key configuration (see `app/src/config.py` for full list):
 
 ## Key Patterns
 
-- **Specialist auto-discovery**: `specialists.py` scans `prompts/specialists/*/specialist.yaml` at import time — no code changes needed to add specialists
+- **Specialist auto-discovery**: `specialists.py` scans `specialists/*/specialist.yaml` at import time — no code changes needed to add specialists
 - **Delegation pipeline**: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent` in `delegation.py`
 - **Subagent spawning**: `spawn_specialist(type, task, context)` in `subagents.py`; `_run_subagent()` gives subagents terminal access
 - **Tool authoring**: Python classes (Action/Observation/Executor/ToolDefinition) registered with `register_tool()`, exposed via `get_*_tools()` getters
