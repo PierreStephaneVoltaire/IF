@@ -3,6 +3,7 @@
 Loads environment variables and defines constants for the API server.
 """
 import os
+from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
 
@@ -245,6 +246,25 @@ ORCHESTRATOR_MAX_TURNS = int(os.getenv("ORCHESTRATOR_MAX_TURNS", "15"))
 # Maximum turns for analysis subagents (usually need fewer)
 ORCHESTRATOR_ANALYSIS_MAX_TURNS = int(os.getenv("ORCHESTRATOR_ANALYSIS_MAX_TURNS", "10"))
 
+
+# =============================================================================
+# External Tools Plugin Directory
+# =============================================================================
+
+EXTERNAL_TOOLS_PATH = os.getenv("EXTERNAL_TOOLS_PATH", "")
+EXTERNAL_TOOLS_FALLBACK = os.getenv(
+    "EXTERNAL_TOOLS_FALLBACK",
+    str(Path(__file__).parent.parent.parent / "tools")  # project_root/tools/
+)
+
+# =============================================================================
+# Specialists Directory
+# =============================================================================
+
+SPECIALISTS_PATH = os.getenv(
+    "SPECIALISTS_PATH",
+    str(Path(__file__).parent.parent.parent / "specialists")  # project_root/specialists/
+)
 
 # =============================================================================
 # Health Module Configuration

@@ -12,13 +12,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from config import SPECIALIST_PRESET, SPECIALIST_MAX_TURNS, AGENTIC_MAX_ITERATIONS
+from config import SPECIALIST_PRESET, SPECIALIST_MAX_TURNS, AGENTIC_MAX_ITERATIONS, SPECIALISTS_PATH
 from agent.prompts.loader import render_template
 from agent.prompts.yaml_loader import load_yaml
 
 logger = logging.getLogger(__name__)
 
-SPECIALISTS_DIR = Path(__file__).parent / "prompts" / "specialists"
+SPECIALISTS_DIR = Path(SPECIALISTS_PATH)
 
 
 @dataclass
@@ -159,7 +159,7 @@ def render_specialist_prompt(
     Returns:
         Rendered prompt string
     """
-    return render_template(
+    prompt = render_template(
         specialist.template,
         task=task,
         context=context or "",
@@ -168,3 +168,6 @@ def render_specialist_prompt(
         pk=pk or "operator",
         sk=sk or "program#current",
     )
+
+    handoff = render_template("handoff_protocol.j2")
+    return f"{prompt}\n\n{handoff}"

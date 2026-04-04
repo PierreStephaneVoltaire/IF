@@ -30,6 +30,7 @@ from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
 from api.webhooks import router as webhooks_router
 from api.directives import router as directives_router
+from api.admin import router as admin_router
 from presets.loader import get_preset_manager
 from mcp_servers.config import validate_mcp_config
 from storage.factory import init_store, close_store, get_webhook_store, init_directive_store
@@ -167,6 +168,15 @@ async def lifespan(app: FastAPI):
         pass
     except Exception as e:
         logger.warning(f"Legacy memory store initialization failed: {e}")
+
+    # External tool plugin initialization
+    try:
+        from agent.tool_registry import install_external_deps, init_tool_registry
+        install_external_deps()
+        registry = init_tool_registry()
+        logger.info(f"Tool registry: {len(registry.list_tools())} external tools loaded")
+    except Exception as e:
+        logger.warning(f"Tool registry initialization failed: {e}")
 
     # Health module initialization
     try:
@@ -370,6 +380,7 @@ app.include_router(completions_router)
 app.include_router(files_router)
 app.include_router(webhooks_router)
 app.include_router(directives_router)
+app.include_router(admin_router)
 
 
 

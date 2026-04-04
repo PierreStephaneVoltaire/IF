@@ -45,6 +45,7 @@ from agent.tools.subagents import get_subagent_tools
 from agent.tools.delegation import get_delegation_tools
 from agent.tools.media_tools import get_media_tools
 from agent.tools import file_tools  # registers read_file, write_file, search_files
+from agent.tools.discovery_tools import get_discovery_tools
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
 
 
@@ -453,7 +454,17 @@ async def execute_agent(
         # Get orchestrator tools (Parts7-9) with shared HTTP client
         tools.extend(get_orchestrator_tools(session.conversation_id, http_client=shared_http_client))
         tools.extend(get_analyzer_tools(session.conversation_id, http_client=shared_http_client))
-        logger.info(f"Loaded {len(tools)} tools: memory, user facts, capability, opinion, reflection, directive, context, delegation, subagent, media, orchestrator")
+        # Get discovery tools (discover_tools, use_tool for external plugins)
+        tools.extend(get_discovery_tools())
+        # Get external tool plugins with scope=main or both
+        try:
+            from agent.tool_registry import get_tool_registry
+            registry = get_tool_registry()
+            external_tools = registry.get_sdk_tools(scope="main")
+            tools.extend(external_tools)
+        except Exception as e:
+            logger.debug(f"External tool registry not available: {e}")
+        logger.info(f"Loaded {len(tools)} tools: memory, user facts, capability, opinion, reflection, directive, context, delegation, subagent, media, orchestrator, discovery")
         # Create OpenHands Agent
         # Pass the assembled system prompt (which includes directives) to the Agent
         # Use the custom system_prompt.j2 template that renders {{ system_prompt }}

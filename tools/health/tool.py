@@ -1,12 +1,15 @@
-"""OpenHands SDK wrappers for health module tools.
+"""Health tool plugin — training program management and powerlifting tools.
 
-Wraps the health module functions in the Action/Observation/Executor/ToolDefinition
-pattern required by the OpenHands SDK.
+Exports:
+    get_tools()       → SDK Tool objects (side effect: register_tool() calls)
+    get_schemas()     → snake_case name → JSON schema
+    execute(name, args) → async dispatcher for non-agentic path
 """
 from __future__ import annotations
+
 import asyncio
 import json
-from typing import List, Optional, Dict, Any, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from pydantic import Field
 
@@ -18,46 +21,41 @@ from openhands.sdk import (
     register_tool,
 )
 from openhands.sdk.tool import ToolExecutor
-from agent.tools.base import TextObservation
 
 
 # =============================================================================
-# Helper functions to run async operations in sync context
+# Helpers (duplicated from agent/tools/base to avoid cross-dir imports)
 # =============================================================================
 
 def _run_async(coro):
-    """Run an async coroutine in a sync context."""
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
-
     if loop and loop.is_running():
-        # We're in an async context, run in a new thread
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            future = pool.submit(asyncio.run, coro)
-            return future.result()
-    else:
-        return asyncio.run(coro)
+            return pool.submit(asyncio.run, coro).result()
+    return asyncio.run(coro)
 
 
 def _format_result(result: Any) -> str:
-    """Format a result (dict or str) as a string for Observation."""
     if isinstance(result, str):
         return result
     return json.dumps(result, indent=2, default=str)
 
 
 # =============================================================================
-# health_get_program
+# SDK Tool Classes (migrated from agent/tools/health_tools.py)
 # =============================================================================
+
+# --- health_get_program ---
 
 class HealthGetProgramAction(Action):
     pass
 
 
-class HealthGetProgramObservation(TextObservation):
+class HealthGetProgramObservation(Observation):
     pass
 
 
@@ -82,15 +80,13 @@ class HealthGetProgramTool(ToolDefinition[HealthGetProgramAction, HealthGetProgr
         )]
 
 
-# =============================================================================
-# health_comp_countdown
-# =============================================================================
+# --- health_comp_countdown ---
 
 class HealthCompCountdownAction(Action):
     pass
 
 
-class HealthCompCountdownObservation(TextObservation):
+class HealthCompCountdownObservation(Observation):
     pass
 
 
@@ -115,9 +111,7 @@ class HealthCompCountdownTool(ToolDefinition[HealthCompCountdownAction, HealthCo
         )]
 
 
-# =============================================================================
-# health_update_session
-# =============================================================================
+# --- health_update_session ---
 
 class HealthUpdateSessionAction(Action):
     date: str = Field(description="ISO8601 date string (YYYY-MM-DD) of the session to update")
@@ -126,7 +120,7 @@ class HealthUpdateSessionAction(Action):
     )
 
 
-class HealthUpdateSessionObservation(TextObservation):
+class HealthUpdateSessionObservation(Observation):
     pass
 
 
@@ -151,9 +145,7 @@ class HealthUpdateSessionTool(ToolDefinition[HealthUpdateSessionAction, HealthUp
         )]
 
 
-# =============================================================================
-# health_new_version
-# =============================================================================
+# --- health_new_version ---
 
 class HealthNewVersionAction(Action):
     change_reason: str = Field(description="Human-readable reason for the version change")
@@ -162,7 +154,7 @@ class HealthNewVersionAction(Action):
     )
 
 
-class HealthNewVersionObservation(TextObservation):
+class HealthNewVersionObservation(Observation):
     pass
 
 
@@ -187,15 +179,13 @@ class HealthNewVersionTool(ToolDefinition[HealthNewVersionAction, HealthNewVersi
         )]
 
 
-# =============================================================================
-# kg_to_lb
-# =============================================================================
+# --- kg_to_lb ---
 
 class KgToLbAction(Action):
     kg: float = Field(description="Weight in kilograms")
 
 
-class KgToLbObservation(TextObservation):
+class KgToLbObservation(Observation):
     pass
 
 
@@ -217,15 +207,13 @@ class KgToLbTool(ToolDefinition[KgToLbAction, KgToLbObservation]):
         )]
 
 
-# =============================================================================
-# lb_to_kg
-# =============================================================================
+# --- lb_to_kg ---
 
 class LbToKgAction(Action):
     lb: float = Field(description="Weight in pounds")
 
 
-class LbToKgObservation(TextObservation):
+class LbToKgObservation(Observation):
     pass
 
 
@@ -247,15 +235,13 @@ class LbToKgTool(ToolDefinition[LbToKgAction, LbToKgObservation]):
         )]
 
 
-# =============================================================================
-# ipf_weight_classes
-# =============================================================================
+# --- ipf_weight_classes ---
 
 class IpfWeightClassesAction(Action):
     sex: str = Field(description="Sex for weight classes: 'M' or 'F'")
 
 
-class IpfWeightClassesObservation(TextObservation):
+class IpfWeightClassesObservation(Observation):
     pass
 
 
@@ -280,16 +266,14 @@ class IpfWeightClassesTool(ToolDefinition[IpfWeightClassesAction, IpfWeightClass
         )]
 
 
-# =============================================================================
-# pct_of_max
-# =============================================================================
+# --- pct_of_max ---
 
 class PctOfMaxAction(Action):
     max_kg: float = Field(description="Maximum weight in kilograms")
     pct: float = Field(description="Percentage (0-150, not 0-1). E.g., 85 for 85%")
 
 
-class PctOfMaxObservation(TextObservation):
+class PctOfMaxObservation(Observation):
     pass
 
 
@@ -314,9 +298,7 @@ class PctOfMaxTool(ToolDefinition[PctOfMaxAction, PctOfMaxObservation]):
         )]
 
 
-# =============================================================================
-# calculate_attempts
-# =============================================================================
+# --- calculate_attempts ---
 
 class CalculateAttemptsAction(Action):
     lift: str = Field(description="Lift type: 'squat', 'bench', or 'deadlift'")
@@ -326,7 +308,7 @@ class CalculateAttemptsAction(Action):
     last_felt: Optional[str] = Field(default=None, description="If 'hard', halve j2 for conservative third attempt")
 
 
-class CalculateAttemptsObservation(TextObservation):
+class CalculateAttemptsObservation(Observation):
     pass
 
 
@@ -357,16 +339,14 @@ class CalculateAttemptsTool(ToolDefinition[CalculateAttemptsAction, CalculateAtt
         )]
 
 
-# =============================================================================
-# health_rag_search
-# =============================================================================
+# --- health_rag_search ---
 
 class HealthRagSearchAction(Action):
     query: str = Field(description="Search query for health documents")
     n_results: int = Field(default=4, description="Number of results to return")
 
 
-class HealthRagSearchObservation(TextObservation):
+class HealthRagSearchObservation(Observation):
     pass
 
 
@@ -391,17 +371,13 @@ class HealthRagSearchTool(ToolDefinition[HealthRagSearchAction, HealthRagSearchO
         )]
 
 
-# =============================================================================
-# Granular Load Tools
-# =============================================================================
-
 # --- health_get_competition ---
 
 class HealthGetCompetitionAction(Action):
     date: str = Field(description="Competition date (YYYY-MM-DD)")
 
 
-class HealthGetCompetitionObservation(TextObservation):
+class HealthGetCompetitionObservation(Observation):
     pass
 
 
@@ -432,7 +408,7 @@ class HealthListCompetitionsAction(Action):
     pass
 
 
-class HealthListCompetitionsObservation(TextObservation):
+class HealthListCompetitionsObservation(Observation):
     pass
 
 
@@ -464,7 +440,7 @@ class HealthGetDietNotesAction(Action):
     end_date: Optional[str] = Field(default=None, description="Optional end of date range (YYYY-MM-DD)")
 
 
-class HealthGetDietNotesObservation(TextObservation):
+class HealthGetDietNotesObservation(Observation):
     pass
 
 
@@ -495,7 +471,7 @@ class HealthGetSessionAction(Action):
     date: str = Field(description="Session date (YYYY-MM-DD)")
 
 
-class HealthGetSessionObservation(TextObservation):
+class HealthGetSessionObservation(Observation):
     pass
 
 
@@ -527,7 +503,7 @@ class HealthGetSessionsRangeAction(Action):
     end_date: str = Field(description="End of date range (YYYY-MM-DD)")
 
 
-class HealthGetSessionsRangeObservation(TextObservation):
+class HealthGetSessionsRangeObservation(Observation):
     pass
 
 
@@ -558,7 +534,7 @@ class HealthGetSupplementsAction(Action):
     pass
 
 
-class HealthGetSupplementsObservation(TextObservation):
+class HealthGetSupplementsObservation(Observation):
     pass
 
 
@@ -589,7 +565,7 @@ class HealthGetMetaAction(Action):
     pass
 
 
-class HealthGetMetaObservation(TextObservation):
+class HealthGetMetaObservation(Observation):
     pass
 
 
@@ -621,7 +597,7 @@ class HealthGetPhasesAction(Action):
     pass
 
 
-class HealthGetPhasesObservation(TextObservation):
+class HealthGetPhasesObservation(Observation):
     pass
 
 
@@ -652,7 +628,7 @@ class HealthGetCurrentMaxesAction(Action):
     pass
 
 
-class HealthGetCurrentMaxesObservation(TextObservation):
+class HealthGetCurrentMaxesObservation(Observation):
     pass
 
 
@@ -683,7 +659,7 @@ class HealthGetOperatorPrefsAction(Action):
     pass
 
 
-class HealthGetOperatorPrefsObservation(TextObservation):
+class HealthGetOperatorPrefsObservation(Observation):
     pass
 
 
@@ -714,7 +690,7 @@ class HealthGetBreaksAction(Action):
     pass
 
 
-class HealthGetBreaksObservation(TextObservation):
+class HealthGetBreaksObservation(Observation):
     pass
 
 
@@ -746,7 +722,7 @@ class DaysUntilAction(Action):
     label: str = Field(default="target", description="Human label for the milestone, e.g. 'comp', 'deload'")
 
 
-class DaysUntilObservation(TextObservation):
+class DaysUntilObservation(Observation):
     pass
 
 
@@ -771,10 +747,6 @@ class DaysUntilTool(ToolDefinition[DaysUntilAction, DaysUntilObservation]):
         )]
 
 
-# =============================================================================
-# Granular Edit Tools
-# =============================================================================
-
 # --- health_update_competition ---
 
 class HealthUpdateCompetitionAction(Action):
@@ -784,7 +756,7 @@ class HealthUpdateCompetitionAction(Action):
     )
 
 
-class HealthUpdateCompetitionObservation(TextObservation):
+class HealthUpdateCompetitionObservation(Observation):
     pass
 
 
@@ -816,7 +788,7 @@ class HealthUpdateDietNoteAction(Action):
     notes: str = Field(description="The diet notes content (replaces existing)")
 
 
-class HealthUpdateDietNoteObservation(TextObservation):
+class HealthUpdateDietNoteObservation(Observation):
     pass
 
 
@@ -849,7 +821,7 @@ class HealthUpdateSupplementsAction(Action):
     )
 
 
-class HealthUpdateSupplementsObservation(TextObservation):
+class HealthUpdateSupplementsObservation(Observation):
     pass
 
 
@@ -874,9 +846,7 @@ class HealthUpdateSupplementsTool(ToolDefinition[HealthUpdateSupplementsAction, 
         )]
 
 
-# =============================================================================
-# Session CRUD tools
-# =============================================================================
+# --- health_create_session ---
 
 class HealthCreateSessionAction(Action):
     date: str = Field(description="Session date (YYYY-MM-DD)")
@@ -886,7 +856,7 @@ class HealthCreateSessionAction(Action):
     session_notes: str = Field(default="", description="Optional session notes")
 
 
-class HealthCreateSessionObservation(TextObservation):
+class HealthCreateSessionObservation(Observation):
     pass
 
 
@@ -908,11 +878,13 @@ class HealthCreateSessionTool(ToolDefinition[HealthCreateSessionAction, HealthCr
         )]
 
 
+# --- health_delete_session ---
+
 class HealthDeleteSessionAction(Action):
     date: str = Field(description="Session date to delete (YYYY-MM-DD)")
 
 
-class HealthDeleteSessionObservation(TextObservation):
+class HealthDeleteSessionObservation(Observation):
     pass
 
 
@@ -934,12 +906,14 @@ class HealthDeleteSessionTool(ToolDefinition[HealthDeleteSessionAction, HealthDe
         )]
 
 
+# --- health_reschedule_session ---
+
 class HealthRescheduleSessionAction(Action):
     old_date: str = Field(description="Current session date (YYYY-MM-DD)")
     new_date: str = Field(description="Target date to move to (YYYY-MM-DD)")
 
 
-class HealthRescheduleSessionObservation(TextObservation):
+class HealthRescheduleSessionObservation(Observation):
     pass
 
 
@@ -961,12 +935,14 @@ class HealthRescheduleSessionTool(ToolDefinition[HealthRescheduleSessionAction, 
         )]
 
 
+# --- health_add_exercise ---
+
 class HealthAddExerciseAction(Action):
     date: str = Field(description="Session date (YYYY-MM-DD)")
     exercise: Dict[str, Any] = Field(description="Exercise dict: {name (required), sets, reps, kg, rpe, notes}")
 
 
-class HealthAddExerciseObservation(TextObservation):
+class HealthAddExerciseObservation(Observation):
     pass
 
 
@@ -988,12 +964,14 @@ class HealthAddExerciseTool(ToolDefinition[HealthAddExerciseAction, HealthAddExe
         )]
 
 
+# --- health_remove_exercise ---
+
 class HealthRemoveExerciseAction(Action):
     date: str = Field(description="Session date (YYYY-MM-DD)")
     exercise_index: int = Field(description="Zero-based index of the exercise to remove")
 
 
-class HealthRemoveExerciseObservation(TextObservation):
+class HealthRemoveExerciseObservation(Observation):
     pass
 
 
@@ -1015,9 +993,7 @@ class HealthRemoveExerciseTool(ToolDefinition[HealthRemoveExerciseAction, Health
         )]
 
 
-# =============================================================================
-# Competition CRUD tools
-# =============================================================================
+# --- health_create_competition ---
 
 class HealthCreateCompetitionAction(Action):
     competition: Dict[str, Any] = Field(
@@ -1026,7 +1002,7 @@ class HealthCreateCompetitionAction(Action):
     )
 
 
-class HealthCreateCompetitionObservation(TextObservation):
+class HealthCreateCompetitionObservation(Observation):
     pass
 
 
@@ -1048,11 +1024,13 @@ class HealthCreateCompetitionTool(ToolDefinition[HealthCreateCompetitionAction, 
         )]
 
 
+# --- health_delete_competition ---
+
 class HealthDeleteCompetitionAction(Action):
     date: str = Field(description="Competition date to delete (YYYY-MM-DD)")
 
 
-class HealthDeleteCompetitionObservation(TextObservation):
+class HealthDeleteCompetitionObservation(Observation):
     pass
 
 
@@ -1074,15 +1052,13 @@ class HealthDeleteCompetitionTool(ToolDefinition[HealthDeleteCompetitionAction, 
         )]
 
 
-# =============================================================================
-# Diet note delete tool
-# =============================================================================
+# --- health_delete_diet_note ---
 
 class HealthDeleteDietNoteAction(Action):
     date: str = Field(description="Diet note date to delete (YYYY-MM-DD)")
 
 
-class HealthDeleteDietNoteObservation(TextObservation):
+class HealthDeleteDietNoteObservation(Observation):
     pass
 
 
@@ -1104,9 +1080,7 @@ class HealthDeleteDietNoteTool(ToolDefinition[HealthDeleteDietNoteAction, Health
         )]
 
 
-# =============================================================================
-# Meta & Structure update tools
-# =============================================================================
+# --- health_update_meta ---
 
 class HealthUpdateMetaAction(Action):
     updates: Dict[str, Any] = Field(
@@ -1116,7 +1090,7 @@ class HealthUpdateMetaAction(Action):
     )
 
 
-class HealthUpdateMetaObservation(TextObservation):
+class HealthUpdateMetaObservation(Observation):
     pass
 
 
@@ -1141,13 +1115,15 @@ class HealthUpdateMetaTool(ToolDefinition[HealthUpdateMetaAction, HealthUpdateMe
         )]
 
 
+# --- health_update_phases ---
+
 class HealthUpdatePhasesAction(Action):
     phases: List[Dict[str, Any]] = Field(
         description="Complete phases list. Each phase: {name (required), start_week (int), end_week (int), intent (str)}"
     )
 
 
-class HealthUpdatePhasesObservation(TextObservation):
+class HealthUpdatePhasesObservation(Observation):
     pass
 
 
@@ -1169,13 +1145,15 @@ class HealthUpdatePhasesTool(ToolDefinition[HealthUpdatePhasesAction, HealthUpda
         )]
 
 
+# --- health_update_current_maxes ---
+
 class HealthUpdateCurrentMaxesAction(Action):
     squat_kg: Optional[float] = Field(default=None, description="New squat max in kg (omit to leave unchanged)")
     bench_kg: Optional[float] = Field(default=None, description="New bench max in kg (omit to leave unchanged)")
     deadlift_kg: Optional[float] = Field(default=None, description="New deadlift max in kg (omit to leave unchanged)")
 
 
-class HealthUpdateCurrentMaxesObservation(TextObservation):
+class HealthUpdateCurrentMaxesObservation(Observation):
     pass
 
 
@@ -1198,7 +1176,7 @@ class HealthUpdateCurrentMaxesTool(ToolDefinition[HealthUpdateCurrentMaxesAction
 
 
 # =============================================================================
-# Register all tools
+# Register all SDK tools
 # =============================================================================
 
 register_tool("HealthGetProgramTool", HealthGetProgramTool)
@@ -1211,7 +1189,6 @@ register_tool("IpfWeightClassesTool", IpfWeightClassesTool)
 register_tool("PctOfMaxTool", PctOfMaxTool)
 register_tool("CalculateAttemptsTool", CalculateAttemptsTool)
 register_tool("HealthRagSearchTool", HealthRagSearchTool)
-# Granular load tools
 register_tool("HealthGetCompetitionTool", HealthGetCompetitionTool)
 register_tool("HealthListCompetitionsTool", HealthListCompetitionsTool)
 register_tool("HealthGetDietNotesTool", HealthGetDietNotesTool)
@@ -1224,33 +1201,28 @@ register_tool("HealthGetCurrentMaxesTool", HealthGetCurrentMaxesTool)
 register_tool("HealthGetOperatorPrefsTool", HealthGetOperatorPrefsTool)
 register_tool("HealthGetBreaksTool", HealthGetBreaksTool)
 register_tool("DaysUntilTool", DaysUntilTool)
-# Granular edit tools
 register_tool("HealthUpdateCompetitionTool", HealthUpdateCompetitionTool)
 register_tool("HealthUpdateDietNoteTool", HealthUpdateDietNoteTool)
 register_tool("HealthUpdateSupplementsTool", HealthUpdateSupplementsTool)
-# Session CRUD
 register_tool("HealthCreateSessionTool", HealthCreateSessionTool)
 register_tool("HealthDeleteSessionTool", HealthDeleteSessionTool)
 register_tool("HealthRescheduleSessionTool", HealthRescheduleSessionTool)
 register_tool("HealthAddExerciseTool", HealthAddExerciseTool)
 register_tool("HealthRemoveExerciseTool", HealthRemoveExerciseTool)
-# Competition CRUD
 register_tool("HealthCreateCompetitionTool", HealthCreateCompetitionTool)
 register_tool("HealthDeleteCompetitionTool", HealthDeleteCompetitionTool)
-# Diet note delete
 register_tool("HealthDeleteDietNoteTool", HealthDeleteDietNoteTool)
-# Meta & structure updates
 register_tool("HealthUpdateMetaTool", HealthUpdateMetaTool)
 register_tool("HealthUpdatePhasesTool", HealthUpdatePhasesTool)
 register_tool("HealthUpdateCurrentMaxesTool", HealthUpdateCurrentMaxesTool)
 
 
 # =============================================================================
-# Getter function
+# Plugin contract: get_tools()
 # =============================================================================
 
-def get_health_tools() -> List[Tool]:
-    """Get all health tools for session initialization."""
+def get_tools() -> List[Tool]:
+    """Get all health SDK Tool objects (side effect: register_tool already called above)."""
     return [
         Tool(name="HealthGetProgramTool"),
         Tool(name="HealthCompCountdownTool"),
@@ -1262,7 +1234,6 @@ def get_health_tools() -> List[Tool]:
         Tool(name="PctOfMaxTool"),
         Tool(name="CalculateAttemptsTool"),
         Tool(name="HealthRagSearchTool"),
-        # Granular load tools
         Tool(name="HealthGetCompetitionTool"),
         Tool(name="HealthListCompetitionsTool"),
         Tool(name="HealthGetDietNotesTool"),
@@ -1275,23 +1246,427 @@ def get_health_tools() -> List[Tool]:
         Tool(name="HealthGetOperatorPrefsTool"),
         Tool(name="HealthGetBreaksTool"),
         Tool(name="DaysUntilTool"),
-        # Granular edit tools
         Tool(name="HealthUpdateCompetitionTool"),
         Tool(name="HealthUpdateDietNoteTool"),
         Tool(name="HealthUpdateSupplementsTool"),
-        # Session CRUD
         Tool(name="HealthCreateSessionTool"),
         Tool(name="HealthDeleteSessionTool"),
         Tool(name="HealthRescheduleSessionTool"),
         Tool(name="HealthAddExerciseTool"),
         Tool(name="HealthRemoveExerciseTool"),
-        # Competition CRUD
         Tool(name="HealthCreateCompetitionTool"),
         Tool(name="HealthDeleteCompetitionTool"),
-        # Diet note delete
         Tool(name="HealthDeleteDietNoteTool"),
-        # Meta & structure
         Tool(name="HealthUpdateMetaTool"),
         Tool(name="HealthUpdatePhasesTool"),
         Tool(name="HealthUpdateCurrentMaxesTool"),
     ]
+
+
+# =============================================================================
+# Plugin contract: get_schemas() — JSON schemas for non-agentic specialist path
+# =============================================================================
+
+def get_schemas() -> Dict[str, Dict[str, Any]]:
+    """Return snake_case tool name → JSON schema mapping."""
+    return {
+        "health_get_program": {
+            "name": "health_get_program",
+            "description": (
+                "Get the full training program from DynamoDB. "
+                "Returns the cached program dict with all sessions, phases, meta, and preferences."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+        "health_get_session": {
+            "name": "health_get_session",
+            "description": "Get a single training session by date.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Session date (YYYY-MM-DD)"},
+                },
+                "required": ["date"],
+            },
+        },
+        "health_update_session": {
+            "name": "health_update_session",
+            "description": "Update fields on an existing training session.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "ISO8601 date string (YYYY-MM-DD) of the session to update"},
+                    "patch": {"type": "object", "description": "Dict with session fields to update. Allowed keys: completed, session_rpe, body_weight_kg, session_notes, exercises"},
+                },
+                "required": ["date", "patch"],
+            },
+        },
+        "health_new_version": {
+            "name": "health_new_version",
+            "description": "Create a new program version with the given patches.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "change_reason": {"type": "string", "description": "Human-readable reason for the version change"},
+                    "patches": {"type": "array", "items": {"type": "object"}, "description": "List of patches, each with 'path' and 'value' keys"},
+                },
+                "required": ["change_reason", "patches"],
+            },
+        },
+        "health_rag_search": {
+            "name": "health_rag_search",
+            "description": "Search health documents using RAG.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query for health documents"},
+                    "n_results": {"type": "integer", "description": "Number of results to return", "default": 4},
+                },
+                "required": ["query"],
+            },
+        },
+        "health_get_competition": {
+            "name": "health_get_competition",
+            "description": "Get competition details by date.",
+            "parameters": {
+                "type": "object",
+                "properties": {"date": {"type": "string", "description": "Competition date (YYYY-MM-DD)"}},
+                "required": ["date"],
+            },
+        },
+        "health_get_diet_notes": {
+            "name": "health_get_diet_notes",
+            "description": "Get diet notes for a date range.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start of date range (YYYY-MM-DD)"},
+                    "end_date": {"type": "string", "description": "End of date range (YYYY-MM-DD)"},
+                },
+                "required": [],
+            },
+        },
+        "health_get_sessions_range": {
+            "name": "health_get_sessions_range",
+            "description": "Get training sessions for a date range.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Start of date range (YYYY-MM-DD)"},
+                    "end_date": {"type": "string", "description": "End of date range (YYYY-MM-DD)"},
+                },
+                "required": ["start_date", "end_date"],
+            },
+        },
+        "health_get_supplements": {
+            "name": "health_get_supplements",
+            "description": "Get the supplement protocol from the program.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+        "health_get_meta": {
+            "name": "health_get_meta",
+            "description": "Get program metadata (name, dates, weight class, etc.).",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+        "health_get_phases": {
+            "name": "health_get_phases",
+            "description": "Get the training phases from the program.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+        "health_get_current_maxes": {
+            "name": "health_get_current_maxes",
+            "description": "Get current training maxes (squat, bench, deadlift).",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+        "health_update_competition": {
+            "name": "health_update_competition",
+            "description": "Update competition fields by date.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Competition date to update (YYYY-MM-DD)"},
+                    "patch": {"type": "object", "description": "Fields to update (targets, status, notes, etc.)"},
+                },
+                "required": ["date", "patch"],
+            },
+        },
+        "health_update_diet_note": {
+            "name": "health_update_diet_note",
+            "description": "Create or replace a diet note for a date.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Date for the diet note (YYYY-MM-DD)"},
+                    "notes": {"type": "string", "description": "The diet notes content"},
+                },
+                "required": ["date", "notes"],
+            },
+        },
+        "health_update_supplements": {
+            "name": "health_update_supplements",
+            "description": "Update the supplement protocol.",
+            "parameters": {
+                "type": "object",
+                "properties": {"patch": {"type": "object", 'description': '{"supplements": [...]} or {"supplement_phases": [...]}'},},
+                "required": ["patch"],
+            },
+        },
+        "health_create_session": {
+            "name": "health_create_session",
+            "description": "Create a new training session.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Session date (YYYY-MM-DD)"},
+                    "day": {"type": "string", "description": "Day label e.g. Monday"},
+                    "week_number": {"type": "integer", "description": "Training week number"},
+                    "exercises": {"type": "array", "items": {"type": "object"}, "description": "Optional list of exercises"},
+                    "session_notes": {"type": "string", "description": "Optional session notes", "default": ""},
+                },
+                "required": ["date", "day", "week_number"],
+            },
+        },
+        "health_delete_session": {
+            "name": "health_delete_session",
+            "description": "Delete a training session by date.",
+            "parameters": {
+                "type": "object",
+                "properties": {"date": {"type": "string", "description": "Session date to delete (YYYY-MM-DD)"}},
+                "required": ["date"],
+            },
+        },
+        "health_reschedule_session": {
+            "name": "health_reschedule_session",
+            "description": "Move a training session from one date to another.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "old_date": {"type": "string", "description": "Current session date (YYYY-MM-DD)"},
+                    "new_date": {"type": "string", "description": "Target date to move to (YYYY-MM-DD)"},
+                },
+                "required": ["old_date", "new_date"],
+            },
+        },
+        "health_add_exercise": {
+            "name": "health_add_exercise",
+            "description": "Add an exercise to a training session.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Session date (YYYY-MM-DD)"},
+                    "exercise": {"type": "object", "description": "Exercise dict: {name, sets, reps, kg, rpe, notes}"},
+                },
+                "required": ["date", "exercise"],
+            },
+        },
+        "health_remove_exercise": {
+            "name": "health_remove_exercise",
+            "description": "Remove an exercise from a training session by index.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Session date (YYYY-MM-DD)"},
+                    "exercise_index": {"type": "integer", "description": "Zero-based index of the exercise to remove"},
+                },
+                "required": ["date", "exercise_index"],
+            },
+        },
+        "health_create_competition": {
+            "name": "health_create_competition",
+            "description": "Create a new competition entry.",
+            "parameters": {
+                "type": "object",
+                "properties": {"competition": {"type": "object", "description": "Competition dict: name, date, federation, status, weight_class_kg, location, targets, notes"}},
+                "required": ["competition"],
+            },
+        },
+        "health_delete_competition": {
+            "name": "health_delete_competition",
+            "description": "Delete a competition entry by date.",
+            "parameters": {
+                "type": "object",
+                "properties": {"date": {"type": "string", "description": "Competition date to delete (YYYY-MM-DD)"}},
+                "required": ["date"],
+            },
+        },
+        "health_delete_diet_note": {
+            "name": "health_delete_diet_note",
+            "description": "Delete a diet note by date.",
+            "parameters": {
+                "type": "object",
+                "properties": {"date": {"type": "string", "description": "Diet note date to delete (YYYY-MM-DD)"}},
+                "required": ["date"],
+            },
+        },
+        "health_update_meta": {
+            "name": "health_update_meta",
+            "description": "Update program metadata fields.",
+            "parameters": {
+                "type": "object",
+                "properties": {"updates": {"type": "object", "description": "Dict of meta fields to update"}},
+                "required": ["updates"],
+            },
+        },
+        "health_update_phases": {
+            "name": "health_update_phases",
+            "description": "Replace the full phases list.",
+            "parameters": {
+                "type": "object",
+                "properties": {"phases": {"type": "array", "items": {"type": "object"}, "description": "Complete phases list. Each: {name, start_week, end_week, intent}"}},
+                "required": ["phases"],
+            },
+        },
+        "health_update_current_maxes": {
+            "name": "health_update_current_maxes",
+            "description": "Update current training maxes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "squat_kg": {"type": "number", "description": "New squat max in kg"},
+                    "bench_kg": {"type": "number", "description": "New bench max in kg"},
+                    "deadlift_kg": {"type": "number", "description": "New deadlift max in kg"},
+                },
+                "required": [],
+            },
+        },
+        "kg_to_lb": {
+            "name": "kg_to_lb",
+            "description": "Convert kilograms to pounds.",
+            "parameters": {"type": "object", "properties": {"kg": {"type": "number", "description": "Weight in kilograms"}}, "required": ["kg"]},
+        },
+        "lb_to_kg": {
+            "name": "lb_to_kg",
+            "description": "Convert pounds to kilograms.",
+            "parameters": {"type": "object", "properties": {"lb": {"type": "number", "description": "Weight in pounds"}}, "required": ["lb"]},
+        },
+        "ipf_weight_classes": {
+            "name": "ipf_weight_classes",
+            "description": "Get IPF weight classes for a given sex.",
+            "parameters": {"type": "object", "properties": {"sex": {"type": "string", "description": "Sex: 'M' or 'F'"}}, "required": ["sex"]},
+        },
+        "pct_of_max": {
+            "name": "pct_of_max",
+            "description": "Calculate a percentage of a max weight.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_kg": {"type": "number", "description": "Maximum weight in kg"},
+                    "pct": {"type": "number", "description": "Percentage (0-150, not 0-1)"},
+                },
+                "required": ["max_kg", "pct"],
+            },
+        },
+        "calculate_attempts": {
+            "name": "calculate_attempts",
+            "description": "Calculate competition attempt weights based on opener.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lift": {"type": "string", "description": "Lift type: squat, bench, or deadlift"},
+                    "opener_kg": {"type": "number", "description": "First attempt weight in kg"},
+                    "j1_override": {"type": "number", "description": "Override jump 1 from program prefs (kg)"},
+                    "j2_override": {"type": "number", "description": "Override jump 2 from program prefs (kg)"},
+                    "last_felt": {"type": "string", "description": "If 'hard', halve j2 for conservative third attempt"},
+                },
+                "required": ["lift", "opener_kg"],
+            },
+        },
+        "days_until": {
+            "name": "days_until",
+            "description": "Calculate days until a target date.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_date": {"type": "string", "description": "Target date (YYYY-MM-DD)"},
+                    "label": {"type": "string", "description": "Human label for the milestone", "default": "target"},
+                },
+                "required": ["target_date"],
+            },
+        },
+    }
+
+
+# =============================================================================
+# Plugin contract: execute() — async dispatcher for non-agentic specialist path
+# =============================================================================
+
+async def execute(name: str, args: Dict[str, Any]) -> str:
+    """Route health tool calls to the underlying health module functions."""
+    from health import (
+        health_get_program,
+        health_get_session,
+        health_update_session as do_update_session,
+        health_rag_search,
+        health_get_competition,
+        health_get_diet_notes,
+        health_get_sessions_range,
+        health_get_supplements,
+        health_get_meta,
+        health_get_phases,
+        health_get_current_maxes,
+        health_update_competition as do_update_competition,
+        health_update_diet_note as do_update_diet_note,
+        health_update_supplements as do_update_supplements,
+        health_create_session as do_create_session,
+        health_delete_session as do_delete_session,
+        health_reschedule_session as do_reschedule_session,
+        health_add_exercise as do_add_exercise,
+        health_remove_exercise as do_remove_exercise,
+        health_create_competition as do_create_competition,
+        health_delete_competition as do_delete_competition,
+        health_delete_diet_note as do_delete_diet_note,
+        health_update_meta as do_update_meta,
+        health_update_phases as do_update_phases,
+        health_update_current_maxes as do_update_current_maxes,
+        kg_to_lb,
+        lb_to_kg,
+        ipf_weight_classes,
+        pct_of_max,
+        calculate_attempts,
+        days_until,
+        health_new_version as do_new_version,
+    )
+
+    ROUTES = {
+        "health_get_program": lambda: health_get_program(),
+        "health_get_session": lambda: health_get_session(args["date"]),
+        "health_update_session": lambda: do_update_session(args["date"], args["patch"]),
+        "health_new_version": lambda: do_new_version(args["change_reason"], args["patches"]),
+        "health_rag_search": lambda: health_rag_search(args["query"], args.get("n_results", 4)),
+        "health_get_competition": lambda: health_get_competition(args["date"]),
+        "health_get_diet_notes": lambda: health_get_diet_notes(args.get("start_date"), args.get("end_date")),
+        "health_get_sessions_range": lambda: health_get_sessions_range(args["start_date"], args["end_date"]),
+        "health_get_supplements": lambda: health_get_supplements(),
+        "health_get_meta": lambda: health_get_meta(),
+        "health_get_phases": lambda: health_get_phases(),
+        "health_get_current_maxes": lambda: health_get_current_maxes(),
+        "health_update_competition": lambda: do_update_competition(args["date"], args["patch"]),
+        "health_update_diet_note": lambda: do_update_diet_note(args["date"], args["notes"]),
+        "health_update_supplements": lambda: do_update_supplements(args["patch"]),
+        "health_create_session": lambda: do_create_session(args["date"], args["day"], args["week_number"], args.get("exercises"), args.get("session_notes", "")),
+        "health_delete_session": lambda: do_delete_session(args["date"]),
+        "health_reschedule_session": lambda: do_reschedule_session(args["old_date"], args["new_date"]),
+        "health_add_exercise": lambda: do_add_exercise(args["date"], args["exercise"]),
+        "health_remove_exercise": lambda: do_remove_exercise(args["date"], args["exercise_index"]),
+        "health_create_competition": lambda: do_create_competition(args["competition"]),
+        "health_delete_competition": lambda: do_delete_competition(args["date"]),
+        "health_delete_diet_note": lambda: do_delete_diet_note(args["date"]),
+        "health_update_meta": lambda: do_update_meta(args["updates"]),
+        "health_update_phases": lambda: do_update_phases(args["phases"]),
+        "health_update_current_maxes": lambda: do_update_current_maxes(args.get("squat_kg"), args.get("bench_kg"), args.get("deadlift_kg")),
+        "kg_to_lb": lambda: kg_to_lb(args["kg"]),
+        "lb_to_kg": lambda: lb_to_kg(args["lb"]),
+        "ipf_weight_classes": lambda: ipf_weight_classes(args["sex"]),
+        "pct_of_max": lambda: pct_of_max(args["max_kg"], args["pct"]),
+        "calculate_attempts": lambda: calculate_attempts(args["lift"], args["opener_kg"], args.get("j1_override"), args.get("j2_override"), args.get("last_felt")),
+        "days_until": lambda: days_until(args["target_date"], args.get("label", "target")),
+    }
+
+    handler = ROUTES.get(name)
+    if not handler:
+        return f"Unknown health tool: {name}"
+
+    result = handler()
+    if isinstance(result, str):
+        return result
+    return json.dumps(result, indent=2, default=str)

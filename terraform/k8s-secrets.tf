@@ -84,6 +84,8 @@ resource "kubernetes_config_map" "if_agent_api_config" {
 
     SPECIALIST_PRESET    = var.specialist_preset
     SPECIALIST_MAX_TURNS = tostring(var.specialist_max_turns)
+    SPECIALISTS_PATH     = var.specialists_path
+    EXTERNAL_TOOLS_PATH  = var.tools_path
     THINKING_PRESET      = var.thinking_preset
     THINKING_MAX_TURNS   = tostring(var.thinking_max_turns)
 

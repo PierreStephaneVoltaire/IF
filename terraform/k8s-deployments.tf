@@ -66,6 +66,22 @@ resource "kubernetes_deployment" "if_agent_api" {
           }
         }
 
+        volume {
+          name = "tools-directory"
+          host_path {
+            path = "${abspath(path.root)}/../tools"
+            type = "DirectoryOrCreate"
+          }
+        }
+
+        volume {
+          name = "specialists-directory"
+          host_path {
+            path = "${abspath(path.root)}/../specialists"
+            type = "DirectoryOrCreate"
+          }
+        }
+
         container {
           name              = "api"
           image             = "${aws_ecr_repository.if_agent_api.repository_url}:latest"
@@ -121,6 +137,18 @@ resource "kubernetes_deployment" "if_agent_api" {
           volume_mount {
             name       = "aws-credentials"
             mount_path = "/root/.aws"
+            read_only  = true
+          }
+
+          volume_mount {
+            name       = "tools-directory"
+            mount_path = "/app/tools"
+            read_only  = true
+          }
+
+          volume_mount {
+            name       = "specialists-directory"
+            mount_path = "/app/specialists"
             read_only  = true
           }
 

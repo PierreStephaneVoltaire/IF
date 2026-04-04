@@ -34,9 +34,11 @@ app/
 │   │   ├── models.py        # GET /v1/models
 │   │   ├── files.py         # File serving from sandbox
 │   │   ├── webhooks.py      # Channel registration
-│   │   └── directives.py    # Directive CRUD API
+│   │   ├── directives.py    # Directive CRUD API
+│   │   └── admin.py         # POST /admin/reload-tools (hot reload)
 │   ├── agent/               # Core agent system
 │   │   ├── session.py       # AgentSession, system prompt assembly, execute_agent()
+│   │   ├── tool_registry.py # External tool plugin discovery, loading, indexing
 │   │   ├── specialists.py   # YAML-based specialist auto-discovery + rendering
 │   │   ├── tiering.py       # Context-aware model selection (air/standard/heavy)
 │   │   ├── condenser.py     # Conversation summarization
@@ -53,6 +55,9 @@ app/
 │   │   │   ├── meta_analysis.py
 │   │   │   └── growth_tracker.py
 │   │   └── tools/           # OpenHands SDK tools (Action/Observation/Executor/ToolDefinition)
+│   │       ├── tool_schemas.py     # Registry-backed schema resolution for specialists
+│   │       ├── discovery_tools.py  # discover_tools + use_tool system tools
+│   │       └── base.py             # TextObservation base class
 │   ├── channels/            # Multi-platform message handling
 │   │   ├── dispatcher.py    # Message flow bridge (translate → agent → chunk → deliver)
 │   │   ├── delivery.py      # Send responses back to platforms
@@ -96,11 +101,16 @@ app/
 │       ├── program_store.py # DynamoDB program storage
 │       ├── rag.py           # ChromaDB RAG for PDF documents (IPF rulebook, etc.)
 │       ├── renderer.py      # Program rendering
-│       └── tools.py         # Health CRUD tools + RAG search
+│       └── tools.py         # Health CRUD functions (called by tool plugin)
 ├── docker/                  # Packer build files (.pkr.hcl)
 ├── terraform/               # Kubernetes, AWS infra
 └── main_system_prompt.txt   # Agent personality base prompt
 specialists/                 # One subdir per specialist (specialist.yaml + agent.j2)
+tools/                       # External tool plugins (one subdir per plugin)
+├── health/                  # Training program management (35 tools)
+├── finance/                 # Financial profile and investments (21 tools)
+├── diary/                   # Write-only diary entries and signals
+└── proposals/              # Agent-proposed directives (4 tools)
 utils/                       # TypeScript/Node.js utility apps
 ├── main-portal/             # Hub dashboard (port 3000)
 ├── finance-portal/          # Net worth, investments (port 3002)
@@ -254,23 +264,36 @@ All tools use the OpenHands SDK Action/Observation/Executor/ToolDefinition patte
 | Media | `agent/tools/media_tools.py` | read_media |
 | Orchestrator | `orchestrator/executor.py` | execute_plan, analyze_parallel |
 | Memory | `agent/memory_tools.py` | search, add, remove, list (ChromaDB) |
+| Discovery | `agent/tools/discovery_tools.py` | discover_tools, use_tool (external plugin access) |
 
-### Specialist-Only Tools (via tool_schemas.py)
+### External Tool Plugins
 
-NOT loaded into the main agent. Dispatched to specialist subagents via OpenRouter function schemas:
+Domain tools live in `tools/` as mountable, independently deployable plugins. Discovered at startup by `agent/tool_registry.py` — mirrors the specialist auto-discovery pattern. Each plugin is a subdirectory with `tool.yaml` (metadata) + `tool.py` (exports `get_tools()`, `get_schemas()`, `execute()`).
 
-| Module | Description |
-|--------|-------------|
-| `agent/tools/finance_tools.py` | Financial read + write tools (DynamoDB) |
-| `agent/tools/health_tools.py` | Health program CRUD + RAG search |
-| `agent/tools/diary_tools.py` | Diary entry tools |
-| `agent/tools/proposal_tools.py` | Proposal management tools |
+| Plugin | Scope | Tools | Description |
+|--------|-------|-------|-------------|
+| `tools/health/` | specialist | 35 | Training program CRUD, session logging, RAG search, unit conversions |
+| `tools/finance/` | specialist | 21 | Financial profile, investments, goals, cashflow, holdings |
+| `tools/diary/` | specialist | 2 | Write-only diary entries, signal computation |
+| `tools/proposals/` | specialist | 4 | Proposal CRUD, implementation plan generation |
+
+**Two execution paths:**
+- **SDK path** (agentic specialists): Tools registered via `register_tool()` at import time. SDK resolves by PascalCase name.
+- **JSON schema path** (non-agentic specialists): `tool_schemas.py` delegates to registry for schema resolution and dispatch. Uses snake_case names.
+
+**Adding a new plugin:**
+1. Create `tools/{name}/tool.yaml` with name, description, version, scope
+2. Create `tools/{name}/tool.py` exporting `get_tools()`, `get_schemas()`, `async execute(name, args)`
+3. Optionally add `requirements.txt` for pip dependencies
+4. App picks it up on next startup, or hit `POST /admin/reload-tools` for hot reload
 
 ### Tool Authoring
 
-Python classes with Action (params), Observation (result), Executor (logic), ToolDefinition (metadata). Exposed via `get_*_tools()` getter functions in each module, loaded in `session.py`. `TOOL_OUTPUT_CHAR_LIMIT` is 200K chars (SDK default 50K causes silent clipping).
+**System tools** (in `agent/tools/`): Python classes with Action (params), Observation (result), Executor (logic), ToolDefinition (metadata). Exposed via `get_*_tools()` getter functions, loaded in `session.py`. `TOOL_OUTPUT_CHAR_LIMIT` is 200K chars (SDK default 50K causes silent clipping).
 
 All Observation subclasses inherit from `TextObservation` (`agent/tools/base.py`) instead of the raw SDK `Observation`. This fixes an SDK bug where `to_llm_content` returns empty content because custom Observations store results in named fields but don't override `to_llm_content`. `TextObservation` wires `to_llm_content` through `visualize.plain`, so subclasses only need a correct `visualize` implementation.
+
+**External tool plugins** (in `tools/`): Same SDK pattern, but self-contained with no imports from `agent/`. Export `get_tools()`, `get_schemas()`, and `async execute(name, args)`. Use `Observation` (not `TextObservation`) since they can't import from `agent/tools/base.py`.
 
 ## Channels
 
@@ -360,7 +383,7 @@ Tools: `terminal_execute`, `terminal_read_file`, `terminal_write_file`, `termina
 
 Training program management with DynamoDB storage (`if-health` table) and ChromaDB RAG for PDF documents (IPF rulebook, anti-doping list, supplement PDFs).
 
-Tools: program CRUD, session logging, competition management, RAG search, unit conversions. Uses Apache Tika for PDF extraction, 500-token chunks with 50-token overlap.
+Core functions in `health/tools.py` are wrapped by the external tool plugin at `tools/health/tool.py`. Tools: program CRUD, session logging, competition management, RAG search, unit conversions. Uses Apache Tika for PDF extraction, 500-token chunks with 50-token overlap.
 
 ## Heartbeat
 
@@ -440,13 +463,17 @@ Key configuration (see `app/src/config.py` for full list):
 | `REFLECTION_ENABLED` | true | Enable reflection engine |
 | `TERMINAL_URL` | `http://open-terminal:7681` | OpenTerminal deployment URL |
 | `TOOL_OUTPUT_CHAR_LIMIT` | 200000 | Max tool output chars before SDK truncation |
+| `EXTERNAL_TOOLS_PATH` | "" | Override path for external tool plugins |
+| `EXTERNAL_TOOLS_FALLBACK` | `project_root/tools/` | Fallback path if EXTERNAL_TOOLS_PATH is empty |
+| `SPECIALISTS_PATH` | `project_root/specialists/` | Path to specialists directory |
 
 ## Key Patterns
 
-- **Specialist auto-discovery**: `specialists.py` scans `specialists/*/specialist.yaml` at import time — no code changes needed to add specialists
+- **Specialist auto-discovery**: `specialists.py` scans `SPECIALISTS_PATH` at import time — no code changes needed to add specialists
+- **Tool plugin auto-discovery**: `tool_registry.py` scans `tools/*/tool.yaml` at startup — no code changes needed to add domain tools. Plugins export `get_tools()`, `get_schemas()`, `execute()`. Hot reload via `POST /admin/reload-tools`.
 - **Delegation pipeline**: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent` in `delegation.py`
-- **Subagent spawning**: `spawn_specialist(type, task, context)` in `subagents.py`; `_run_subagent()` gives subagents terminal access
-- **Tool authoring**: Python classes (Action/Observation/Executor/ToolDefinition) registered with `register_tool()`, exposed via `get_*_tools()` getters
+- **Subagent spawning**: `spawn_specialist(type, task, context)` in `subagents.py`; `_run_subagent()` gives subagents terminal and domain tool access via registry
+- **Tool authoring**: System tools use Python classes (Action/Observation/Executor/ToolDefinition) registered with `register_tool()`. External plugins use the same SDK pattern but are self-contained in `tools/`.
 - **Context/signal injection**: `context_tools.py` auto-injects diary signals, financial context, and snapshots into every system prompt
 - **FILES metadata pattern**: `FILES:` lines in agent output are stripped by `FilesStripBuffer` for artifact tracking
 - **Channel message flow**: listener → debounce → dispatcher → translator → completions → chunker → delivery

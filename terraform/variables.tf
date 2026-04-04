@@ -509,6 +509,18 @@ variable "google_oauth_client_secret" {
   sensitive   = true
 }
 
+variable "tools_path" {
+  description = "Path to external tools directory (mounted volume)"
+  type        = string
+  default     = "/app/tools"
+}
+
+variable "specialists_path" {
+  description = "Path to specialists directory (mounted volume)"
+  type        = string
+  default     = "/app/specialists"
+}
+
 variable "tinyauth_oauth_whitelist" {
   description = "Comma-separated list of allowed Google email addresses"
   type        = string

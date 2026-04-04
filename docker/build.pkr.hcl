@@ -76,6 +76,12 @@ build {
     destination = "/app/src/agent/prompts/"
   }
 
+  # Copy external tool plugins into expected runtime location
+  provisioner "file" {
+    source      = "../tools"
+    destination = "/app/"
+  }
+
   # Copy main system prompt to /app/ (code resolves via Path(__file__).parent…parent…parent)
   provisioner "file" {
     source      = "../app/main_system_prompt.txt"

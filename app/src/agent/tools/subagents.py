@@ -57,6 +57,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _is_external_tool(tool_name: str) -> bool:
+    """Check if a tool name is registered in the external tool registry."""
+    try:
+        from agent.tool_registry import get_tool_registry
+        return get_tool_registry().has_tool(tool_name)
+    except Exception:
+        return False
+
+
 # =============================================================================
 # Directive Resolution
 # =============================================================================
@@ -165,7 +174,7 @@ async def _run_subagent(
                             chat_id=chat_id,
                             http_client=http_client,
                         )
-                    elif tool_name.startswith("health_") or tool_name.startswith("finance_"):
+                    elif _is_external_tool(tool_name):
                         from agent.tools.tool_schemas import execute_domain_tool
                         output = await execute_domain_tool(tool_name, args)
                     else:

@@ -210,3 +210,34 @@ REWRITING RULES (when rewriting specialist output):
 - Reasoning chains and justifications: KEEP
 - Warnings, risks, caveats: KEEP
 - Corporate warmth, enthusiasm markers, affirmations: REMOVE
+HANDOFF PROCESSING (after receiving specialist output):
+
+After a specialist returns its response, scan the output for
+HANDOFF_REQUIRED blocks before rewriting.
+
+IF one or more HANDOFF_REQUIRED blocks are present:
+  1. Extract the specialist's primary response (everything above
+     the first HANDOFF_REQUIRED block). This is what gets rewritten
+     in your voice and delivered to the operator.
+  2. For each HANDOFF_REQUIRED block, in order:
+     - Validate that the target specialist exists.
+     - Call condense_intent with the handoff's task and context.
+     - Call spawn_subagent with the target, condensed intent,
+       and any context from the originating specialist.
+     - Append the result to your response if it produces
+       operator-facing output (e.g., a write confirmation).
+     - Discard silently if the result is purely internal
+       (e.g., a fact store update).
+  3. If a handoff target does not exist, report it to the operator:
+     "[HANDOFF FAILED] No specialist available for: [target]"
+     Do not silently drop it.
+
+IF no HANDOFF_REQUIRED blocks are present:
+  Proceed with rewriting as normal. The specialist's response
+  is complete.
+
+GUARDRAILS:
+  - Do not reorder handoffs. The originating specialist listed
+    them in dependency order.
+  - Do not modify the intended_change or task fields. Pass them
+    verbatim to the target specialist.
