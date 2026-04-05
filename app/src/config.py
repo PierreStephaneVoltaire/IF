@@ -117,9 +117,6 @@ THINKING_MAX_TURNS = int(os.getenv("THINKING_MAX_TURNS", "20"))
 # Media Upload Configuration
 # =============================================================================
 MEDIA_UPLOAD_DIR = os.getenv("MEDIA_UPLOAD_DIR", "uploads")
-MEDIA_AIR_PRESET = os.getenv("MEDIA_AIR_PRESET", "@preset/air-media")
-MEDIA_STANDARD_PRESET = os.getenv("MEDIA_STANDARD_PRESET", "@preset/standard-media")
-MEDIA_HEAVY_PRESET = os.getenv("MEDIA_HEAVY_PRESET", "@preset/heavy-media")
 
 # Cache Configuration
 CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # 1 hour

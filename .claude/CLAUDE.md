@@ -59,7 +59,7 @@ app/
 │   │       ├── discovery_tools.py  # discover_tools + use_tool system tools
 │   │       └── base.py             # TextObservation base class
 │   ├── models/              # Dynamic model routing
-│   │   ├── loader.py        # YAML model preset config (ModelPresetManager)
+│   │   ├── loader.py        # ModelPresetManager (subagents) + TierConfigManager (tiers)
 │   │   └── router.py        # Smart model selection via fast LLM
 │   ├── channels/            # Multi-platform message handling
 │   │   ├── dispatcher.py    # Message flow bridge (translate → agent → chunk → deliver)
@@ -113,7 +113,8 @@ app/
 └── main_system_prompt.txt   # Agent personality base prompt
 specialists/                 # One subdir per specialist (specialist.yaml + agent.j2)
 models/                       # Dynamic model routing config
-├── presets.yaml             # Model preset definitions (YAML)
+├── presets.yaml             # Subagent preset definitions (YAML)
+├── tiers.yaml               # Internal tier config (air/standard/heavy + media)
 └── model_ids.txt            # Newline-delimited model IDs to track
 tools/                       # External tool plugins (one subdir per plugin)
 ├── health/                  # Training program management (35 tools)
@@ -200,7 +201,7 @@ DynamoDB-backed registry (`if-models` table, PK=`MODEL`, SK=model_id) storing me
 
 ### Model Presets (`models/presets.yaml`)
 
-YAML config defining named presets (mapped from specialist `@preset/` references) and tier configs. Auto-loaded at startup via `ModelPresetManager`.
+YAML config defining **subagent presets only** (mapped from specialist `@preset/` references). Auto-loaded at startup via `ModelPresetManager`.
 
 ```yaml
 presets:
@@ -208,21 +209,48 @@ presets:
     models: [anthropic/claude-sonnet-4, google/gemini-2.5-pro]
     sort_by: price_asc
     when: "Code generation, debugging, code review"
+```
 
+### Tier Config (`models/tiers.yaml`)
+
+Separate YAML config for **internal tier selection** — not used for subagents. Auto-loaded at startup via `TierConfigManager`.
+
+```yaml
 tiers:
+  air:
+    models: [openai/gpt-5.4-nano, google/gemma-4-26b-a4b-it]
+    sort_by: throughput_desc
+    context_limit: 150000
   standard:
-    models: [anthropic/claude-sonnet-4, google/gemini-2.5-pro]
-    sort_by: price_asc
+    models: [anthropic/claude-sonnet-4.6, google/gemini-3.1-pro-preview]
+    sort_by: latency_asc
     context_limit: 200000
+  heavy:
+    models: [anthropic/claude-opus-4.6, openai/gpt-5.4]
+    sort_by: price_asc
+    context_limit: 1000000
+
+media_tiers:
+  air:
+    models: [anthropic/claude-haiku-4.5, google/gemini-3-flash-preview]
+    sort_by: price_asc
+  standard:
+    models: [anthropic/claude-sonnet-4.6, google/gemini-3.1-pro-preview]
+    sort_by: price_asc
+  heavy:
+    models: [anthropic/claude-opus-4.6, google/gemini-4-31b-it]
+    sort_by: context_size_desc
 ```
 
 ### Smart Selection (`models/router.py`)
 
 Two selection paths:
 
-**Main agent** (`select_model_for_tier`): Maps tier number (0/1/2) to tier config, returns first model in the sorted list. No LLM call — tier selection itself is the routing decision.
+**Main agent** (`select_model_for_tier`): Maps tier number (0/1/2) to `TierConfigManager` tier config, returns first model in the sorted list. No LLM call — tier selection itself is the routing decision.
 
-**Subagents** (`select_model_for_specialist`): Maps specialist's `@preset/X` reference to a YAML preset, then uses a fast LLM (`MODEL_ROUTER_MODEL`, default `google/gemma-3-4b-it`) to select the best model from the preset's candidate list based on the condensed task intent and model metadata. Falls back to first sorted model if router is disabled or fails.
+**Subagents** (`select_model_for_specialist`): Maps specialist's `@preset/X` reference to a `ModelPresetManager` preset, then uses a fast LLM (`MODEL_ROUTER_MODEL`, default `google/gemma-3-4b-it`) to select the best model from the preset's candidate list based on the condensed task intent and model metadata. Falls back to first sorted model if router is disabled or fails.
+
+**Media** (`media_tools.py`): Uses `TierConfigManager.get_media_tier()` to pick a vision-capable model from the media tier pool, sorted by the tier's strategy.
 
 **Fallback**: If `MODEL_ROUTER_ENABLED=false`, the YAML preset doesn't exist, or the model registry is empty, the system falls back to the original `@preset/` reference (backward compatible).
 
@@ -231,11 +259,13 @@ Two selection paths:
 ### Tiering
 
 Context-aware model selection based on conversation size:
-- **Air**: Simple queries (< 100K tokens), models from `models/presets.yaml` `tiers.air`
+- **Air**: Simple queries (< 150K tokens), models from `models/tiers.yaml` `tiers.air`
 - **Standard**: Most conversations (< 200K tokens), models from `tiers.standard`
 - **Heavy**: Complex tasks (≥ 200K tokens), models from `tiers.heavy`
 
-Upgrade at 65% capacity (`TIER_UPGRADE_THRESHOLD`). Context estimated at ~4 chars per token. The concrete model for each tier is resolved from the `ModelPresetManager` using the tier's `sort_by` strategy.
+Media tiers (vision-capable models) are selected when the conversation contains images/files.
+
+Upgrade at 65% capacity (`TIER_UPGRADE_THRESHOLD`). Context estimated at ~4 chars per token. The concrete model for each tier is resolved from the `TierConfigManager` + `ModelRegistry` using the tier's `sort_by` strategy.
 
 ### Specialists
 
@@ -556,7 +586,7 @@ Key configuration (see `app/src/config.py` for full list):
 ## Key Patterns
 
 - **Specialist auto-discovery**: `specialists.py` scans `SPECIALISTS_PATH` at import time — no code changes needed to add specialists
-- **Model preset auto-discovery**: `models/loader.py` loads from `MODELS_PATH/presets.yaml` at startup — no code changes needed to add presets
+- **Model preset auto-discovery**: `models/loader.py` loads subagent presets from `MODELS_PATH/presets.yaml` and tier config from `MODELS_PATH/tiers.yaml` at startup — no code changes needed to add presets or adjust tiers
 - **Model registry**: `storage/model_registry.py` mirrors DirectiveStore pattern (PK/SK, boto3, cache). Seeded from OpenRouter API at startup.
 - **Smart model routing**: `models/router.py` uses a fast LLM to pick the best model from a preset's candidate list. Falls back to sorted-first if disabled.
 - **Tool plugin auto-discovery**: `tool_registry.py` scans `tools/*/tool.yaml` at startup — no code changes needed to add domain tools. Plugins export `get_tools()`, `get_schemas()`, `execute()`. Hot reload via `POST /admin/reload-tools`.

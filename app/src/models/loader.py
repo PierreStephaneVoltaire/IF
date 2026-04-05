@@ -1,11 +1,8 @@
-"""YAML-based model preset configuration loader.
+"""YAML-based model preset and tier configuration loaders.
 
-Loads model preset definitions from models/presets.yaml. Each preset maps
-a named category (code, architecture, general, etc.) to a list of concrete
-OpenRouter model IDs with a sorting strategy.
-
-Mirrors the specialist auto-discovery pattern: scans MODELS_PATH at import
-time, no code changes needed to add presets.
+Two separate configs:
+- models/presets.yaml — subagent presets (code, architecture, shell, etc.)
+- models/tiers.yaml — internal tier config (air/standard/heavy + media tiers)
 """
 from __future__ import annotations
 
@@ -19,6 +16,7 @@ from config import MODELS_PATH
 logger = logging.getLogger(__name__)
 
 _PRESETS_FILE = Path(MODELS_PATH) / "presets.yaml"
+_TIERS_FILE = Path(MODELS_PATH) / "tiers.yaml"
 
 
 @dataclass
@@ -33,7 +31,7 @@ class ModelPreset:
 
 @dataclass
 class TierConfig:
-    """Tier configuration for the main agent."""
+    """Tier configuration."""
 
     name: str
     model_ids: List[str] = field(default_factory=list)
@@ -42,16 +40,17 @@ class TierConfig:
 
 
 class ModelPresetManager:
-    """Loads and provides access to model preset configurations."""
+    """Loads and provides access to subagent model preset configurations.
+
+    Reads from models/presets.yaml only. For tier config, use TierConfigManager.
+    """
 
     def __init__(self):
         self.presets: Dict[str, ModelPreset] = {}
-        self.tiers: Dict[str, TierConfig] = {}
         self.provider: str = "openrouter"
         self._initialized = False
 
     def load(self) -> None:
-        """Load presets from YAML file."""
         from agent.prompts.yaml_loader import load_yaml
 
         if not _PRESETS_FILE.exists():
@@ -74,30 +73,11 @@ class ModelPresetManager:
                 when=preset_data.get("when", ""),
             )
 
-        for name, tier_data in data.get("tiers", {}).items():
-            self.tiers[name] = TierConfig(
-                name=name,
-                model_ids=tier_data.get("models", []),
-                sort_by=tier_data.get("sort_by", "price_asc"),
-                context_limit=tier_data.get("context_limit", 200000),
-            )
-
         self._initialized = True
-        logger.info(
-            f"[ModelPresets] Loaded {len(self.presets)} presets, "
-            f"{len(self.tiers)} tiers from {_PRESETS_FILE}"
-        )
+        logger.info(f"[ModelPresets] Loaded {len(self.presets)} presets from {_PRESETS_FILE}")
 
     def get_preset(self, name: str) -> Optional[ModelPreset]:
         return self.presets.get(name)
-
-    def get_tier(self, name: str) -> Optional[TierConfig]:
-        return self.tiers.get(name)
-
-    def get_tier_by_number(self, tier_number: int) -> Optional[TierConfig]:
-        """Map tier number (0, 1, 2) to tier config."""
-        names = {0: "air", 1: "standard", 2: "heavy"}
-        return self.tiers.get(names.get(tier_number, ""))
 
     @staticmethod
     def resolve_preset_name(specialist_preset: str) -> Optional[str]:
@@ -110,12 +90,86 @@ class ModelPresetManager:
         return self._initialized
 
 
+class TierConfigManager:
+    """Loads and provides access to internal tier configurations.
+
+    Reads from models/tiers.yaml. Handles both conversation tiers (air/standard/heavy)
+    and media tiers (air/standard/heavy for vision tasks).
+    """
+
+    def __init__(self):
+        self.tiers: Dict[str, TierConfig] = {}
+        self.media_tiers: Dict[str, TierConfig] = {}
+        self._initialized = False
+
+    def load(self) -> None:
+        from agent.prompts.yaml_loader import load_yaml
+
+        if not _TIERS_FILE.exists():
+            logger.warning(f"[TierConfig] Config not found: {_TIERS_FILE}")
+            return
+
+        try:
+            data = load_yaml(_TIERS_FILE)
+        except Exception as e:
+            logger.error(f"[TierConfig] Failed to load {_TIERS_FILE}: {e}")
+            return
+
+        for name, tier_data in data.get("tiers", {}).items():
+            self.tiers[name] = TierConfig(
+                name=name,
+                model_ids=tier_data.get("models", []),
+                sort_by=tier_data.get("sort_by", "price_asc"),
+                context_limit=tier_data.get("context_limit", 200000),
+            )
+
+        for name, tier_data in data.get("media_tiers", {}).items():
+            self.media_tiers[name] = TierConfig(
+                name=name,
+                model_ids=tier_data.get("models", []),
+                sort_by=tier_data.get("sort_by", "price_asc"),
+                context_limit=tier_data.get("context_limit", 200000),
+            )
+
+        self._initialized = True
+        logger.info(
+            f"[TierConfig] Loaded {len(self.tiers)} tiers, "
+            f"{len(self.media_tiers)} media tiers from {_TIERS_FILE}"
+        )
+
+    _TIER_NAMES = {0: "air", 1: "standard", 2: "heavy"}
+
+    def get_tier(self, tier_number: int) -> Optional[TierConfig]:
+        """Map tier number (0, 1, 2) to tier config."""
+        name = self._TIER_NAMES.get(tier_number)
+        if name is None:
+            return None
+        return self.tiers.get(name)
+
+    def get_media_tier(self, tier_number: int) -> Optional[TierConfig]:
+        """Map tier number (0, 1, 2) to media tier config."""
+        name = self._TIER_NAMES.get(tier_number)
+        if name is None:
+            return None
+        return self.media_tiers.get(name)
+
+    def is_initialized(self) -> bool:
+        return self._initialized
+
+
 _model_preset_manager: Optional[ModelPresetManager] = None
+_tier_config_manager: Optional[TierConfigManager] = None
 
 
 def get_model_preset_manager() -> ModelPresetManager:
-    """Get the global ModelPresetManager singleton."""
     global _model_preset_manager
     if _model_preset_manager is None:
         _model_preset_manager = ModelPresetManager()
     return _model_preset_manager
+
+
+def get_tier_config_manager() -> TierConfigManager:
+    global _tier_config_manager
+    if _tier_config_manager is None:
+        _tier_config_manager = TierConfigManager()
+    return _tier_config_manager

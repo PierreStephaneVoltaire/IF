@@ -312,13 +312,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Model stats refresh init failed: {e}")
 
-    # Model preset configuration
+    # Model preset configuration (subagent presets)
     try:
         from models.loader import get_model_preset_manager
         _model_preset_mgr = get_model_preset_manager()
         _model_preset_mgr.load()
     except Exception as e:
         logger.warning(f"Model preset manager initialization failed: {e}")
+
+    # Tier configuration (internal tiers)
+    try:
+        from models.loader import get_tier_config_manager
+        _tier_config_mgr = get_tier_config_manager()
+        _tier_config_mgr.load()
+    except Exception as e:
+        logger.warning(f"Tier config manager initialization failed: {e}")
     
     try:
         init_debounce(asyncio.get_running_loop())

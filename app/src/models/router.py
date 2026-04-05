@@ -10,7 +10,7 @@ import logging
 from typing import Dict, List, Optional
 
 from config import MODEL_ROUTER_MODEL, MODEL_ROUTER_ENABLED, LLM_API_KEY
-from models.loader import ModelPreset, TierConfig, get_model_preset_manager
+from models.loader import ModelPreset, TierConfig, get_model_preset_manager, get_tier_config_manager
 from storage.model_registry import ModelInfo
 
 logger = logging.getLogger(__name__)
@@ -182,11 +182,11 @@ def select_model_for_tier(tier_number: int) -> Optional[str]:
     Returns:
         Selected model ID, or None if tier config not found
     """
-    mgr = get_model_preset_manager()
+    mgr = get_tier_config_manager()
     if not mgr.is_initialized():
         return None
 
-    tier_config = mgr.get_tier_by_number(tier_number)
+    tier_config = mgr.get_tier(tier_number)
     if tier_config is None:
         return None
 
