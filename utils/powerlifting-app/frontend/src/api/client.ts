@@ -69,17 +69,19 @@ export async function createSession(
 
 export async function deleteSession(
   version: string,
-  date: string
+  date: string,
+  index: number
 ): Promise<void> {
-  await api.delete(`/sessions/${version}/${date}`)
+  await api.delete(`/sessions/${version}/${date}/${index}`)
 }
 
 export async function fetchSession(
   version: string,
-  date: string
+  date: string,
+  index: number
 ): Promise<Session | null> {
   const res = await api.get<ApiResponse<Session | null>>(
-    `/sessions/${version}/${date}`
+    `/sessions/${version}/${date}/${index}`
   )
   return res.data.data
 }
@@ -87,18 +89,20 @@ export async function fetchSession(
 export async function updateSession(
   version: string,
   date: string,
+  index: number,
   session: Session
 ): Promise<void> {
-  await api.put(`/sessions/${version}/${date}`, session)
+  await api.put(`/sessions/${version}/${date}/${index}`, session)
 }
 
 export async function rescheduleSession(
   version: string,
-  oldDate: string,
+  date: string,
+  index: number,
   newDate: string,
   newDay: string
 ): Promise<void> {
-  await api.patch(`/sessions/${version}/${oldDate}/reschedule`, {
+  await api.patch(`/sessions/${version}/${date}/${index}/reschedule`, {
     newDate,
     newDay,
   })
@@ -107,28 +111,31 @@ export async function rescheduleSession(
 export async function completeSession(
   version: string,
   date: string,
+  index: number,
   data: { rpe?: number; bodyWeightKg?: number; notes?: string }
 ): Promise<void> {
-  await api.patch(`/sessions/${version}/${date}/complete`, data)
+  await api.patch(`/sessions/${version}/${date}/${index}/complete`, data)
 }
 
 export async function addExercise(
   version: string,
   date: string,
+  index: number,
   exercise: Exercise
 ): Promise<void> {
-  await api.post(`/sessions/${version}/${date}/exercise`, exercise)
+  await api.post(`/sessions/${version}/${date}/${index}/exercise`, exercise)
 }
 
 export async function updateExerciseField(
   version: string,
   date: string,
+  index: number,
   exerciseIndex: number,
   field: keyof Exercise,
   value: unknown
 ): Promise<void> {
   await api.patch(
-    `/sessions/${version}/${date}/exercise/${exerciseIndex}`,
+    `/sessions/${version}/${date}/${index}/exercise/${exerciseIndex}`,
     { field, value }
   )
 }
@@ -136,9 +143,10 @@ export async function updateExerciseField(
 export async function removeExercise(
   version: string,
   date: string,
+  index: number,
   exerciseIndex: number
 ): Promise<void> {
-  await api.delete(`/sessions/${version}/${date}/exercise/${exerciseIndex}`)
+  await api.delete(`/sessions/${version}/${date}/${index}/exercise/${exerciseIndex}`)
 }
 
 // ─── Maxes ───────────────────────────────────────────────────────────────────

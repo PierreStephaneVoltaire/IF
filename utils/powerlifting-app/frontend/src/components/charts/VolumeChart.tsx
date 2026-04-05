@@ -11,8 +11,28 @@ import {
 } from 'recharts'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
-import { weeklyVolumeByCategory } from '@/utils/volume'
+import { weeklyVolumeByCategory6 } from '@/utils/volume'
 import { displayWeight } from '@/utils/units'
+
+const CATEGORY_COLORS: Record<string, string> = {
+  squat: '#ef4444',
+  bench: '#3b82f6',
+  deadlift: '#22c55e',
+  upper_accessory: '#f97316',
+  lower_accessory: '#a855f7',
+  core_accessory: '#06b6d4',
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  squat: 'Squat',
+  bench: 'Bench',
+  deadlift: 'Deadlift',
+  upper_accessory: 'Upper Accessory',
+  lower_accessory: 'Lower Accessory',
+  core_accessory: 'Core Accessory',
+}
+
+const CATEGORIES = ['squat', 'bench', 'deadlift', 'upper_accessory', 'lower_accessory', 'core_accessory'] as const
 
 export default function VolumeChart() {
   const { program } = useProgramStore()
@@ -20,7 +40,7 @@ export default function VolumeChart() {
 
   const data = useMemo(() => {
     if (!program) return []
-    return weeklyVolumeByCategory(program.sessions)
+    return weeklyVolumeByCategory6(program.sessions)
   }, [program])
 
   if (!program || data.length === 0) {
@@ -46,30 +66,15 @@ export default function VolumeChart() {
               formatter={(value: number) => [`${(value / 1000).toFixed(1)}k volume`]}
             />
             <Legend />
-            <Bar
-              dataKey="squat"
-              stackId="a"
-              fill="#ef4444"
-              name="Squat"
-            />
-            <Bar
-              dataKey="bench"
-              stackId="a"
-              fill="#3b82f6"
-              name="Bench"
-            />
-            <Bar
-              dataKey="deadlift"
-              stackId="a"
-              fill="#22c55e"
-              name="Deadlift"
-            />
-            <Bar
-              dataKey="accessory"
-              stackId="a"
-              fill="#f97316"
-              name="Accessory"
-            />
+            {CATEGORIES.map((cat) => (
+              <Bar
+                key={cat}
+                dataKey={cat}
+                stackId="a"
+                fill={CATEGORY_COLORS[cat]}
+                name={CATEGORY_LABELS[cat]}
+              />
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>

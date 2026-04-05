@@ -82,6 +82,14 @@ resource "kubernetes_deployment" "if_agent_api" {
           }
         }
 
+        volume {
+          name = "models-directory"
+          host_path {
+            path = var.models_host_path
+            type = "DirectoryOrCreate"
+          }
+        }
+
         container {
           name              = "api"
           image             = "${aws_ecr_repository.if_agent_api.repository_url}:latest"
@@ -149,6 +157,12 @@ resource "kubernetes_deployment" "if_agent_api" {
           volume_mount {
             name       = "specialists-directory"
             mount_path = "/app/specialists"
+            read_only  = true
+          }
+
+          volume_mount {
+            name       = "models-directory"
+            mount_path = "/app/models"
             read_only  = true
           }
 

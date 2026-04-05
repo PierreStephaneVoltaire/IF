@@ -7,7 +7,7 @@ description: >
   question. This is the default health specialist — use health_write
   only when the coach returns a HANDOFF_REQUIRED block requesting a
   program mutation.
-preset: "@preset/health"
+preset: "health"
 tools:
   - health_get_program
   - health_get_session

@@ -81,10 +81,11 @@ class ModelPresetManager:
 
     @staticmethod
     def resolve_preset_name(specialist_preset: str) -> Optional[str]:
-        """Map @preset/code -> code. Returns None if not an @preset/ reference."""
+        """Extract preset name. Handles both @preset/code and bare names like code."""
         if specialist_preset.startswith("@preset/"):
             return specialist_preset[len("@preset/"):]
-        return None
+        # Bare name like "health", "code", "general" — return as-is
+        return specialist_preset
 
     def is_initialized(self) -> bool:
         return self._initialized

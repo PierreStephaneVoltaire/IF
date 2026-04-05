@@ -1,5 +1,5 @@
 description: "Use finance_write when a mutation to the finance snapshot is required: updating account balances, modifying goals, changing cashflow entries, updating investment holdings, recording tax room, or any other write to the finance DynamoDB record. Do not use for read-only queries."
-preset: "@preset/finance"
+preset: "finance"
 tools:
   - finance_get_profile
   - finance_get_goals

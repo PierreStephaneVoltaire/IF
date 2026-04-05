@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 15
 description: "Cover letter generation — targeted, JD-specific, one page max, matching operator's voice"
-preset: "@preset/air"
+preset: "general"
 tools:
   - terminal_execute
   - read_file

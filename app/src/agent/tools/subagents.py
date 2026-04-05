@@ -496,7 +496,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
             await send_status(
                 StatusType.MODEL_SELECTED,
                 f"Router: {model}",
-                specialist.preset,
+                model,
             )
 
             # Route to SDK agentic loop for agentic specialists
@@ -772,6 +772,183 @@ register_tool("spawn_specialists", SpawnSpecialistsTool)
 
 
 # =============================================================================
+# list_specialists tool
+# =============================================================================
+
+LIST_SPECIALISTS_DESCRIPTION = """List all available specialist subagents with their descriptions.
+Returns a formatted list of specialist slugs and descriptions so the main agent
+can pick the most appropriate specialist for the current task.
+
+IMPORTANT constraints (included in output):
+- health_write and finance_write are HANDOFF-ONLY — never select them directly
+- media_reader should only be used for image/file attachments requiring vision analysis"""
+
+
+class ListSpecialistsAction(Action):
+    pass
+
+
+class ListSpecialistsObservation(TextObservation):
+    specialists: str = Field(default="", description="Formatted list of available specialists")
+
+    @property
+    def visualize(self) -> Text:
+        content = Text()
+        content.append("Available Specialists:\n", style="bold blue")
+        content.append(self.specialists, style="green")
+        return content
+
+
+class ListSpecialistsExecutor(ToolExecutor):
+    def __call__(
+        self,
+        action: ListSpecialistsAction,
+        conversation: Any = None,
+    ) -> ListSpecialistsObservation:
+        specialists = list_specialists()
+        handoff_only = {"health_write", "finance_write"}
+
+        lines = []
+        for s in specialists:
+            if s.slug in handoff_only:
+                continue
+            desc = s.description.strip().replace("\n", " ").split(".")[0]
+            lines.append(f"- {s.slug}: {desc}.")
+
+        result = "\n".join(lines)
+        result += "\n\nCONSTRAINTS:"
+        result += "\n- Do NOT select health_write or finance_write — they are used only via HANDOFF_REQUIRED from other specialists."
+        result += "\n- Use media_reader ONLY when the message contains an image or file attachment that requires vision analysis."
+
+        return ListSpecialistsObservation(specialists=result)
+
+
+class ListSpecialistsTool(ToolDefinition[ListSpecialistsAction, ListSpecialistsObservation]):
+    @classmethod
+    def create(
+        cls,
+        conv_state: "ConversationState | None" = None,
+        chat_id: str = "",
+        **params,
+    ) -> Sequence["ListSpecialistsTool"]:
+        return [
+            cls(
+                action_type=ListSpecialistsAction,
+                observation_type=ListSpecialistsObservation,
+                description=LIST_SPECIALISTS_DESCRIPTION,
+                executor=ListSpecialistsExecutor(),
+                annotations=ToolAnnotations(
+                    title="list_specialists",
+                    readOnlyHint=True,
+                    destructiveHint=False,
+                    idempotentHint=True,
+                    openWorldHint=False,
+                ),
+            )
+        ]
+
+
+register_tool("list_specialists", ListSpecialistsTool)
+
+
+# =============================================================================
+# condense_intent tool
+# =============================================================================
+
+CONDENSE_INTENT_DESCRIPTION = """Rewrite the user's message as a focused task for a specialist.
+Strips social elements and produces a concise, actionable prompt. The output
+should be passed directly to spawn_specialist."""
+
+
+class CondenseIntentAction(Action):
+    last_message: str = Field(description="The user's last message")
+    specialist_type: str = Field(description="The specialist type to condense intent for")
+    context_summary: str = Field(default="", description="Relevant context from conversation history")
+
+
+class CondenseIntentObservation(TextObservation):
+    condensed_prompt: str = Field(default="", description="Focused task description for specialist")
+
+    @property
+    def visualize(self) -> Text:
+        content = Text()
+        content.append("Condensed Intent:\n", style="bold blue")
+        content.append(self.condensed_prompt, style="green")
+        return content
+
+
+class CondenseIntentExecutor(ToolExecutor):
+    def __call__(
+        self,
+        action: CondenseIntentAction,
+        conversation: Any = None,
+    ) -> CondenseIntentObservation:
+        from config import CONDENSE_INTENT_MODEL
+        from agent.prompts.loader import render_template
+
+        async def _run():
+            prompt = render_template(
+                "condense_intent.j2",
+                last_message=action.last_message,
+                specialist_type=action.specialist_type,
+                context_summary=action.context_summary,
+            )
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as http_client:
+                    response = await call_openrouter(
+                        model=CONDENSE_INTENT_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        tools=None,
+                        http_client=http_client,
+                    )
+                return CondenseIntentObservation(
+                    condensed_prompt=response.content.strip()
+                )
+            except Exception as e:
+                logger.warning(f"[CondenseIntent] Failed: {e}, using raw message")
+                return CondenseIntentObservation(
+                    condensed_prompt=action.last_message[:500]
+                )
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            with ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, _run()).result()
+        return asyncio.run(_run())
+
+
+class CondenseIntentTool(ToolDefinition[CondenseIntentAction, CondenseIntentObservation]):
+    @classmethod
+    def create(
+        cls,
+        conv_state: "ConversationState | None" = None,
+        chat_id: str = "",
+        **params,
+    ) -> Sequence["CondenseIntentTool"]:
+        return [
+            cls(
+                action_type=CondenseIntentAction,
+                observation_type=CondenseIntentObservation,
+                description=CONDENSE_INTENT_DESCRIPTION,
+                executor=CondenseIntentExecutor(),
+                annotations=ToolAnnotations(
+                    title="condense_intent",
+                    readOnlyHint=True,
+                    destructiveHint=False,
+                    idempotentHint=True,
+                    openWorldHint=False,
+                ),
+            )
+        ]
+
+
+register_tool("condense_intent", CondenseIntentTool)
+
+
+# =============================================================================
 # Tool Registration Helper
 # =============================================================================
 
@@ -785,6 +962,8 @@ def get_subagent_tools(chat_id: str) -> List[Tool]:
         List of Tool specs for Agent initialization
     """
     return [
+        Tool(name="list_specialists", params={}),
+        Tool(name="condense_intent", params={}),
         Tool(name="deep_think", params={"chat_id": chat_id}),
         Tool(name="spawn_specialist", params={"chat_id": chat_id}),
         Tool(name="spawn_specialists", params={"chat_id": chat_id}),

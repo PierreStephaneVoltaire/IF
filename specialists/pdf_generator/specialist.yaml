@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 20
 description: "Formatted PDF document creation — reports, proposals, one-pagers via WeasyPrint, Pandoc, or LaTeX"
-preset: "@preset/code"
+preset: "code"
 tools:
   - terminal_execute
   - read_file

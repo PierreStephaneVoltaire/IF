@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 30
 description: Structured file generation with syntax validation — scripts, configs, IaC, code modules
-preset: "@preset/code"
+preset: "code"
 tools:
   - terminal_execute
   - write_file

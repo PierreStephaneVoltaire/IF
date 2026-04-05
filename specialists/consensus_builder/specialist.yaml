@@ -1,5 +1,5 @@
 description: "Multi-source synthesis — spawns 2-3 specialists, collects outputs, identifies agreement/disagreement, synthesizes"
-preset: "@preset/standard"
+preset: "general"
 tools:
   - spawn_specialist
   - spawn_specialists

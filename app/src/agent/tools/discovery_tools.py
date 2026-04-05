@@ -18,9 +18,9 @@ from openhands.sdk import (
     Observation,
     Tool,
     ToolDefinition,
-    ToolExecutor,
     register_tool,
 )
+from openhands.sdk.tool import ToolExecutor
 from agent.tools.base import TextObservation
 
 logger = logging.getLogger(__name__)

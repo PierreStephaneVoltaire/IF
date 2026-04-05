@@ -157,9 +157,6 @@ async def select_model_for_specialist(
         return specialist_preset
 
     preset_name = ModelPresetManager.resolve_preset_name(specialist_preset)
-    if preset_name is None:
-        # Not an @preset/ reference, return as-is
-        return specialist_preset
 
     preset = mgr.get_preset(preset_name)
     if preset is None:

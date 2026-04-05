@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 20
 description: "Implementation verification — confirms planned work exists in codebase, identifies gaps between spec and reality"
-preset: "@preset/code"
+preset: "code"
 tools:
   - terminal_execute
   - read_file

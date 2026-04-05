@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Upload, Film, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useUiStore } from '@/store/uiStore'
@@ -90,7 +91,7 @@ export default function VideoUploadModal({
     }
   }
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
       onClick={onClose}
@@ -240,6 +241,7 @@ export default function VideoUploadModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

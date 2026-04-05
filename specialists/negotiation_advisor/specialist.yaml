@@ -1,5 +1,5 @@
 description: "Negotiation strategy and preparation — BATNA analysis, opening positions, concession planning"
-preset: "@preset/standard"
+preset: "general"
 tools:
   - UserFactsSearchTool
   - UserFactsListTool

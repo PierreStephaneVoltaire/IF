@@ -42,7 +42,6 @@ from agent.tools.directive_tools import get_directive_tools
 from agent.tools.terminal_tools import get_terminal_system_prompt
 from agent.tools.context_tools import get_context_tools
 from agent.tools.subagents import get_subagent_tools
-from agent.tools.delegation import get_delegation_tools
 from agent.tools.media_tools import get_media_tools
 from agent.tools import file_tools  # registers read_file, write_file, search_files
 from agent.tools.discovery_tools import get_discovery_tools
@@ -273,7 +272,13 @@ def assemble_system_prompt(
 
     # Add conversation history if provided (from channel history)
     if conversation_history:
-        prompt_parts.append(f"\n<conversation_history>\n{conversation_history}\n</conversation_history>\n")
+        prompt_parts.append(f"""
+<conversation_history>
+The following is your recent conversation with the operator. The [assistant] lines are YOUR previous responses — maintain full continuity with them. Read this history FIRST to understand the current context before responding to the operator's latest message. Do not re-ask questions already answered or repeat information already provided.
+
+{conversation_history}
+</conversation_history>
+""")
 
     # Add directives block from DirectiveStore
     try:
@@ -443,9 +448,7 @@ async def execute_agent(
         tools.extend(get_directive_tools())
         # Get context tools (date/time, signals, finance snapshot)
         tools.extend(get_context_tools())
-        # Get delegation tools (categorize, directives, condense, spawn)
-        tools.extend(get_delegation_tools(session.conversation_id))
-        # Get subagent tools (specialist spawning, deep thinking)
+        # Get subagent tools (list_specialists, condense_intent, spawn_specialist, deep_think)
         tools.extend(get_subagent_tools(session.conversation_id))
         # Get media tools (on-demand file/image analysis)
         tools.extend(get_media_tools(session.conversation_id))

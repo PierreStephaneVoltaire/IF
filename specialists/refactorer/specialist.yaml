@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 25
 description: "Code refactoring without behavior change — extract, rename, decouple, simplify, reduce duplication"
-preset: "@preset/code"
+preset: "code"
 tools:
   - terminal_execute
   - read_file

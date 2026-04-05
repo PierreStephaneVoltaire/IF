@@ -527,6 +527,12 @@ variable "specialists_path" {
   default     = "/app/specialists"
 }
 
+variable "models_path" {
+  description = "Path to models directory (mounted volume)"
+  type        = string
+  default     = "/app/models"
+}
+
 variable "tools_host_path" {
   description = "Host path to tools directory for hostPath volume"
   type        = string
@@ -534,6 +540,11 @@ variable "tools_host_path" {
 
 variable "specialists_host_path" {
   description = "Host path to specialists directory for hostPath volume"
+  type        = string
+}
+
+variable "models_host_path" {
+  description = "Host path to models directory for hostPath volume"
   type        = string
 }
 

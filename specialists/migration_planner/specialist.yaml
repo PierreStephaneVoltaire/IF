@@ -1,5 +1,5 @@
 description: "Database and infrastructure migration planning — schema changes, rollback strategies, zero-downtime patterns"
-preset: "@preset/architecture"
+preset: "architecture"
 tools:
   - terminal_execute
   - read_file

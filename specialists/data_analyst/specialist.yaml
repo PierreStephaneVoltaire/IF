@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 25
 description: "Data exploration and analysis — CSV, JSON, logs. Statistical summaries, trends, anomaly detection, visualization"
-preset: "@preset/code"
+preset: "code"
 tools:
   - terminal_execute
   - read_file

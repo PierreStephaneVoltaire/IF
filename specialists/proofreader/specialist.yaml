@@ -1,5 +1,5 @@
 description: "General prose proofreading, editing, and rewriting. Use for grammar, clarity, tone, flow, and structure improvements on any non-code text."
-preset: "@preset/air"
+preset: "proofreader"
 tools: []
 mcp_servers: []
 directive_types:

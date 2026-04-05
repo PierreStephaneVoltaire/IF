@@ -1,5 +1,5 @@
 description: "Analyzes IF's own performance and proposes improvements to directives, specialist prompts, and configurations"
-preset: "@preset/standard"
+preset: "general"
 tools:
   - read_file
   - write_file

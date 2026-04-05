@@ -504,9 +504,16 @@ async def process_chat_completion_internal(
         except Exception as e:
             logger.warning(f"Failed to download attachment {ref.path}: {e}")
 
+        # Strip container-absolute prefixes for URL construction
+        url_path = ref.path
+        for prefix in ["/home/user/workspace/", f"/home/user/conversations/{cache_key}/"]:
+            if url_path.startswith(prefix):
+                url_path = url_path[len(prefix):]
+                break
+
         attachments.append({
             "filename": filename,
-            "url": f"/files/workspace/{cache_key}/{ref.path}",
+            "url": f"/files/workspace/{cache_key}/{url_path}",
             "local_path": local_path,
             "content_type": "application/octet-stream",
             "description": ref.description,

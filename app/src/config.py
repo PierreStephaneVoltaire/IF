@@ -101,7 +101,7 @@ TIER_HEAVY_PRESET = os.getenv("TIER_HEAVY_PRESET", "@preset/heavy")
 # =============================================================================
 
 # Default preset for specialist subagents
-SPECIALIST_PRESET = os.getenv("SPECIALIST_PRESET", "@preset/standard")
+SPECIALIST_PRESET = os.getenv("SPECIALIST_PRESET", "general")
 
 # Maximum turns per specialist subagent
 SPECIALIST_MAX_TURNS = int(os.getenv("SPECIALIST_MAX_TURNS", "15"))
@@ -191,6 +191,9 @@ DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "openrouter/@pres
 # Model for conversation condensation (summarizing long conversations)
 CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "openrouter/@preset/general")
 
+# Model for condensing user intent into specialist task prompts (cheap/fast)
+CONDENSE_INTENT_MODEL = os.getenv("CONDENSE_INTENT_MODEL", "openrouter/google/gemma-3-4b-it")
+
 # Fallback model for heartbeat pondering (when pondering preset unavailable)
 HEARTBEAT_FALLBACK_MODEL = os.getenv("HEARTBEAT_FALLBACK_MODEL", "openrouter/@preset/general")
 
@@ -199,9 +202,6 @@ PRESET_FALLBACK_MODEL = os.getenv("PRESET_FALLBACK_MODEL", "openrouter/@preset/g
 
 # Model for reflection engine and opinion formation
 REFLECTION_MODEL = os.getenv("REFLECTION_MODEL", "openrouter/@preset/general")
-
-# Model for conversation categorization (cheap/fast)
-CATEGORIZATION_MODEL = os.getenv("CATEGORIZATION_MODEL", "openrouter/z-ai/glm-4.7-flash")
 
 # Reasoning effort passed to the OpenHands LLM for the main agent.
 # Valid values: "high", "medium", "low" (silently ignored for models that don't support it).

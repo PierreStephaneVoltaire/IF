@@ -583,6 +583,15 @@ Key configuration (see `app/src/config.py` for full list):
 | `MODEL_ROUTER_ENABLED` | true | Enable LLM-based model routing |
 | `MODEL_STATS_REFRESH_INTERVAL` | 1800 | Seconds between per-provider latency/throughput refreshes |
 
+## Operational Rules
+
+- **Build before declaring done**: Always run `npm run build` in both `frontend/` and `backend/` of any portal before declaring work complete. A successful build is the minimum verification bar — no exceptions.
+- **k3s debugging**: The app is hosted on a k3s cluster. When debugging runtime issues, use `kubectl logs`, `kubectl describe`, and `kubectl get events` to inspect pod state. Do not guess at runtime behavior from code alone.
+- **Terraform**: Never run `terraform apply` or `terraform destroy`. Targeted low-blast-radius `terraform apply -target=...` is the only exception, and only after explicit user approval via AskUserQuestion.
+- **AWS resources**: Never delete AWS resources (CLI, SDK, console). Provide the command for the user to run manually.
+- **kubectl mutations**: Never run `kubectl delete/apply/patch/edit/replace/scale/rollout/cordon/drain`. Provide the command for the user to run manually. Read-only commands (`get`, `describe`, `logs`, `events`, `top`) are fine.
+- **No git writes**: Never run `git commit`, `git push`, `git merge`, `git rebase`, `git reset --hard`, or any mutating git command. No write privileges. Provide the command for the user to run manually.
+
 ## Key Patterns
 
 - **Specialist auto-discovery**: `specialists.py` scans `SPECIALISTS_PATH` at import time — no code changes needed to add specialists

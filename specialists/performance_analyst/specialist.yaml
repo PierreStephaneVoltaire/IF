@@ -1,5 +1,5 @@
 description: "Performance profiling, optimization, and benchmarking — MEASURE, IDENTIFY, OPTIMIZE, VERIFY"
-preset: "@preset/code"
+preset: "code"
 tools:
   - terminal_execute
   - read_file

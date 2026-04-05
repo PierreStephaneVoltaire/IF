@@ -1,5 +1,5 @@
-description: System architecture and design patterns specialist
-preset: "@preset/architecture"
+description: "System-level architecture and infrastructure design — service topology, data flow, tech stack decisions, scaling strategies, resilience patterns, infrastructure-as-code. NOT for individual API endpoint design → api_designer."
+preset: "architecture"
 tools:
   - read_file
   - write_file
