@@ -20,7 +20,8 @@
       "Bash(chmod +x:*)",
       "Bash(bash /home/sirsimpalot/Downloads/discord-ai-bot/.claude/hooks/guard-bash.sh)",
       "Bash(bash /home/sirsimpalot/Downloads/discord-ai-bot/.claude/hooks/guard-kubectl.sh)",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(npm run:*)"
     ],
     "deny": [
       "Bash(git:commit)"

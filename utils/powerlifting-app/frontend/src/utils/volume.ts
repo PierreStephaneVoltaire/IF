@@ -125,10 +125,19 @@ const LIFT_CATEGORY_MAP: Record<string, LiftCategory> = {
 }
 
 /**
+ * Normalize an exercise name for matching: strip parenthetical suffixes
+ * like (heavy), (light), (backout), trim whitespace, lowercase.
+ */
+export function normalizeExerciseName(name: string): string {
+  return name.replace(/\s*\(.*?\)\s*/g, ' ').trim().toLowerCase()
+}
+
+/**
  * Categorize an exercise by name. Defaults to upper_accessory.
+ * Strips parenthetical suffixes and normalizes case/whitespace before lookup.
  */
 export function categorizeExercise(name: string): LiftCategory {
-  return LIFT_CATEGORY_MAP[name] ?? 'upper_accessory'
+  return LIFT_CATEGORY_MAP[name] ?? LIFT_CATEGORY_MAP[normalizeExerciseName(name)] ?? 'upper_accessory'
 }
 
 /**
@@ -229,13 +238,16 @@ export function weeklyVolumeByCategory(
 
 /**
  * Build a lookup from exercise name to its muscle contributions.
+ * Keys are normalized (lowered, parenthetical suffixes stripped, trimmed)
+ * so that session exercise names with extra annotations still match.
  */
 function buildGlossaryLookup(
   glossary: GlossaryExercise[]
 ): Map<string, { primary: MuscleGroup[]; secondary: MuscleGroup[] }> {
   const lookup = new Map<string, { primary: MuscleGroup[]; secondary: MuscleGroup[] }>()
   for (const ex of glossary) {
-    lookup.set(ex.name, {
+    const key = normalizeExerciseName(ex.name)
+    lookup.set(key, {
       primary: ex.primary_muscles,
       secondary: ex.secondary_muscles,
     })
@@ -257,7 +269,7 @@ export function volumeByMuscleGroup(
 
   for (const session of sessions) {
     for (const ex of session.exercises) {
-      const muscles = lookup.get(ex.name)
+      const muscles = lookup.get(normalizeExerciseName(ex.name))
       if (!muscles || ex.kg === null) continue
 
       const vol = (ex.sets || 0) * (ex.reps || 0) * ex.kg
@@ -301,7 +313,7 @@ export function weeklySetsByMuscleGroup(
     const weekData = weekMap.get(week)!
 
     for (const ex of session.exercises) {
-      const muscles = lookup.get(ex.name)
+      const muscles = lookup.get(normalizeExerciseName(ex.name))
       if (!muscles) continue
 
       const sets = ex.sets || 0

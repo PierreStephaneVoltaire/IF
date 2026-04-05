@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react'
+import { Fragment, useState, useEffect, useMemo } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -6,6 +6,7 @@ import { useUiStore } from '@/store/uiStore'
 import { formatDateLong, getDayOfWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
+import { fetchGlossary } from '@/api/client'
 import { clsx } from 'clsx'
 import { X, Check, Save, RotateCcw, Plus, GripVertical, Trash2, Calendar, Film, Loader2 } from 'lucide-react'
 import type { Session, Exercise, SessionVideo } from '@powerlifting/types'
@@ -36,6 +37,13 @@ export default function SessionDrawer({
   const [hasChanges, setHasChanges] = useState(false)
   const [showVideoUpload, setShowVideoUpload] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [glossaryNames, setGlossaryNames] = useState<string[]>([])
+
+  useEffect(() => {
+    fetchGlossary()
+      .then((exercises) => setGlossaryNames(exercises.map((e) => e.name).sort()))
+      .catch(() => {})
+  }, [])
 
   // Initialize local state when session changes
   useEffect(() => {
@@ -272,6 +280,7 @@ export default function SessionDrawer({
                                   setHasChanges(true)
                                 }}
                                 placeholder="Exercise name"
+                                list="exercise-glossary"
                                 className="flex-1 px-2 py-1 border border-border rounded bg-background text-sm font-medium"
                               />
                               {group.entries.length === 1 && (
@@ -346,6 +355,12 @@ export default function SessionDrawer({
                         <Plus className="w-4 h-4 inline mr-1" />
                         Add Exercise
                       </button>
+
+                      <datalist id="exercise-glossary">
+                        {glossaryNames.map((name) => (
+                          <option key={name} value={name} />
+                        ))}
+                      </datalist>
 
                       {/* Videos Section */}
                       <div className="pt-4 border-t border-border">
