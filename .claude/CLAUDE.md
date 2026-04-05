@@ -192,7 +192,9 @@ DynamoDB-backed registry (`if-models` table, PK=`MODEL`, SK=model_id) storing me
 
 **ModelInfo fields**: model_id, context_size, max_output_tokens, input/output pricing (per-provider), input/output modalities, tool_support, caching_support, zero_data_retention, throughput, latency.
 
-**Seeding**: `python scripts/seed_models.py [--models-file models/model_ids.txt]` — fetches all models from OpenRouter, filters to the input list, upserts to DynamoDB. Also runs automatically at startup to refresh metadata.
+**Seeding**: `python scripts/seed_models.py [--models-file models/model_ids.txt]` — fetches all models from OpenRouter, filters to the input list (skipping models without tool support), upserts to DynamoDB. Also fetches per-provider latency/throughput from `/api/v1/models/{id}/endpoints` (min p50 latency, max p50 throughput across providers). Runs automatically at startup to refresh metadata.
+
+**Periodic stats refresh**: Background task in `main.py` calls `ModelRegistry.refresh_endpoint_stats()` every `MODEL_STATS_REFRESH_INTERVAL` seconds (default 1800 / 30 min) to keep latency/throughput data current. Updates both DynamoDB and the in-memory cache.
 
 **Sorting strategies**: `price_asc`, `price_desc`, `latency_asc`, `context_size_desc`, `throughput_desc`.
 
@@ -549,6 +551,7 @@ Key configuration (see `app/src/config.py` for full list):
 | `MODELS_PATH` | `project_root/models/` | Path to model preset YAML configs |
 | `MODEL_ROUTER_MODEL` | `google/gemma-3-4b-it` | Fast model for subagent model selection |
 | `MODEL_ROUTER_ENABLED` | true | Enable LLM-based model routing |
+| `MODEL_STATS_REFRESH_INTERVAL` | 1800 | Seconds between per-provider latency/throughput refreshes |
 
 ## Key Patterns
 

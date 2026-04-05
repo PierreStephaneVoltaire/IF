@@ -25,6 +25,8 @@ from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR, ST
 from config import HEARTBEAT_ENABLED, HEARTBEAT_IDLE_HOURS, HEARTBEAT_COOLDOWN_HOURS
 from config import REFLECTION_ENABLED
 from config import TERMINAL_URL, TERMINAL_API_KEY
+from config import MODEL_STATS_REFRESH_INTERVAL
+from config import OPENROUTER_API_KEY
 from api.models import router as models_router
 from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
@@ -47,6 +49,8 @@ heartbeat_runner = None
 reflection_engine = None
 
 terminal_manager = None
+
+_stats_refresh_task = None
 
 
 async def _deliver_heartbeat(webhook, content: str, attachments: list) -> None:
@@ -284,6 +288,30 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[ModelRegistry] Startup refresh failed: {e}")
 
+    # Periodic endpoint stats refresh (latency/throughput)
+    global _stats_refresh_task
+
+    async def _periodic_stats_refresh():
+        from storage.factory import get_model_registry
+        while True:
+            await asyncio.sleep(MODEL_STATS_REFRESH_INTERVAL)
+            try:
+                registry = get_model_registry()
+                if registry:
+                    registry.refresh_endpoint_stats(OPENROUTER_API_KEY)
+            except Exception as e:
+                logger.warning(f"[ModelRegistry] Periodic stats refresh failed: {e}")
+
+    try:
+        from storage.factory import get_model_registry
+        registry = get_model_registry()
+        if registry:
+            # Run initial refresh in background (don't block startup)
+            asyncio.create_task(_periodic_stats_refresh())
+            logger.info(f"Model stats refresh started (interval={MODEL_STATS_REFRESH_INTERVAL}s)")
+    except Exception as e:
+        logger.warning(f"Model stats refresh init failed: {e}")
+
     # Model preset configuration
     try:
         from models.loader import get_model_preset_manager
@@ -394,6 +422,10 @@ async def lifespan(app: FastAPI):
     if heartbeat_runner:
         heartbeat_runner.stop()
         logger.info("Heartbeat runner stopped")
+
+    if _stats_refresh_task:
+        _stats_refresh_task.cancel()
+        logger.info("Model stats refresh stopped")
     
     stop_all()
     logger.info("All channel listeners stopped")

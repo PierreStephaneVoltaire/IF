@@ -527,6 +527,16 @@ variable "specialists_path" {
   default     = "/app/specialists"
 }
 
+variable "tools_host_path" {
+  description = "Host path to tools directory for hostPath volume"
+  type        = string
+}
+
+variable "specialists_host_path" {
+  description = "Host path to specialists directory for hostPath volume"
+  type        = string
+}
+
 variable "tinyauth_oauth_whitelist" {
   description = "Comma-separated list of allowed Google email addresses"
   type        = string

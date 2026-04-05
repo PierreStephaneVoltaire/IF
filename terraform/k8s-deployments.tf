@@ -69,7 +69,7 @@ resource "kubernetes_deployment" "if_agent_api" {
         volume {
           name = "tools-directory"
           host_path {
-            path = "${abspath(path.root)}/../tools"
+            path = var.tools_host_path
             type = "DirectoryOrCreate"
           }
         }
@@ -77,7 +77,7 @@ resource "kubernetes_deployment" "if_agent_api" {
         volume {
           name = "specialists-directory"
           host_path {
-            path = "${abspath(path.root)}/../specialists"
+            path = var.specialists_host_path
             type = "DirectoryOrCreate"
           }
         }

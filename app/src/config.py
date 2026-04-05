@@ -330,6 +330,9 @@ MODELS_PATH = os.getenv(
 MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "google/gemma-3-4b-it")
 MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() == "true"
 
+# Interval for refreshing per-provider latency/throughput from OpenRouter (seconds)
+MODEL_STATS_REFRESH_INTERVAL = int(os.getenv("MODEL_STATS_REFRESH_INTERVAL", "1800"))  # 30 min
+
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_FILE = os.getenv("LOG_FILE", "./logs/app.log")

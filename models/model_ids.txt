@@ -23,7 +23,7 @@ openai/gpt-audio-mini
 z-ai/glm-4.7-flash
 google/gemini-3-flash-preview
 perplexity/sonar-pro-search
-anthropic/claude-haiku-4.6
+anthropic/claude-haiku-4.5
 anthropic/claude-sonnet-4.6
 openai/o4-mini-deep-research
 arcee-ai/trinity-large-thinking
