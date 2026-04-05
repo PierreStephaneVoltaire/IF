@@ -165,6 +165,20 @@ def _extract_response(conversation, max_turns: int, chat_id: str) -> str:
             tool_args = str(getattr(tc, "arguments", getattr(tc, "args", {})))[:200]
             logger.debug(f"[SDK Subagent] tool_call: {tool_name} | args={tool_args}")
 
+    # Emit tool execution status embeds (batched after run completes)
+    try:
+        import asyncio as _aio
+        from channels.status import send_status, StatusType
+        for event in events:
+            if hasattr(event, "tool_call") and event.tool_call:
+                tc = event.tool_call
+                tool_name = getattr(tc, "name", getattr(tc, "function", "unknown"))
+                _aio.get_event_loop().run_until_complete(
+                    send_status(StatusType.TOOL_STARTED, f"Tool: {tool_name}")
+                )
+    except Exception:
+        pass
+
     if status == ConversationExecutionStatus.STUCK:
         logger.warning(f"[SDK Subagent] Specialist got stuck after {max_turns} iterations")
         context = _get_recent_context(events)

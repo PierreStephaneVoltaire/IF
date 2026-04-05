@@ -589,6 +589,7 @@ def get_or_create_session(
     messages: Optional[List[Dict[str, Any]]] = None,
     context_id: Optional[str] = None,
     conversation_history: Optional[str] = None,
+    model_override: Optional[str] = None,
 ) -> AgentSession:
     """Get existing session or create new one.
 
@@ -603,6 +604,7 @@ def get_or_create_session(
         messages: Optional messages for operator context retrieval
         context_id: Optional context ID for LanceDB storage (format: openwebui_{id} or discord_{id})
         conversation_history: Optional conversation history for system prompt
+        model_override: Optional concrete model ID from the router (bypasses preset resolution)
 
     Returns:
         AgentSession instance
@@ -630,7 +632,7 @@ def get_or_create_session(
 
     # Create new session
     session_id = create_session_id(conversation_id, preset_slug)
-    model = get_model_for_preset(preset_slug, preset_manager)
+    model = model_override if model_override else get_model_for_preset(preset_slug, preset_manager)
     system_prompt = assemble_system_prompt(
         preset_slug,
         memory_context,

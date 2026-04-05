@@ -1,0 +1,105 @@
+provider: openrouter
+
+presets:
+  code:
+    models:
+      - anthropic/claude-sonnet-4
+      - google/gemini-2.5-pro
+      - openai/gpt-4.1
+    sort_by: price_asc
+    when: "Code generation, debugging, code review, writing scripts, modifying code files, configuration files"
+
+  architecture:
+    models:
+      - anthropic/claude-sonnet-4
+      - google/gemini-2.5-pro
+    sort_by: context_size_desc
+    when: "System design, architecture planning, trade-off analysis, technical strategy, infrastructure design"
+
+  shell:
+    models:
+      - google/gemini-2.5-flash
+      - anthropic/claude-haiku-3.5
+      - openai/gpt-4.1-nano
+    sort_by: latency_asc
+    when: "Shell commands, CLI one-liners, terminal usage, quick lookups"
+
+  security:
+    models:
+      - anthropic/claude-sonnet-4
+      - google/gemini-2.5-pro
+    sort_by: context_size_desc
+    when: "Security analysis, threat modeling, vulnerability assessment, compliance"
+
+  health:
+    models:
+      - google/gemini-2.5-flash
+      - anthropic/claude-haiku-3.5
+    sort_by: price_asc
+    when: "Physical health, fitness, nutrition, training programs"
+
+  mental_health:
+    models:
+      - anthropic/claude-sonnet-4
+      - google/gemini-2.5-pro
+    sort_by: context_size_desc
+    when: "Emotional support, mental health discussions, empathetic conversations"
+
+  finance:
+    models:
+      - google/gemini-2.5-flash
+      - anthropic/claude-haiku-3.5
+    sort_by: price_asc
+    when: "Financial analysis, investment discussion, market data"
+
+  proofreader:
+    models:
+      - google/gemini-2.5-flash
+      - anthropic/claude-haiku-3.5
+    sort_by: latency_asc
+    when: "Proofreading, editing, grammar, tone adjustment"
+
+  social:
+    models:
+      - google/gemini-2.5-flash
+      - anthropic/claude-haiku-3.5
+    sort_by: latency_asc
+    when: "Greetings, small talk, social exchanges, casual conversation"
+
+  general:
+    models:
+      - anthropic/claude-sonnet-4
+      - google/gemini-2.5-pro
+    sort_by: price_asc
+    when: "General knowledge, personal advice, catch-all conversations, decisions"
+
+  pondering:
+    models:
+      - anthropic/claude-sonnet-4
+      - google/gemini-2.5-pro
+    sort_by: context_size_desc
+    when: "Agent-initiated reflective conversation, deep thinking"
+
+tiers:
+  air:
+    models:
+      - google/gemini-2.5-flash
+      - anthropic/claude-haiku-3.5
+      - openai/gpt-4.1-nano
+    sort_by: price_asc
+    context_limit: 100000
+
+  standard:
+    models:
+      - anthropic/claude-sonnet-4
+      - google/gemini-2.5-pro
+      - openai/gpt-4.1
+    sort_by: price_asc
+    context_limit: 200000
+
+  heavy:
+    models:
+      - anthropic/claude-sonnet-4
+      - google/gemini-2.5-pro
+    sort_by: context_size_desc
+    context_limit: 1000000

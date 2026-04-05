@@ -400,6 +400,7 @@ class SpawnSubagentExecutor(ToolExecutor):
 
         async def _run():
             from agent.specialists import get_specialist, render_specialist_prompt
+            from models.router import select_model_for_specialist
 
             specialist = get_specialist(specialist_slug)
             if not specialist:
@@ -417,11 +418,29 @@ class SpawnSubagentExecutor(ToolExecutor):
                 directives=directives,
             )
 
+            # Route to concrete model via router
+            model = await select_model_for_specialist(
+                specialist.preset, action.condensed_intent,
+            )
+
+            from channels.status import send_status, StatusType
+            await send_status(
+                StatusType.SUBAGENT_SPAWNING,
+                f"Spawning: {specialist_slug}",
+                action.condensed_intent[:100],
+                {"Model": model},
+            )
+            await send_status(
+                StatusType.MODEL_SELECTED,
+                f"Router: {model}",
+                specialist.preset,
+            )
+
             if specialist.agentic:
                 result = await run_subagent_sdk(
                     system_prompt=system_prompt,
                     user_message=action.condensed_intent,
-                    model=specialist.preset,
+                    model=model,
                     max_turns=specialist.max_iterations,
                     chat_id=self.chat_id,
                     tool_names=specialist.tools,
@@ -431,7 +450,7 @@ class SpawnSubagentExecutor(ToolExecutor):
                     result = await _run_subagent(
                         system_prompt=system_prompt,
                         user_message=action.condensed_intent,
-                        model=specialist.preset,
+                        model=model,
                         max_turns=specialist.max_turns,
                         chat_id=self.chat_id,
                         http_client=http_client,
@@ -441,15 +460,24 @@ class SpawnSubagentExecutor(ToolExecutor):
                 f"[Delegation] spawn_subagent: category={action.category} "
                 f"specialist={specialist_slug} result_len={len(result)}"
             )
+
+            from channels.status import send_status, StatusType
+            await send_status(StatusType.SUBAGENT_COMPLETED, f"Completed: {specialist_slug}")
+
             return result, specialist_slug
 
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
+
+        # Propagate contextvars (platform context for status embeds) into the thread
+        import contextvars
+        ctx = contextvars.copy_context()
+
         if loop and loop.is_running():
             with ThreadPoolExecutor() as pool:
-                result, slug = pool.submit(asyncio.run, _run()).result()
+                result, slug = pool.submit(ctx.run, asyncio.run, _run()).result()
         else:
             result, slug = asyncio.run(_run())
 

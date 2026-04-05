@@ -53,6 +53,7 @@ from config import (
     DIRECTIVE_STORE_ENABLED,
     DYNAMODB_DIRECTIVES_TABLE,
     AWS_REGION,
+    IF_MODELS_TABLE_NAME,
 )
 
 _directive_store = None
@@ -101,3 +102,35 @@ def get_directive_store():
             "Directive store not initialized. Call init_directive_store()."
         )
     return _directive_store
+
+
+_model_registry = None
+
+
+def init_model_registry() -> None:
+    """Initialize the model registry and load from DynamoDB."""
+    global _model_registry
+
+    try:
+        from storage.model_registry import ModelRegistry
+
+        _model_registry = ModelRegistry(
+            table_name=IF_MODELS_TABLE_NAME,
+            region=AWS_REGION,
+        )
+        _model_registry.load()
+        logger.info(
+            f"[ModelRegistry] Initialized with {len(_model_registry._cache)} models "
+            f"from table {IF_MODELS_TABLE_NAME}"
+        )
+    except Exception as e:
+        logger.warning(f"[ModelRegistry] Failed to initialize: {type(e).__name__}: {e}")
+        _model_registry = None
+
+
+def get_model_registry():
+    if _model_registry is None:
+        raise RuntimeError(
+            "Model registry not initialized. Call init_model_registry()."
+        )
+    return _model_registry

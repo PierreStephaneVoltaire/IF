@@ -316,6 +316,21 @@ HEALTH_DOCS_DIR = os.getenv("HEALTH_DOCS_DIR", "docs/health")
 RESEARCH_AGENT_MODEL = os.getenv("RESEARCH_AGENT_MODEL", "openrouter/@preset/heavy")
 
 
+# =============================================================================
+# Model Registry Configuration
+# =============================================================================
+
+IF_MODELS_TABLE_NAME = os.getenv("IF_MODELS_TABLE_NAME", "if-models")
+
+MODELS_PATH = os.getenv(
+    "MODELS_PATH",
+    str(Path(__file__).parent.parent.parent / "models")
+)
+
+MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "google/gemma-3-4b-it")
+MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() == "true"
+
+
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_FILE = os.getenv("LOG_FILE", "./logs/app.log")
 

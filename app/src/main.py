@@ -249,6 +249,48 @@ async def lifespan(app: FastAPI):
         logger.error("The server will continue but directives will NOT be available in system prompts")
         # Optionally raise here if directives are critical:
         # raise
+
+    # Model registry initialization + OpenRouter refresh
+    try:
+        from storage.factory import init_model_registry, get_model_registry
+        init_model_registry()
+        logger.info("Model registry initialized")
+    except Exception as e:
+        logger.warning(f"Model registry initialization failed: {e}")
+
+    try:
+        import asyncio
+        from pathlib import Path as _Path
+        _models_file = _Path(os.environ.get("MODELS_FILE", "models/model_ids.txt"))
+        if _models_file.exists():
+            logger.info("[ModelRegistry] Refreshing model metadata from OpenRouter API...")
+            # Import seed_models as module for startup refresh
+            _seed_path = _Path(__file__).parent.parent.parent / "scripts" / "seed_models.py"
+            if _seed_path.exists():
+                import importlib.util as _ilu
+                _spec = _ilu.spec_from_file_location("seed_models", _seed_path)
+                _seed_mod = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_seed_mod)
+                _count = await _seed_mod.seed_models(
+                    models_file=str(_models_file),
+                    table_name=os.environ.get("IF_MODELS_TABLE_NAME", "if-models"),
+                    region=AWS_REGION,
+                )
+                logger.info(f"[ModelRegistry] Refreshed {_count} models from OpenRouter API")
+            else:
+                logger.warning(f"[ModelRegistry] Seed script not found at {_seed_path}")
+        else:
+            logger.info(f"[ModelRegistry] No models file at {_models_file}, skipping refresh")
+    except Exception as e:
+        logger.warning(f"[ModelRegistry] Startup refresh failed: {e}")
+
+    # Model preset configuration
+    try:
+        from models.loader import get_model_preset_manager
+        _model_preset_mgr = get_model_preset_manager()
+        _model_preset_mgr.load()
+    except Exception as e:
+        logger.warning(f"Model preset manager initialization failed: {e}")
     
     try:
         init_debounce(asyncio.get_running_loop())

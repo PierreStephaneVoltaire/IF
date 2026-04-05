@@ -137,6 +137,18 @@ async def dispatch_channel_batch(
         f"{len(messages)} messages from {platform}"
     )
 
+    # Set platform context for status embed threading
+    from channels.context import set_platform_context
+    set_platform_context(platform, channel_ref, discord_loop)
+
+    # Emit message received status embed
+    from channels.status import send_status, StatusType
+    await send_status(
+        StatusType.MESSAGE_RECEIVED,
+        "Message Received",
+        f"{len(messages)} message(s)",
+    )
+
     # Step 1: Translate messages to request format
     if platform == "discord":
         # Fetch channel history for context
@@ -211,6 +223,10 @@ async def dispatch_channel_batch(
     )
     
     logger.info(f"Delivery completed for {conversation_id}")
+
+    # Clear platform context
+    from channels.context import clear_platform_context
+    clear_platform_context()
     
     # Record activity for heartbeat system (outbound message)
     try:

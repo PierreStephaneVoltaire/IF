@@ -77,6 +77,12 @@ variable "dynamodb_proposals_table" {
   default     = "if-proposals"
 }
 
+variable "dynamodb_models_table" {
+  description = "DynamoDB table for model metadata registry"
+  type        = string
+  default     = "if-models"
+}
+
 variable "dynamodb_powerlifting_table" {
   description = "DynamoDB table for powerlifting app"
   type        = string

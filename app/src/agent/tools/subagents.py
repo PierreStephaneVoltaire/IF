@@ -295,11 +295,15 @@ class DeepThinkExecutor(ToolExecutor):
             file_path = f"plans/{action.topic}-plan.md"
             user_message = f"{action.task}\n\nSave your analysis to: {file_path}"
 
+            # Route to concrete model via router
+            from models.router import select_model_for_specialist
+            model = await select_model_for_specialist(THINKING_PRESET, action.task)
+
             async with httpx.AsyncClient(timeout=120.0) as http_client:
                 result = await _run_subagent(
                     system_prompt=system_prompt,
                     user_message=user_message,
-                    model=THINKING_PRESET,
+                    model=model,
                     max_turns=THINKING_MAX_TURNS,
                     chat_id=self.chat_id,
                     http_client=http_client,
@@ -314,8 +318,10 @@ class DeepThinkExecutor(ToolExecutor):
             loop = None
 
         if loop and loop.is_running():
+            import contextvars
+            ctx = contextvars.copy_context()
             with ThreadPoolExecutor() as pool:
-                result, file_path = pool.submit(asyncio.run, _run()).result()
+                result, file_path = pool.submit(ctx.run, asyncio.run, _run()).result()
         else:
             result, file_path = asyncio.run(_run())
 
@@ -476,12 +482,29 @@ class SpawnSpecialistExecutor(ToolExecutor):
             if action.write_to_file:
                 user_message = f"{action.task}\n\nSave your output to: {action.write_to_file}"
 
+            # Route to concrete model via router
+            from models.router import select_model_for_specialist
+            model = await select_model_for_specialist(specialist.preset, action.task)
+
+            from channels.status import send_status, StatusType
+            await send_status(
+                StatusType.SUBAGENT_SPAWNING,
+                f"Spawning: {specialist.slug}",
+                action.task[:100],
+                {"Model": model},
+            )
+            await send_status(
+                StatusType.MODEL_SELECTED,
+                f"Router: {model}",
+                specialist.preset,
+            )
+
             # Route to SDK agentic loop for agentic specialists
             if specialist.agentic:
                 result = await run_subagent_sdk(
                     system_prompt=system_prompt,
                     user_message=user_message,
-                    model=specialist.preset,
+                    model=model,
                     max_turns=specialist.max_iterations,
                     chat_id=self.chat_id,
                     tool_names=specialist.tools,
@@ -495,7 +518,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                     result = await _run_subagent(
                         system_prompt=system_prompt,
                         user_message=user_message,
-                        model=specialist.preset,
+                        model=model,
                         max_turns=specialist.max_turns,
                         chat_id=self.chat_id,
                         tool_schemas=tool_schemas,
@@ -503,6 +526,10 @@ class SpawnSpecialistExecutor(ToolExecutor):
                     )
 
             logger.info(f"[Subagents] Completed: slug={specialist.slug} | result_len={len(result)}")
+
+            from channels.status import send_status, StatusType
+            await send_status(StatusType.SUBAGENT_COMPLETED, f"Completed: {specialist.slug}")
+
             return result, specialist.slug
 
         # Handle async in sync context
@@ -512,8 +539,10 @@ class SpawnSpecialistExecutor(ToolExecutor):
             loop = None
 
         if loop and loop.is_running():
+            import contextvars
+            ctx = contextvars.copy_context()
             with ThreadPoolExecutor() as pool:
-                result, slug = pool.submit(asyncio.run, _run()).result()
+                result, slug = pool.submit(ctx.run, asyncio.run, _run()).result()
         else:
             result, slug = asyncio.run(_run())
 
@@ -631,6 +660,7 @@ class SpawnSpecialistsExecutor(ToolExecutor):
 
                 logger.info(f"[Subagents] Spawning parallel: slugs={action.specialist_types} | task={action.task[:100]}")
                 from agent.tools.tool_schemas import get_schemas_for_specialist
+                from models.router import select_model_for_specialist
                 for slug in action.specialist_types:
                     specialist = get_specialist(slug)
                     if not specialist:
@@ -650,11 +680,14 @@ class SpawnSpecialistsExecutor(ToolExecutor):
                         directives=directives,
                     )
 
+                    # Route to concrete model via router
+                    model = await select_model_for_specialist(specialist.preset, action.task)
+
                     if specialist.agentic:
                         tasks.append(run_subagent_sdk(
                             system_prompt=system_prompt,
                             user_message=action.task,
-                            model=specialist.preset,
+                            model=model,
                             max_turns=specialist.max_iterations,
                             chat_id=self.chat_id,
                             tool_names=specialist.tools,
@@ -664,7 +697,7 @@ class SpawnSpecialistsExecutor(ToolExecutor):
                         tasks.append(_run_subagent(
                             system_prompt=system_prompt,
                             user_message=action.task,
-                            model=specialist.preset,
+                            model=model,
                             max_turns=specialist.max_turns,
                             chat_id=self.chat_id,
                             tool_schemas=tool_schemas,
@@ -695,8 +728,10 @@ class SpawnSpecialistsExecutor(ToolExecutor):
             loop = None
 
         if loop and loop.is_running():
+            import contextvars
+            ctx = contextvars.copy_context()
             with ThreadPoolExecutor() as pool:
-                results, slugs = pool.submit(asyncio.run, _run()).result()
+                results, slugs = pool.submit(ctx.run, asyncio.run, _run()).result()
         else:
             results, slugs = asyncio.run(_run())
 

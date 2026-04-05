@@ -1,12 +1,12 @@
 # IF — Intelligent Agent API
 
-A single main agent with context-aware tiering and specialist subagent delegation, built on the OpenHands SDK. Routes through OpenRouter. Persists knowledge in LanceDB. Behavior evolves through runtime directives stored in DynamoDB.
+A single main agent with context-aware tiering and specialist subagent delegation, built on the OpenHands SDK. Routes through OpenRouter with a dynamic model registry and smart model router. Persists knowledge in LanceDB. Behavior evolves through runtime directives stored in DynamoDB.
 
 ## Tech Stack
 
 - Python 3.12, FastAPI, OpenHands SDK 1.11.4
 - LanceDB (user facts, all-MiniLM-L6-v2 embeddings), ChromaDB (health docs RAG)
-- SQLite (webhooks, activity via SQLModel), DynamoDB (directives, health, finance, diary, proposals)
+- SQLite (webhooks, activity via SQLModel), DynamoDB (directives, health, finance, diary, proposals, models)
 - Docker terminal containers for shell access (via OpenTerminal)
 - MCP servers for extended capabilities (time, AWS docs, Yahoo Finance, Alpha Vantage)
 - Kubernetes deployment via Terraform, Docker images via Packer
@@ -58,12 +58,17 @@ app/
 │   │       ├── tool_schemas.py     # Registry-backed schema resolution for specialists
 │   │       ├── discovery_tools.py  # discover_tools + use_tool system tools
 │   │       └── base.py             # TextObservation base class
+│   ├── models/              # Dynamic model routing
+│   │   ├── loader.py        # YAML model preset config (ModelPresetManager)
+│   │   └── router.py        # Smart model selection via fast LLM
 │   ├── channels/            # Multi-platform message handling
 │   │   ├── dispatcher.py    # Message flow bridge (translate → agent → chunk → deliver)
 │   │   ├── delivery.py      # Send responses back to platforms
 │   │   ├── chunker.py       # Split responses into 1500-char chunks
 │   │   ├── debounce.py      # 5-second message batching window
 │   │   ├── manager.py       # Listener lifecycle management
+│   │   ├── context.py       # Platform context var for status embed threading
+│   │   ├── status.py        # Discord status embed system
 │   │   ├── slash_commands.py
 │   │   ├── listeners/       # discord_listener.py, openwebui_listener.py
 │   │   └── translators/     # discord_translator.py, openwebui_translator.py
@@ -74,10 +79,11 @@ app/
 │   │   ├── embeddings.py    # Sentence transformer embedding generation
 │   │   └── summarizer.py    # Conversation summarization (fire-and-forget)
 │   ├── storage/             # Storage abstraction
-│   │   ├── factory.py       # Backend factory
+│   │   ├── factory.py       # Backend factory (webhooks, directives, model registry)
 │   │   ├── sqlite_backend.py    # SQLite (WAL mode) for webhooks
 │   │   ├── dynamodb_backend.py  # DynamoDB stub
-│   │   └── directive_store.py   # DynamoDB directive storage + cache
+│   │   ├── directive_store.py   # DynamoDB directive storage + cache
+│   │   └── model_registry.py    # DynamoDB model metadata registry + cache
 │   ├── routing/             # Request routing
 │   │   ├── interceptor.py   # Bypass routing
 │   │   ├── cache.py         # Conversation cache
@@ -90,7 +96,7 @@ app/
 │   ├── orchestrator/        # Multi-step task execution
 │   │   ├── executor.py      # execute_plan tool (sequential steps with subagents)
 │   │   └── analyzer.py      # analyze_parallel tool (parallel perspective analysis)
-│   ├── presets/             # OpenRouter preset definitions
+│   ├── presets/             # OpenRouter preset definitions (legacy, still active)
 │   │   └── loader.py        # PresetManager (loaded at startup)
 │   ├── mcp_servers/         # MCP server config
 │   │   └── config.py        # PRESET_MCP_MAP, server resolution
@@ -106,6 +112,9 @@ app/
 ├── terraform/               # Kubernetes, AWS infra
 └── main_system_prompt.txt   # Agent personality base prompt
 specialists/                 # One subdir per specialist (specialist.yaml + agent.j2)
+models/                       # Dynamic model routing config
+├── presets.yaml             # Model preset definitions (YAML)
+└── model_ids.txt            # Newline-delimited model IDs to track
 tools/                       # External tool plugins (one subdir per plugin)
 ├── health/                  # Training program management (35 tools)
 ├── finance/                 # Financial profile and investments (21 tools)
@@ -126,16 +135,22 @@ utils/                       # TypeScript/Node.js utility apps
 Client (Discord / OpenWebUI / HTTP)
   → Channel Listener
     → Debounce (5s batching)
-      → Dispatcher (translate to ChatCompletionRequest)
+      → Dispatcher (translate to ChatCompletionRequest, set platform context)
         → Completions Pipeline
           → Command parsing (/reset, /pondering, /reflect, etc.)
           → Interceptor (bypass routing)
           → Tier tracking (context token estimation)
-          → Session creation
+          → Model routing (tier-based model selection via ModelRegistry)
+          → Session creation (with model_override from router)
             → System prompt assembly:
                 base prompt + directives + operator context (LanceDB facts)
                 + signals (diary, financial) + addenda
           → Agent execution (OpenHands SDK → OpenRouter)
+            → Delegation pipeline
+              → categorize_conversation → get_directives → condense_intent
+              → spawn_subagent (model routing via fast LLM)
+                → Specialist execution (agentic SDK or raw OpenRouter)
+                  → Tool execution (with Discord status embeds)
           → Response extraction (FILES: metadata stripping)
         → Chunker (1500 char chunks)
       → Delivery (back to platform)
@@ -148,10 +163,11 @@ Client (Discord / OpenWebUI / HTTP)
 2. Parse slash commands (`/reset`, `/pondering`, `/reflect`, `/gaps`, `/patterns`, `/opinions`, `/growth`, `/meta`, `/tools`)
 3. Run interceptor for bypass routing
 4. Track tier with context token estimation
-5. Create session with signals injection
-6. Execute agent via OpenHands SDK
-7. Extract file attachments from `FILES:` metadata
-8. Trigger async conversation summarization
+5. Resolve concrete model for the tier via `select_model_for_tier()` (returns first model in tier's sorted list)
+6. Create session with `model_override` and signals injection
+7. Execute agent via OpenHands SDK
+8. Extract file attachments from `FILES:` metadata
+9. Trigger async conversation summarization
 
 ### System Prompt Assembly (session.py)
 
@@ -166,16 +182,58 @@ Client (Discord / OpenWebUI / HTTP)
 8. Terminal environment instructions
 9. Pondering addendum (if in pondering mode)
 
+## Model Router
+
+Dynamic model selection replacing rigid OpenRouter `@preset/` references with concrete model IDs, controlled via YAML config and a fast routing LLM.
+
+### Model Registry (`storage/model_registry.py`)
+
+DynamoDB-backed registry (`if-models` table, PK=`MODEL`, SK=model_id) storing metadata for OpenRouter models. Populated from the OpenRouter API via the seed script.
+
+**ModelInfo fields**: model_id, context_size, max_output_tokens, input/output pricing (per-provider), input/output modalities, tool_support, caching_support, zero_data_retention, throughput, latency.
+
+**Seeding**: `python scripts/seed_models.py [--models-file models/model_ids.txt]` — fetches all models from OpenRouter, filters to the input list, upserts to DynamoDB. Also runs automatically at startup to refresh metadata.
+
+**Sorting strategies**: `price_asc`, `price_desc`, `latency_asc`, `context_size_desc`, `throughput_desc`.
+
+### Model Presets (`models/presets.yaml`)
+
+YAML config defining named presets (mapped from specialist `@preset/` references) and tier configs. Auto-loaded at startup via `ModelPresetManager`.
+
+```yaml
+presets:
+  code:
+    models: [anthropic/claude-sonnet-4, google/gemini-2.5-pro]
+    sort_by: price_asc
+    when: "Code generation, debugging, code review"
+
+tiers:
+  standard:
+    models: [anthropic/claude-sonnet-4, google/gemini-2.5-pro]
+    sort_by: price_asc
+    context_limit: 200000
+```
+
+### Smart Selection (`models/router.py`)
+
+Two selection paths:
+
+**Main agent** (`select_model_for_tier`): Maps tier number (0/1/2) to tier config, returns first model in the sorted list. No LLM call — tier selection itself is the routing decision.
+
+**Subagents** (`select_model_for_specialist`): Maps specialist's `@preset/X` reference to a YAML preset, then uses a fast LLM (`MODEL_ROUTER_MODEL`, default `google/gemma-3-4b-it`) to select the best model from the preset's candidate list based on the condensed task intent and model metadata. Falls back to first sorted model if router is disabled or fails.
+
+**Fallback**: If `MODEL_ROUTER_ENABLED=false`, the YAML preset doesn't exist, or the model registry is empty, the system falls back to the original `@preset/` reference (backward compatible).
+
 ## Agent System
 
 ### Tiering
 
 Context-aware model selection based on conversation size:
-- **Air**: Simple queries (< 100K tokens), `@preset/air`
-- **Standard**: Most conversations (< 200K tokens), `@preset/standard`
-- **Heavy**: Complex tasks (≥ 200K tokens), `@preset/heavy`
+- **Air**: Simple queries (< 100K tokens), models from `models/presets.yaml` `tiers.air`
+- **Standard**: Most conversations (< 200K tokens), models from `tiers.standard`
+- **Heavy**: Complex tasks (≥ 200K tokens), models from `tiers.heavy`
 
-Upgrade at 65% capacity (`TIER_UPGRADE_THRESHOLD`). Context estimated at ~4 chars per token.
+Upgrade at 65% capacity (`TIER_UPGRADE_THRESHOLD`). Context estimated at ~4 chars per token. The concrete model for each tier is resolved from the `ModelPresetManager` using the tier's `sort_by` strategy.
 
 ### Specialists
 
@@ -199,7 +257,7 @@ Domain experts spawned by the main agent. Each has its own `specialist.yaml` con
 | `api_designer` | REST/GraphQL/gRPC API design, OpenAPI specs | read/write/search files | `@preset/architecture` |
 | `migration_planner` | Database/infrastructure migration planning with rollback strategies | terminal_execute, read/write/search files | `@preset/architecture` |
 | `incident_responder` | Production incident triage — fast, action-first, no preamble | terminal_execute, read/search files | `@preset/code` |
-| `performance_analyst` | Performance profiling, optimization, benchmarking — MEASURE→IDENTIFY→OPTIMIZE→VERIFY | terminal_execute, read/write/search files | `@preset/code` |
+| `performance_analyst` | Performance profiling, optimization, benchmarking — MEASURE→IDENTIFY→OPTIMIZE→VERIFY | terminal_execute, read/search files | `@preset/code` |
 | `planner` | Decomposes goals into sequenced, dependency-aware plans. Produces plans; does not execute | read/write/search files | standard |
 | `dialectic` | Structured adversarial reasoning — thesis-antithesis-synthesis | read_file | standard |
 | `decision_analyst` | Multi-criteria decision analysis with weighted scoring and tradeoff matrices | write_file | standard |
@@ -237,6 +295,8 @@ Domain experts spawned by the main agent. Each has its own `specialist.yaml` con
 **Skills** (mode modifiers for specialists): `red_team` (adversarial), `blue_team` (defensive), `pro_con` (balanced analysis), `steelman` (strongest version of a position), `devils_advocate` (attacks preferred option), `backcast` (start from outcome, work backward), `rubber_duck` (ask questions instead of answers), `eli5` (simplify maximally), `formal` (professional register), `speed` (compressed action-only), `teach` (explain why alongside what)
 
 Specialists with `agentic: true` in their `specialist.yaml` are routed to `run_subagent_sdk()` (`agent/tools/subagent_sdk.py`) instead of the raw OpenRouter call loop. This enables proper SDK tool dispatch, stuck detection, and event-based iteration via `Conversation.run()`.
+
+**Model routing for specialists**: When a specialist is spawned, its `@preset/X` reference is mapped to a YAML preset via `ModelPresetManager.resolve_preset_name()`. The `select_model_for_specialist()` function uses the fast router model to pick the best concrete model from the preset's candidate list based on the condensed task intent. If no matching YAML preset exists, the original `@preset/X` reference is used as fallback.
 
 ### Delegation Pipeline
 
@@ -299,11 +359,29 @@ All Observation subclasses inherit from `TextObservation` (`agent/tools/base.py`
 
 | Platform | Type | Description |
 |----------|------|-------------|
-| Discord | Bot (discord.py) | Listens to registered channels, slash commands, thread support |
+| Discord | Bot (discord.py) | Listens to registered channels, slash commands, thread support, status embeds |
 | OpenWebUI | Polling | Chat interface integration (5s poll interval) |
 | HTTP API | REST | Direct OpenAI-compatible API access |
 
-Flow: listener → debounce (5s) → dispatcher → translator → completions pipeline → chunker (1500 chars) → delivery.
+Flow: listener → debounce (5s) → dispatcher (set platform context) → translator → completions pipeline → chunker (1500 chars) → delivery.
+
+### Discord Status Embeds
+
+Lightweight, color-coded embeds sent to Discord channels for operational visibility. Only active for Discord platform — no-ops for API/OpenWebUI.
+
+**Status types** (sent as separate small embeds per event):
+| Status | Color | When |
+|--------|-------|------|
+| Message Received | Blue | Dispatcher receives batch |
+| Model Selected | Green | Router picks a model for a subagent |
+| Subagent Spawning | Yellow | Specialist subagent starts with model info |
+| Subagent Completed | Green | Specialist subagent finishes |
+| Subagent Failed | Red | Specialist subagent errors |
+| Tool Started | Purple | SDK tool call detected |
+| Tool Completed | Green | Tool execution succeeds |
+| Tool Failed | Red | Tool execution errors |
+
+**Implementation**: `channels/context.py` stores platform context (channel_ref, discord_loop) in a `contextvars.ContextVar`. `channels/status.py` reads this context to send embeds via `asyncio.run_coroutine_threadsafe()`. Context is propagated through `ThreadPoolExecutor` paths via `contextvars.copy_context()`.
 
 ### Attachment Handling
 
@@ -411,6 +489,7 @@ Server assignment per specialist is configured in each `specialist.yaml` under `
 | User Facts | LanceDB | Operator context with semantic search |
 | Webhooks | SQLite (WAL) | Channel registration and activity |
 | Directives | DynamoDB (`if-core`) | Behavioral rules with versioning |
+| Models | DynamoDB (`if-models`) | OpenRouter model metadata registry |
 | Health | DynamoDB (`if-health`) | Training programs |
 | Finance | DynamoDB (`if-finance`) | Financial snapshots |
 | Diary | DynamoDB (`if-diary-entries`, `if-diary-signals`) | Journaling + distilled signals |
@@ -466,10 +545,17 @@ Key configuration (see `app/src/config.py` for full list):
 | `EXTERNAL_TOOLS_PATH` | "" | Override path for external tool plugins |
 | `EXTERNAL_TOOLS_FALLBACK` | `project_root/tools/` | Fallback path if EXTERNAL_TOOLS_PATH is empty |
 | `SPECIALISTS_PATH` | `project_root/specialists/` | Path to specialists directory |
+| `IF_MODELS_TABLE_NAME` | `if-models` | DynamoDB table for model registry |
+| `MODELS_PATH` | `project_root/models/` | Path to model preset YAML configs |
+| `MODEL_ROUTER_MODEL` | `google/gemma-3-4b-it` | Fast model for subagent model selection |
+| `MODEL_ROUTER_ENABLED` | true | Enable LLM-based model routing |
 
 ## Key Patterns
 
 - **Specialist auto-discovery**: `specialists.py` scans `SPECIALISTS_PATH` at import time — no code changes needed to add specialists
+- **Model preset auto-discovery**: `models/loader.py` loads from `MODELS_PATH/presets.yaml` at startup — no code changes needed to add presets
+- **Model registry**: `storage/model_registry.py` mirrors DirectiveStore pattern (PK/SK, boto3, cache). Seeded from OpenRouter API at startup.
+- **Smart model routing**: `models/router.py` uses a fast LLM to pick the best model from a preset's candidate list. Falls back to sorted-first if disabled.
 - **Tool plugin auto-discovery**: `tool_registry.py` scans `tools/*/tool.yaml` at startup — no code changes needed to add domain tools. Plugins export `get_tools()`, `get_schemas()`, `execute()`. Hot reload via `POST /admin/reload-tools`.
 - **Delegation pipeline**: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent` in `delegation.py`
 - **Subagent spawning**: `spawn_specialist(type, task, context)` in `subagents.py`; `_run_subagent()` gives subagents terminal and domain tool access via registry
@@ -479,3 +565,4 @@ Key configuration (see `app/src/config.py` for full list):
 - **Channel message flow**: listener → debounce → dispatcher → translator → completions → chunker → delivery
 - **Directive injection**: System prompt includes directives from DynamoDB, filtered by specialist type for subagents
 - **MCP server config**: `mcp_servers.yaml` defines servers; specialist `specialist.yaml` lists which servers each specialist gets
+- **Discord status embeds**: `channels/status.py` sends color-coded embeds via `contextvars` propagation — no-ops for non-Discord platforms

@@ -429,6 +429,14 @@ async def process_chat_completion_internal(
     if conversation_history:
         logger.info(f"[History] Injecting {len(messages) - 1} history messages into system prompt")
 
+    # Resolve concrete model for the main agent via router
+    model_override = None
+    try:
+        from models.router import select_model_for_tier
+        model_override = select_model_for_tier(cached_state.current_tier)
+    except Exception as e:
+        logger.debug(f"[Router] Tier model selection skipped: {e}")
+
     session = get_or_create_session(
         conversation_id=cache_key,
         preset_slug=selected_preset,
@@ -436,6 +444,7 @@ async def process_chat_completion_internal(
         messages=messages,
         context_id=context_id,
         conversation_history=conversation_history,
+        model_override=model_override,
     )
     
     agent_response = await execute_agent(
