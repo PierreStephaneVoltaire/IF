@@ -177,9 +177,9 @@ export default function PlateCalculator() {
 
           {/* Plate Visualization */}
           <div className="flex items-center justify-center gap-4 py-6">
-            {/* Left plates - largest closest to bar, smallest at edge */}
+            {/* Left plates - smallest at edge, largest closest to bar */}
             <div className="flex items-center gap-1">
-              {loadout.plates.map((plate, idx) => (
+              {[...loadout.plates].reverse().map((plate, idx) => (
                 <div
                   key={idx}
                   className="rounded-sm flex items-center justify-center text-xs font-bold"
