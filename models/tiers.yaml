@@ -1,7 +1,3 @@
-# Internal tier configuration for the main agent.
-# Selected by context size, NOT by task classification.
-# Each tier maps to a pool of concrete model IDs from the model registry.
-
 tiers:
   air:
     models:
@@ -36,23 +32,25 @@ tiers:
     sort_by: price_asc
     context_limit: 1000000
 
-# Media tiers — used when the conversation contains images/files.
-# Models must support vision (image input modality).
+
 media_tiers:
   air:
     models:
       - anthropic/claude-haiku-4.5
-      - google/gemini-3-flash-preview
+      - google/gemini-3-flash-lite-preview
+      - openai/gpt-5.4-nano
     sort_by: price_asc
 
   standard:
     models:
       - anthropic/claude-sonnet-4.6
-      - google/gemini-3.1-pro-preview
+      - google/gemini-3-flash-lite-preview
+      - openai/gpt-5.4-mini
     sort_by: price_asc
 
   heavy:
     models:
       - anthropic/claude-opus-4.6
-      - google/gemini-4-31b-it
-    sort_by: context_size_desc
+      - google/gemini-3.1-pro-preview
+      - openai/gpt-5.4
+    sort_by: price_asc
