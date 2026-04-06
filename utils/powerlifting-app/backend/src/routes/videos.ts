@@ -19,6 +19,20 @@ const upload = multer({
 
 export const videosRouter = Router({ mergeParams: true })
 
+// GET /api/videos - List all videos across sessions
+videosRouter.get('/', async (req, res, next) => {
+  try {
+    const version = (req.query.version as string) || 'current'
+    const exercise = req.query.exercise as string | undefined
+    const sort = (req.query.sort as 'newest' | 'oldest') || 'newest'
+
+    const result = await videoController.getVideoLibrary(version, exercise, sort)
+    res.json({ data: result, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // POST /api/videos/:version/:sessionDate - Upload video to session
 videosRouter.post(
   '/:version/:sessionDate',

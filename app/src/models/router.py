@@ -94,7 +94,7 @@ async def select_model(
 
     # If no model metadata available, return first sorted
     if not models:
-        logger.info(f"[Router] No model metadata, using first sorted: {sorted_ids[0]}")
+        logger.warning(f"[Router] No model metadata (registry likely empty), using first YAML fallback: {sorted_ids[0]}")
         return sorted_ids[0]
 
     # Build prompt and call router model
@@ -192,6 +192,7 @@ def select_model_for_tier(tier_number: int) -> Optional[str]:
         model_registry = get_model_registry()
         sorted_ids = model_registry.sort_models(tier_config.model_ids, tier_config.sort_by)
     except RuntimeError:
+        logger.warning(f"[Router] Model registry not available, using YAML fallback for tier {tier_number}")
         sorted_ids = list(tier_config.model_ids)
 
     if sorted_ids:

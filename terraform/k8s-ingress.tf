@@ -14,6 +14,7 @@ spec:
   snippets:
     - context: http
       value: |
+        client_max_body_size 500M;
         limit_req_zone $binary_remote_addr zone=portal_limit:10m rate=30r/s;
     - context: http.server
       value: |

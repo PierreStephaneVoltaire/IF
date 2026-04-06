@@ -136,6 +136,24 @@ export interface SessionVideo {
   thumbnail_status?: 'pending' | 'ready' | 'failed'
 }
 
+// ─── Video Library ─────────────────────────────────────────────────────────────
+
+export interface VideoLibraryItem {
+  video: SessionVideo
+  session_date: string
+  day: string
+  week_number: number
+  phase_name: string
+  exercise_sets: number
+  exercise_reps: number
+  exercise_kg: number | null
+}
+
+export interface VideoLibraryResponse {
+  videos: VideoLibraryItem[]
+  exercises: string[]
+}
+
 // ─── Full Program ─────────────────────────────────────────────────────────────
 
 export interface Program {

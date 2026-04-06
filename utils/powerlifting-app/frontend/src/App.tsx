@@ -13,6 +13,7 @@ import SupplementsPage from '@/pages/SupplementsPage'
 import DietNotesPage from '@/pages/DietNotesPage'
 import CompetitionsPage from '@/pages/CompetitionsPage'
 import MaxesPage from '@/pages/MaxesPage'
+import VideosPage from '@/pages/VideosPage'
 
 export default function App() {
   const { loadProgram, version } = useProgramStore()
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/glossary" element={<GlossaryPage />} />
         <Route path="/maxes" element={<MaxesPage />} />
         <Route path="/tools" element={<ToolsPage />} />
+        <Route path="/videos" element={<VideosPage />} />
       </Routes>
     </AppShell>
   )

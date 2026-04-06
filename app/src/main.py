@@ -281,6 +281,18 @@ async def lifespan(app: FastAPI):
                 )
                 if _result.returncode == 0:
                     logger.info(f"[ModelRegistry] Seed complete:\n{_result.stdout.strip()}")
+                    # Reload registry cache with newly seeded data
+                    try:
+                        from storage.factory import get_model_registry, init_model_registry
+                        try:
+                            _reg = get_model_registry()
+                        except RuntimeError:
+                            init_model_registry()
+                            _reg = get_model_registry()
+                        _reg.load()
+                        logger.info(f"[ModelRegistry] Cache refreshed after seed: {len(_reg._cache)} models")
+                    except Exception as _reg_err:
+                        logger.warning(f"[ModelRegistry] Post-seed cache reload failed: {_reg_err}")
                 else:
                     logger.warning(f"[ModelRegistry] Seed failed (rc={_result.returncode}): {_result.stderr.strip()}")
             else:

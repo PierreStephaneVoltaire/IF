@@ -73,7 +73,7 @@ export default function VideoUploadModal({
       const { video } = await uploadVideo(version, {
         file,
         sessionDate: session.date,
-        exerciseName: exerciseName || undefined,
+        exerciseName,
         setNumber,
         notes: notes || undefined,
         onProgress: setUploadProgress,
@@ -153,7 +153,7 @@ export default function VideoUploadModal({
 
           {/* Exercise Dropdown */}
           <div>
-            <label className="text-sm text-muted-foreground">Exercise (optional)</label>
+            <label className="text-sm text-muted-foreground">Exercise</label>
             <select
               value={exerciseName}
               onChange={(e) => setExerciseName(e.target.value)}
@@ -224,7 +224,7 @@ export default function VideoUploadModal({
           </button>
           <button
             onClick={handleUpload}
-            disabled={!file || isUploading}
+            disabled={!file || isUploading || !exerciseName}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium disabled:opacity-50"
           >
             {isUploading ? (

@@ -12,6 +12,7 @@ import {
   Utensils,
   Trophy,
   TrendingUp,
+  Film,
   MoreHorizontal,
 } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -35,6 +36,7 @@ const SECONDARY_NAV_ITEMS = [
   { to: '/competitions', icon: Trophy, label: 'Competitions' },
   { to: '/maxes', icon: TrendingUp, label: 'Maxes' },
   { to: '/glossary', icon: BookOpen, label: 'Glossary' },
+  { to: '/videos', icon: Film, label: 'Videos' },
 ]
 
 const ALL_NAV_ITEMS = [
@@ -49,6 +51,7 @@ const ALL_NAV_ITEMS = [
   { to: '/maxes', icon: TrendingUp, label: 'Maxes' },
   { to: '/glossary', icon: BookOpen, label: 'Glossary' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
+  { to: '/videos', icon: Film, label: 'Videos' },
 ]
 
 function MoreMenu() {

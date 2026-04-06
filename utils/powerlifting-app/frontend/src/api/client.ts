@@ -14,6 +14,8 @@ import type {
   Competition,
   SessionVideo,
   LiftResults,
+  VideoLibraryItem,
+  VideoLibraryResponse,
 } from '@powerlifting/types'
 
 const api = axios.create({
@@ -304,6 +306,20 @@ export async function completeCompetition(
 }
 
 // ─── Videos ───────────────────────────────────────────────────────────────────
+
+export async function getVideos(
+  version: string = 'current',
+  exercise?: string,
+  sort: 'newest' | 'oldest' = 'newest'
+): Promise<{ videos: VideoLibraryItem[]; exercises: string[] }> {
+  const params = new URLSearchParams()
+  if (exercise) params.set('exercise', exercise)
+  params.set('sort', sort)
+  const res = await api.get<ApiResponse<{ videos: VideoLibraryItem[]; exercises: string[] }>>(
+    `/videos?version=${version}&${params}`
+  )
+  return res.data.data
+}
 
 export async function removeSessionVideo(
   version: string,
