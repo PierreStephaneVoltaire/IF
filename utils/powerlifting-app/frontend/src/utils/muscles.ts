@@ -41,7 +41,7 @@ export const MUSCLE_MAP: Record<string, MuscleContribution> = {
   'Tricep Pushdown': { primary: ['triceps'], secondary: [] },
 
   // ─── Deadlift variants ──────────────────────────────────────────
-  'Deadlift': { primary: ['hamstrings', 'glutes', 'erectors'], secondary: ['lats', 'quads', 'upper_back_traps', 'forearms'] },
+  'Deadlift': { primary: ['hamstrings', 'glutes', 'erectors'], secondary: ['lats', 'quads', 'traps', 'forearms'] },
   'Deadlift (Backout)': { primary: ['hamstrings', 'glutes', 'erectors'], secondary: ['lats', 'quads', 'forearms'] },
   'Conventional Deadlift': { primary: ['hamstrings', 'glutes', 'erectors'], secondary: ['lats', 'quads', 'forearms'] },
   'Sumo Deadlift': { primary: ['glutes', 'quads', 'hamstrings'], secondary: ['erectors', 'lats', 'forearms'] },
@@ -49,7 +49,7 @@ export const MUSCLE_MAP: Record<string, MuscleContribution> = {
   'RDL': { primary: ['hamstrings', 'glutes'], secondary: ['erectors', 'forearms'] },
   'Stiff-Leg Deadlift': { primary: ['hamstrings', 'erectors'], secondary: ['glutes', 'forearms'] },
   'Deficit Deadlift': { primary: ['hamstrings', 'glutes', 'erectors'], secondary: ['quads', 'lats', 'forearms'] },
-  'Rack Pull': { primary: ['erectors', 'upper_back_traps'], secondary: ['hamstrings', 'glutes', 'forearms'] },
+  'Rack Pull': { primary: ['erectors', 'traps'], secondary: ['hamstrings', 'glutes', 'forearms'] },
   'Block Pull': { primary: ['hamstrings', 'glutes', 'erectors'], secondary: ['lats', 'forearms'] },
   'Good Morning': { primary: ['hamstrings', 'erectors'], secondary: ['glutes'] },
 
@@ -62,22 +62,22 @@ export const MUSCLE_MAP: Record<string, MuscleContribution> = {
   'Hip Thrust': { primary: ['glutes'], secondary: ['hamstrings', 'quads'] },
 
   // ─── Upper back / pulling ────────────────────────────────────────
-  'Pull-up': { primary: ['lats', 'biceps'], secondary: ['upper_back_traps', 'rhomboids'] },
-  'Weighted Pull-up': { primary: ['lats', 'biceps'], secondary: ['upper_back_traps', 'rhomboids', 'rear_delts', 'teres_major'] },
-  'Chin-up': { primary: ['lats', 'biceps'], secondary: ['upper_back_traps'] },
-  'Lat Pulldown': { primary: ['lats'], secondary: ['biceps', 'upper_back_traps'] },
-  'Barbell Row': { primary: ['lats', 'upper_back_traps'], secondary: ['biceps', 'erectors'] },
-  'DB Row': { primary: ['lats', 'upper_back_traps'], secondary: ['biceps', 'rear_delts'] },
-  'Cable Row': { primary: ['lats', 'upper_back_traps'], secondary: ['biceps', 'rear_delts'] },
-  'Face Pull': { primary: ['rear_delts', 'upper_back_traps'], secondary: ['rhomboids', 'biceps'] },
-  'Shrug': { primary: ['upper_back_traps'], secondary: ['forearms'] },
+  'Pull-up': { primary: ['lats', 'biceps'], secondary: ['traps', 'rhomboids'] },
+  'Weighted Pull-up': { primary: ['lats', 'biceps'], secondary: ['traps', 'rhomboids', 'rear_delts', 'teres_major'] },
+  'Chin-up': { primary: ['lats', 'biceps'], secondary: ['traps'] },
+  'Lat Pulldown': { primary: ['lats'], secondary: ['biceps', 'traps'] },
+  'Barbell Row': { primary: ['lats', 'traps'], secondary: ['biceps', 'erectors'] },
+  'DB Row': { primary: ['lats', 'traps'], secondary: ['biceps', 'rear_delts'] },
+  'Cable Row': { primary: ['lats', 'traps'], secondary: ['biceps', 'rear_delts'] },
+  'Face Pull': { primary: ['rear_delts', 'traps'], secondary: ['rhomboids', 'biceps'] },
+  'Shrug': { primary: ['traps'], secondary: ['forearms'] },
 
   // ─── Shoulders ──────────────────────────────────────────────────
-  'Overhead Press': { primary: ['front_delts', 'side_delts', 'triceps'], secondary: ['upper_back_traps', 'core'] },
+  'Overhead Press': { primary: ['front_delts', 'side_delts', 'triceps'], secondary: ['traps', 'core'] },
   'Push Press': { primary: ['front_delts', 'side_delts', 'triceps'], secondary: ['quads', 'glutes', 'core'] },
   'DB Shoulder Press': { primary: ['front_delts', 'side_delts', 'triceps'], secondary: [] },
-  'Lateral Raise': { primary: ['side_delts'], secondary: ['upper_back_traps'] },
-  'Rear Delt Fly': { primary: ['rear_delts'], secondary: ['rhomboids', 'upper_back_traps'] },
+  'Lateral Raise': { primary: ['side_delts'], secondary: ['traps'] },
+  'Rear Delt Fly': { primary: ['rear_delts'], secondary: ['rhomboids', 'traps'] },
 
   // ─── Arms ───────────────────────────────────────────────────────
   'Barbell Curl': { primary: ['biceps'], secondary: ['forearms'] },
@@ -162,12 +162,13 @@ export const MUSCLE_DISPLAY_NAMES: Record<MuscleGroup, string> = {
   side_delts: 'Side Delts',
   rear_delts: 'Rear Delts',
   lats: 'Lats',
-  upper_back_traps: 'Upper Back / Traps',
+  traps: 'Traps',
   rhomboids: 'Rhomboids',
   teres_major: 'Teres Major',
   biceps: 'Biceps',
   forearms: 'Forearms',
   erectors: 'Erectors',
+  lower_back: 'Lower Back',
   core: 'Core',
   obliques: 'Obliques',
 }

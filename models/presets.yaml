@@ -144,7 +144,8 @@ presets:
     models:
       - google/gemini-3.1-flash-lite-preview  
       - openai/gpt-5.4-nano                   
-      - z-ai/glm-4.7-flash                   
+      - z-ai/glm-4.7-flash     
+      - openai/gpt-5-nano  
       - google/gemma-4-26b-a4b-it           
       - minimax/minimax-m2.7                 
       - openai/gpt-oss-120b                   
@@ -160,7 +161,8 @@ presets:
   general:
     models:
       - anthropic/claude-sonnet-4.6          
-      - google/gemini-3.1-pro-preview        
+      - google/gemini-3.1-pro-preview     
+      - openai/gpt-5-nano
       - deepseek/deepseek-v3.2             
       - openai/gpt-5.4-mini                  
       - qwen/qwen3-next-80b-a3b-instruct     
@@ -179,6 +181,7 @@ presets:
       - qwen/qwen3-max-thinking              
       - deepseek/deepseek-v3.2-speciale      
       - z-ai/glm-5-turbo
+      - openai/gpt-5-nano
       - moonshotai/kimi-k2.5                  
       - google/gemma-4-31b-it             
       - anthropic/claude-sonnet-4.6           

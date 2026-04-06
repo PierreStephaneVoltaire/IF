@@ -11,6 +11,7 @@ import {
   Pill,
   Utensils,
   Trophy,
+  TrendingUp,
   MoreHorizontal,
 } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -32,6 +33,7 @@ const SECONDARY_NAV_ITEMS = [
   { to: '/supplements', icon: Pill, label: 'Supplements' },
   { to: '/diet', icon: Utensils, label: 'Diet Notes' },
   { to: '/competitions', icon: Trophy, label: 'Competitions' },
+  { to: '/maxes', icon: TrendingUp, label: 'Maxes' },
   { to: '/glossary', icon: BookOpen, label: 'Glossary' },
 ]
 
@@ -44,6 +46,7 @@ const ALL_NAV_ITEMS = [
   { to: '/supplements', icon: Pill, label: 'Supplements' },
   { to: '/diet', icon: Utensils, label: 'Diet Notes' },
   { to: '/competitions', icon: Trophy, label: 'Competitions' },
+  { to: '/maxes', icon: TrendingUp, label: 'Maxes' },
   { to: '/glossary', icon: BookOpen, label: 'Glossary' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
 ]

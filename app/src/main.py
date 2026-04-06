@@ -2,6 +2,8 @@
 from __future__ import annotations
 import asyncio
 import os
+import subprocess
+import sys
 import uuid
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -265,22 +267,22 @@ async def lifespan(app: FastAPI):
     try:
         import asyncio
         from pathlib import Path as _Path
-        _models_file = _Path(os.environ.get("MODELS_FILE", "models/model_ids.txt"))
+        from config import MODELS_PATH
+        _models_file = _Path(MODELS_PATH) / "model_ids.txt"
         if _models_file.exists():
-            logger.info("[ModelRegistry] Refreshing model metadata from OpenRouter API...")
-            # Import seed_models as module for startup refresh
+            logger.info(f"[ModelRegistry] Refreshing model metadata from OpenRouter API (file={_models_file})...")
             _seed_path = _Path(__file__).parent.parent.parent / "scripts" / "seed_models.py"
             if _seed_path.exists():
                 import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("seed_models", _seed_path)
-                _seed_mod = _ilu.module_from_spec(_spec)
-                _spec.loader.exec_module(_seed_mod)
-                _count = await _seed_mod.seed_models(
-                    models_file=str(_models_file),
-                    table_name=os.environ.get("IF_MODELS_TABLE_NAME", "if-models"),
-                    region=AWS_REGION,
+                _result = subprocess.run(
+                    [sys.executable, str(_seed_path), str(_models_file)],
+                    capture_output=True, text=True, timeout=300,
+                    env={**os.environ, "MODELS_FILE": str(_models_file)},
                 )
-                logger.info(f"[ModelRegistry] Refreshed {_count} models from OpenRouter API")
+                if _result.returncode == 0:
+                    logger.info(f"[ModelRegistry] Seed complete:\n{_result.stdout.strip()}")
+                else:
+                    logger.warning(f"[ModelRegistry] Seed failed (rc={_result.returncode}): {_result.stderr.strip()}")
             else:
                 logger.warning(f"[ModelRegistry] Seed script not found at {_seed_path}")
         else:
@@ -302,13 +304,38 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"[ModelRegistry] Periodic stats refresh failed: {e}")
 
+    async def _periodic_model_seed():
+        from pathlib import Path as _Path
+        from config import MODELS_PATH, MODEL_SEED_INTERVAL
+        _models_file = _Path(MODELS_PATH) / "model_ids.txt"
+        _seed_path = _Path(__file__).parent.parent.parent / "scripts" / "seed_models.py"
+        if not _models_file.exists() or not _seed_path.exists():
+            logger.warning("[ModelRegistry] Periodic seed skipped: models file or seed script missing")
+            return
+        while True:
+            await asyncio.sleep(MODEL_SEED_INTERVAL)
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(_seed_path), str(_models_file)],
+                    capture_output=True, text=True, timeout=300,
+                    env={**os.environ, "MODELS_FILE": str(_models_file)},
+                )
+                if result.returncode == 0:
+                    logger.info(f"[ModelRegistry] Periodic seed complete")
+                else:
+                    logger.warning(f"[ModelRegistry] Periodic seed failed (rc={result.returncode}): {result.stderr.strip()[:200]}")
+            except Exception as e:
+                logger.warning(f"[ModelRegistry] Periodic seed error: {e}")
+
     try:
         from storage.factory import get_model_registry
         registry = get_model_registry()
         if registry:
             # Run initial refresh in background (don't block startup)
             asyncio.create_task(_periodic_stats_refresh())
+            asyncio.create_task(_periodic_model_seed())
             logger.info(f"Model stats refresh started (interval={MODEL_STATS_REFRESH_INTERVAL}s)")
+            logger.info(f"Model seed refresh started (interval={MODEL_SEED_INTERVAL}s)")
     except Exception as e:
         logger.warning(f"Model stats refresh init failed: {e}")
 

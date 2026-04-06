@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import {
   BarChart,
   Bar,
@@ -13,35 +13,48 @@ import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { weeklyVolumeByCategory6 } from '@/utils/volume'
 import { displayWeight } from '@/utils/units'
+import { fetchGlossary } from '@/api/client'
+import type { GlossaryExercise } from '@powerlifting/types'
 
 const CATEGORY_COLORS: Record<string, string> = {
   squat: '#ef4444',
   bench: '#3b82f6',
   deadlift: '#22c55e',
-  upper_accessory: '#f97316',
-  lower_accessory: '#a855f7',
-  core_accessory: '#06b6d4',
+  back: '#f97316',
+  chest: '#a855f7',
+  arm: '#ec4899',
+  legs: '#eab308',
+  core: '#06b6d4',
+  lower_back: '#14b8a6',
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
   squat: 'Squat',
   bench: 'Bench',
   deadlift: 'Deadlift',
-  upper_accessory: 'Upper Accessory',
-  lower_accessory: 'Lower Accessory',
-  core_accessory: 'Core Accessory',
+  back: 'Back',
+  chest: 'Chest',
+  arm: 'Arms',
+  legs: 'Legs',
+  core: 'Core',
+  lower_back: 'Lower Back',
 }
 
-const CATEGORIES = ['squat', 'bench', 'deadlift', 'upper_accessory', 'lower_accessory', 'core_accessory'] as const
+const CATEGORIES = ['squat', 'bench', 'deadlift', 'back', 'chest', 'arm', 'legs', 'core', 'lower_back'] as const
 
-export default function VolumeChart() {
+export default function VolumeChart({ block }: { block?: string }) {
   const { program } = useProgramStore()
   const { unit } = useSettingsStore()
+  const [glossary, setGlossary] = useState<GlossaryExercise[]>([])
+
+  useEffect(() => {
+    fetchGlossary().then(setGlossary).catch(() => {})
+  }, [])
 
   const data = useMemo(() => {
     if (!program) return []
-    return weeklyVolumeByCategory6(program.sessions)
-  }, [program])
+    return weeklyVolumeByCategory6(program.sessions, block, glossary)
+  }, [program, block, glossary])
 
   if (!program || data.length === 0) {
     return (

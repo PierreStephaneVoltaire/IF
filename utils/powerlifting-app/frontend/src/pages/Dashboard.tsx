@@ -54,6 +54,7 @@ export default function Dashboard() {
   const actualMaxes = { squat: 0, bench: 0, deadlift: 0 }
   for (const session of sessions) {
     if (!session.completed) continue
+    if ((session.block || 'current') !== 'current') continue
     for (const exercise of session.exercises) {
       if (exercise.kg == null) continue
       const name = exercise.name.toLowerCase()

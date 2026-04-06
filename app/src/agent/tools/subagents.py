@@ -174,6 +174,10 @@ async def _run_subagent(
                             chat_id=chat_id,
                             http_client=http_client,
                         )
+                    elif tool_name == "get_current_date":
+                        from agent.tools.context_tools import get_current_date
+                        import json as _json
+                        output = _json.dumps(get_current_date())
                     elif _is_external_tool(tool_name):
                         from agent.tools.tool_schemas import execute_domain_tool
                         output = await execute_domain_tool(tool_name, args)

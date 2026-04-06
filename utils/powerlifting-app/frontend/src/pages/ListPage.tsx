@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
@@ -13,6 +13,14 @@ export default function ListPage() {
   const { program, isLoading, createSession, deleteSession } = useProgramStore()
   const { unit } = useSettingsStore()
   const { pushToast } = useUiStore()
+  const [block, setBlock] = useState('current')
+
+  const availableBlocks = useMemo(() => {
+    if (!program) return ['current']
+    const blocks = new Set<string>()
+    for (const s of program.sessions) blocks.add(s.block ?? 'current')
+    return Array.from(blocks).sort()
+  }, [program])
   const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(new Set())
   const [drawerDate, setDrawerDate] = useState<string | null>(null)
   const [drawerArrayIndex, setDrawerArrayIndex] = useState<number | null>(null)
@@ -72,7 +80,7 @@ export default function ListPage() {
     )
   }
 
-  const sessionsByWeek = groupSessionsByWeek(program.sessions)
+  const sessionsByWeek = groupSessionsByWeek(program.sessions, block)
 
   const toggleWeek = (week: number) => {
     setExpandedWeeks((prev) => {
@@ -95,13 +103,28 @@ export default function ListPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Sessions by Week</h1>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Session
-        </button>
+        <div className="flex items-center gap-2">
+          {availableBlocks.length > 1 && (
+            <select
+              value={block}
+              onChange={(e) => setBlock(e.target.value)}
+              className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
+            >
+              {availableBlocks.map((b) => (
+                <option key={b} value={b}>
+                  {b === 'current' ? 'Current Block' : b}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Session
+          </button>
+        </div>
       </div>
 
       {/* Add Session Modal */}

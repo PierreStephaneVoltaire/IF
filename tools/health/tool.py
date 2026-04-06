@@ -1667,6 +1667,8 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         return f"Unknown health tool: {name}"
 
     result = handler()
+    if asyncio.iscoroutine(result):
+        result = await result
     if isinstance(result, str):
         return result
     return json.dumps(result, indent=2, default=str)

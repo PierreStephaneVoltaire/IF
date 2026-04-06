@@ -64,6 +64,7 @@ export async function createSession(
     ...session,
     week_number: weekNumber,
     phase: resolvedPhase,
+    block: session.block ?? 'current',
   }
 
   sessions.push(newSession)

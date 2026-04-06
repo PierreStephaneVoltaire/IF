@@ -189,10 +189,10 @@ TOKENIZER_MODEL = os.getenv("TOKENIZER_MODEL", "gpt-4")
 DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "openrouter/@preset/heavy")
 
 # Model for conversation condensation (summarizing long conversations)
-CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "openrouter/@preset/general")
+CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "openrouter/gpt-5-nano")
 
 # Model for condensing user intent into specialist task prompts (cheap/fast)
-CONDENSE_INTENT_MODEL = os.getenv("CONDENSE_INTENT_MODEL", "openrouter/google/gemma-3-4b-it")
+CONDENSE_INTENT_MODEL = os.getenv("CONDENSE_INTENT_MODEL", "openrouter/openai/gpt-5-nano")
 
 # Fallback model for heartbeat pondering (when pondering preset unavailable)
 HEARTBEAT_FALLBACK_MODEL = os.getenv("HEARTBEAT_FALLBACK_MODEL", "openrouter/@preset/general")
@@ -324,12 +324,14 @@ MODELS_PATH = os.getenv(
     str(Path(__file__).parent.parent.parent / "models")
 )
 
-MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "google/gemma-3-4b-it")
+MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "openai/gpt-5-nano")
 MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() == "true"
 
 # Interval for refreshing per-provider latency/throughput from OpenRouter (seconds)
 MODEL_STATS_REFRESH_INTERVAL = int(os.getenv("MODEL_STATS_REFRESH_INTERVAL", "1800"))  # 30 min
 
+# Interval for full model metadata seed from OpenRouter (seconds)
+MODEL_SEED_INTERVAL = int(os.getenv("MODEL_SEED_INTERVAL", "3600"))  # 1 hour
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_FILE = os.getenv("LOG_FILE", "./logs/app.log")
