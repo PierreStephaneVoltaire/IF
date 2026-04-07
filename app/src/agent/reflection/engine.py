@@ -80,7 +80,8 @@ class ReflectionEngine:
         """
         # Use config default if no model specified
         if llm_model is None:
-            llm_model = REFLECTION_MODEL
+            from models.router import resolve_preset_to_model
+            llm_model = resolve_preset_to_model(REFLECTION_MODEL)
         self.store = store
         self.http_client = http_client
         self.llm_model = llm_model

@@ -116,6 +116,7 @@ async def _run_subagent(
     chat_id: str,
     tool_schemas: Optional[List[Dict[str, Any]]] = None,
     http_client: Optional[httpx.AsyncClient] = None,
+    original_preset: Optional[str] = None,
 ) -> str:
     """Run a subagent with the given configuration.
 
@@ -142,16 +143,29 @@ async def _run_subagent(
         http_client = httpx.AsyncClient(timeout=120.0)
         should_close = True
 
+    context_retried = False
+
     try:
         for turn in range(max_turns):
             logger.debug(f"[Subagent] Turn {turn + 1}/{max_turns}")
 
-            response = await call_openrouter(
-                model=model,
-                messages=messages,
-                tools=tools,
-                http_client=http_client,
-            )
+            try:
+                response = await call_openrouter(
+                    model=model,
+                    messages=messages,
+                    tools=tools,
+                    http_client=http_client,
+                )
+            except Exception as e:
+                from models.router import is_context_limit_error, select_model_by_context
+                if not context_retried and original_preset and is_context_limit_error(e):
+                    fallback = select_model_by_context(original_preset)
+                    if fallback and fallback != model:
+                        logger.warning(f"[Subagent] Context limit, retrying with {fallback}")
+                        model = fallback
+                        context_retried = True
+                        continue
+                raise
 
             if response.tool_calls:
                 messages.append(response.to_message())
@@ -267,7 +281,7 @@ class DeepThinkObservation(TextObservation):
         content.append(f"Topic: {self.topic}\n", style="green")
         if self.file_path:
             content.append(f"Saved to: {self.file_path}\n", style="dim")
-        content.append(self.result[:500])
+        content.append(self.result)
         return content
 
 
@@ -311,6 +325,7 @@ class DeepThinkExecutor(ToolExecutor):
                     max_turns=THINKING_MAX_TURNS,
                     chat_id=self.chat_id,
                     http_client=http_client,
+                    original_preset=THINKING_PRESET,
                 )
 
             return result, file_path
@@ -437,7 +452,7 @@ class SpawnSpecialistObservation(TextObservation):
         content.append(f"Specialist Result ({self.specialist_type}):\n", style="bold blue")
         if self.skill:
             content.append(f"Skill: {self.skill}\n", style="yellow")
-        content.append(self.result[:500])
+        content.append(self.result)
         return content
 
 
@@ -512,6 +527,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                     max_turns=specialist.max_iterations,
                     chat_id=self.chat_id,
                     tool_names=specialist.tools,
+                    original_preset=specialist.preset,
                 )
             else:
                 # Non-agentic: use raw OpenRouter path
@@ -527,6 +543,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                         chat_id=self.chat_id,
                         tool_schemas=tool_schemas,
                         http_client=http_client,
+                        original_preset=specialist.preset,
                     )
 
             logger.info(f"[Subagents] Completed: slug={specialist.slug} | result_len={len(result)}")
@@ -642,7 +659,7 @@ class SpawnSpecialistsObservation(TextObservation):
         content = Text()
         content.append("Parallel Specialists Results:\n", style="bold blue")
         content.append(f"Specialists: {', '.join(self.specialist_types)}\n", style="green")
-        content.append(self.results[:500])
+        content.append(self.results)
         return content
 
 

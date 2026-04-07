@@ -288,7 +288,9 @@ class HeartbeatRunner:
             from presets.loader import get_preset_manager
             preset_manager = get_preset_manager()
             pondering_preset = preset_manager.get_preset("pondering")
-            model = pondering_preset.model if pondering_preset else HEARTBEAT_FALLBACK_MODEL
+            from models.router import resolve_preset_to_model
+            raw_model = pondering_preset.model if pondering_preset else HEARTBEAT_FALLBACK_MODEL
+            model = resolve_preset_to_model(raw_model)
             
             response = await call_llm(
                 model=model,

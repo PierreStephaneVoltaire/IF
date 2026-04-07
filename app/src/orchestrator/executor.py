@@ -32,6 +32,7 @@ from config import (
     ORCHESTRATOR_SUBAGENT_MODEL,
     ORCHESTRATOR_MAX_TURNS,
 )
+from models.router import resolve_preset_to_model, is_context_limit_error, select_model_by_context
 from terminal import strip_files_line, FileRef, get_static_manager
 
 if TYPE_CHECKING:
@@ -189,28 +190,41 @@ async def run_subagent(
     model: str,
     max_turns: int = ORCHESTRATOR_MAX_TURNS,
     http_client: Optional[httpx.AsyncClient] = None,
+    preset_hint: Optional[str] = None,
 ) -> StepResult:
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_message},
     ]
     tools = [TERMINAL_EXECUTE_SCHEMA]
-    
+
     should_close = False
     if http_client is None:
         http_client = httpx.AsyncClient(timeout=120.0)
         should_close = True
-    
+
+    context_retried = False
+
     try:
         for turn in range(max_turns):
             logger.debug(f"[Subagent] Turn {turn + 1}/{max_turns}")
-            
-            response = await call_openrouter(
-                model=model,
-                messages=messages,
-                tools=tools,
-                http_client=http_client,
-            )
+
+            try:
+                response = await call_openrouter(
+                    model=model,
+                    messages=messages,
+                    tools=tools,
+                    http_client=http_client,
+                )
+            except Exception as e:
+                if not context_retried and preset_hint and is_context_limit_error(e):
+                    fallback = select_model_by_context(preset_hint)
+                    if fallback and fallback != model:
+                        logger.warning(f"[Subagent] Context limit, retrying with {fallback}")
+                        model = fallback
+                        context_retried = True
+                        continue
+                raise
             
             if response.tool_calls:
                 messages.append(response.to_message())
@@ -534,9 +548,10 @@ async def _execute_plan_impl(
                 system_prompt=prompt,
                 user_message=f"Execute: {step.title}\n\n{step.description}",
                 chat_id=chat_id,
-                model=ORCHESTRATOR_SUBAGENT_MODEL,
+                model=resolve_preset_to_model(ORCHESTRATOR_SUBAGENT_MODEL),
                 max_turns=ORCHESTRATOR_MAX_TURNS,
                 http_client=http_client,
+                preset_hint=ORCHESTRATOR_SUBAGENT_MODEL,
             )
             
             result.step_index = step.index

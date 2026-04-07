@@ -548,6 +548,17 @@ variable "models_host_path" {
   type        = string
 }
 
+variable "scripts_host_path" {
+  description = "Host path to scripts directory for hostPath volume"
+  type        = string
+}
+
+variable "scripts_path" {
+  description = "Path to scripts directory (mounted volume)"
+  type        = string
+  default     = "/app/scripts"
+}
+
 variable "tinyauth_oauth_whitelist" {
   description = "Comma-separated list of allowed Google email addresses"
   type        = string

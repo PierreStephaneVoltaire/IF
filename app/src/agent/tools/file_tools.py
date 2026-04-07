@@ -385,9 +385,7 @@ class SearchFilesObservation(TextObservation):
     def visualize(self) -> Text:
         content = Text()
         content.append("Search results:\n", style="bold blue")
-        content.append(self.output[:500])
-        if len(self.output) > 500:
-            content.append(f"\n... ({len(self.output) - 500} more chars)", style="dim")
+        content.append(self.output)
         return content
 
 

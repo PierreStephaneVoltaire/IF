@@ -29,6 +29,7 @@ from config import (
     ORCHESTRATOR_SYNTHESIS_MODEL,
     ORCHESTRATOR_ANALYSIS_MAX_TURNS,
 )
+from models.router import resolve_preset_to_model
 from terminal import get_static_manager
 
 from .executor import run_subagent, StepResult
@@ -291,7 +292,8 @@ async def _analyze_parallel_impl(
                     system_prompt=prompt,
                     user_message=f"Analyze from {p} perspective. Write to /home/user/workspace/{output_file}.",
                     chat_id=chat_id,
-                    model=ORCHESTRATOR_ANALYSIS_MODEL,
+                    model=resolve_preset_to_model(ORCHESTRATOR_ANALYSIS_MODEL),
+                    preset_hint=ORCHESTRATOR_ANALYSIS_MODEL,
                     max_turns=ORCHESTRATOR_ANALYSIS_MAX_TURNS,
                     http_client=http_client,
                 )
@@ -333,7 +335,8 @@ async def _analyze_parallel_impl(
             ),
             user_message="Synthesize all analysis findings from /home/user/workspace/findings/.",
             chat_id=chat_id,
-            model=ORCHESTRATOR_SYNTHESIS_MODEL,
+            model=resolve_preset_to_model(ORCHESTRATOR_SYNTHESIS_MODEL),
+            preset_hint=ORCHESTRATOR_SYNTHESIS_MODEL,
             max_turns=10,
             http_client=http_client,
         )

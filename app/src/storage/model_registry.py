@@ -42,6 +42,11 @@ class ModelInfo:
     updated_at: str = ""
 
     def to_dynamodb_item(self) -> Dict:
+        from decimal import Decimal
+
+        def _to_decimal(val):
+            return Decimal(str(val)) if val is not None else None
+
         return {
             "pk": "MODEL",
             "sk": self.model_id,
@@ -55,8 +60,8 @@ class ModelInfo:
             "tool_support": self.tool_support,
             "caching_support": self.caching_support,
             "zero_data_retention": self.zero_data_retention,
-            "throughput": self.throughput,
-            "latency": self.latency,
+            "throughput": _to_decimal(self.throughput),
+            "latency": _to_decimal(self.latency),
             "updated_at": self.updated_at,
         }
 

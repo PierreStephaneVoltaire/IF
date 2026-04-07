@@ -19,6 +19,7 @@ from config import (
     OPENROUTER_API_KEY,
     DIRECTIVE_REWRITE_MODEL,
 )
+from models.router import resolve_preset_to_model
 from storage.factory import get_directive_store
 from agent.prompts.loader import render_template
 
@@ -47,7 +48,7 @@ def _rewrite_content_via_llm(raw_content: str) -> str:
     
     prompt = render_template("directive_rewrite.j2", raw_content=raw_content)
     payload = {
-        "model": DIRECTIVE_REWRITE_MODEL,
+        "model": resolve_preset_to_model(DIRECTIVE_REWRITE_MODEL),
         "messages": [
             {"role": "user", "content": prompt}
         ],

@@ -27,8 +27,9 @@ from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR, ST
 from config import HEARTBEAT_ENABLED, HEARTBEAT_IDLE_HOURS, HEARTBEAT_COOLDOWN_HOURS
 from config import REFLECTION_ENABLED
 from config import TERMINAL_URL, TERMINAL_API_KEY
-from config import MODEL_STATS_REFRESH_INTERVAL
+from config import MODEL_STATS_REFRESH_INTERVAL, MODEL_SEED_INTERVAL
 from config import OPENROUTER_API_KEY
+from config import SCRIPTS_PATH
 from api.models import router as models_router
 from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
@@ -271,7 +272,7 @@ async def lifespan(app: FastAPI):
         _models_file = _Path(MODELS_PATH) / "model_ids.txt"
         if _models_file.exists():
             logger.info(f"[ModelRegistry] Refreshing model metadata from OpenRouter API (file={_models_file})...")
-            _seed_path = _Path(__file__).parent.parent.parent / "scripts" / "seed_models.py"
+            _seed_path = _Path(SCRIPTS_PATH) / "seed_models.py"
             if _seed_path.exists():
                 import importlib.util as _ilu
                 _result = subprocess.run(
@@ -318,9 +319,9 @@ async def lifespan(app: FastAPI):
 
     async def _periodic_model_seed():
         from pathlib import Path as _Path
-        from config import MODELS_PATH, MODEL_SEED_INTERVAL
+        from config import MODELS_PATH
         _models_file = _Path(MODELS_PATH) / "model_ids.txt"
-        _seed_path = _Path(__file__).parent.parent.parent / "scripts" / "seed_models.py"
+        _seed_path = _Path(SCRIPTS_PATH) / "seed_models.py"
         if not _models_file.exists() or not _seed_path.exists():
             logger.warning("[ModelRegistry] Periodic seed skipped: models file or seed script missing")
             return

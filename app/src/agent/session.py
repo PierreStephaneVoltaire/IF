@@ -272,13 +272,8 @@ def assemble_system_prompt(
 
     # Add conversation history if provided (from channel history)
     if conversation_history:
-        prompt_parts.append(f"""
-<conversation_history>
-The following is your recent conversation with the operator. The [assistant] lines are YOUR previous responses — maintain full continuity with them. Read this history FIRST to understand the current context before responding to the operator's latest message. Do not re-ask questions already answered or repeat information already provided.
-
-{conversation_history}
-</conversation_history>
-""")
+        from agent.prompts.loader import render_template
+        prompt_parts.append(render_template("conversation_history.j2", history=conversation_history))
 
     # Add directives block from DirectiveStore
     try:
@@ -373,26 +368,24 @@ Multiple questions about the same file require separate calls.
 
 def get_model_for_preset(preset_slug: str, preset_manager: PresetManager) -> str:
     """Get the OpenRouter model ID for a preset.
-    
+
     Args:
         preset_slug: Preset identifier
         preset_manager: Manager with preset data
-        
+
     Returns:
         OpenRouter model ID
     """
+    from models.router import resolve_preset_to_model
     preset = preset_manager.get_preset(preset_slug)
     if not preset:
-        # Fallback to a capable general model
-        return PRESET_FALLBACK_MODEL
-    
-    # Get model from preset
+        return resolve_preset_to_model(PRESET_FALLBACK_MODEL)
+
     model = preset.model
     if model:
-        return model
-    
-    # Fallback
-    return PRESET_FALLBACK_MODEL
+        return resolve_preset_to_model(model)
+
+    return resolve_preset_to_model(PRESET_FALLBACK_MODEL)
 
 
 async def execute_agent(
@@ -421,7 +414,18 @@ async def execute_agent(
         model = session.model
         if not model.startswith("openrouter/"):
             model = f"openrouter/{model}"
-        
+
+        # Look up max_output_tokens from registry using clean model ID
+        max_output_tokens = None
+        try:
+            from storage.factory import get_model_registry
+            registry = get_model_registry()
+            info = registry.get(session.model)
+            if info and info.max_output_tokens:
+                max_output_tokens = info.max_output_tokens
+        except Exception:
+            pass
+
         # Create OpenHands LLM instance
         llm = LLM(
             usage_id="agent",
@@ -429,6 +433,7 @@ async def execute_agent(
             base_url=LLM_BASE_URL,
             api_key=SecretStr(LLM_API_KEY),
             reasoning_effort=LLM_REASONING_EFFORT,
+            max_output_tokens=max_output_tokens,
         )
         logger.info(f"Using model: {model}, reasoning_effort: {LLM_REASONING_EFFORT}")
         # Get MCP config for this preset

@@ -324,6 +324,11 @@ MODELS_PATH = os.getenv(
     str(Path(__file__).parent.parent.parent / "models")
 )
 
+SCRIPTS_PATH = os.getenv(
+    "SCRIPTS_PATH",
+    str(Path(__file__).parent.parent.parent / "scripts")
+)
+
 MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "openai/gpt-5-nano")
 MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() == "true"
 

@@ -167,6 +167,105 @@ async def select_model_for_specialist(
     return await select_model(preset, condensed_intent)
 
 
+_CONTEXT_ERROR_PATTERNS = (
+    "context_length_exceeded",
+    "maximum context length",
+    "context window",
+    "token limit",
+    "too many tokens",
+    "input is too long",
+)
+
+
+def is_context_limit_error(error: Exception) -> bool:
+    """Return True if the exception indicates a context length overflow."""
+    msg = str(error).lower()
+    return any(p in msg for p in _CONTEXT_ERROR_PATTERNS)
+
+
+def resolve_preset_to_model(model_str: str) -> str:
+    """Resolve an @preset/ string to a concrete model ID using the custom YAML system.
+
+    Handles tier-mapped names (@preset/air, standard, heavy) and named presets from
+    presets.yaml. Falls back to the original string if resolution fails so that
+    OpenRouter's native preset routing acts as a last-resort safety net.
+
+    Args:
+        model_str: e.g. "openrouter/@preset/air" or "anthropic/claude-sonnet-4.6"
+
+    Returns:
+        Concrete openrouter-prefixed model ID, or the original string on failure.
+    """
+    clean = model_str.removeprefix("openrouter/")
+
+    if not clean.startswith("@preset/"):
+        return model_str  # Already a concrete model ID
+
+    name = clean.removeprefix("@preset/")
+    tier_map = {"air": 0, "standard": 1, "heavy": 2}
+
+    if name in tier_map:
+        result = select_model_for_tier(tier_map[name])
+        if result:
+            logger.info(f"[Router] Resolved @preset/{name} -> {result} (tier {tier_map[name]})")
+            return f"openrouter/{result}"
+        return model_str
+
+    mgr = get_model_preset_manager()
+    if mgr.is_initialized():
+        preset = mgr.get_preset(name)
+        if preset:
+            try:
+                from storage.factory import get_model_registry
+                registry = get_model_registry()
+                sorted_ids = registry.sort_models(preset.model_ids, preset.sort_by)
+            except RuntimeError:
+                sorted_ids = list(preset.model_ids)
+            if sorted_ids:
+                logger.info(f"[Router] Resolved @preset/{name} -> {sorted_ids[0]} (preset)")
+                return f"openrouter/{sorted_ids[0]}"
+
+    logger.warning(f"[Router] Could not resolve '{model_str}', using as-is (OpenRouter fallback)")
+    return model_str
+
+
+def select_model_by_context(preset_or_tier_str: str) -> Optional[str]:
+    """Return the largest-context model from a preset or tier for context-limit retries.
+
+    Args:
+        preset_or_tier_str: e.g. "openrouter/@preset/standard" or "@preset/code".
+                            Concrete model IDs return None (no candidate pool known).
+
+    Returns:
+        openrouter-prefixed concrete model ID, or None if resolution fails.
+    """
+    clean = preset_or_tier_str.removeprefix("openrouter/")
+    if not clean.startswith("@preset/"):
+        return None  # Concrete ID — no pool to sort
+
+    name = clean.removeprefix("@preset/")
+    tier_map = {"air": 0, "standard": 1, "heavy": 2}
+
+    try:
+        from storage.factory import get_model_registry
+        registry = get_model_registry()
+    except RuntimeError:
+        return None
+
+    if name in tier_map:
+        cfg = get_tier_config_manager().get_tier(tier_map[name])
+        if cfg:
+            ids = registry.sort_models(cfg.model_ids, "context_size_desc")
+            return f"openrouter/{ids[0]}" if ids else None
+    else:
+        preset = get_model_preset_manager().get_preset(name)
+        if preset:
+            ids = registry.sort_models(preset.model_ids, "context_size_desc")
+            return f"openrouter/{ids[0]}" if ids else None
+
+    return None
+
+
 def select_model_for_tier(tier_number: int) -> Optional[str]:
     """Select a model for the main agent based on tier.
 

@@ -18,6 +18,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Registry of active Discord clients keyed by webhook_id
+_active_clients: dict[str, discord.Client] = {}
+
+
+def get_discord_client() -> discord.Client | None:
+    """Return any active Discord client, or None if no listeners are running."""
+    return next(iter(_active_clients.values()), None)
+
 
 def create_discord_listener(
     record: "WebhookRecord",
@@ -49,6 +57,7 @@ def create_discord_listener(
         intents = discord.Intents.default()
         intents.message_content = True
         client = discord.Client(intents=intents)
+        _active_clients[webhook_id] = client
 
         # Set up slash command tree
         tree = app_commands.CommandTree(client)
@@ -160,6 +169,7 @@ def create_discord_listener(
         except Exception as e:
             logger.error(f"Discord listener error for {webhook_id}: {e}")
         finally:
+            _active_clients.pop(webhook_id, None)
             loop.close()
             logger.info(f"Discord listener stopped for {webhook_id}")
 
