@@ -88,6 +88,44 @@ def format_command_result(result: CommandResult) -> str:
     return truncate_output(output)
 
 
+async def terminal_execute(
+    command: str,
+    workdir: str = "",
+    chat_id: str = "",
+    timeout: float = DEFAULT_TIMEOUT,
+) -> str:
+    """Execute a terminal command and return formatted output.
+
+    Convenience function for subagents and orchestrators that need direct
+    terminal execution outside the SDK tool dispatch layer.
+    """
+    manager = get_static_manager()
+    if manager is None:
+        return "ERROR: Terminal system not initialized"
+
+    container = await manager.get_or_create(chat_id)
+    resolved_workdir = workdir or get_conversation_workdir(chat_id)
+
+    async with httpx.AsyncClient() as client:
+        term = create_terminal_client(container, client)
+        try:
+            await term.execute_command(f"mkdir -p {resolved_workdir}", timeout=5.0)
+        except Exception:
+            pass
+
+        try:
+            result = await term.execute_command(
+                command, workdir=resolved_workdir, timeout=timeout,
+            )
+            return format_command_result(result)
+        except httpx.TimeoutException:
+            return f"ERROR: Command timed out after {timeout}s"
+        except httpx.HTTPStatusError as e:
+            return f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
+        except Exception as e:
+            return f"ERROR: {type(e).__name__}: {e}"
+
+
 # =============================================================================
 # Terminal Execute Tool
 # =============================================================================

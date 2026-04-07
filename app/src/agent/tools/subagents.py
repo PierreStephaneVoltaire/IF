@@ -204,7 +204,11 @@ async def _run_subagent(
                         "content": output
                     })
             else:
-                return response.content or ""
+                content = response.content if response.content else None
+                if not content:
+                    logger.warning(f"[Subagent] Specialist returned empty response after {turn + 1} turns")
+                    return "[SUBAGENT ERROR] Specialist returned an empty response."
+                return content
 
         return f"Subagent exceeded {max_turns} turns without completion"
 

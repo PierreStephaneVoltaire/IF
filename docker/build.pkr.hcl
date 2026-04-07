@@ -34,7 +34,7 @@ build {
   # Install system dependencies
   provisioner "shell" {
     inline = [
-      "export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y curl unzip ca-certificates git vim iputils-ping dnsutils netcat-openbsd iproute2 procps",
+      "export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y curl unzip ca-certificates git vim iputils-ping dnsutils netcat-openbsd iproute2 procps default-jre-headless",
       "rm -rf /var/lib/apt/lists/*",
       "mkdir -p /app/src"
     ]

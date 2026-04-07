@@ -1,0 +1,2 @@
+dateparser>=1.1.0
+python-dateutil>=2.8.0

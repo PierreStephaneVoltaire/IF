@@ -495,12 +495,30 @@ async def process_chat_completion_internal(
                 container = await manager.get_or_create(cache_key)
                 async with _httpx.AsyncClient(timeout=30.0) as client:
                     terminal_client = create_terminal_client(container, client)
-                    content = await terminal_client.download_file(ref.path)
-                    temp_dir = Path(tempfile.gettempdir()) / "if-attachments" / cache_key
-                    temp_dir.mkdir(parents=True, exist_ok=True)
-                    local_file = temp_dir / filename
-                    local_file.write_bytes(content)
-                    local_path = str(local_file)
+                    # Resolve relative paths - try conversation dir first, then workspace
+                    candidate_paths = []
+                    if not ref.path.startswith("/"):
+                        candidate_paths = [
+                            f"/home/user/conversations/{cache_key}/{ref.path}",
+                            f"/home/user/workspace/{ref.path}",
+                        ]
+                    else:
+                        candidate_paths = [ref.path]
+
+                    content = None
+                    for candidate in candidate_paths:
+                        try:
+                            content = await terminal_client.download_file(candidate)
+                            break
+                        except Exception:
+                            continue
+
+                    if content is not None:
+                        temp_dir = Path(tempfile.gettempdir()) / "if-attachments" / cache_key
+                        temp_dir.mkdir(parents=True, exist_ok=True)
+                        local_file = temp_dir / filename
+                        local_file.write_bytes(content)
+                        local_path = str(local_file)
         except Exception as e:
             logger.warning(f"Failed to download attachment {ref.path}: {e}")
 

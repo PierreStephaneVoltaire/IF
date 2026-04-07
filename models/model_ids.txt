@@ -26,7 +26,6 @@ deepseek/deepseek-v3.2
 deepseek/deepseek-v3.2-speciale
 qwen/qwen3-max-thinking
 qwen/qwen3-coder-next
-qwen/qwen3-coder-480b-a35b-instruct
 qwen/qwen3-next-80b-a3b-instruct
 qwen/qwen3.5-35b-a3b
 z-ai/glm-4.7-flash
@@ -34,7 +33,5 @@ z-ai/glm-5
 z-ai/glm-5-turbo
 moonshotai/kimi-k2.5
 minimax/minimax-m2.7
-nvidia/nemotron-3-super
-mistral/mistral-small-3.2-24b-instruct
 arcee-ai/trinity-large-thinking
 perplexity/sonar-pro-search
