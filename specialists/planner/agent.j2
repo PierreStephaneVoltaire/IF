@@ -50,4 +50,10 @@ These directives govern your behavior. Follow them strictly:
 
 ---
 
-Output a structured plan with clear phases, steps within each phase, dependencies noted, and relative effort indicators (S/M/L). If the task has 5+ steps, always use phased structure. For simpler tasks, a numbered list with dependencies suffices.
+Produce a structured plan with clear phases, steps within each phase, dependencies noted, and relative effort indicators (S/M/L). If the task has 5+ steps, always use phased structure. For simpler tasks, a numbered list with dependencies suffices.
+
+When your plan is complete:
+1. Write the full plan to a markdown file using `write_file` with filename `plan.md`
+2. The tool response will contain the absolute path where the file was written
+3. End your response with exactly this line (using the path from the tool response):
+   FILES: <absolute_path> (Plan document)

@@ -20,7 +20,6 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -34,7 +33,7 @@ TFVARS_PATH = REPO_ROOT / "terraform" / "terraform.tfvars"
 PROMPTS_PATH = SCRIPT_DIR / "regression_prompts.yaml"
 RESULTS_DIR = SCRIPT_DIR / "results"
 
-API_URL = "http://if-agent-api.if-portals:8000"
+API_URL = ""  # resolved at startup via kubectl
 MODEL = "if-prototype"
 K8S_NAMESPACE = "if-portals"
 K8S_DEPLOYMENT = "if-agent-api"
@@ -81,7 +80,7 @@ def load_prompts():
 
 
 def make_results_dir():
-    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    ts = time.strftime("%Y%m%d_%H%M")
     out = RESULTS_DIR / f"regression_{ts}"
     out.mkdir(parents=True, exist_ok=True)
     return out, ts
@@ -92,6 +91,17 @@ def make_results_dir():
 def kubectl(*args):
     result = subprocess.run(["kubectl", *args], capture_output=True, text=True)
     return result
+
+
+def resolve_api_url():
+    r = kubectl("get", "svc", "if-agent-api", "-n", K8S_NAMESPACE,
+                "-o", "jsonpath={.spec.clusterIP}")
+    if r.returncode != 0 or not r.stdout.strip():
+        sys.exit(f"ERROR: could not resolve if-agent-api service IP:\n{r.stderr}")
+    ip = r.stdout.strip()
+    url = f"http://{ip}:8000"
+    print(f"[config] API URL: {url}")
+    return url
 
 
 def rollout_and_wait():
@@ -108,9 +118,18 @@ def rollout_and_wait():
         sys.exit(f"ERROR: rollout did not complete:\n{r.stderr}")
     print(f"[rollout] {r.stdout.strip()}")
 
-    print("[rollout] Waiting 2 minutes for startup grace period...")
-    time.sleep(120)
-    print("[rollout] Ready.")
+    print("[rollout] Waiting for server to be ready...")
+    deadline = time.time() + 300
+    while time.time() < deadline:
+        try:
+            r = requests.get(f"{API_URL}/health", timeout=5)
+            if r.status_code == 200:
+                print("[rollout] Server is up.")
+                return
+        except Exception:
+            pass
+        time.sleep(5)
+    sys.exit("ERROR: server did not become healthy within 5 minutes")
 
 
 def download_pod_logs(out_dir: Path, ts: str):
@@ -196,8 +215,8 @@ def run_api_mode(prompts, out_dir: Path, ts: str):
 
 # ── Discord mode ──────────────────────────────────────────────────────────────
 
-def discord_headers(token: str) -> dict:
-    if not token.startswith("Bot ") and not token.startswith("Bearer "):
+def discord_headers(token: str, bot: bool = True) -> dict:
+    if bot and not token.startswith("Bot "):
         token = f"Bot {token}"
     return {"Authorization": token, "Content-Type": "application/json"}
 
@@ -220,7 +239,7 @@ def clear_discord_channel(channel_id: str, bot_token: str):
             break
 
         # Separate messages < 14 days old (bulk-deletable) from older ones
-        cutoff = datetime.utcnow().timestamp() - (14 * 86400)
+        cutoff = time.time() - (14 * 86400)
         recent_ids = []
         old_ids = []
         for m in messages:
@@ -261,16 +280,15 @@ def clear_discord_channel(channel_id: str, bot_token: str):
     print(f"  Cleared {deleted} messages.")
 
 
-def send_discord_message(channel_id: str, send_token: str, content: str):
+def send_discord_message(channel_id: str, send_token: str, content: str) -> str:
     r = requests.post(
         f"{DISCORD_API}/channels/{channel_id}/messages",
-        headers=discord_headers(send_token),
+        headers=discord_headers(send_token, bot=False),
         json={"content": content},
     )
     if r.status_code not in (200, 201):
-        print(f"  WARNING: send failed: {r.status_code} {r.text[:200]}")
-        return None
-    return r.json().get("id")
+        sys.exit(f"ERROR: send failed ({r.status_code}): {r.text[:300]}")
+    return r.json()["id"]
 
 
 def fetch_channel_history(channel_id: str, bot_token: str, after_id: str = None):
@@ -324,13 +342,28 @@ def run_discord_mode(prompts, out_dir: Path, ts: str):
             # Send test prompt
             print(f"  Sending prompt...")
             sent_id = send_discord_message(channel_id, send_token, prompt)
+            print(f"  Sent (id={sent_id}). Polling for response...")
 
-            # Wait for bot response
-            print(f"  Waiting {DISCORD_WAIT_PER_MESSAGE}s for response...")
-            time.sleep(DISCORD_WAIT_PER_MESSAGE)
-
-            # Fetch conversation history
-            history = fetch_channel_history(channel_id, bot_token)
+            # Poll every 30s until a non-embed text message appears and stabilises,
+            # or until the 5-min timeout. Embed-only messages (status updates) are
+            # ignored for stabilisation — only real text content counts.
+            deadline = time.time() + DISCORD_WAIT_PER_MESSAGE
+            history = []
+            last_text_count = 0
+            while time.time() < deadline:
+                time.sleep(30)
+                history = fetch_channel_history(channel_id, bot_token, after_id=sent_id)
+                text_msgs = [m for m in history if m.get("content", "").strip()]
+                if text_msgs and len(text_msgs) == last_text_count:
+                    # Text message count stabilised — bot is done
+                    break
+                if text_msgs:
+                    last_text_count = len(text_msgs)
+                    print(f"  {last_text_count} text message(s) so far, waiting for more...")
+                elif history:
+                    print(f"  {len(history)} embed(s) only, still waiting...")
+            if last_text_count == 0:
+                print(f"  TIMEOUT — no text response after {DISCORD_WAIT_PER_MESSAGE}s")
 
             # Write to file
             f.write(f"{'=' * 60}\n")
@@ -367,12 +400,14 @@ def run_discord_mode(prompts, out_dir: Path, ts: str):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
+    global API_URL
     load_env()
 
     parser = argparse.ArgumentParser(description="IF Agent Regression Runner")
     parser.add_argument("--discord", action="store_true", help="Run in Discord mode")
     args = parser.parse_args()
 
+    API_URL = resolve_api_url()
     prompts = load_prompts()
     out_dir, ts = make_results_dir()
 

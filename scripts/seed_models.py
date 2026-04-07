@@ -75,11 +75,14 @@ def main():
         modality = arch.get("modality", "")
         modalities = [mm.strip() for mm in modality.split("+") if mm.strip()] if modality else ["text"]
 
-        max_out = top_provider.get("max_completion_tokens", 0) or 4096
+        context_length = m.get("context_length", 4096)
 
-        # Fetch per-provider latency/throughput from endpoints API
+        # Fetch per-provider latency/throughput/max_completion_tokens from endpoints API.
+        # Use the minimum max_completion_tokens that is strictly less than context_length —
+        # endpoints reporting max_completion_tokens == context_length are bad data.
         best_latency = None
         best_throughput = None
+        max_out = None
         try:
             ep_req = urllib.request.Request(
                 f"https://openrouter.ai/api/v1/models/{mid}/endpoints",
@@ -89,6 +92,7 @@ def main():
                 endpoints = json.loads(ep_resp.read()).get("data", {}).get("endpoints", [])
             latencies = []
             throughputs = []
+            ep_max_outs = []
             for ep in endpoints:
                 lat = ep.get("latency_last_30m", {})
                 thr = ep.get("throughput_last_30m", {})
@@ -96,18 +100,26 @@ def main():
                     latencies.append(lat["p50"])
                 if isinstance(thr, dict) and thr.get("p50"):
                     throughputs.append(thr["p50"])
+                ep_max = ep.get("max_completion_tokens") or 0
+                if ep_max > 0:
+                    ep_max_outs.append(ep_max)
             if latencies:
                 best_latency = min(latencies)
             if throughputs:
                 best_throughput = max(throughputs)
+            if ep_max_outs:
+                max_out = min(ep_max_outs)
         except Exception:
             pass
+
+        if not max_out:
+            max_out = 4096
 
         table.put_item(Item={
             "pk": "MODEL",
             "sk": mid,
             "model_id": mid,
-            "context_size": m.get("context_length", 4096),
+            "context_size": context_length,
             "max_output_tokens": max_out,
             "input_pricing": [{"provider": "openrouter", "price": in_price}],
             "output_pricing": [{"provider": "openrouter", "price": out_price}],
