@@ -26,7 +26,6 @@ from fastapi.responses import StreamingResponse, PlainTextResponse
 from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR, STORAGE_DB_PATH
 from config import HEARTBEAT_ENABLED, HEARTBEAT_IDLE_HOURS, HEARTBEAT_COOLDOWN_HOURS
 from config import REFLECTION_ENABLED
-from config import TERMINAL_URL, TERMINAL_API_KEY
 from config import MODEL_STATS_REFRESH_INTERVAL, MODEL_SEED_INTERVAL
 from config import OPENROUTER_API_KEY
 from config import SCRIPTS_PATH
@@ -51,7 +50,7 @@ heartbeat_runner = None
 
 reflection_engine = None
 
-terminal_manager = None
+sandbox_manager = None
 
 _stats_refresh_task = None
 
@@ -150,7 +149,8 @@ async def lifespan(app: FastAPI):
         from memory import get_user_fact_store
         user_facts_store = get_user_fact_store()
         facts_count = user_facts_store.active_count
-        logger.info(f"User facts store initialized ({facts_count} active facts)")
+        count_str = str(facts_count) if facts_count >= 0 else "count unavailable"
+        logger.info(f"User facts store initialized ({count_str} active facts)")
         
         logger.info("Warming up embedding model...")
         try:
@@ -178,8 +178,7 @@ async def lifespan(app: FastAPI):
 
     # External tool plugin initialization
     try:
-        from agent.tool_registry import install_external_deps, init_tool_registry
-        install_external_deps()
+        from agent.tool_registry import init_tool_registry
         registry = init_tool_registry()
         logger.info(f"Tool registry: {len(registry.list_tools())} external tools loaded")
     except Exception as e:
@@ -266,7 +265,6 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Model registry initialization failed: {e}")
 
     try:
-        import asyncio
         from pathlib import Path as _Path
         from config import MODELS_PATH
         _models_file = _Path(MODELS_PATH) / "model_ids.txt"
@@ -442,26 +440,16 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Reflection engine initialization failed: {e}")
     
-    global terminal_manager
-    if TERMINAL_API_KEY:
-        try:
-            from terminal import init_static_manager
-            terminal_manager = init_static_manager(TERMINAL_URL, TERMINAL_API_KEY)
-            logger.info(f"[Terminal] Static terminal manager initialized: {TERMINAL_URL}")
-        except ImportError as e:
-            logger.warning(f"Terminal module not available: {e}")
-        except Exception as e:
-            logger.warning(f"Terminal initialization failed: {e}")
-    else:
-        logger.warning("[Terminal] No TERMINAL_API_KEY configured, terminal tools disabled")
+    from sandbox import init_local_sandbox
+    sandbox_manager = init_local_sandbox()
+    logger.info(f"[Sandbox] LocalSandbox initialized at {sandbox_manager.workspace_base}")
     
     logger.info(f"Server ready on {HOST}:{PORT}")
     
     yield
 
-    if terminal_manager:
-        await terminal_manager.close()
-        logger.info("Terminal manager closed")
+    sandbox_manager.close()
+    logger.info("[Sandbox] LocalSandboxManager closed")
     
     if reflection_engine:
         reflection_engine.stop()

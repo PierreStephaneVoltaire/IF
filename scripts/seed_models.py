@@ -132,7 +132,9 @@ def main():
             "latency": Decimal(str(best_latency)) if best_latency is not None else None,
             "updated_at": now,
         })
-        print(f"  {mid}: latency={best_latency}ms, throughput={best_throughput} tok/s")
+        lat_str = f"{best_latency}ms" if best_latency is not None else "N/A"
+        thr_str = f"{best_throughput} tok/s" if best_throughput is not None else "N/A"
+        print(f"  {mid}: latency={lat_str}, throughput={thr_str}")
         count += 1
         wanted.discard(mid)
 

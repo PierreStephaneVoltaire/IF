@@ -1,16 +1,17 @@
 """File tools using OpenHands SDK ToolDefinition pattern.
 
 This module provides read_file, write_file, and search_files tools that
-interact with the OpenTerminal filesystem via HTTP. All tools are registered
+interact with the local filesystem via LocalWorkspace. All tools are registered
 with the OpenHands SDK tool registry.
 """
 from __future__ import annotations
 
 import logging
+import shlex
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 
-import httpx
 from pydantic import Field
 from rich.text import Text
 
@@ -24,11 +25,7 @@ from openhands.sdk.tool.tool import (
 from openhands.sdk import register_tool
 from agent.tools.base import TextObservation
 
-from terminal import (
-    TerminalAPIError,
-    create_terminal_client,
-    get_static_manager,
-)
+from sandbox import get_local_sandbox
 
 if TYPE_CHECKING:
     from openhands.sdk.conversation.state import ConversationState
@@ -37,16 +34,12 @@ logger = logging.getLogger(__name__)
 
 
 MAX_OUTPUT_LENGTH = 8000
-CONVERSATION_BASE = "/home/user/conversations"
-
-
-def _get_conversation_workdir(chat_id: str) -> str:
-    return f"{CONVERSATION_BASE}/{chat_id}"
 
 
 def _resolve_path(path: str, chat_id: str) -> str:
-    if not path.startswith("/"):
-        return f"{_get_conversation_workdir(chat_id)}/{path}"
+    if not Path(path).is_absolute():
+        base = get_local_sandbox().get_working_dir(chat_id)
+        return str(Path(base) / path)
     return path
 
 
@@ -117,54 +110,14 @@ class ReadFileExecutor(ToolExecutor):
         action: ReadFileAction,
         conversation: Any = None,
     ) -> ReadFileObservation:
-        import asyncio
-
-        async def _execute():
-            try:
-                manager = get_static_manager()
-                if manager is None:
-                    return ReadFileObservation(file_content="ERROR: Terminal system not initialized")
-
-                container = await manager.get_or_create(self.chat_id)
-                path = _resolve_path(action.path, self.chat_id)
-
-                async with httpx.AsyncClient(timeout=30.0) as http_client:
-                    client = create_terminal_client(container, http_client)
-
-                    kwargs: dict[str, Any] = {}
-                    if action.start_line > 0:
-                        kwargs["start_line"] = action.start_line
-                    if action.end_line > 0:
-                        kwargs["end_line"] = action.end_line
-
-                    data = await client.read_file(path, **kwargs)
-                    content = data.get("content", "")
-
-                    if len(content) > MAX_OUTPUT_LENGTH:
-                        content = _truncate(content)
-
-                    return ReadFileObservation(file_content=content)
-
-            except TerminalAPIError as e:
-                return ReadFileObservation(
-                    file_content=f"ERROR: Terminal API returned {e.status_code}: {e.message}"
-                )
-            except Exception as e:
-                logger.error(f"[read_file] Error: {e}")
-                return ReadFileObservation(file_content=f"ERROR: {type(e).__name__}: {e}")
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _execute())
-                return future.result()
-        else:
-            return asyncio.run(_execute())
+        path = _resolve_path(action.path, self.chat_id)
+        content = Path(path).read_text(encoding="utf-8", errors="replace")
+        if action.start_line or action.end_line:
+            lines = content.splitlines(keepends=True)
+            start = (action.start_line - 1) if action.start_line else 0
+            end = action.end_line if action.end_line else len(lines)
+            content = "".join(lines[start:end])
+        return ReadFileObservation(file_content=content[:200000])
 
 
 class ReadFileTool(ToolDefinition[ReadFileAction, ReadFileObservation]):
@@ -249,52 +202,10 @@ class WriteFileExecutor(ToolExecutor):
         action: WriteFileAction,
         conversation: Any = None,
     ) -> WriteFileObservation:
-        import asyncio
-
-        async def _execute():
-            try:
-                manager = get_static_manager()
-                if manager is None:
-                    return WriteFileObservation(message="ERROR: Terminal system not initialized")
-
-                container = await manager.get_or_create(self.chat_id)
-                path = _resolve_path(action.path, self.chat_id)
-
-                async with httpx.AsyncClient(timeout=30.0) as http_client:
-                    client = create_terminal_client(container, http_client)
-
-                    # Ensure parent directory exists
-                    dir_path = "/".join(path.rsplit("/", 1)[:-1])
-                    if dir_path:
-                        try:
-                            await client.execute_command(f"mkdir -p {dir_path}", timeout=5.0)
-                        except Exception:
-                            pass
-
-                    await client.write_file(path, action.content)
-
-                    return WriteFileObservation(message=f"File written successfully: {path}")
-
-            except TerminalAPIError as e:
-                return WriteFileObservation(
-                    message=f"ERROR: Terminal API returned {e.status_code}: {e.message}"
-                )
-            except Exception as e:
-                logger.error(f"[write_file] Error: {e}")
-                return WriteFileObservation(message=f"ERROR: {type(e).__name__}: {e}")
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _execute())
-                return future.result()
-        else:
-            return asyncio.run(_execute())
+        path = _resolve_path(action.path, self.chat_id)
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(action.content, encoding="utf-8")
+        return WriteFileObservation(message=f"Written: {path}")
 
 
 class WriteFileTool(ToolDefinition[WriteFileAction, WriteFileObservation]):
@@ -400,67 +311,15 @@ class SearchFilesExecutor(ToolExecutor):
         action: SearchFilesAction,
         conversation: Any = None,
     ) -> SearchFilesObservation:
-        import asyncio
-
-        async def _execute():
-            try:
-                manager = get_static_manager()
-                if manager is None:
-                    return SearchFilesObservation(output="ERROR: Terminal system not initialized")
-
-                container = await manager.get_or_create(self.chat_id)
-                search_path = _resolve_path(action.path, self.chat_id) if action.path else _get_conversation_workdir(self.chat_id)
-
-                async with httpx.AsyncClient(timeout=30.0) as http_client:
-                    client = create_terminal_client(container, http_client)
-
-                    data = await client.grep_files(
-                        query=action.query,
-                        path=search_path,
-                        include=action.include or None,
-                        case_insensitive=action.case_insensitive,
-                        regex=action.regex,
-                        match_per_line=True,
-                        max_results=action.max_results,
-                    )
-                    results = data.get("results", [])
-
-                    if not results:
-                        return SearchFilesObservation(output=f"No matches found for '{action.query}' in {search_path}")
-
-                    lines = []
-                    for r in results:
-                        file_path = r.get("file", r.get("path", "unknown"))
-                        line_num = r.get("line", r.get("line_number", "?"))
-                        line_text = r.get("text", r.get("line_text", ""))
-                        lines.append(f"{file_path}:{line_num}: {line_text}")
-
-                    output = "\n".join(lines)
-                    if len(output) > MAX_OUTPUT_LENGTH:
-                        output = _truncate(output)
-
-                    return SearchFilesObservation(output=output)
-
-            except TerminalAPIError as e:
-                return SearchFilesObservation(
-                    output=f"ERROR: Terminal API returned {e.status_code}: {e.message}"
-                )
-            except Exception as e:
-                logger.error(f"[search_files] Error: {e}")
-                return SearchFilesObservation(output=f"ERROR: {type(e).__name__}: {e}")
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _execute())
-                return future.result()
-        else:
-            return asyncio.run(_execute())
+        conv_state = conversation.state if conversation else None
+        workspace = conv_state.workspace if conv_state and conv_state.workspace else get_local_sandbox().get_workspace(self.chat_id)
+        search_path = action.path or get_local_sandbox().get_working_dir(self.chat_id)
+        regex_flag = "" if getattr(action, "regex", False) else "-F"
+        include_flags = " ".join(f"--include={shlex.quote(p)}" for p in action.include) if action.include else ""
+        cmd = f"grep -rn {regex_flag} {include_flags} {shlex.quote(action.query)} {shlex.quote(str(search_path))}".strip()
+        result = workspace.execute_command(cmd)
+        output = result.stdout or result.stderr
+        return SearchFilesObservation(output=output[:8000])
 
 
 class SearchFilesTool(ToolDefinition[SearchFilesAction, SearchFilesObservation]):

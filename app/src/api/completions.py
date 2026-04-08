@@ -31,7 +31,7 @@ from agent.tiering import (
     get_preset_for_tier,
     get_tier_for_context,
 )
-from terminal.files import strip_files_line, log_file_refs, consume_file_refs, FilesStripBuffer, FileRef
+from files import strip_files_line, log_file_refs, consume_file_refs, FilesStripBuffer, FileRef
 from config import API_MODEL_NAME
 
 if TYPE_CHECKING:
@@ -303,16 +303,7 @@ async def process_chat_completion_internal(
                 logger.warning(f"[Cache] Failed to persist eviction: {e}")
             logger.info(f"[Cache] Evicted cache key: {cache_key}")
 
-            # Stop the terminal pod so the next session gets a clean container.
-            # PVC is intentionally preserved so files persist across resets.
-            try:
-                from terminal import get_k8s_lifecycle_manager
-                terminal_mgr = get_k8s_lifecycle_manager()
-                if terminal_mgr:
-                    await terminal_mgr.stop(cache_key)
-                    logger.info(f"[Terminal] Stopped terminal pod for chat: {cache_key}")
-            except Exception as e:
-                logger.warning(f"[Terminal] Failed to stop terminal pod: {e}")
+            # No-op: static sandbox does not require explicit pod teardown on reset.
 
             return cmd.response_text, []
         
@@ -488,19 +479,31 @@ async def process_chat_completion_internal(
         local_path = None
 
         try:
-            from terminal import get_static_manager, create_terminal_client
-            manager = get_static_manager()
-            if manager:
-                import httpx as _httpx
-                container = await manager.get_or_create(cache_key)
-                async with _httpx.AsyncClient(timeout=30.0) as client:
-                    terminal_client = create_terminal_client(container, client)
-                    content = await terminal_client.download_file(ref.path)
-                    temp_dir = Path(tempfile.gettempdir()) / "if-attachments" / cache_key
-                    temp_dir.mkdir(parents=True, exist_ok=True)
-                    local_file = temp_dir / filename
-                    local_file.write_bytes(content)
-                    local_path = str(local_file)
+            from sandbox import get_local_sandbox
+            workdir = Path(get_local_sandbox().get_working_dir(cache_key))
+            # Resolve relative paths - try conversation dir first, then workspace
+            if not ref.path.startswith("/"):
+                candidate_paths = [
+                    workdir / ref.path,
+                    Path("/home/user/workspace") / ref.path,
+                ]
+            else:
+                candidate_paths = [Path(ref.path)]
+
+            content = None
+            for candidate in candidate_paths:
+                try:
+                    content = candidate.read_bytes()
+                    break
+                except Exception:
+                    continue
+
+            if content is not None:
+                temp_dir = Path(tempfile.gettempdir()) / "if-attachments" / cache_key
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                local_file = temp_dir / filename
+                local_file.write_bytes(content)
+                local_path = str(local_file)
         except Exception as e:
             logger.warning(f"Failed to download attachment {ref.path}: {e}")
 

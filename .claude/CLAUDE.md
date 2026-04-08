@@ -7,7 +7,7 @@ A single main agent with context-aware tiering and specialist subagent delegatio
 - Python 3.12, FastAPI, OpenHands SDK 1.11.4
 - LanceDB (user facts, all-MiniLM-L6-v2 embeddings), ChromaDB (health docs RAG)
 - SQLite (webhooks, activity via SQLModel), DynamoDB (directives, health, finance, diary, proposals, models)
-- Docker terminal containers for shell access (via OpenTerminal)
+- LocalWorkspace (OpenHands SDK) for per-conversation shell access — no separate terminal pod
 - MCP servers for extended capabilities (time, AWS docs, Yahoo Finance, Alpha Vantage)
 - Kubernetes deployment via Terraform, Docker images via Packer
 
@@ -88,11 +88,10 @@ app/
 │   │   ├── interceptor.py   # Bypass routing
 │   │   ├── cache.py         # Conversation cache
 │   │   └── commands.py      # Command parsing (/reset, /pondering, /reflect, etc.)
-│   ├── terminal/            # Docker container shell access
-│   │   ├── client.py        # TerminalClient for API calls
-│   │   ├── static_client.py # StaticTerminalManager (shared OpenTerminal deployment)
-│   │   ├── files.py         # File operations on terminal volumes
-│   │   └── config.py        # Terminal URL, API key, volume paths
+│   ├── sandbox/             # LocalWorkspace manager for per-conversation shell access
+│   │   └── local.py         # LocalSandboxManager, init_local_sandbox, get_local_sandbox
+│   ├── files/               # FILES: metadata parsing (strip from agent output)
+│   │   └── __init__.py      # FileRef, FilesStripBuffer, strip_files_line
 │   ├── orchestrator/        # Multi-step task execution
 │   │   ├── executor.py      # execute_plan tool (sequential steps with subagents)
 │   │   └── analyzer.py      # analyze_parallel tool (parallel perspective analysis)
@@ -360,7 +359,11 @@ All tools use the OpenHands SDK Action/Observation/Executor/ToolDefinition patte
 
 ### External Tool Plugins
 
-Domain tools live in `tools/` as mountable, independently deployable plugins. Discovered at startup by `agent/tool_registry.py` — mirrors the specialist auto-discovery pattern. Each plugin is a subdirectory with `tool.yaml` (metadata) + `tool.py` (exports `get_tools()`, `get_schemas()`, `execute()`).
+Domain tools live in `tools/` as mountable, independently deployable plugins. Discovered at startup by `agent/tool_registry.py` — mirrors the specialist auto-discovery pattern. Each plugin is a subdirectory with `tool.yaml` (metadata) + `tool.py` (exports `execute()`).
+
+Plugins declare their execution mode via `tool.yaml`:
+- **`mode: in_process`** (default for heavy plugins with large deps already in the main venv): `tool.py` is imported directly; `execute()` is called in-process. Still exports `get_tools()` and `get_schemas()` for schema registration.
+- **`mode: subprocess`** (temporal plugins and others with isolated deps): Each plugin ships a `pyproject.toml`, a `tool_meta.yaml` (static schema — no import needed), and a `_plugin_runner.py`. The registry creates a dedicated `uv` venv on first use and invokes the runner as a subprocess, passing `{"name": ..., "args": ...}` on stdin and reading `{"ok": ..., "result": ...}` from stdout.
 
 | Plugin | Scope | Tools | Description |
 |--------|-------|-------|-------------|
@@ -368,16 +371,30 @@ Domain tools live in `tools/` as mountable, independently deployable plugins. Di
 | `tools/finance/` | specialist | 21 | Financial profile, investments, goals, cashflow, holdings |
 | `tools/diary/` | specialist | 2 | Write-only diary entries, signal computation |
 | `tools/proposals/` | specialist | 4 | Proposal CRUD, implementation plan generation |
+| `tools/temporal_resolve/` | main | 1 | Parse natural language date/time phrases into concrete dates |
+| `tools/temporal_timezone/` | main | 1 | Convert datetime between IANA timezones |
+| `tools/temporal_duration/` | main | 1 | Calculate duration between two dates |
+| `tools/temporal_age/` | main | 1 | Calculate age and birthday info from a birth date |
+| `tools/temporal_city_time/` | main | 1 | Current date/time for major cities worldwide |
+| `tools/temporal_to_unix/` | main | 1 | Parse datetime string into Unix timestamp |
+| `tools/temporal_from_unix/` | main | 1 | Convert Unix timestamp to structured datetime |
 
-**Two execution paths:**
+**Two agent-facing execution paths:**
 - **SDK path** (agentic specialists): Tools registered via `register_tool()` at import time. SDK resolves by PascalCase name.
 - **JSON schema path** (non-agentic specialists): `tool_schemas.py` delegates to registry for schema resolution and dispatch. Uses snake_case names.
 
-**Adding a new plugin:**
-1. Create `tools/{name}/tool.yaml` with name, description, version, scope
+**Adding a new in-process plugin:**
+1. Create `tools/{name}/tool.yaml` with name, description, version, scope, `mode: in_process`
 2. Create `tools/{name}/tool.py` exporting `get_tools()`, `get_schemas()`, `async execute(name, args)`
 3. Optionally add `requirements.txt` for pip dependencies
 4. App picks it up on next startup, or hit `POST /admin/reload-tools` for hot reload
+
+**Adding a new subprocess plugin:**
+1. Create `tools/{name}/tool.yaml` with name, description, version, scope, `mode: subprocess`
+2. Create `tools/{name}/pyproject.toml` with `[project]` name, version, requires-python, dependencies
+3. Create `tools/{name}/tool_meta.yaml` with static schema (tools → tool_name → description + parameters)
+4. Create `tools/{name}/tool.py` with only `async execute(name, args)` and helpers
+5. Copy `tools/_plugin_runner.py` into the plugin directory as `_plugin_runner.py`
 
 ### Tool Authoring
 
@@ -477,17 +494,15 @@ Multi-step task execution in `orchestrator/`:
 - **`execute_plan`**: Sequential multi-step plan with subagents. Each step sees filesystem state from previous steps.
 - **`analyze_parallel`**: Spawns parallel analysis subagents across perspectives (security, performance, architecture, testing, documentation). Each writes to `/home/user/workspace/findings/{perspective}.md`. Synthesizer combines into prioritized report.
 
-## Terminal System
+## Sandbox System
 
-Docker containers for shell access via shared OpenTerminal deployment (`TERMINAL_URL`). Each conversation gets isolated working directory at `/home/user/conversations/{conversation_id}/`.
+Per-conversation shell access via OpenHands SDK `LocalWorkspace` — no separate terminal pod required. Each conversation gets an isolated working directory under `WORKSPACE_BASE/{conversation_id}/`.
 
-Two client modes:
-- **`TerminalClient`** (`terminal/client.py`) — dynamic per-conversation containers
-- **`StaticTerminalManager`** (`terminal/static_client.py`) — single shared IaC-managed deployment (Kubernetes-friendly); exposes the same interface via `StaticTerminalContainer`
+`LocalSandboxManager` (`sandbox/local.py`) manages workspace lifecycle: `init_local_sandbox(conversation_id)` creates the directory and returns a `LocalWorkspace` instance; `get_local_sandbox(conversation_id)` retrieves an existing one.
 
 Tools: `terminal_execute`, `terminal_read_file`, `terminal_write_file`, `terminal_list_files`.
 
-`FILES:` lines in agent output reference terminal files for artifact tracking and attachment delivery.
+`FILES:` lines in agent output reference sandbox files for artifact tracking and attachment delivery. Parsing and stripping are handled by `files/__init__.py` (`FileRef`, `FilesStripBuffer`, `strip_files_line`).
 
 ## Health Module
 
@@ -572,7 +587,7 @@ Key configuration (see `app/src/config.py` for full list):
 | `HEARTBEAT_IDLE_HOURS` | 6.0 | Hours idle before heartbeat |
 | `DIRECTIVE_STORE_ENABLED` | true | Enable DynamoDB directives |
 | `REFLECTION_ENABLED` | true | Enable reflection engine |
-| `TERMINAL_URL` | `http://open-terminal:7681` | OpenTerminal deployment URL |
+| `WORKSPACE_BASE` | `/app/src/data/conversations` | Base path for per-conversation working directories |
 | `TOOL_OUTPUT_CHAR_LIMIT` | 200000 | Max tool output chars before SDK truncation |
 | `EXTERNAL_TOOLS_PATH` | "" | Override path for external tool plugins |
 | `EXTERNAL_TOOLS_FALLBACK` | `project_root/tools/` | Fallback path if EXTERNAL_TOOLS_PATH is empty |

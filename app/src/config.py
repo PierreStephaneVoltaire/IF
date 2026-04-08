@@ -216,11 +216,7 @@ SPECIALIST_REASONING_EFFORT = os.getenv("SPECIALIST_REASONING_EFFORT", LLM_REASO
 # Terminal Configuration (Static Deployment)
 # =============================================================================
 
-# URL of the shared OpenTerminal deployment (managed via Terraform)
-TERMINAL_URL = os.getenv("TERMINAL_URL", "http://open-terminal:7681")
-
-# API key for terminal authentication
-TERMINAL_API_KEY = os.getenv("TERMINAL_API_KEY", "")
+WORKSPACE_BASE = os.getenv("WORKSPACE_BASE", "/app/src/data/conversations")
 
 # Host path for Docker volume access (for workspace file serving)
 # Set to empty string to disable workspace file serving

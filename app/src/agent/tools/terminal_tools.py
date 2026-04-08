@@ -3,16 +3,17 @@
 This module provides tools for executing commands in a persistent terminal environment.
 All tools are registered with the OpenHands SDK tool registry.
 
-Uses a shared terminal deployment with conversation-scoped working directories
-for isolation: /home/user/conversations/{chat_id}
+Uses LocalWorkspace from the OpenHands SDK for synchronous command execution,
+scoped per conversation via get_local_sandbox().
 """
 from __future__ import annotations
 
 import logging
+import shlex
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Self
 
-import httpx
 from pydantic import Field
 from rich.text import Text
 
@@ -26,11 +27,7 @@ from openhands.sdk.tool.tool import (
 from openhands.sdk import register_tool
 from agent.tools.base import TextObservation
 
-from terminal import (
-    CommandResult,
-    create_terminal_client,
-    get_static_manager,
-)
+from sandbox import get_local_sandbox
 from agent.prompts.loader import load_prompt
 
 if TYPE_CHECKING:
@@ -41,20 +38,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MAX_OUTPUT_LENGTH = 8000
-CONVERSATION_BASE = "/home/user/conversations"
 DEFAULT_TIMEOUT = 120.0
-
-
-def get_conversation_workdir(chat_id: str) -> str:
-    """Get the conversation-specific working directory.
-
-    Args:
-        chat_id: The chat/conversation identifier
-
-    Returns:
-        Path to the conversation directory
-    """
-    return f"{CONVERSATION_BASE}/{chat_id}"
 
 
 def truncate_output(output: str, max_length: int = MAX_OUTPUT_LENGTH) -> str:
@@ -69,23 +53,6 @@ def truncate_output(output: str, max_length: int = MAX_OUTPUT_LENGTH) -> str:
         f"\n\n... [{truncated_count} chars truncated] ...\n\n" +
         output[-half:]
     )
-
-
-def format_command_result(result: CommandResult) -> str:
-    """Format a command result for display."""
-    output_parts = []
-
-    if result.stdout:
-        output_parts.append(f"STDOUT:\n{result.stdout}")
-
-    if result.stderr:
-        output_parts.append(f"STDERR:\n{result.stderr}")
-
-    output_parts.append(f"EXIT CODE: {result.exit_code}")
-    output_parts.append(f"DURATION: {result.duration_ms}ms")
-
-    output = "\n\n".join(output_parts)
-    return truncate_output(output)
 
 
 # =============================================================================
@@ -159,75 +126,14 @@ class TerminalExecuteExecutor(ToolExecutor):
         conversation: Any = None,
     ) -> TerminalExecuteObservation:
         """Execute the terminal command."""
-        import asyncio
-
-        # Run the async function in the event loop
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        async def _execute():
-            try:
-                manager = get_static_manager()
-                if manager is None:
-                    return TerminalExecuteObservation(
-                        output="ERROR: Terminal system not initialized",
-                        exit_code=-1
-                    )
-
-                container = await manager.get_or_create(self.chat_id)
-
-                # Determine workdir: explicit or conversation-scoped
-                workdir = action.workdir or get_conversation_workdir(self.chat_id)
-
-                async with httpx.AsyncClient() as http_client:
-                    client = create_terminal_client(container, http_client)
-
-                    # Ensure conversation directory exists
-                    try:
-                        await client.execute_command(f"mkdir -p {workdir}", timeout=5.0)
-                    except Exception as e:
-                        logger.debug(f"[terminal_execute] mkdir warning: {e}")
-
-                    result = await client.execute_command(
-                        action.command,
-                        workdir=workdir,
-                        timeout=action.timeout,
-                    )
-
-                    return TerminalExecuteObservation(
-                        output=format_command_result(result),
-                        exit_code=result.exit_code
-                    )
-
-            except httpx.TimeoutException:
-                return TerminalExecuteObservation(
-                    output=f"ERROR: Command timed out after {action.timeout}s",
-                    exit_code=-1
-                )
-
-            except httpx.HTTPStatusError as e:
-                return TerminalExecuteObservation(
-                    output=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}",
-                    exit_code=-1
-                )
-
-            except Exception as e:
-                logger.error(f"[terminal_execute] Error: {e}")
-                return TerminalExecuteObservation(
-                    output=f"ERROR: {type(e).__name__}: {e}",
-                    exit_code=-1
-                )
-
-        if loop and loop.is_running():
-            # We're in an async context, create a task
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _execute())
-                return future.result()
-        else:
-            return asyncio.run(_execute())
+        conv_state = conversation.state if conversation else None
+        workspace = conv_state.workspace if conv_state and conv_state.workspace else get_local_sandbox().get_workspace(self.chat_id)
+        resolved_workdir = action.workdir or get_local_sandbox().get_working_dir(self.chat_id)
+        result = workspace.execute_command(action.command, cwd=resolved_workdir, timeout=action.timeout)
+        output = f"[exit {result.exit_code}]\n{result.stdout}"
+        if result.stderr:
+            output += f"\n[stderr]\n{result.stderr}"
+        return TerminalExecuteObservation(output=output[:8000], exit_code=result.exit_code)
 
 
 class TerminalExecuteTool(ToolDefinition[TerminalExecuteAction, TerminalExecuteObservation]):
@@ -315,58 +221,11 @@ class TerminalUploadExecutor(ToolExecutor):
         conversation: Any = None,
     ) -> TerminalUploadObservation:
         """Execute the file upload."""
-        import asyncio
-
-        async def _execute():
-            try:
-                manager = get_static_manager()
-                if manager is None:
-                    return TerminalUploadObservation(message="ERROR: Terminal system not initialized")
-
-                container = await manager.get_or_create(self.chat_id)
-
-                # Resolve path relative to conversation directory
-                path = action.path
-                if not path.startswith("/"):
-                    conv_dir = get_conversation_workdir(self.chat_id)
-                    path = f"{conv_dir}/{path}"
-
-                async with httpx.AsyncClient() as http_client:
-                    client = create_terminal_client(container, http_client)
-
-                    # Ensure directory exists
-                    dir_path = "/".join(path.rsplit("/", 1)[:-1])
-                    if dir_path:
-                        try:
-                            await client.execute_command(f"mkdir -p {dir_path}", timeout=5.0)
-                        except Exception:
-                            pass
-
-                    await client.upload_text_file(path, action.content)
-
-                    return TerminalUploadObservation(message=f"File uploaded successfully: {path}")
-
-            except httpx.HTTPStatusError as e:
-                return TerminalUploadObservation(
-                    message=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
-                )
-
-            except Exception as e:
-                logger.error(f"[terminal_upload] Error: {e}")
-                return TerminalUploadObservation(message=f"ERROR: {type(e).__name__}: {e}")
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _execute())
-                return future.result()
-        else:
-            return asyncio.run(_execute())
+        base = get_local_sandbox().get_working_dir(self.chat_id)
+        p = Path(action.path) if Path(action.path).is_absolute() else Path(base) / action.path
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(action.content, encoding="utf-8")
+        return TerminalUploadObservation(message=f"Written: {p}")
 
 
 class TerminalUploadTool(ToolDefinition[TerminalUploadAction, TerminalUploadObservation]):
@@ -451,54 +310,11 @@ class TerminalListExecutor(ToolExecutor):
         conversation: Any = None,
     ) -> TerminalListObservation:
         """Execute the file listing."""
-        import asyncio
-
-        async def _execute():
-            try:
-                manager = get_static_manager()
-                if manager is None:
-                    return TerminalListObservation(output="ERROR: Terminal system not initialized")
-
-                container = await manager.get_or_create(self.chat_id)
-
-                # Resolve path relative to conversation directory
-                path = action.path or get_conversation_workdir(self.chat_id)
-
-                async with httpx.AsyncClient(timeout=30.0) as http_client:
-                    client = create_terminal_client(container, http_client)
-                    result = await client.list_files(path)
-
-                    # Format the listing
-                    if not result:
-                        return TerminalListObservation(output="(empty directory)")
-
-                    lines = []
-                    for item in result:
-                        lines.append(f"{item.name}\t{item.size} bytes\t{item.modified}")
-
-                    return TerminalListObservation(output="\n".join(lines))
-
-            except httpx.HTTPStatusError as e:
-                return TerminalListObservation(
-                    output=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
-                )
-
-            except Exception as e:
-                logger.error(f"[terminal_list_files] Error: {e}")
-                return TerminalListObservation(output=f"ERROR: {type(e).__name__}: {e}")
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _execute())
-                return future.result()
-        else:
-            return asyncio.run(_execute())
+        conv_state = conversation.state if conversation else None
+        workspace = conv_state.workspace if conv_state and conv_state.workspace else get_local_sandbox().get_workspace(self.chat_id)
+        path = action.path or get_local_sandbox().get_working_dir(self.chat_id)
+        result = workspace.execute_command(f"ls -la {shlex.quote(str(path))}")
+        return TerminalListObservation(output=result.stdout[:8000])
 
 
 class TerminalListTool(ToolDefinition[TerminalListAction, TerminalListObservation]):
@@ -566,9 +382,9 @@ class TerminalDownloadObservation(TextObservation):
         """Return Rich Text representation of this observation."""
         text = Text()
         text.append("File content:\n", style="bold blue")
-        text.append(self.content[:500])
-        if len(self.content) > 500:
-            text.append(f"\n... ({len(self.content) - 500} more chars)", style="dim")
+        text.append(self.file_content[:500])
+        if len(self.file_content) > 500:
+            text.append(f"\n... ({len(self.file_content) - 500} more chars)", style="dim")
         return text
 
 
@@ -584,53 +400,10 @@ class TerminalDownloadExecutor(ToolExecutor):
         conversation: Any = None,
     ) -> TerminalDownloadObservation:
         """Execute the file download."""
-        import asyncio
-
-        async def _execute():
-            try:
-                manager = get_static_manager()
-                if manager is None:
-                    return TerminalDownloadObservation(file_content="ERROR: Terminal system not initialized")
-
-                container = await manager.get_or_create(self.chat_id)
-
-                # Resolve path relative to conversation directory
-                path = action.path
-                if not path.startswith("/"):
-                    conv_dir = get_conversation_workdir(self.chat_id)
-                    path = f"{conv_dir}/{path}"
-
-                async with httpx.AsyncClient(timeout=30.0) as http_client:
-                    client = create_terminal_client(container, http_client)
-                    content = await client.download_text_file(path)
-
-                    if len(content) > MAX_OUTPUT_LENGTH:
-                        content = truncate_output(content)
-                        content = f"[File truncated - {len(content)} chars shown]\n\n{content}"
-
-                    return TerminalDownloadObservation(file_content=content)
-
-            except httpx.HTTPStatusError as e:
-                return TerminalDownloadObservation(
-                    file_content=f"ERROR: Terminal API returned {e.response.status_code}: {e.response.text}"
-                )
-
-            except Exception as e:
-                logger.error(f"[terminal_download] Error: {e}")
-                return TerminalDownloadObservation(file_content=f"ERROR: {type(e).__name__}: {e}")
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(asyncio.run, _execute())
-                return future.result()
-        else:
-            return asyncio.run(_execute())
+        base = get_local_sandbox().get_working_dir(self.chat_id)
+        p = Path(action.path) if Path(action.path).is_absolute() else Path(base) / action.path
+        content = p.read_text(encoding="utf-8", errors="replace")
+        return TerminalDownloadObservation(file_content=content[:200000])
 
 
 class TerminalDownloadTool(ToolDefinition[TerminalDownloadAction, TerminalDownloadObservation]):

@@ -48,10 +48,6 @@ def get_schemas_for_specialist(tool_names: List[str]) -> List[Dict[str, Any]]:
     """
     schemas: List[Dict[str, Any]] = []
 
-    # Always include terminal_execute
-    if "terminal_execute" not in tool_names:
-        schemas.append(TERMINAL_EXECUTE_SCHEMA)
-
     for name in tool_names:
         # Check system tools first
         if name in _SYSTEM_TOOL_SCHEMAS:

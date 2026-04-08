@@ -1,0 +1,10 @@
+tools:
+  resolve_temporal_phrase:
+    description: "Parse human-readable temporal expressions and return structured date/time information. Handles relative phrases (\"next monday\", \"in 3 days\", \"2 weeks from friday\", \"end of month\"), absolute phrases (\"march 15\", \"2025-12-25\"), and combined expressions (\"next monday at 3pm\"). Returns the resolved date, day of week, and a human-readable description of how far in the future/past it is."
+    parameters:
+      type: object
+      properties:
+        phrase:
+          type: string
+          description: "A natural language temporal expression to resolve. Examples: \"next monday\", \"in 3 days\", \"march 15 2025\", \"next monday at 3pm\""
+      required: ["phrase"]

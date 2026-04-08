@@ -22,7 +22,8 @@ from openhands.sdk.conversation.state import ConversationExecutionStatus
 from openhands.sdk.event.conversation_error import ConversationErrorEvent
 
 from config import LLM_API_KEY, LLM_BASE_URL, SPECIALIST_REASONING_EFFORT
-from terminal.files import strip_files_line, log_file_refs, accumulate_file_refs
+from sandbox import get_local_sandbox
+from files import strip_files_line, log_file_refs, accumulate_file_refs
 from agent.tools.terminal_tools import get_terminal_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -128,7 +129,7 @@ async def run_subagent_sdk(
         # Create ephemeral Conversation (no persistence)
         conversation = Conversation(
             agent=agent,
-            workspace=os.getcwd(),
+            workspace=get_local_sandbox().get_workspace(chat_id),
             max_iteration_per_run=max_turns,
             stuck_detection=True,
             visualizer=None,
