@@ -1,15 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
+import { fetchWeightLog } from '@/api/client'
 import { daysUntil, formatDateShort, sessionsThisCalendarWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
 import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2 } from 'lucide-react'
-import type { Phase } from '@powerlifting/types'
+import type { Phase, WeightEntry } from '@powerlifting/types'
 
 export default function Dashboard() {
-  const { program, isLoading, updateMaxes, updateBodyWeight, updatePhases } = useProgramStore()
+  const { program, version, isLoading, updateMaxes, updateBodyWeight, updatePhases } = useProgramStore()
   const { unit } = useSettingsStore()
   const { pushToast } = useUiStore()
 
@@ -19,6 +20,15 @@ export default function Dashboard() {
   const [localMaxes, setLocalMaxes] = useState({ squat: 0, bench: 0, deadlift: 0 })
   const [localWeight, setLocalWeight] = useState(0)
   const [localPhases, setLocalPhases] = useState<Phase[]>([])
+  const [weightLog, setWeightLog] = useState<WeightEntry[]>([])
+
+  useEffect(() => {
+    if (version) {
+      fetchWeightLog(version)
+        .then(setWeightLog)
+        .catch((e) => console.error('Failed to load weight log:', e))
+    }
+  }, [version])
 
   if (isLoading || !program) {
     return (
@@ -32,11 +42,33 @@ export default function Dashboard() {
   const thisWeekSessions = sessionsThisCalendarWeek(sessions)
   const completedThisWeek = thisWeekSessions.filter((s) => s.completed).length
 
-  // Get next competition
+  // Get all upcoming competitions
   const upcomingComps = competitions
     .filter((c) => c.status !== 'skipped' && new Date(c.date) >= new Date())
     .sort((a, b) => a.date.localeCompare(b.date))
-  const nextComp = upcomingComps[0]
+
+  // Most recent body weight from weight log
+  const latestWeightKg = weightLog.length > 0 ? weightLog[0].kg : meta.current_body_weight_kg
+
+  // Compute actual heaviest lifts from completed sessions
+  const actualMaxes = { squat: 0, bench: 0, deadlift: 0 }
+  for (const session of sessions) {
+    if (!session.completed) continue
+    if ((session.block || 'current') !== 'current') continue
+    for (const exercise of session.exercises) {
+      if (exercise.kg == null) continue
+      const name = exercise.name.toLowerCase()
+      if (name.includes('squat') && exercise.kg > actualMaxes.squat) {
+        actualMaxes.squat = exercise.kg
+      }
+      if (name.includes('bench') && exercise.kg > actualMaxes.bench) {
+        actualMaxes.bench = exercise.kg
+      }
+      if (name.includes('deadlift') && exercise.kg > actualMaxes.deadlift) {
+        actualMaxes.deadlift = exercise.kg
+      }
+    }
+  }
 
   // Current phase from first session this week (if any)
   const currentPhase = thisWeekSessions[0]?.phase
@@ -65,7 +97,7 @@ export default function Dashboard() {
   }
 
   const startEditingWeight = () => {
-    setLocalWeight(meta.current_body_weight_kg)
+    setLocalWeight(latestWeightKg)
     setEditingWeight(true)
   }
 
@@ -123,15 +155,32 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Competition Countdown */}
-        {nextComp && (
+        {/* Upcoming Competitions */}
+        {upcomingComps.length > 0 && (
           <div className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center gap-2 mb-2">
               <Trophy className="w-5 h-5 text-primary" />
-              <h3 className="font-medium">Next Competition</h3>
+              <h3 className="font-medium">Upcoming Competitions</h3>
             </div>
-            <p className="text-3xl font-bold">{daysUntil(nextComp.date)}</p>
-            <p className="text-sm text-muted-foreground">days until {nextComp.name}</p>
+            <div className="space-y-2">
+              {upcomingComps.map((comp) => (
+                <div key={comp.date} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`shrink-0 text-xs px-1.5 py-0.5 rounded-full ${
+                        comp.status === 'confirmed'
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                      }`}
+                    >
+                      {comp.status}
+                    </span>
+                    <span className="text-sm truncate">{comp.name}</span>
+                  </div>
+                  <span className="text-sm font-medium shrink-0 ml-2">{daysUntil(comp.date)}d</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -216,6 +265,44 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* Actual Maxes from completed sessions */}
+        {(actualMaxes.squat > 0 || actualMaxes.bench > 0 || actualMaxes.deadlift > 0) && (
+          <div className="bg-card border border-border rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              <h3 className="font-medium">Actual Maxes</h3>
+            </div>
+            <div className="space-y-2 text-sm">
+              {[
+                { label: 'Squat', actual: actualMaxes.squat, target: meta.target_squat_kg },
+                { label: 'Bench', actual: actualMaxes.bench, target: meta.target_bench_kg },
+                { label: 'Deadlift', actual: actualMaxes.deadlift, target: meta.target_dl_kg },
+              ].map(({ label, actual, target }) =>
+                actual > 0 ? (
+                  <div key={label}>
+                    <div className="flex justify-between mb-0.5">
+                      <span>{label}: {displayWeight(actual, unit)}</span>
+                      <span className="text-muted-foreground">Target: {displayWeight(target, unit)}</span>
+                    </div>
+                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${actual >= target ? 'bg-green-500' : 'bg-primary'}`}
+                        style={{ width: `${Math.min(100, (actual / target) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null
+              )}
+              {(actualMaxes.squat > 0 || actualMaxes.bench > 0 || actualMaxes.deadlift > 0) && (
+                <div className="flex justify-between border-t border-border pt-1 mt-1">
+                  <span className="font-medium">Total</span>
+                  <span className="font-bold">{displayWeight(actualMaxes.squat + actualMaxes.bench + actualMaxes.deadlift, unit)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Weight vs Class - EDITABLE */}
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
@@ -251,7 +338,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <p className="text-3xl font-bold">
-              {displayWeight(meta.current_body_weight_kg, unit)}
+              {displayWeight(latestWeightKg, unit)}
             </p>
           )}
           <p className="text-sm text-muted-foreground">
@@ -263,7 +350,7 @@ export default function Dashboard() {
               style={{
                 width: `${Math.min(
                   100,
-                  (meta.current_body_weight_kg / meta.weight_class_kg) * 100
+                  (latestWeightKg / meta.weight_class_kg) * 100
                 )}%`,
               }}
             />

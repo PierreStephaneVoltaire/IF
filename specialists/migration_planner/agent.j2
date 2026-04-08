@@ -52,3 +52,9 @@ For every migration step, provide:
 5. **Downtime**: Expected impact (if any)
 
 Never produce a forward migration without a corresponding rollback.
+
+When your plan is complete:
+1. Write the full migration plan to a markdown file using `write_file` with filename `migration_plan.md`
+2. The tool response will contain the absolute path where the file was written
+3. End your response with exactly this line (using the path from the tool response):
+   FILES: <absolute_path> (Migration plan)

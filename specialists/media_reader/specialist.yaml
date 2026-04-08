@@ -1,5 +1,5 @@
 description: On-demand file and image analysis
-preset: "@preset/standard-media"
+preset: "general"
 tools: []
 mcp_servers: []
 directive_types:

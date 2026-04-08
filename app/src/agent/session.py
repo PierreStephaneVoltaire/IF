@@ -42,11 +42,11 @@ from agent.tools.directive_tools import get_directive_tools
 from agent.tools.terminal_tools import get_terminal_system_prompt
 from agent.tools.context_tools import get_context_tools
 from agent.tools.subagents import get_subagent_tools
-from agent.tools.delegation import get_delegation_tools
 from agent.tools.media_tools import get_media_tools
 from agent.tools import file_tools  # registers read_file, write_file, search_files
 from agent.tools.discovery_tools import get_discovery_tools
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
+from sandbox import get_local_sandbox
 
 
 logger = logging.getLogger(__name__)
@@ -273,7 +273,8 @@ def assemble_system_prompt(
 
     # Add conversation history if provided (from channel history)
     if conversation_history:
-        prompt_parts.append(f"\n<conversation_history>\n{conversation_history}\n</conversation_history>\n")
+        from agent.prompts.loader import render_template
+        prompt_parts.append(render_template("conversation_history.j2", history=conversation_history))
 
     # Add directives block from DirectiveStore
     try:
@@ -368,26 +369,24 @@ Multiple questions about the same file require separate calls.
 
 def get_model_for_preset(preset_slug: str, preset_manager: PresetManager) -> str:
     """Get the OpenRouter model ID for a preset.
-    
+
     Args:
         preset_slug: Preset identifier
         preset_manager: Manager with preset data
-        
+
     Returns:
         OpenRouter model ID
     """
+    from models.router import resolve_preset_to_model
     preset = preset_manager.get_preset(preset_slug)
     if not preset:
-        # Fallback to a capable general model
-        return PRESET_FALLBACK_MODEL
-    
-    # Get model from preset
+        return resolve_preset_to_model(PRESET_FALLBACK_MODEL)
+
     model = preset.model
     if model:
-        return model
-    
-    # Fallback
-    return PRESET_FALLBACK_MODEL
+        return resolve_preset_to_model(model)
+
+    return resolve_preset_to_model(PRESET_FALLBACK_MODEL)
 
 
 async def execute_agent(
@@ -416,7 +415,18 @@ async def execute_agent(
         model = session.model
         if not model.startswith("openrouter/"):
             model = f"openrouter/{model}"
-        
+
+        # Look up max_output_tokens from registry using clean model ID
+        max_output_tokens = None
+        try:
+            from storage.factory import get_model_registry
+            registry = get_model_registry()
+            info = registry.get(session.model)
+            if info and info.max_output_tokens:
+                max_output_tokens = info.max_output_tokens
+        except Exception:
+            pass
+
         # Create OpenHands LLM instance
         llm = LLM(
             usage_id="agent",
@@ -424,6 +434,7 @@ async def execute_agent(
             base_url=LLM_BASE_URL,
             api_key=SecretStr(LLM_API_KEY),
             reasoning_effort=LLM_REASONING_EFFORT,
+            max_output_tokens=max_output_tokens,
         )
         logger.info(f"Using model: {model}, reasoning_effort: {LLM_REASONING_EFFORT}")
         # Get MCP config for this preset
@@ -443,9 +454,7 @@ async def execute_agent(
         tools.extend(get_directive_tools())
         # Get context tools (date/time, signals, finance snapshot)
         tools.extend(get_context_tools())
-        # Get delegation tools (categorize, directives, condense, spawn)
-        tools.extend(get_delegation_tools(session.conversation_id))
-        # Get subagent tools (specialist spawning, deep thinking)
+        # Get subagent tools (list_specialists, condense_intent, spawn_specialist, deep_think)
         tools.extend(get_subagent_tools(session.conversation_id))
         # Get media tools (on-demand file/image analysis)
         tools.extend(get_media_tools(session.conversation_id))
@@ -482,7 +491,7 @@ async def execute_agent(
         conversation_id_uuid = uuid.uuid4()
         conversation = Conversation(
             agent=agent,
-            workspace=os.getcwd(),
+            workspace=get_local_sandbox().get_workspace(session.conversation_id),
             persistence_dir=PERSISTENCE_DIR,
             conversation_id=conversation_id_uuid,
         )
@@ -512,8 +521,6 @@ async def execute_agent(
                 tool_name = getattr(tc, 'name', getattr(tc, 'function', 'unknown'))
                 tool_args = str(getattr(tc, 'arguments', getattr(tc, 'args', {})))[:200]
                 logger.info(f"[ToolCall] name={tool_name} | args={tool_args}")
-            elif hasattr(event, 'tool_name'):
-                logger.info(f"[ToolCall] name={event.tool_name} | args={str(getattr(event, 'args', {}))[:200]}")
 
         last_agent_message:MessageEvent = None
         for event in events:

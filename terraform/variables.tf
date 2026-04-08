@@ -323,28 +323,10 @@ variable "reflection_threshold_uncategorized" {
   default     = 20
 }
 
-variable "terminal_image" {
-  description = "Docker image for terminal containers"
-  type        = string
-  default     = "ghcr.io/open-webui/open-terminal:latest"
-}
-
 variable "terminal_network" {
   description = "Docker network for terminals"
   type        = string
   default     = "if-terminal-net"
-}
-
-variable "terminal_mem_limit" {
-  description = "Memory limit per terminal container"
-  type        = string
-  default     = "2Gi"
-}
-
-variable "terminal_cpu_quota" {
-  description = "CPU quota for terminal containers"
-  type        = number
-  default     = 50000
 }
 
 variable "terminal_idle_timeout" {
@@ -527,6 +509,12 @@ variable "specialists_path" {
   default     = "/app/specialists"
 }
 
+variable "models_path" {
+  description = "Path to models directory (mounted volume)"
+  type        = string
+  default     = "/app/models"
+}
+
 variable "tools_host_path" {
   description = "Host path to tools directory for hostPath volume"
   type        = string
@@ -535,6 +523,22 @@ variable "tools_host_path" {
 variable "specialists_host_path" {
   description = "Host path to specialists directory for hostPath volume"
   type        = string
+}
+
+variable "models_host_path" {
+  description = "Host path to models directory for hostPath volume"
+  type        = string
+}
+
+variable "scripts_host_path" {
+  description = "Host path to scripts directory for hostPath volume"
+  type        = string
+}
+
+variable "scripts_path" {
+  description = "Path to scripts directory (mounted volume)"
+  type        = string
+  default     = "/app/scripts"
 }
 
 variable "tinyauth_oauth_whitelist" {

@@ -118,6 +118,7 @@ export interface Session {
   session_rpe: number | null
   body_weight_kg: number | null
   videos?: SessionVideo[]   // Optional video attachments
+  block?: string            // Training block identifier. Default: "current". Archived blocks get user-chosen names.
 }
 
 // ─── Session Video ───────────────────────────────────────────────────────────
@@ -133,6 +134,24 @@ export interface SessionVideo {
   notes?: string
   uploaded_at: string
   thumbnail_status?: 'pending' | 'ready' | 'failed'
+}
+
+// ─── Video Library ─────────────────────────────────────────────────────────────
+
+export interface VideoLibraryItem {
+  video: SessionVideo
+  session_date: string
+  day: string
+  week_number: number
+  phase_name: string
+  exercise_sets: number
+  exercise_reps: number
+  exercise_kg: number | null
+}
+
+export interface VideoLibraryResponse {
+  videos: VideoLibraryItem[]
+  exercises: string[]
 }
 
 // ─── Full Program ─────────────────────────────────────────────────────────────
@@ -191,13 +210,13 @@ export interface WeightEntry {
 export type MuscleGroup =
   | 'quads' | 'hamstrings' | 'glutes' | 'calves' | 'hip_flexors'
   | 'chest' | 'triceps' | 'front_delts' | 'side_delts' | 'rear_delts'
-  | 'lats' | 'upper_back_traps' | 'rhomboids' | 'teres_major'
+  | 'lats' | 'traps' | 'rhomboids' | 'teres_major'
   | 'biceps' | 'forearms'
-  | 'erectors' | 'core' | 'obliques'
+  | 'erectors' | 'lower_back' | 'core' | 'obliques'
 
 export type ExerciseCategory =
   | 'squat' | 'bench' | 'deadlift'
-  | 'upper_accessory' | 'lower_accessory' | 'core_accessory'
+  | 'back' | 'chest' | 'arm' | 'legs' | 'core' | 'lower_back'
 
 export type Equipment =
   | 'barbell' | 'dumbbell' | 'cable' | 'machine'

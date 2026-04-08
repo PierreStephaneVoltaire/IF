@@ -34,26 +34,19 @@ async def _upload_attachments(
         return
 
     try:
-        from terminal.static_client import get_static_manager
-        from terminal.client import create_terminal_client
+        from pathlib import Path
+        from sandbox import get_local_sandbox
         from config import MEDIA_UPLOAD_DIR
     except ImportError as e:
         logger.warning(f"[Upload] Import error, skipping attachment upload: {e}")
         return
 
-    manager = get_static_manager()
-    if manager is None:
-        logger.warning("[Upload] Terminal not available, skipping attachment upload")
-        return
-
     try:
-        container = await manager.get_or_create(conversation_id)
-        client = create_terminal_client(container, http_client)
-        upload_dir = f"/home/user/conversations/{conversation_id}/{MEDIA_UPLOAD_DIR}"
-
-        await client.execute_command(f"mkdir -p {upload_dir}", timeout=5.0)
+        workdir = Path(get_local_sandbox().get_working_dir(conversation_id))
+        upload_dir = workdir / MEDIA_UPLOAD_DIR
+        upload_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        logger.warning(f"[Upload] Terminal setup failed, skipping attachment upload: {e}")
+        logger.warning(f"[Upload] Sandbox setup failed, skipping attachment upload: {e}")
         return
 
     for att in pending:
@@ -62,9 +55,9 @@ async def _upload_attachments(
         try:
             resp = await http_client.get(url, timeout=30.0)
             resp.raise_for_status()
-            remote_path = f"{upload_dir}/{filename}"
-            await client.upload_file(remote_path, resp.content)
-            logger.info(f"[Upload] Uploaded {filename} ({len(resp.content)} bytes) to {remote_path}")
+            dest = upload_dir / filename
+            dest.write_bytes(resp.content)
+            logger.info(f"[Upload] Uploaded {filename} ({len(resp.content)} bytes) to {dest}")
         except Exception as e:
             logger.warning(f"[Upload] Failed to upload {filename}: {e}")
 

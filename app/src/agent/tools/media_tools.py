@@ -27,7 +27,7 @@ from openhands.sdk.tool.tool import (
 from openhands.sdk import register_tool
 from agent.tools.base import TextObservation
 
-from config import MEDIA_AIR_PRESET, MEDIA_STANDARD_PRESET, MEDIA_HEAVY_PRESET, MEDIA_UPLOAD_DIR
+from config import MEDIA_UPLOAD_DIR
 
 if TYPE_CHECKING:
     from openhands.sdk.conversation.state import ConversationState
@@ -35,12 +35,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 UPLOADS_BASE = "/home/user/conversations"
-
-_TIER_PRESETS = {
-    0: MEDIA_AIR_PRESET,
-    1: MEDIA_STANDARD_PRESET,
-    2: MEDIA_HEAVY_PRESET,
-}
 
 
 # =============================================================================
@@ -125,23 +119,14 @@ class ReadMediaExecutor(ToolExecutor):
 
         full_path = f"{UPLOADS_BASE}/{self.conversation_id}/{MEDIA_UPLOAD_DIR}/{file_path}"
 
-        # Download file from terminal
+        # Read file from local sandbox filesystem
         try:
-            from terminal import get_static_manager, create_terminal_client
-        except ImportError as e:
-            return f"ERROR: Terminal import failed: {e}"
-
-        manager = get_static_manager()
-        if manager is None:
-            return "ERROR: Terminal not available"
-
-        try:
-            container = await manager.get_or_create(self.conversation_id)
-            async with httpx.AsyncClient() as http_client:
-                client = create_terminal_client(container, http_client)
-                file_bytes = await client.download_file(full_path)
+            from pathlib import Path
+            from sandbox import get_local_sandbox
+            file_path_obj = Path(get_local_sandbox().get_working_dir(self.conversation_id)) / file_path
+            file_bytes = file_path_obj.read_bytes()
         except Exception as e:
-            return f"ERROR: Could not download file '{file_path}': {e}"
+            return f"ERROR: Could not read file '{file_path}': {e}"
 
         # Detect MIME type
         mime_type, _ = mimetypes.guess_type(file_path)
@@ -178,7 +163,7 @@ class ReadMediaExecutor(ToolExecutor):
             context=action.context,
         )
 
-        # Select media tier preset based on current conversation tier
+        # Select media model based on current conversation tier
         tier = 0
         try:
             from routing.cache import get_cache
@@ -188,7 +173,23 @@ class ReadMediaExecutor(ToolExecutor):
         except Exception:
             pass
 
-        media_model = _TIER_PRESETS.get(tier, MEDIA_AIR_PRESET)
+        media_model = None
+        try:
+            from models.loader import get_tier_config_manager
+            tier_mgr = get_tier_config_manager()
+            if tier_mgr.is_initialized():
+                media_tier = tier_mgr.get_media_tier(tier)
+                if media_tier and media_tier.model_ids:
+                    from storage.factory import get_model_registry
+                    registry = get_model_registry()
+                    sorted_ids = registry.sort_models(media_tier.model_ids, media_tier.sort_by)
+                    if sorted_ids:
+                        media_model = sorted_ids[0]
+        except Exception as e:
+            logger.warning(f"[read_media] Tier model selection failed: {e}")
+
+        if not media_model:
+            return "ERROR: No media model available for current tier"
 
         # Call vision-capable model directly (single completion, no tool loop)
         from orchestrator.executor import call_openrouter

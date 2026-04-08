@@ -101,7 +101,7 @@ TIER_HEAVY_PRESET = os.getenv("TIER_HEAVY_PRESET", "@preset/heavy")
 # =============================================================================
 
 # Default preset for specialist subagents
-SPECIALIST_PRESET = os.getenv("SPECIALIST_PRESET", "@preset/standard")
+SPECIALIST_PRESET = os.getenv("SPECIALIST_PRESET", "general")
 
 # Maximum turns per specialist subagent
 SPECIALIST_MAX_TURNS = int(os.getenv("SPECIALIST_MAX_TURNS", "15"))
@@ -117,9 +117,6 @@ THINKING_MAX_TURNS = int(os.getenv("THINKING_MAX_TURNS", "20"))
 # Media Upload Configuration
 # =============================================================================
 MEDIA_UPLOAD_DIR = os.getenv("MEDIA_UPLOAD_DIR", "uploads")
-MEDIA_AIR_PRESET = os.getenv("MEDIA_AIR_PRESET", "@preset/air-media")
-MEDIA_STANDARD_PRESET = os.getenv("MEDIA_STANDARD_PRESET", "@preset/standard-media")
-MEDIA_HEAVY_PRESET = os.getenv("MEDIA_HEAVY_PRESET", "@preset/heavy-media")
 
 # Cache Configuration
 CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # 1 hour
@@ -192,7 +189,10 @@ TOKENIZER_MODEL = os.getenv("TOKENIZER_MODEL", "gpt-4")
 DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "openrouter/@preset/heavy")
 
 # Model for conversation condensation (summarizing long conversations)
-CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "openrouter/@preset/general")
+CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "openrouter/gpt-5-nano")
+
+# Model for condensing user intent into specialist task prompts (cheap/fast)
+CONDENSE_INTENT_MODEL = os.getenv("CONDENSE_INTENT_MODEL", "openrouter/openai/gpt-5-nano")
 
 # Fallback model for heartbeat pondering (when pondering preset unavailable)
 HEARTBEAT_FALLBACK_MODEL = os.getenv("HEARTBEAT_FALLBACK_MODEL", "openrouter/@preset/general")
@@ -202,9 +202,6 @@ PRESET_FALLBACK_MODEL = os.getenv("PRESET_FALLBACK_MODEL", "openrouter/@preset/g
 
 # Model for reflection engine and opinion formation
 REFLECTION_MODEL = os.getenv("REFLECTION_MODEL", "openrouter/@preset/general")
-
-# Model for conversation categorization (cheap/fast)
-CATEGORIZATION_MODEL = os.getenv("CATEGORIZATION_MODEL", "openrouter/z-ai/glm-4.7-flash")
 
 # Reasoning effort passed to the OpenHands LLM for the main agent.
 # Valid values: "high", "medium", "low" (silently ignored for models that don't support it).
@@ -219,11 +216,7 @@ SPECIALIST_REASONING_EFFORT = os.getenv("SPECIALIST_REASONING_EFFORT", LLM_REASO
 # Terminal Configuration (Static Deployment)
 # =============================================================================
 
-# URL of the shared OpenTerminal deployment (managed via Terraform)
-TERMINAL_URL = os.getenv("TERMINAL_URL", "http://open-terminal:7681")
-
-# API key for terminal authentication
-TERMINAL_API_KEY = os.getenv("TERMINAL_API_KEY", "")
+WORKSPACE_BASE = os.getenv("WORKSPACE_BASE", "/app/src/data/conversations")
 
 # Host path for Docker volume access (for workspace file serving)
 # Set to empty string to disable workspace file serving
@@ -327,12 +320,19 @@ MODELS_PATH = os.getenv(
     str(Path(__file__).parent.parent.parent / "models")
 )
 
-MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "google/gemma-3-4b-it")
+SCRIPTS_PATH = os.getenv(
+    "SCRIPTS_PATH",
+    str(Path(__file__).parent.parent.parent / "scripts")
+)
+
+MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "openai/gpt-5-nano")
 MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() == "true"
 
 # Interval for refreshing per-provider latency/throughput from OpenRouter (seconds)
 MODEL_STATS_REFRESH_INTERVAL = int(os.getenv("MODEL_STATS_REFRESH_INTERVAL", "1800"))  # 30 min
 
+# Interval for full model metadata seed from OpenRouter (seconds)
+MODEL_SEED_INTERVAL = int(os.getenv("MODEL_SEED_INTERVAL", "3600"))  # 1 hour
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_FILE = os.getenv("LOG_FILE", "./logs/app.log")

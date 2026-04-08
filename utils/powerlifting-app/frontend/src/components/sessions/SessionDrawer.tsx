@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react'
+import { Fragment, useState, useEffect, useMemo } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -6,6 +6,7 @@ import { useUiStore } from '@/store/uiStore'
 import { formatDateLong, getDayOfWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
+import { fetchGlossary } from '@/api/client'
 import { clsx } from 'clsx'
 import { X, Check, Save, RotateCcw, Plus, GripVertical, Trash2, Calendar, Film, Loader2 } from 'lucide-react'
 import type { Session, Exercise, SessionVideo } from '@powerlifting/types'
@@ -17,6 +18,7 @@ interface SessionDrawerProps {
   onClose: () => void
   session: Session | null
   sessionIndex: number
+  sessionArrayIndex: number
 }
 
 export default function SessionDrawer({
@@ -24,6 +26,7 @@ export default function SessionDrawer({
   onClose,
   session,
   sessionIndex,
+  sessionArrayIndex,
 }: SessionDrawerProps) {
   const { program, updateSession, saveSession, rescheduleSession, deleteSession } = useProgramStore()
   const { unit } = useSettingsStore()
@@ -34,6 +37,13 @@ export default function SessionDrawer({
   const [hasChanges, setHasChanges] = useState(false)
   const [showVideoUpload, setShowVideoUpload] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [glossaryNames, setGlossaryNames] = useState<string[]>([])
+
+  useEffect(() => {
+    fetchGlossary()
+      .then((exercises) => setGlossaryNames(exercises.map((e) => e.name).sort()))
+      .catch(() => {})
+  }, [])
 
   // Initialize local state when session changes
   useEffect(() => {
@@ -52,12 +62,12 @@ export default function SessionDrawer({
       if (localSession.date !== originalDate) {
         // First reschedule, then save content
         const newDay = getDayOfWeek(localSession.date)
-        await rescheduleSession(originalDate, localSession.date, newDay)
+        await rescheduleSession(originalDate, sessionArrayIndex, localSession.date, newDay)
       }
 
       // Update session content
-      updateSession(localSession.date, localSession)
-      await saveSession(localSession.date)
+      updateSession(localSession.date, sessionArrayIndex, localSession)
+      await saveSession(localSession.date, sessionArrayIndex)
 
       setHasChanges(false)
       pushToast({ message: 'Session saved successfully', type: 'success' })
@@ -149,7 +159,7 @@ export default function SessionDrawer({
     if (!confirm('Delete this entire session? This cannot be undone.')) return
     setIsDeleting(true)
     try {
-      await deleteSession(originalDate)
+      await deleteSession(originalDate, sessionArrayIndex)
       pushToast({ message: 'Session deleted', type: 'success' })
       onClose()
     } catch (err) {
@@ -238,82 +248,105 @@ export default function SessionDrawer({
 
                     {/* Exercises */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                      {localSession.exercises.map((exercise, index) => (
-                        <div
-                          key={index}
-                          className="bg-card border border-border rounded-lg p-3 space-y-2"
-                        >
-                          <div className="flex items-start gap-2">
-                            <GripVertical className="w-4 h-4 text-muted-foreground mt-2 cursor-move" />
-                            <div className="flex-1 grid grid-cols-3 sm:grid-cols-4 gap-2">
-                              <div className="col-span-3 sm:col-span-4 flex items-center gap-1">
-                                <input
-                                  type="text"
-                                  value={exercise.name}
-                                  onChange={(e) => updateExercise(index, 'name', e.target.value)}
-                                  placeholder="Exercise name"
-                                  className="flex-1 px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
-                                />
-                                <button
-                                  onClick={() => removeExercise(index)}
-                                  className="sm:hidden p-2 text-destructive hover:bg-destructive/10 rounded"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground">Sets</label>
-                                <input
-                                  type="number"
-                                  value={exercise.sets || ''}
-                                  onChange={(e) => updateExercise(index, 'sets', Number(e.target.value) || 0)}
-                                  className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground">Reps</label>
-                                <input
-                                  type="number"
-                                  value={exercise.reps || ''}
-                                  onChange={(e) => updateExercise(index, 'reps', Number(e.target.value) || 0)}
-                                  className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground">{unit}</label>
-                                <input
-                                  type="number"
-                                  step="0.25"
-                                  value={exercise.kg ? toDisplayUnit(exercise.kg, unit) : ''}
-                                  onChange={(e) =>
-                                    updateExercise(
-                                      index,
-                                      'kg',
-                                      e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null
-                                    )
-                                  }
-                                  className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm"
-                                />
-                              </div>
-                              <div className="hidden sm:flex items-end">
-                                <button
-                                  onClick={() => removeExercise(index)}
-                                  className="p-2 sm:p-1 text-destructive hover:bg-destructive/10 rounded"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
+                      {(() => {
+                        const groups: Array<{ name: string; entries: Array<{ exercise: Exercise; originalIndex: number }> }> = []
+                        for (let i = 0; i < localSession.exercises.length; i++) {
+                          const exercise = localSession.exercises[i]
+                          const existing = groups.find(g => g.name === exercise.name)
+                          if (existing) {
+                            existing.entries.push({ exercise, originalIndex: i })
+                          } else {
+                            groups.push({ name: exercise.name, entries: [{ exercise, originalIndex: i }] })
+                          }
+                        }
+                        return groups.map((group, groupIdx) => (
+                          <div key={group.name || `ungrouped-${groupIdx}`} className="bg-card border border-border rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <GripVertical className="w-4 h-4 text-muted-foreground cursor-move" />
                               <input
                                 type="text"
-                                value={exercise.notes || ''}
-                                onChange={(e) => updateExercise(index, 'notes', e.target.value)}
-                                placeholder="Notes"
-                                className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm col-span-3 sm:col-span-4"
+                                value={group.name}
+                                onChange={(e) => {
+                                  const newName = e.target.value
+                                  setLocalSession((prev) => {
+                                    if (!prev) return prev
+                                    const exercises = prev.exercises.map((ex, i) =>
+                                      group.entries.some(entry => entry.originalIndex === i)
+                                        ? { ...ex, name: newName }
+                                        : ex
+                                    )
+                                    return { ...prev, exercises }
+                                  })
+                                  setHasChanges(true)
+                                }}
+                                placeholder="Exercise name"
+                                list="exercise-glossary"
+                                className="flex-1 px-2 py-1 border border-border rounded bg-background text-sm font-medium"
                               />
+                              {group.entries.length === 1 && (
+                                <button onClick={() => removeExercise(group.entries[0].originalIndex)} className="p-1 text-destructive hover:bg-destructive/10 rounded">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
+                            {group.entries.length > 1 ? (
+                              <table className="w-full text-sm mb-1">
+                                <thead>
+                                  <tr className="border-b border-border text-xs text-muted-foreground">
+                                    <th className="text-left py-1 px-1 w-12">Sets</th>
+                                    <th className="text-left py-1 px-1 w-12">Reps</th>
+                                    <th className="text-left py-1 px-1 w-16">{unit}</th>
+                                    <th className="text-left py-1 px-1">Notes</th>
+                                    <th className="w-8" />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {group.entries.map((entry) => (
+                                    <tr key={entry.originalIndex} className="border-b border-border/50 last:border-b-0">
+                                      <td className="py-1 px-1">
+                                        <input type="number" value={entry.exercise.sets || ''} onChange={(e) => updateExercise(entry.originalIndex, 'sets', Number(e.target.value) || 0)} className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
+                                      </td>
+                                      <td className="py-1 px-1">
+                                        <input type="number" value={entry.exercise.reps || ''} onChange={(e) => updateExercise(entry.originalIndex, 'reps', Number(e.target.value) || 0)} className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
+                                      </td>
+                                      <td className="py-1 px-1">
+                                        <input type="number" step={0.25} value={entry.exercise.kg ? toDisplayUnit(entry.exercise.kg, unit) : ''} onChange={(e) => updateExercise(entry.originalIndex, 'kg', e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null)} className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
+                                      </td>
+                                      <td className="py-1 px-1">
+                                        <input type="text" value={entry.exercise.notes || ''} onChange={(e) => updateExercise(entry.originalIndex, 'notes', e.target.value)} placeholder="Notes" className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
+                                      </td>
+                                      <td className="py-1 px-1">
+                                        <button onClick={() => removeExercise(entry.originalIndex)} className="p-0.5 text-destructive hover:bg-destructive/10 rounded">
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            ) : (
+                              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Sets</label>
+                                  <input type="number" value={group.entries[0].exercise.sets || ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'sets', Number(e.target.value) || 0)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Reps</label>
+                                  <input type="number" value={group.entries[0].exercise.reps || ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'reps', Number(e.target.value) || 0)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">{unit}</label>
+                                  <input type="number" step={0.25} value={group.entries[0].exercise.kg ? toDisplayUnit(group.entries[0].exercise.kg, unit) : ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'kg', e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Notes</label>
+                                  <input type="text" value={group.entries[0].exercise.notes || ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'notes', e.target.value)} placeholder="Notes" className="w-full px-2 py-1 border border-border rounded bg-background text-sm col-span-3 sm:col-span-1" />
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        ))
+                      })()}
 
                       <button
                         onClick={addExercise}
@@ -322,6 +355,12 @@ export default function SessionDrawer({
                         <Plus className="w-4 h-4 inline mr-1" />
                         Add Exercise
                       </button>
+
+                      <datalist id="exercise-glossary">
+                        {glossaryNames.map((name) => (
+                          <option key={name} value={name} />
+                        ))}
+                      </datalist>
 
                       {/* Videos Section */}
                       <div className="pt-4 border-t border-border">

@@ -2,6 +2,8 @@
 from __future__ import annotations
 import asyncio
 import os
+import subprocess
+import sys
 import uuid
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -24,9 +26,9 @@ from fastapi.responses import StreamingResponse, PlainTextResponse
 from config import HOST, PORT, SANDBOX_PATH, MEMORY_DB_PATH, PERSISTENCE_DIR, STORAGE_DB_PATH
 from config import HEARTBEAT_ENABLED, HEARTBEAT_IDLE_HOURS, HEARTBEAT_COOLDOWN_HOURS
 from config import REFLECTION_ENABLED
-from config import TERMINAL_URL, TERMINAL_API_KEY
-from config import MODEL_STATS_REFRESH_INTERVAL
+from config import MODEL_STATS_REFRESH_INTERVAL, MODEL_SEED_INTERVAL
 from config import OPENROUTER_API_KEY
+from config import SCRIPTS_PATH
 from api.models import router as models_router
 from api.completions import router as completions_router
 from api.files import router as files_router, get_sandbox_directory
@@ -48,7 +50,7 @@ heartbeat_runner = None
 
 reflection_engine = None
 
-terminal_manager = None
+sandbox_manager = None
 
 _stats_refresh_task = None
 
@@ -147,7 +149,8 @@ async def lifespan(app: FastAPI):
         from memory import get_user_fact_store
         user_facts_store = get_user_fact_store()
         facts_count = user_facts_store.active_count
-        logger.info(f"User facts store initialized ({facts_count} active facts)")
+        count_str = str(facts_count) if facts_count >= 0 else "count unavailable"
+        logger.info(f"User facts store initialized ({count_str} active facts)")
         
         logger.info("Warming up embedding model...")
         try:
@@ -175,8 +178,7 @@ async def lifespan(app: FastAPI):
 
     # External tool plugin initialization
     try:
-        from agent.tool_registry import install_external_deps, init_tool_registry
-        install_external_deps()
+        from agent.tool_registry import init_tool_registry
         registry = init_tool_registry()
         logger.info(f"Tool registry: {len(registry.list_tools())} external tools loaded")
     except Exception as e:
@@ -263,24 +265,35 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Model registry initialization failed: {e}")
 
     try:
-        import asyncio
         from pathlib import Path as _Path
-        _models_file = _Path(os.environ.get("MODELS_FILE", "models/model_ids.txt"))
+        from config import MODELS_PATH
+        _models_file = _Path(MODELS_PATH) / "model_ids.txt"
         if _models_file.exists():
-            logger.info("[ModelRegistry] Refreshing model metadata from OpenRouter API...")
-            # Import seed_models as module for startup refresh
-            _seed_path = _Path(__file__).parent.parent.parent / "scripts" / "seed_models.py"
+            logger.info(f"[ModelRegistry] Refreshing model metadata from OpenRouter API (file={_models_file})...")
+            _seed_path = _Path(SCRIPTS_PATH) / "seed_models.py"
             if _seed_path.exists():
                 import importlib.util as _ilu
-                _spec = _ilu.spec_from_file_location("seed_models", _seed_path)
-                _seed_mod = _ilu.module_from_spec(_spec)
-                _spec.loader.exec_module(_seed_mod)
-                _count = await _seed_mod.seed_models(
-                    models_file=str(_models_file),
-                    table_name=os.environ.get("IF_MODELS_TABLE_NAME", "if-models"),
-                    region=AWS_REGION,
+                _result = subprocess.run(
+                    [sys.executable, str(_seed_path), str(_models_file)],
+                    capture_output=True, text=True, timeout=300,
+                    env={**os.environ, "MODELS_FILE": str(_models_file)},
                 )
-                logger.info(f"[ModelRegistry] Refreshed {_count} models from OpenRouter API")
+                if _result.returncode == 0:
+                    logger.info(f"[ModelRegistry] Seed complete:\n{_result.stdout.strip()}")
+                    # Reload registry cache with newly seeded data
+                    try:
+                        from storage.factory import get_model_registry, init_model_registry
+                        try:
+                            _reg = get_model_registry()
+                        except RuntimeError:
+                            init_model_registry()
+                            _reg = get_model_registry()
+                        _reg.load()
+                        logger.info(f"[ModelRegistry] Cache refreshed after seed: {len(_reg._cache)} models")
+                    except Exception as _reg_err:
+                        logger.warning(f"[ModelRegistry] Post-seed cache reload failed: {_reg_err}")
+                else:
+                    logger.warning(f"[ModelRegistry] Seed failed (rc={_result.returncode}): {_result.stderr.strip()}")
             else:
                 logger.warning(f"[ModelRegistry] Seed script not found at {_seed_path}")
         else:
@@ -302,23 +315,56 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"[ModelRegistry] Periodic stats refresh failed: {e}")
 
+    async def _periodic_model_seed():
+        from pathlib import Path as _Path
+        from config import MODELS_PATH
+        _models_file = _Path(MODELS_PATH) / "model_ids.txt"
+        _seed_path = _Path(SCRIPTS_PATH) / "seed_models.py"
+        if not _models_file.exists() or not _seed_path.exists():
+            logger.warning("[ModelRegistry] Periodic seed skipped: models file or seed script missing")
+            return
+        while True:
+            await asyncio.sleep(MODEL_SEED_INTERVAL)
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(_seed_path), str(_models_file)],
+                    capture_output=True, text=True, timeout=300,
+                    env={**os.environ, "MODELS_FILE": str(_models_file)},
+                )
+                if result.returncode == 0:
+                    logger.info(f"[ModelRegistry] Periodic seed complete")
+                else:
+                    logger.warning(f"[ModelRegistry] Periodic seed failed (rc={result.returncode}): {result.stderr.strip()[:200]}")
+            except Exception as e:
+                logger.warning(f"[ModelRegistry] Periodic seed error: {e}")
+
     try:
         from storage.factory import get_model_registry
         registry = get_model_registry()
         if registry:
             # Run initial refresh in background (don't block startup)
             asyncio.create_task(_periodic_stats_refresh())
+            asyncio.create_task(_periodic_model_seed())
             logger.info(f"Model stats refresh started (interval={MODEL_STATS_REFRESH_INTERVAL}s)")
+            logger.info(f"Model seed refresh started (interval={MODEL_SEED_INTERVAL}s)")
     except Exception as e:
         logger.warning(f"Model stats refresh init failed: {e}")
 
-    # Model preset configuration
+    # Model preset configuration (subagent presets)
     try:
         from models.loader import get_model_preset_manager
         _model_preset_mgr = get_model_preset_manager()
         _model_preset_mgr.load()
     except Exception as e:
         logger.warning(f"Model preset manager initialization failed: {e}")
+
+    # Tier configuration (internal tiers)
+    try:
+        from models.loader import get_tier_config_manager
+        _tier_config_mgr = get_tier_config_manager()
+        _tier_config_mgr.load()
+    except Exception as e:
+        logger.warning(f"Tier config manager initialization failed: {e}")
     
     try:
         init_debounce(asyncio.get_running_loop())
@@ -394,26 +440,16 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Reflection engine initialization failed: {e}")
     
-    global terminal_manager
-    if TERMINAL_API_KEY:
-        try:
-            from terminal import init_static_manager
-            terminal_manager = init_static_manager(TERMINAL_URL, TERMINAL_API_KEY)
-            logger.info(f"[Terminal] Static terminal manager initialized: {TERMINAL_URL}")
-        except ImportError as e:
-            logger.warning(f"Terminal module not available: {e}")
-        except Exception as e:
-            logger.warning(f"Terminal initialization failed: {e}")
-    else:
-        logger.warning("[Terminal] No TERMINAL_API_KEY configured, terminal tools disabled")
+    from sandbox import init_local_sandbox
+    sandbox_manager = init_local_sandbox()
+    logger.info(f"[Sandbox] LocalSandbox initialized at {sandbox_manager.workspace_base}")
     
     logger.info(f"Server ready on {HOST}:{PORT}")
     
     yield
 
-    if terminal_manager:
-        await terminal_manager.close()
-        logger.info("Terminal manager closed")
+    sandbox_manager.close()
+    logger.info("[Sandbox] LocalSandboxManager closed")
     
     if reflection_engine:
         reflection_engine.stop()

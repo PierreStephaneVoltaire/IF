@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 25
 description: General software engineering for writing code, features, and modifications
-preset: "@preset/code"
+preset: "code"
 tools:
   - terminal_execute
   - read_file

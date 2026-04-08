@@ -9,8 +9,8 @@ You have a persistent Linux terminal accessible via the `terminal_execute` tool.
 - **Important:** After completing work that creates or modifies file, remember to list them with terminal_list_files.
 
 **FILES: Protocol**
-After completing work that creates or modifies files, emit a single `FILES:` line at the very end of your response listing the paths and a brief description. Format:
+After completing work that creates or modifies files, emit a single `FILES:` line at the very end of your response listing the paths and a brief description. Use relative paths only (no absolute paths like /home/user/...). Format:
 ```
-FILES: /home/user/workspace/output.csv (cleaned sales data), /home/user/workspace/chart.png (revenue by quarter)
+FILES: output.csv (cleaned sales data), chart.png (revenue by quarter)
 ```
 This line will be automatically processed and removed before display.

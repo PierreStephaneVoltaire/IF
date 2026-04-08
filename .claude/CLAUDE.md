@@ -7,7 +7,7 @@ A single main agent with context-aware tiering and specialist subagent delegatio
 - Python 3.12, FastAPI, OpenHands SDK 1.11.4
 - LanceDB (user facts, all-MiniLM-L6-v2 embeddings), ChromaDB (health docs RAG)
 - SQLite (webhooks, activity via SQLModel), DynamoDB (directives, health, finance, diary, proposals, models)
-- Docker terminal containers for shell access (via OpenTerminal)
+- LocalWorkspace (OpenHands SDK) for per-conversation shell access — no separate terminal pod
 - MCP servers for extended capabilities (time, AWS docs, Yahoo Finance, Alpha Vantage)
 - Kubernetes deployment via Terraform, Docker images via Packer
 
@@ -59,7 +59,7 @@ app/
 │   │       ├── discovery_tools.py  # discover_tools + use_tool system tools
 │   │       └── base.py             # TextObservation base class
 │   ├── models/              # Dynamic model routing
-│   │   ├── loader.py        # YAML model preset config (ModelPresetManager)
+│   │   ├── loader.py        # ModelPresetManager (subagents) + TierConfigManager (tiers)
 │   │   └── router.py        # Smart model selection via fast LLM
 │   ├── channels/            # Multi-platform message handling
 │   │   ├── dispatcher.py    # Message flow bridge (translate → agent → chunk → deliver)
@@ -88,11 +88,10 @@ app/
 │   │   ├── interceptor.py   # Bypass routing
 │   │   ├── cache.py         # Conversation cache
 │   │   └── commands.py      # Command parsing (/reset, /pondering, /reflect, etc.)
-│   ├── terminal/            # Docker container shell access
-│   │   ├── client.py        # TerminalClient for API calls
-│   │   ├── static_client.py # StaticTerminalManager (shared OpenTerminal deployment)
-│   │   ├── files.py         # File operations on terminal volumes
-│   │   └── config.py        # Terminal URL, API key, volume paths
+│   ├── sandbox/             # LocalWorkspace manager for per-conversation shell access
+│   │   └── local.py         # LocalSandboxManager, init_local_sandbox, get_local_sandbox
+│   ├── files/               # FILES: metadata parsing (strip from agent output)
+│   │   └── __init__.py      # FileRef, FilesStripBuffer, strip_files_line
 │   ├── orchestrator/        # Multi-step task execution
 │   │   ├── executor.py      # execute_plan tool (sequential steps with subagents)
 │   │   └── analyzer.py      # analyze_parallel tool (parallel perspective analysis)
@@ -113,7 +112,8 @@ app/
 └── main_system_prompt.txt   # Agent personality base prompt
 specialists/                 # One subdir per specialist (specialist.yaml + agent.j2)
 models/                       # Dynamic model routing config
-├── presets.yaml             # Model preset definitions (YAML)
+├── presets.yaml             # Subagent preset definitions (YAML)
+├── tiers.yaml               # Internal tier config (air/standard/heavy + media)
 └── model_ids.txt            # Newline-delimited model IDs to track
 tools/                       # External tool plugins (one subdir per plugin)
 ├── health/                  # Training program management (35 tools)
@@ -200,7 +200,7 @@ DynamoDB-backed registry (`if-models` table, PK=`MODEL`, SK=model_id) storing me
 
 ### Model Presets (`models/presets.yaml`)
 
-YAML config defining named presets (mapped from specialist `@preset/` references) and tier configs. Auto-loaded at startup via `ModelPresetManager`.
+YAML config defining **subagent presets only** (mapped from specialist `@preset/` references). Auto-loaded at startup via `ModelPresetManager`.
 
 ```yaml
 presets:
@@ -208,21 +208,48 @@ presets:
     models: [anthropic/claude-sonnet-4, google/gemini-2.5-pro]
     sort_by: price_asc
     when: "Code generation, debugging, code review"
+```
 
+### Tier Config (`models/tiers.yaml`)
+
+Separate YAML config for **internal tier selection** — not used for subagents. Auto-loaded at startup via `TierConfigManager`.
+
+```yaml
 tiers:
+  air:
+    models: [openai/gpt-5.4-nano, google/gemma-4-26b-a4b-it]
+    sort_by: throughput_desc
+    context_limit: 150000
   standard:
-    models: [anthropic/claude-sonnet-4, google/gemini-2.5-pro]
-    sort_by: price_asc
+    models: [anthropic/claude-sonnet-4.6, google/gemini-3.1-pro-preview]
+    sort_by: latency_asc
     context_limit: 200000
+  heavy:
+    models: [anthropic/claude-opus-4.6, openai/gpt-5.4]
+    sort_by: price_asc
+    context_limit: 1000000
+
+media_tiers:
+  air:
+    models: [anthropic/claude-haiku-4.5, google/gemini-3-flash-preview]
+    sort_by: price_asc
+  standard:
+    models: [anthropic/claude-sonnet-4.6, google/gemini-3.1-pro-preview]
+    sort_by: price_asc
+  heavy:
+    models: [anthropic/claude-opus-4.6, google/gemini-4-31b-it]
+    sort_by: context_size_desc
 ```
 
 ### Smart Selection (`models/router.py`)
 
 Two selection paths:
 
-**Main agent** (`select_model_for_tier`): Maps tier number (0/1/2) to tier config, returns first model in the sorted list. No LLM call — tier selection itself is the routing decision.
+**Main agent** (`select_model_for_tier`): Maps tier number (0/1/2) to `TierConfigManager` tier config, returns first model in the sorted list. No LLM call — tier selection itself is the routing decision.
 
-**Subagents** (`select_model_for_specialist`): Maps specialist's `@preset/X` reference to a YAML preset, then uses a fast LLM (`MODEL_ROUTER_MODEL`, default `google/gemma-3-4b-it`) to select the best model from the preset's candidate list based on the condensed task intent and model metadata. Falls back to first sorted model if router is disabled or fails.
+**Subagents** (`select_model_for_specialist`): Maps specialist's `@preset/X` reference to a `ModelPresetManager` preset, then uses a fast LLM (`MODEL_ROUTER_MODEL`, default `google/gemma-3-4b-it`) to select the best model from the preset's candidate list based on the condensed task intent and model metadata. Falls back to first sorted model if router is disabled or fails.
+
+**Media** (`media_tools.py`): Uses `TierConfigManager.get_media_tier()` to pick a vision-capable model from the media tier pool, sorted by the tier's strategy.
 
 **Fallback**: If `MODEL_ROUTER_ENABLED=false`, the YAML preset doesn't exist, or the model registry is empty, the system falls back to the original `@preset/` reference (backward compatible).
 
@@ -231,11 +258,13 @@ Two selection paths:
 ### Tiering
 
 Context-aware model selection based on conversation size:
-- **Air**: Simple queries (< 100K tokens), models from `models/presets.yaml` `tiers.air`
+- **Air**: Simple queries (< 150K tokens), models from `models/tiers.yaml` `tiers.air`
 - **Standard**: Most conversations (< 200K tokens), models from `tiers.standard`
 - **Heavy**: Complex tasks (≥ 200K tokens), models from `tiers.heavy`
 
-Upgrade at 65% capacity (`TIER_UPGRADE_THRESHOLD`). Context estimated at ~4 chars per token. The concrete model for each tier is resolved from the `ModelPresetManager` using the tier's `sort_by` strategy.
+Media tiers (vision-capable models) are selected when the conversation contains images/files.
+
+Upgrade at 65% capacity (`TIER_UPGRADE_THRESHOLD`). Context estimated at ~4 chars per token. The concrete model for each tier is resolved from the `TierConfigManager` + `ModelRegistry` using the tier's `sort_by` strategy.
 
 ### Specialists
 
@@ -330,7 +359,11 @@ All tools use the OpenHands SDK Action/Observation/Executor/ToolDefinition patte
 
 ### External Tool Plugins
 
-Domain tools live in `tools/` as mountable, independently deployable plugins. Discovered at startup by `agent/tool_registry.py` — mirrors the specialist auto-discovery pattern. Each plugin is a subdirectory with `tool.yaml` (metadata) + `tool.py` (exports `get_tools()`, `get_schemas()`, `execute()`).
+Domain tools live in `tools/` as mountable, independently deployable plugins. Discovered at startup by `agent/tool_registry.py` — mirrors the specialist auto-discovery pattern. Each plugin is a subdirectory with `tool.yaml` (metadata) + `tool.py` (exports `execute()`).
+
+Plugins declare their execution mode via `tool.yaml`:
+- **`mode: in_process`** (default for heavy plugins with large deps already in the main venv): `tool.py` is imported directly; `execute()` is called in-process. Still exports `get_tools()` and `get_schemas()` for schema registration.
+- **`mode: subprocess`** (temporal plugins and others with isolated deps): Each plugin ships a `pyproject.toml`, a `tool_meta.yaml` (static schema — no import needed), and a `_plugin_runner.py`. The registry creates a dedicated `uv` venv on first use and invokes the runner as a subprocess, passing `{"name": ..., "args": ...}` on stdin and reading `{"ok": ..., "result": ...}` from stdout.
 
 | Plugin | Scope | Tools | Description |
 |--------|-------|-------|-------------|
@@ -338,16 +371,30 @@ Domain tools live in `tools/` as mountable, independently deployable plugins. Di
 | `tools/finance/` | specialist | 21 | Financial profile, investments, goals, cashflow, holdings |
 | `tools/diary/` | specialist | 2 | Write-only diary entries, signal computation |
 | `tools/proposals/` | specialist | 4 | Proposal CRUD, implementation plan generation |
+| `tools/temporal_resolve/` | main | 1 | Parse natural language date/time phrases into concrete dates |
+| `tools/temporal_timezone/` | main | 1 | Convert datetime between IANA timezones |
+| `tools/temporal_duration/` | main | 1 | Calculate duration between two dates |
+| `tools/temporal_age/` | main | 1 | Calculate age and birthday info from a birth date |
+| `tools/temporal_city_time/` | main | 1 | Current date/time for major cities worldwide |
+| `tools/temporal_to_unix/` | main | 1 | Parse datetime string into Unix timestamp |
+| `tools/temporal_from_unix/` | main | 1 | Convert Unix timestamp to structured datetime |
 
-**Two execution paths:**
+**Two agent-facing execution paths:**
 - **SDK path** (agentic specialists): Tools registered via `register_tool()` at import time. SDK resolves by PascalCase name.
 - **JSON schema path** (non-agentic specialists): `tool_schemas.py` delegates to registry for schema resolution and dispatch. Uses snake_case names.
 
-**Adding a new plugin:**
-1. Create `tools/{name}/tool.yaml` with name, description, version, scope
+**Adding a new in-process plugin:**
+1. Create `tools/{name}/tool.yaml` with name, description, version, scope, `mode: in_process`
 2. Create `tools/{name}/tool.py` exporting `get_tools()`, `get_schemas()`, `async execute(name, args)`
 3. Optionally add `requirements.txt` for pip dependencies
 4. App picks it up on next startup, or hit `POST /admin/reload-tools` for hot reload
+
+**Adding a new subprocess plugin:**
+1. Create `tools/{name}/tool.yaml` with name, description, version, scope, `mode: subprocess`
+2. Create `tools/{name}/pyproject.toml` with `[project]` name, version, requires-python, dependencies
+3. Create `tools/{name}/tool_meta.yaml` with static schema (tools → tool_name → description + parameters)
+4. Create `tools/{name}/tool.py` with only `async execute(name, args)` and helpers
+5. Copy `tools/_plugin_runner.py` into the plugin directory as `_plugin_runner.py`
 
 ### Tool Authoring
 
@@ -447,17 +494,15 @@ Multi-step task execution in `orchestrator/`:
 - **`execute_plan`**: Sequential multi-step plan with subagents. Each step sees filesystem state from previous steps.
 - **`analyze_parallel`**: Spawns parallel analysis subagents across perspectives (security, performance, architecture, testing, documentation). Each writes to `/home/user/workspace/findings/{perspective}.md`. Synthesizer combines into prioritized report.
 
-## Terminal System
+## Sandbox System
 
-Docker containers for shell access via shared OpenTerminal deployment (`TERMINAL_URL`). Each conversation gets isolated working directory at `/home/user/conversations/{conversation_id}/`.
+Per-conversation shell access via OpenHands SDK `LocalWorkspace` — no separate terminal pod required. Each conversation gets an isolated working directory under `WORKSPACE_BASE/{conversation_id}/`.
 
-Two client modes:
-- **`TerminalClient`** (`terminal/client.py`) — dynamic per-conversation containers
-- **`StaticTerminalManager`** (`terminal/static_client.py`) — single shared IaC-managed deployment (Kubernetes-friendly); exposes the same interface via `StaticTerminalContainer`
+`LocalSandboxManager` (`sandbox/local.py`) manages workspace lifecycle: `init_local_sandbox(conversation_id)` creates the directory and returns a `LocalWorkspace` instance; `get_local_sandbox(conversation_id)` retrieves an existing one.
 
 Tools: `terminal_execute`, `terminal_read_file`, `terminal_write_file`, `terminal_list_files`.
 
-`FILES:` lines in agent output reference terminal files for artifact tracking and attachment delivery.
+`FILES:` lines in agent output reference sandbox files for artifact tracking and attachment delivery. Parsing and stripping are handled by `files/__init__.py` (`FileRef`, `FilesStripBuffer`, `strip_files_line`).
 
 ## Health Module
 
@@ -542,7 +587,7 @@ Key configuration (see `app/src/config.py` for full list):
 | `HEARTBEAT_IDLE_HOURS` | 6.0 | Hours idle before heartbeat |
 | `DIRECTIVE_STORE_ENABLED` | true | Enable DynamoDB directives |
 | `REFLECTION_ENABLED` | true | Enable reflection engine |
-| `TERMINAL_URL` | `http://open-terminal:7681` | OpenTerminal deployment URL |
+| `WORKSPACE_BASE` | `/app/src/data/conversations` | Base path for per-conversation working directories |
 | `TOOL_OUTPUT_CHAR_LIMIT` | 200000 | Max tool output chars before SDK truncation |
 | `EXTERNAL_TOOLS_PATH` | "" | Override path for external tool plugins |
 | `EXTERNAL_TOOLS_FALLBACK` | `project_root/tools/` | Fallback path if EXTERNAL_TOOLS_PATH is empty |
@@ -553,10 +598,19 @@ Key configuration (see `app/src/config.py` for full list):
 | `MODEL_ROUTER_ENABLED` | true | Enable LLM-based model routing |
 | `MODEL_STATS_REFRESH_INTERVAL` | 1800 | Seconds between per-provider latency/throughput refreshes |
 
+## Operational Rules
+
+- **Build before declaring done**: Always run `npm run build` in both `frontend/` and `backend/` of any portal before declaring work complete. A successful build is the minimum verification bar — no exceptions.
+- **k3s debugging**: The app is hosted on a k3s cluster. When debugging runtime issues, use `kubectl logs`, `kubectl describe`, and `kubectl get events` to inspect pod state. Do not guess at runtime behavior from code alone.
+- **Terraform**: Never run `terraform apply` or `terraform destroy`. Targeted low-blast-radius `terraform apply -target=...` is the only exception, and only after explicit user approval via AskUserQuestion.
+- **AWS resources**: Never delete AWS resources (CLI, SDK, console). Provide the command for the user to run manually.
+- **kubectl mutations**: Never run `kubectl delete/apply/patch/edit/replace/scale/rollout/cordon/drain`. Provide the command for the user to run manually. Read-only commands (`get`, `describe`, `logs`, `events`, `top`) are fine.
+- **No git writes**: Never run `git commit`, `git push`, `git merge`, `git rebase`, `git reset --hard`, or any mutating git command. No write privileges. Provide the command for the user to run manually.
+
 ## Key Patterns
 
 - **Specialist auto-discovery**: `specialists.py` scans `SPECIALISTS_PATH` at import time — no code changes needed to add specialists
-- **Model preset auto-discovery**: `models/loader.py` loads from `MODELS_PATH/presets.yaml` at startup — no code changes needed to add presets
+- **Model preset auto-discovery**: `models/loader.py` loads subagent presets from `MODELS_PATH/presets.yaml` and tier config from `MODELS_PATH/tiers.yaml` at startup — no code changes needed to add presets or adjust tiers
 - **Model registry**: `storage/model_registry.py` mirrors DirectiveStore pattern (PK/SK, boto3, cache). Seeded from OpenRouter API at startup.
 - **Smart model routing**: `models/router.py` uses a fast LLM to pick the best model from a preset's candidate list. Falls back to sorted-first if disabled.
 - **Tool plugin auto-discovery**: `tool_registry.py` scans `tools/*/tool.yaml` at startup — no code changes needed to add domain tools. Plugins export `get_tools()`, `get_schemas()`, `execute()`. Hot reload via `POST /admin/reload-tools`.

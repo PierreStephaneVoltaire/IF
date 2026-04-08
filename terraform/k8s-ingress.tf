@@ -14,6 +14,7 @@ spec:
   snippets:
     - context: http
       value: |
+        client_max_body_size 500M;
         limit_req_zone $binary_remote_addr zone=portal_limit:10m rate=30r/s;
     - context: http.server
       value: |
@@ -386,19 +387,6 @@ spec:
       backendRefs:
         - name: ${kubernetes_service.if_agent_api.metadata[0].name}
           port: 8000
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: gateway.nginx.org
-            kind: SnippetsFilter
-            name: terminal
-      backendRefs:
-        - name: ${kubernetes_service.open_terminal.metadata[0].name}
-          port: 7681
   YAML
 }
 

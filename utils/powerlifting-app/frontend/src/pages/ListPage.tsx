@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
@@ -13,8 +13,17 @@ export default function ListPage() {
   const { program, isLoading, createSession, deleteSession } = useProgramStore()
   const { unit } = useSettingsStore()
   const { pushToast } = useUiStore()
+  const [block, setBlock] = useState('current')
+
+  const availableBlocks = useMemo(() => {
+    if (!program) return ['current']
+    const blocks = new Set<string>()
+    for (const s of program.sessions) blocks.add(s.block ?? 'current')
+    return Array.from(blocks).sort()
+  }, [program])
   const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(new Set())
   const [drawerDate, setDrawerDate] = useState<string | null>(null)
+  const [drawerArrayIndex, setDrawerArrayIndex] = useState<number | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newDate, setNewDate] = useState<string>('')
 
@@ -32,12 +41,6 @@ export default function ListPage() {
       return
     }
 
-    // Check if session already exists
-    if (program?.sessions.some(s => s.date === newDate)) {
-      pushToast({ message: 'Session already exists for this date', type: 'error' })
-      return
-    }
-
     try {
       const dayOfWeek = getDayOfWeek(newDate)
       await createSession({
@@ -48,19 +51,22 @@ export default function ListPage() {
       pushToast({ message: 'Session created', type: 'success' })
       setShowAddModal(false)
       setNewDate('')
-      // Open the new session in the drawer
+      // Open the new session in the drawer — find it by index after reload
+      const newIndex = program?.sessions.findIndex(s => s.date === newDate) ?? -1
       setDrawerDate(newDate)
+      setDrawerArrayIndex(newIndex >= 0 ? newIndex : null)
     } catch (err) {
       pushToast({ message: 'Failed to create session', type: 'error' })
     }
   }
 
-  const handleDeleteSession = async (date: string) => {
+  const handleDeleteSession = async (date: string, index: number) => {
     if (!confirm('Delete this session?')) return
     try {
-      await deleteSession(date)
+      await deleteSession(date, index)
       pushToast({ message: 'Session deleted', type: 'success' })
       setDrawerDate(null)
+      setDrawerArrayIndex(null)
     } catch (err) {
       pushToast({ message: 'Failed to delete session', type: 'error' })
     }
@@ -74,7 +80,7 @@ export default function ListPage() {
     )
   }
 
-  const sessionsByWeek = groupSessionsByWeek(program.sessions)
+  const sessionsByWeek = groupSessionsByWeek(program.sessions, block)
 
   const toggleWeek = (week: number) => {
     setExpandedWeeks((prev) => {
@@ -88,21 +94,37 @@ export default function ListPage() {
     })
   }
 
-  const handleSessionClick = (date: string) => {
+  const handleSessionClick = (date: string, arrayIndex: number) => {
     setDrawerDate(date)
+    setDrawerArrayIndex(arrayIndex)
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Sessions by Week</h1>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Session
-        </button>
+        <div className="flex items-center gap-2">
+          {availableBlocks.length > 1 && (
+            <select
+              value={block}
+              onChange={(e) => setBlock(e.target.value)}
+              className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
+            >
+              {availableBlocks.map((b) => (
+                <option key={b} value={b}>
+                  {b === 'current' ? 'Current Block' : b}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Session
+          </button>
+        </div>
       </div>
 
       {/* Add Session Modal */}
@@ -183,10 +205,10 @@ export default function ListPage() {
               {/* Session List */}
               {isExpanded && (
                 <div className="border-t border-border">
-                  {sessions.map((session) => (
+                  {sessions.map((session, arrayIdx) => (
                     <button
-                      key={session.date}
-                      onClick={() => handleSessionClick(session.date)}
+                      key={`${session.date}-${arrayIdx}`}
+                      onClick={() => handleSessionClick(session.date, program.sessions.indexOf(session))}
                       className="w-full flex items-center gap-3 p-3 hover:bg-accent/50 transition-colors border-b border-border last:border-b-0"
                     >
                       <div className="w-8 h-8 rounded-full flex items-center justify-center bg-secondary">
@@ -242,9 +264,10 @@ export default function ListPage() {
       {/* Session Drawer */}
       <SessionDrawer
         isOpen={drawerDate !== null}
-        onClose={() => setDrawerDate(null)}
+        onClose={() => { setDrawerDate(null); setDrawerArrayIndex(null) }}
         session={selectedSession}
         sessionIndex={selectedSessionIndex}
+        sessionArrayIndex={drawerArrayIndex ?? 0}
       />
     </div>
   )

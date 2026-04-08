@@ -22,13 +22,31 @@ from openhands.sdk.conversation.state import ConversationExecutionStatus
 from openhands.sdk.event.conversation_error import ConversationErrorEvent
 
 from config import LLM_API_KEY, LLM_BASE_URL, SPECIALIST_REASONING_EFFORT
-from terminal.files import strip_files_line, log_file_refs, accumulate_file_refs
+from sandbox import get_local_sandbox
+from files import strip_files_line, log_file_refs, accumulate_file_refs
 from agent.tools.terminal_tools import get_terminal_system_prompt
 
 logger = logging.getLogger(__name__)
 
 # Path to the pass-through system prompt template (contains just {{ system_prompt }})
 _SYSTEM_PROMPT_TEMPLATE = Path(__file__).parent.parent / "prompts" / "system_prompt.j2"
+
+
+def _get_max_output_tokens(model_id: str) -> int | None:
+    """Look up max_output_tokens for a model from the registry.
+
+    Returns None if the model isn't in the registry, letting the SDK decide.
+    The model_id should be the clean OpenRouter ID (no 'openrouter/' prefix).
+    """
+    try:
+        from storage.factory import get_model_registry
+        registry = get_model_registry()
+        info = registry.get(model_id)
+        if info and info.max_output_tokens:
+            return info.max_output_tokens
+    except Exception:
+        pass
+    return None
 
 
 def resolve_specialist_tools(chat_id: str, tool_names: List[str]) -> List[Tool]:
@@ -54,6 +72,7 @@ async def run_subagent_sdk(
     max_turns: int,
     chat_id: str,
     tool_names: List[str],
+    original_preset: str | None = None,
 ) -> str:
     """Run a specialist using the OpenHands SDK agentic loop.
 
@@ -88,12 +107,14 @@ async def run_subagent_sdk(
         logger.info(f"[SDK Subagent] Starting: model={sdk_model} | tools={tool_names} | max_turns={max_turns}")
 
         # Create LLM
+        max_output_tokens = _get_max_output_tokens(model)
         llm = LLM(
             usage_id=f"specialist-{chat_id}",
             model=sdk_model,
             base_url=LLM_BASE_URL,
             api_key=SecretStr(LLM_API_KEY),
             reasoning_effort=SPECIALIST_REASONING_EFFORT,
+            max_output_tokens=max_output_tokens,
         )
 
         # Create Agent — reuses existing system_prompt.j2 pass-through template
@@ -108,7 +129,7 @@ async def run_subagent_sdk(
         # Create ephemeral Conversation (no persistence)
         conversation = Conversation(
             agent=agent,
-            workspace=os.getcwd(),
+            workspace=get_local_sandbox().get_workspace(chat_id),
             max_iteration_per_run=max_turns,
             stuck_detection=True,
             visualizer=None,
@@ -124,11 +145,19 @@ async def run_subagent_sdk(
         # Extract response based on execution status
         return _extract_response(conversation, max_turns, chat_id)
 
-    except ConversationRunError as e:
-        logger.error(f"[SDK Subagent] ConversationRunError: {e}")
-        return f"Specialist encountered an error: {e}"
-
-    except Exception as e:
+    except (ConversationRunError, Exception) as e:
+        from models.router import is_context_limit_error, select_model_by_context
+        if original_preset and is_context_limit_error(e):
+            fallback = select_model_by_context(original_preset)
+            if fallback and fallback != model:
+                logger.warning(f"[SDK Subagent] Context limit, retrying with {fallback}")
+                return await run_subagent_sdk(
+                    system_prompt, user_message, fallback, max_turns,
+                    chat_id, tool_names, original_preset=None,
+                )
+        if isinstance(e, ConversationRunError):
+            logger.error(f"[SDK Subagent] ConversationRunError: {e}")
+            return f"Specialist encountered an error: {e}"
         logger.error(f"[SDK Subagent] Unexpected error: {e}", exc_info=True)
         return f"Specialist error: {type(e).__name__}: {e}"
 

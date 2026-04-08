@@ -1,0 +1,184 @@
+{
+  "_table": "if-health",
+  "_item_type": "program#v{NNN}",
+  "_pk": "operator",
+  "_sk": "program#v003  (zero-padded 3 digits, new SK on every write, never update in place)",
+
+  "pk": "operator",
+  "sk": "program#v003",
+
+  "meta": {
+    "program_name": "10-Week Peaking Program",
+    "program_start": "2026-02-15",
+    "comp_date": "2026-05-30",
+    "federation": "WRPF",
+    "practicing_for": "CPU",
+    "version_label": "1.0",
+    "weight_class_kg": 74,
+    "weight_class_confirm_by": "2026-03-29",
+    "current_body_weight_kg": 76.2,
+    "current_body_weight_lb": 168,
+    "target_squat_kg": 190,
+    "target_bench_kg": 120,
+    "target_dl_kg": 240,
+    "target_total_kg": 550,
+    "training_notes": [
+      "Bench responds better to volume.",
+      "Knees and back sensitive under squat and deadlift load."
+    ],
+    "change_log": [
+      { "action": "updated session", "source": "portal", "date": "2026-03-08T10:00:00+00:00", "note": "marked W3 complete" }
+    ],
+    "updated_at": "2026-03-08T12:00:00+00:00",
+    "last_comp": {
+      "date": "2025-09",
+      "body_weight_kg": 77.1,
+      "body_weight_lb": 170,
+      "weight_class_kg": 83,
+      "results": {
+        "squat_kg": 185,
+        "bench_kg": 117.5,
+        "deadlift_kg": 220,
+        "total_kg": 522.5
+      },
+      "past_comp_day_protocol": {
+        "caffeine_total_mg": 800,
+        "caffeine_sequence": [
+          { "timing": "before leaving for venue", "dose_mg": 100, "notes": "half scoop" },
+          { "timing": "after weigh-ins", "dose_mg": 100, "notes": "half scoop" },
+          { "timing": "between squat and bench", "dose_mg": 200, "notes": "full scoop" }
+        ],
+        "carbs": "energy gels between attempts",
+        "l_theanine": "paired throughout to smooth edge",
+        "outcome": "performed well — total 522.5kg",
+        "notes": "Do NOT use as template without reassessment"
+      }
+    }
+  },
+
+  "phases": [
+    { "name": "Warmup", "start_week": 1, "end_week": 1, "intent": "Baseline — 60% loads, pattern groove" },
+    { "name": "Base Build", "start_week": 2, "end_week": 5, "intent": "Progressive overload, volume accumulation" },
+    { "name": "Intensification", "start_week": 6, "end_week": 8, "intent": "Volume drops, loads climb toward near-max" },
+    { "name": "Peak", "start_week": 9, "end_week": 9, "intent": "Singles, confidence building, minimal fatigue" },
+    { "name": "Break", "start_week": 10, "end_week": 10, "intent": "70% intensity — active deload, NOT full rest" },
+    { "name": "Comp Prep", "start_week": 11, "end_week": 11, "intent": "50% intensity — opener simulation, final taper" }
+  ],
+
+  "sessions": [
+    {
+      "date": "2026-02-15",
+      "day": "Monday",
+      "week": "W1 (Warmup)",
+      "completed": true,
+      "session_rpe": 7.5,
+      "body_weight_kg": 76.0,
+      "session_notes": "felt good",
+      "exercises": [
+        { "name": "Deadlift (Backout)", "sets": 3, "reps": 6, "kg": 60, "rpe": null, "notes": "straight sets backout, done before heavy top set" },
+        { "name": "Deadlift", "sets": 1, "reps": 6, "kg": 103, "rpe": null, "notes": "heavy top set" },
+        { "name": "Squat (Backout Heavy)", "sets": 2, "reps": 6, "kg": 101, "rpe": null, "notes": "~90% backout, 2 sets — done BEFORE main" },
+        { "name": "Squat", "sets": 1, "reps": 6, "kg": 110, "rpe": null, "notes": "heavy top set" },
+        { "name": "Squat (Backout Light)", "sets": 1, "reps": 6, "kg": 95, "rpe": null, "notes": "~85% backout, 1 set — done AFTER main" },
+        { "name": "Bench Press", "sets": 1, "reps": 4, "kg": 84, "rpe": null, "notes": "heavy top set" },
+        { "name": "Bench Press (Backout)", "sets": 3, "reps": 6, "kg": 73, "rpe": null, "notes": "straight sets backout" },
+        { "name": "Spoto Press", "sets": 3, "reps": 5, "kg": 67.1, "rpe": null, "notes": "2-3cm off chest, no touch" },
+        { "name": "Pause Bench Press", "sets": 3, "reps": 5, "kg": 75.5, "rpe": null, "notes": "2-second pause at chest" },
+        { "name": "Shrugs", "sets": 3, "reps": 10, "kg": 83.9, "rpe": null, "notes": "upper back / traps" }
+      ]
+    }
+  ],
+
+  "competitions": [
+    {
+      "name": "May 2026 Comp",
+      "date": "2026-05-30",
+      "federation": "CPU",
+      "location": "Local — ~20 min by Uber",
+      "hotel_required": false,
+      "status": "confirmed",
+      "weight_class_kg": 74,
+      "targets": { "squat_kg": 190, "bench_kg": 120, "deadlift_kg": 240, "total_kg": 550 },
+      "notes": "Primary comp.",
+      "decision_date": null
+    },
+    {
+      "name": "June 2026 Comp — Guelph (Optional)",
+      "date": "2026-06-12",
+      "federation": "CPU",
+      "location": "Guelph, ON — hotel required",
+      "hotel_required": true,
+      "status": "optional",
+      "weight_class_kg": 83,
+      "decision_date": "2026-04-25",
+      "targets": { "squat_kg": 200, "bench_kg": 130, "deadlift_kg": 250, "total_kg": 580 },
+      "between_comp_plan": {
+        "rest": "1 full week no training post-May comp",
+        "ramp_back": "5 days at 50% intensity",
+        "diet": "Eating in surplus — targeting 83kg class",
+        "weight_class": "83kg (no cut, pigging out during break)",
+        "inflammation": "Keep break controlled"
+      },
+      "notes": "Optional. Decision April 25."
+    }
+  ],
+
+  "diet_notes": [
+    { "date": "2026-03-08", "notes": "Current: 168lb (~76.2kg). Target: 74kg class." }
+  ],
+
+  "supplements": [
+    { "name": "Creatine", "dose": "10g/day" },
+    { "name": "Vitamin D3+K2", "dose": "standard dose" }
+  ],
+
+  "supplement_phases": [
+    {
+      "phase": 1,
+      "phase_name": "Current Stack (now → ~W8)",
+      "notes": "Full general wellness + performance + hormonal stack.",
+      "items": [
+        { "name": "Creatine", "dose": "10g/day" },
+        { "name": "Vitamin D3+K2", "dose": "standard dose" }
+      ]
+    },
+    {
+      "phase": 3,
+      "phase_name": "Peak Stack — no water retention",
+      "notes": "Drop creatine. Nothing that causes water retention.",
+      "items": [
+        { "name": "Tongkat Ali", "dose": "900mg/day", "notes": "LH/testosterone support" }
+      ],
+      "peak_week_protocol": {
+        "strategy": "salt and carb manipulation for water loss",
+        "water_retention": "strict avoidance",
+        "diuretics": "natural diuretics TBD"
+      }
+    }
+  ],
+
+  "current_maxes": {
+    "squat": 185,
+    "bench": 117.5,
+    "deadlift": 220
+  },
+
+  "operator_prefs": {
+    "attempt_jumps": {
+      "squat": { "j1": 20, "j2": 20 },
+      "bench": { "j1": 10, "j2": 10 },
+      "deadlift": { "j1": 20, "j2": 20 }
+    }
+  },
+
+  "breaks": [
+    { "start": "2026-04-19", "end": "2026-04-25" }
+  ],
+
+  "_rules": [
+    "week_number and phase on sessions are DERIVED fields — never write them to DynamoDB",
+    "supplements[] is a flat mirror of supplement_phases[0].items for backward compat",
+    "current_maxes and operator_prefs are top-level (NOT inside meta), Python-only fields",
+    "competition.status is one of: confirmed, optional, completed, skipped"
+  ]
+}

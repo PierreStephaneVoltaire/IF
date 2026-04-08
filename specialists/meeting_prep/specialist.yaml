@@ -1,5 +1,5 @@
 description: "Meeting preparation — talking points, background research, anticipated questions from user facts"
-preset: "@preset/standard"
+preset: "general"
 tools:
   - read_file
   - write_file

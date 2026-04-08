@@ -64,6 +64,7 @@ export async function createSession(
     ...session,
     week_number: weekNumber,
     phase: resolvedPhase,
+    block: session.block ?? 'current',
   }
 
   sessions.push(newSession)
@@ -84,11 +85,12 @@ export async function createSession(
 }
 
 /**
- * Delete a session by date
+ * Delete a session by index
  */
 export async function deleteSession(
   version: string,
-  date: string
+  date: string,
+  index: number
 ): Promise<void> {
   const sk = await resolveVersionSk(version)
   const getCommand = new GetCommand({
@@ -104,13 +106,15 @@ export async function deleteSession(
   }
 
   const sessions = (result.Item.sessions ?? []) as Session[]
-  const sessionIndex = sessions.findIndex(s => s.date === date)
 
-  if (sessionIndex === -1) {
-    throw new AppError(`Session with date ${date} not found`, 404)
+  if (index < 0 || index >= sessions.length) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  if (sessions[index].date !== date) {
+    throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
   }
 
-  sessions.splice(sessionIndex, 1)
+  sessions.splice(index, 1)
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
@@ -126,10 +130,7 @@ export async function deleteSession(
   await docClient.send(updateCommand)
 }
 
-/**
- * Get a specific program and find a session by date
- */
-export async function getSession(version: string, date: string): Promise<Session | null> {
+export async function getSession(version: string, date: string, index: number): Promise<Session | null> {
   const sk = await resolveVersionSk(version)
   const command = new GetCommand({
     TableName: TABLE,
@@ -144,15 +145,24 @@ export async function getSession(version: string, date: string): Promise<Session
   }
 
   const sessions = (result.Item.sessions ?? []) as Session[]
-  return sessions.find(s => s.date === date) || null
+  const session = sessions[index]
+  if (!session) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  // Validate date matches for safety
+  if (session.date !== date) {
+    throw new AppError(`Session at index ${index} has date ${session.date}, expected ${date}`, 409)
+  }
+  return session
 }
 
 /**
- * Update an entire session at a specific date
+ * Update an entire session at a specific index
  */
 export async function updateSession(
   version: string,
   date: string,
+  index: number,
   session: Session
 ): Promise<void> {
   const sk = await resolveVersionSk(version)
@@ -169,13 +179,15 @@ export async function updateSession(
   }
 
   const sessions = (result.Item.sessions ?? []) as Session[]
-  const sessionIndex = sessions.findIndex(s => s.date === date)
 
-  if (sessionIndex === -1) {
-    throw new AppError(`Session with date ${date} not found`, 404)
+  if (index < 0 || index >= sessions.length) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  if (sessions[index].date !== date) {
+    throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
   }
 
-  sessions[sessionIndex] = session
+  sessions[index] = session
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
@@ -196,7 +208,8 @@ export async function updateSession(
  */
 export async function rescheduleSession(
   version: string,
-  oldDate: string,
+  date: string,
+  index: number,
   newDate: string,
   newDay: string
 ): Promise<void> {
@@ -214,14 +227,16 @@ export async function rescheduleSession(
   }
 
   const sessions = (result.Item.sessions ?? []) as Session[]
-  const sessionIndex = sessions.findIndex(s => s.date === oldDate)
 
-  if (sessionIndex === -1) {
-    throw new AppError(`Session with date ${oldDate} not found`, 404)
+  if (index < 0 || index >= sessions.length) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  if (sessions[index].date !== date) {
+    throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
   }
 
-  sessions[sessionIndex] = {
-    ...sessions[sessionIndex],
+  sessions[index] = {
+    ...sessions[index],
     date: newDate,
     day: newDay,
   }
@@ -246,6 +261,7 @@ export async function rescheduleSession(
 export async function completeSession(
   version: string,
   date: string,
+  index: number,
   data: { rpe?: number; bodyWeightKg?: number; notes?: string }
 ): Promise<void> {
   const sk = await resolveVersionSk(version)
@@ -262,18 +278,20 @@ export async function completeSession(
   }
 
   const sessions = (result.Item.sessions ?? []) as Session[]
-  const sessionIndex = sessions.findIndex(s => s.date === date)
 
-  if (sessionIndex === -1) {
-    throw new AppError(`Session with date ${date} not found`, 404)
+  if (index < 0 || index >= sessions.length) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  if (sessions[index].date !== date) {
+    throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
   }
 
-  sessions[sessionIndex] = {
-    ...sessions[sessionIndex],
+  sessions[index] = {
+    ...sessions[index],
     completed: true,
-    session_rpe: data.rpe ?? sessions[sessionIndex].session_rpe,
-    body_weight_kg: data.bodyWeightKg ?? sessions[sessionIndex].body_weight_kg,
-    session_notes: data.notes ?? sessions[sessionIndex].session_notes,
+    session_rpe: data.rpe ?? sessions[index].session_rpe,
+    body_weight_kg: data.bodyWeightKg ?? sessions[index].body_weight_kg,
+    session_notes: data.notes ?? sessions[index].session_notes,
   }
 
   const updateCommand = new UpdateCommand({
@@ -296,6 +314,7 @@ export async function completeSession(
 export async function addExercise(
   version: string,
   date: string,
+  index: number,
   exercise: Exercise
 ): Promise<void> {
   const sk = await resolveVersionSk(version)
@@ -312,13 +331,15 @@ export async function addExercise(
   }
 
   const sessions = (result.Item.sessions ?? []) as Session[]
-  const sessionIndex = sessions.findIndex(s => s.date === date)
 
-  if (sessionIndex === -1) {
-    throw new AppError(`Session with date ${date} not found`, 404)
+  if (index < 0 || index >= sessions.length) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  if (sessions[index].date !== date) {
+    throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
   }
 
-  sessions[sessionIndex].exercises.push(exercise)
+  sessions[index].exercises.push(exercise)
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
@@ -340,6 +361,7 @@ export async function addExercise(
 export async function removeExercise(
   version: string,
   date: string,
+  index: number,
   exerciseIndex: number
 ): Promise<void> {
   const sk = await resolveVersionSk(version)
@@ -356,17 +378,19 @@ export async function removeExercise(
   }
 
   const sessions = (result.Item.sessions ?? []) as Session[]
-  const sessionIndex = sessions.findIndex(s => s.date === date)
 
-  if (sessionIndex === -1) {
-    throw new AppError(`Session with date ${date} not found`, 404)
+  if (index < 0 || index >= sessions.length) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  if (sessions[index].date !== date) {
+    throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
   }
 
-  if (exerciseIndex < 0 || exerciseIndex >= sessions[sessionIndex].exercises.length) {
+  if (exerciseIndex < 0 || exerciseIndex >= sessions[index].exercises.length) {
     throw new AppError(`Exercise index ${exerciseIndex} out of range`, 400)
   }
 
-  sessions[sessionIndex].exercises.splice(exerciseIndex, 1)
+  sessions[index].exercises.splice(exerciseIndex, 1)
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
@@ -388,6 +412,7 @@ export async function removeExercise(
 export async function updateExerciseField(
   version: string,
   date: string,
+  index: number,
   exerciseIndex: number,
   field: keyof Exercise,
   value: unknown
@@ -406,17 +431,19 @@ export async function updateExerciseField(
   }
 
   const sessions = (result.Item.sessions ?? []) as Session[]
-  const sessionIndex = sessions.findIndex(s => s.date === date)
 
-  if (sessionIndex === -1) {
-    throw new AppError(`Session with date ${date} not found`, 404)
+  if (index < 0 || index >= sessions.length) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  if (sessions[index].date !== date) {
+    throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
   }
 
-  if (exerciseIndex < 0 || exerciseIndex >= sessions[sessionIndex].exercises.length) {
+  if (exerciseIndex < 0 || exerciseIndex >= sessions[index].exercises.length) {
     throw new AppError(`Exercise index ${exerciseIndex} out of range`, 400)
   }
 
-  ;(sessions[sessionIndex].exercises[exerciseIndex] as any)[field] = value
+  ;(sessions[index].exercises[exerciseIndex] as any)[field] = value
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,

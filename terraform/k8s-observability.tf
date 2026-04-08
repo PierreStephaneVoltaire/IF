@@ -327,6 +327,11 @@ resource "kubernetes_daemon_set_v1" "promtail" {
           image = "grafana/promtail:3.0.0"
           args  = ["-config.file=/etc/promtail/promtail.yaml"]
 
+          security_context {
+            run_as_user = 0
+            run_as_group = 0
+          }
+
           port {
             container_port = 9080
             name           = "http"

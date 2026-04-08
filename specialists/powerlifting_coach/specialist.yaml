@@ -1,13 +1,24 @@
 description: >
-  Use powerlifting_coach for any training-related question that requires
-  reading program state and providing coaching advice: exercise selection,
-  volume adjustments, periodization decisions, competition readiness
-  assessment, peaking strategy, deload timing, attempt selection, RPE
-  interpretation, weak point analysis, and any "should I..." training
-  question. This is the default health specialist — use health_write
-  only when the coach returns a HANDOFF_REQUIRED block requesting a
-  program mutation.
-preset: "@preset/health"
+  Use powerlifting_coach for any training-related read-only query or coaching
+  advice. This is the read-only counterpart to health_write — use this specialist
+  for fetching and analyzing program state, not for mutations.
+
+  Capabilities: retrieve the current training program, sessions (single or date
+  range), program metadata, training phases, current maxes, operator preferences,
+  scheduled breaks, competition countdown, competition details, diet notes,
+  supplement protocol, and IPF rulebook RAG search. Also provides unit conversions
+  (kg/lb), weight class lookups, percentage-of-max calculations, attempt weight
+  calculators, and date math.
+
+  Use for: exercise selection guidance, volume/intensity analysis, periodization
+  questions, competition readiness assessment, peaking strategy, deload timing,
+  attempt selection, RPE interpretation, weak point analysis, training history
+  review, and any "should I..." or "what's my..." training question.
+
+  Do NOT use for program mutations — hand off to health_write when a write is
+  needed (logging a session, updating body weight, recording RPE, changing attempt
+  targets, updating supplements, etc.).
+preset: "health"
 tools:
   - health_get_program
   - health_get_session

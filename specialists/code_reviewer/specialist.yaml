@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 15
 description: "Structured code review — correctness, security, performance, maintainability, and style findings with severity ratings"
-preset: "@preset/code"
+preset: "code"
 tools:
   - terminal_execute
   - read_file

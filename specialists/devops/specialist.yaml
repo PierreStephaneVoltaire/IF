@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 25
 description: Infrastructure and deployment automation specialist
-preset: "@preset/architecture"
+preset: "architecture"
 tools:
   - terminal_execute
   - read_file

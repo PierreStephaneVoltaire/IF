@@ -62,10 +62,11 @@ export function sessionsInDateRange(
   return sessions.filter(s => s.date >= startDate && s.date <= endDate)
 }
 
-export function groupSessionsByWeek(sessions: Session[]): Map<number, Session[]> {
+export function groupSessionsByWeek(sessions: Session[], block?: string): Map<number, Session[]> {
   const groups = new Map<number, Session[]>()
 
   for (const session of sessions) {
+    if (block && (session.block || 'current') !== block) continue
     const week = session.week_number
     if (!groups.has(week)) {
       groups.set(week, [])

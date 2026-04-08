@@ -1,4 +1,4 @@
-name: Build and Plan
+name: Build and Validate
 
 on:
   push:
@@ -55,11 +55,11 @@ jobs:
       - name: Login to ECR Private
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and Push Main API
+      - name: Build Main API
         working-directory: ./docker
         run: |
           packer init build.pkr.hcl
-          packer build -var "image_repository=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_PREFIX }}-agent-api" -var "image_tag=${{ github.sha }}" build.pkr.hcl
+          packer build -except=docker-push -var "image_repository=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_PREFIX }}-agent-api" -var "image_tag=${{ github.sha }}" build.pkr.hcl
 
   build-portal-backends:
     runs-on: ubuntu-latest
@@ -108,7 +108,7 @@ jobs:
       - name: Login to ECR Private
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and Push Portal Backend
+      - name: Build Portal Backend
         working-directory: ./docker
         env:
           PORTAL_NAME: ${{ matrix.portal.name }}
@@ -116,7 +116,7 @@ jobs:
           ECR_REPO: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_PREFIX }}-${{ matrix.portal.name }}-backend
         run: |
           packer init portals-backend.pkr.hcl
-          packer build -var "image_repository=$ECR_REPO" -var "image_tag=${{ github.sha }}" -var "portal_name=$PORTAL_NAME" -var "portal_port=$PORTAL_PORT" portals-backend.pkr.hcl
+          packer build -except=docker-push -var "image_repository=$ECR_REPO" -var "image_tag=${{ github.sha }}" -var "portal_name=$PORTAL_NAME" -var "portal_port=$PORTAL_PORT" portals-backend.pkr.hcl
 
   build-portal-frontends:
     runs-on: ubuntu-latest
@@ -166,14 +166,14 @@ jobs:
       - name: Login to ECR Private
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and Push Portal Frontend
+      - name: Build Portal Frontend
         working-directory: ./docker
         env:
           PORTAL_NAME: ${{ matrix.portal.name }}
           ECR_REPO: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_PREFIX }}-${{ matrix.portal.name }}-frontend
         run: |
           packer init portals-frontend.pkr.hcl
-          packer build -var "image_repository=$ECR_REPO" -var "image_tag=${{ github.sha }}" -var "portal_name=$PORTAL_NAME" portals-frontend.pkr.hcl
+          packer build -except=docker-push -var "image_repository=$ECR_REPO" -var "image_tag=${{ github.sha }}" -var "portal_name=$PORTAL_NAME" portals-frontend.pkr.hcl
 
   # ===========================================
   # TERRAFORM PLAN - Plan infrastructure changes

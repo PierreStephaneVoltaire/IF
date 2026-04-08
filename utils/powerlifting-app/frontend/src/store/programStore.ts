@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Program, Session, Exercise, MaxEntry, WeightEntry, ProgramListItem, SupplementPhase, DietNote, Competition, SessionVideo, LiftResults } from '@powerlifting/types'
+import type { Program, Session, Exercise, Phase, MaxEntry, WeightEntry, ProgramListItem, SupplementPhase, DietNote, Competition, SessionVideo, LiftResults } from '@powerlifting/types'
 import * as api from '@/api/client'
 
 interface ProgramState {
@@ -10,28 +10,31 @@ interface ProgramState {
   error: string | null
   isDirty: boolean
   activeSessionDate: string | null
+  activeSessionIndex: number | null
 
   // Actions
   loadProgram: (version: string) => Promise<void>
   loadVersions: () => Promise<void>
-  setActiveSession: (date: string | null) => void
+  setActiveSession: (date: string | null, index: number | null) => void
   createSession: (session: Partial<Session> & { date: string }) => Promise<void>
-  deleteSession: (date: string) => Promise<void>
-  updateSession: (date: string, session: Session) => void
+  deleteSession: (date: string, index: number) => Promise<void>
+  updateSession: (date: string, index: number, session: Session) => void
   updateExercise: (
     date: string,
+    index: number,
     exerciseIndex: number,
     field: keyof Exercise,
     value: unknown
   ) => void
-  addExercise: (date: string, exercise: Exercise) => void
-  removeExercise: (date: string, exerciseIndex: number) => void
-  rescheduleSession: (oldDate: string, newDate: string, newDay: string) => Promise<void>
+  addExercise: (date: string, index: number, exercise: Exercise) => void
+  removeExercise: (date: string, index: number, exerciseIndex: number) => void
+  rescheduleSession: (date: string, index: number, newDate: string, newDay: string) => Promise<void>
   markComplete: (
     date: string,
+    index: number,
     data: { rpe?: number; bodyWeightKg?: number; notes?: string }
   ) => Promise<void>
-  saveSession: (date: string) => Promise<void>
+  saveSession: (date: string, index: number) => Promise<void>
   updateMaxes: (maxes: {
     squat_kg: number
     bench_kg: number
@@ -67,6 +70,7 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
   error: null,
   isDirty: false,
   activeSessionDate: null,
+  activeSessionIndex: null,
 
   loadProgram: async (version) => {
     set({ isLoading: true, error: null })
@@ -89,7 +93,7 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
     }
   },
 
-  setActiveSession: (date) => set({ activeSessionDate: date }),
+  setActiveSession: (date, index) => set({ activeSessionDate: date, activeSessionIndex: index }),
 
   createSession: async (sessionData) => {
     const { version } = get()
@@ -100,105 +104,120 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
     return newSession
   },
 
-  deleteSession: async (date) => {
+  deleteSession: async (date, index) => {
     const { version } = get()
-    await api.deleteSession(version, date)
+    await api.deleteSession(version, date, index)
 
-    // Update local state
-    set((state) => {
-      if (!state.program) return state
-      const sessions = state.program.sessions.filter((s) => s.date !== date)
-      return { program: { ...state.program, sessions } }
-    })
+    // Reload to get correct indices after deletion
+    await get().loadProgram(version)
   },
 
-  updateSession: (date, session) =>
+  updateSession: (date, index, session) =>
     set((state) => {
       if (!state.program) return state
-      const sessions = state.program.sessions.map((s) =>
-        s.date === date ? session : s
-      )
+      const sessions = [...state.program.sessions]
+      if (index >= 0 && index < sessions.length) {
+        sessions[index] = session
+      }
       return { program: { ...state.program, sessions }, isDirty: true }
     }),
 
-  updateExercise: (date, exerciseIndex, field, value) =>
+  updateExercise: (date, index, exerciseIndex, field, value) =>
     set((state) => {
       if (!state.program) return state
-      const sessions = state.program.sessions.map((s) => {
-        if (s.date !== date) return s
-        const exercises = [...s.exercises]
+      const sessions = [...state.program.sessions]
+      if (index >= 0 && index < sessions.length) {
+        const exercises = [...sessions[index].exercises]
         ;(exercises[exerciseIndex] as any)[field] = value
-        return { ...s, exercises }
-      })
+        sessions[index] = { ...sessions[index], exercises }
+      }
       return { program: { ...state.program, sessions }, isDirty: true }
     }),
 
-  addExercise: (date, exercise) =>
+  addExercise: (date, index, exercise) =>
     set((state) => {
       if (!state.program) return state
-      const sessions = state.program.sessions.map((s) => {
-        if (s.date !== date) return s
-        return { ...s, exercises: [...s.exercises, exercise] }
-      })
+      const sessions = [...state.program.sessions]
+      if (index >= 0 && index < sessions.length) {
+        sessions[index] = {
+          ...sessions[index],
+          exercises: [...sessions[index].exercises, exercise],
+        }
+      }
       return { program: { ...state.program, sessions }, isDirty: true }
     }),
 
-  removeExercise: (date, exerciseIndex) =>
+  removeExercise: (date, index, exerciseIndex) =>
     set((state) => {
       if (!state.program) return state
-      const sessions = state.program.sessions.map((s) => {
-        if (s.date !== date) return s
-        const exercises = s.exercises.filter((_, i) => i !== exerciseIndex)
-        return { ...s, exercises }
-      })
+      const sessions = [...state.program.sessions]
+      if (index >= 0 && index < sessions.length) {
+        const exercises = sessions[index].exercises.filter((_, i) => i !== exerciseIndex)
+        sessions[index] = { ...sessions[index], exercises }
+      }
       return { program: { ...state.program, sessions }, isDirty: true }
     }),
 
-  rescheduleSession: async (oldDate, newDate, newDay) => {
+  rescheduleSession: async (date, index, newDate, newDay) => {
     const { version, program } = get()
     if (!program) return
 
-    await api.rescheduleSession(version, oldDate, newDate, newDay)
+    await api.rescheduleSession(version, date, index, newDate, newDay)
 
     // Update local state
     set((state) => {
       if (!state.program) return state
-      const sessions = state.program.sessions.map((s) =>
-        s.date === oldDate ? { ...s, date: newDate, day: newDay } : s
-      )
+      const sessions = [...state.program.sessions]
+      if (index >= 0 && index < sessions.length) {
+        sessions[index] = { ...sessions[index], date: newDate, day: newDay }
+      }
       return { program: { ...state.program, sessions } }
     })
   },
 
-  markComplete: async (date, data) => {
+  markComplete: async (date, index, data) => {
     const { version } = get()
-    await api.completeSession(version, date, data)
+    await api.completeSession(version, date, index, data)
+
+    // Sync body weight to weight log if provided
+    if (data.bodyWeightKg) {
+      api.addWeightEntry(version, { date, kg: data.bodyWeightKg }).catch((e) =>
+        console.error('Failed to sync body weight to weight log:', e)
+      )
+    }
 
     set((state) => {
       if (!state.program) return state
-      const sessions = state.program.sessions.map((s) =>
-        s.date === date
-          ? {
-              ...s,
-              completed: true,
-              session_rpe: data.rpe ?? s.session_rpe,
-              body_weight_kg: data.bodyWeightKg ?? s.body_weight_kg,
-              session_notes: data.notes ?? s.session_notes,
-            }
-          : s
-      )
+      const sessions = [...state.program.sessions]
+      if (index >= 0 && index < sessions.length) {
+        sessions[index] = {
+          ...sessions[index],
+          completed: true,
+          session_rpe: data.rpe ?? sessions[index].session_rpe,
+          body_weight_kg: data.bodyWeightKg ?? sessions[index].body_weight_kg,
+          session_notes: data.notes ?? sessions[index].session_notes,
+        }
+      }
       return { program: { ...state.program, sessions } }
     })
   },
 
-  saveSession: async (date) => {
+  saveSession: async (date, index) => {
     const { program, version } = get()
     if (!program) return
 
-    const session = program.sessions.find((s) => s.date === date)
+    const session = program.sessions[index]
     if (!session) return
 
-    await api.updateSession(version, date, session)
+    await api.updateSession(version, date, index, session)
+
+    // Sync body weight to weight log if present
+    if (session.body_weight_kg) {
+      api.addWeightEntry(version, { date: session.date, kg: session.body_weight_kg }).catch((e) =>
+        console.error('Failed to sync body weight to weight log:', e)
+      )
+    }
+
     set({ isDirty: false })
   },
 
@@ -379,5 +398,6 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
       error: null,
       isDirty: false,
       activeSessionDate: null,
+      activeSessionIndex: null,
     }),
 }))

@@ -1,7 +1,7 @@
 """OpenRouter-compatible function schemas for domain tools.
 
 Delegates to the external tool registry for health, finance, diary, and proposal
-tool schemas. Keeps system tool schemas (terminal_execute, file tools, search tools)
+tool schemas. Keeps system tool schemas (terminal_execute, get_current_date, file tools)
 hardcoded.
 """
 from __future__ import annotations
@@ -13,13 +13,32 @@ from orchestrator.executor import TERMINAL_EXECUTE_SCHEMA
 
 logger = logging.getLogger(__name__)
 
+GET_CURRENT_DATE_SCHEMA = {
+    "name": "get_current_date",
+    "description": (
+        "Get the current date and time from the server. "
+        "Use this whenever you need to know today's date for scheduling, "
+        "calculations, session lookups, or any temporal context."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+}
+
+# System tool schemas that specialists can reference by snake_case name
+_SYSTEM_TOOL_SCHEMAS: Dict[str, dict] = {
+    "terminal_execute": TERMINAL_EXECUTE_SCHEMA,
+    "get_current_date": GET_CURRENT_DATE_SCHEMA,
+}
+
 
 def get_schemas_for_specialist(tool_names: List[str]) -> List[Dict[str, Any]]:
     """Resolve a specialist's tool names to OpenRouter function schemas.
 
-    Always includes terminal_execute in addition to the specialist's
-    configured tools. Falls through to the external tool registry for
-    any names not found in the system schemas.
+    Resolves system tools first, then falls through to the external tool
+    registry for domain tools (health, finance, etc.).
 
     Args:
         tool_names: Tool names from specialist config
@@ -27,24 +46,27 @@ def get_schemas_for_specialist(tool_names: List[str]) -> List[Dict[str, Any]]:
     Returns:
         List of OpenRouter-compatible function schemas
     """
-    schemas = [TERMINAL_EXECUTE_SCHEMA]  # All specialists get terminal access
+    schemas: List[Dict[str, Any]] = []
 
-    try:
-        from agent.tool_registry import get_tool_registry
-        registry = get_tool_registry()
-        for name in tool_names:
-            if name == "terminal_execute":
-                continue
+    for name in tool_names:
+        # Check system tools first
+        if name in _SYSTEM_TOOL_SCHEMAS:
+            schemas.append(_SYSTEM_TOOL_SCHEMAS[name])
+            continue
+
+        # Fall through to external tool registry
+        try:
+            from agent.tool_registry import get_tool_registry
+            registry = get_tool_registry()
             schema = registry.get_schema(name)
             if schema:
                 schemas.append(schema)
             else:
                 logger.debug(f"[ToolSchemas] Unknown tool '{name}' for specialist, skipping")
-        return schemas
-    except Exception:
-        # Registry not available — fall back to no domain schemas
-        logger.debug("[ToolSchemas] Tool registry not available, skipping domain schemas")
-        return schemas
+        except Exception:
+            logger.debug(f"[ToolSchemas] Tool registry not available, skipping '{name}'")
+
+    return schemas
 
 
 async def execute_domain_tool(tool_name: str, args: Dict[str, Any]) -> str:

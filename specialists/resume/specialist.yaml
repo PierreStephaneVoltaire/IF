@@ -1,7 +1,7 @@
 agentic: true
 max_iterations: 20
 description: "Resume tailoring via LaTeX — reads operator's LaTeX resume, tailors to JD, compiles to PDF"
-preset: "@preset/air"
+preset: "general"
 tools:
   - terminal_execute
   - read_file

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
@@ -10,6 +10,19 @@ export default function TopBar() {
   const { openDrawer } = useUiStore()
   const [showVersionMenu, setShowVersionMenu] = useState(false)
   const [forking, setForking] = useState(false)
+  const versionMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close version menu on outside click
+  useEffect(() => {
+    if (!showVersionMenu) return
+    const handler = (e: MouseEvent) => {
+      if (versionMenuRef.current && !versionMenuRef.current.contains(e.target as Node)) {
+        setShowVersionMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showVersionMenu])
 
   // Load versions on mount
   useEffect(() => {
@@ -43,7 +56,7 @@ export default function TopBar() {
     <header className="sticky top-0 z-40 border-b border-border bg-card/80 backdrop-blur-sm">
       <div className="flex items-center justify-between px-4 py-3">
         {/* Left: Version selector */}
-        <div className="relative">
+        <div className="relative" ref={versionMenuRef}>
           <button
             onClick={() => setShowVersionMenu(!showVersionMenu)}
             className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent transition-colors"

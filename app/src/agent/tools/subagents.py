@@ -34,6 +34,7 @@ from agent.tools.base import TextObservation
 
 from agent.tools.subagent_sdk import run_subagent_sdk
 
+from sandbox import get_local_sandbox
 from config import (
     LLM_BASE_URL,
     OPENROUTER_API_KEY,
@@ -116,6 +117,7 @@ async def _run_subagent(
     chat_id: str,
     tool_schemas: Optional[List[Dict[str, Any]]] = None,
     http_client: Optional[httpx.AsyncClient] = None,
+    original_preset: Optional[str] = None,
 ) -> str:
     """Run a subagent with the given configuration.
 
@@ -142,16 +144,29 @@ async def _run_subagent(
         http_client = httpx.AsyncClient(timeout=120.0)
         should_close = True
 
+    context_retried = False
+
     try:
         for turn in range(max_turns):
             logger.debug(f"[Subagent] Turn {turn + 1}/{max_turns}")
 
-            response = await call_openrouter(
-                model=model,
-                messages=messages,
-                tools=tools,
-                http_client=http_client,
-            )
+            try:
+                response = await call_openrouter(
+                    model=model,
+                    messages=messages,
+                    tools=tools,
+                    http_client=http_client,
+                )
+            except Exception as e:
+                from models.router import is_context_limit_error, select_model_by_context
+                if not context_retried and original_preset and is_context_limit_error(e):
+                    fallback = select_model_by_context(original_preset)
+                    if fallback and fallback != model:
+                        logger.warning(f"[Subagent] Context limit, retrying with {fallback}")
+                        model = fallback
+                        context_retried = True
+                        continue
+                raise
 
             if response.tool_calls:
                 messages.append(response.to_message())
@@ -174,6 +189,10 @@ async def _run_subagent(
                             chat_id=chat_id,
                             http_client=http_client,
                         )
+                    elif tool_name == "get_current_date":
+                        from agent.tools.context_tools import get_current_date
+                        import json as _json
+                        output = _json.dumps(get_current_date())
                     elif _is_external_tool(tool_name):
                         from agent.tools.tool_schemas import execute_domain_tool
                         output = await execute_domain_tool(tool_name, args)
@@ -186,7 +205,11 @@ async def _run_subagent(
                         "content": output
                     })
             else:
-                return response.content or ""
+                content = response.content if response.content else None
+                if not content:
+                    logger.warning(f"[Subagent] Specialist returned empty response after {turn + 1} turns")
+                    return "[SUBAGENT ERROR] Specialist returned an empty response."
+                return content
 
         return f"Subagent exceeded {max_turns} turns without completion"
 
@@ -203,16 +226,14 @@ async def _execute_terminal_command(
     workdir: str,
     chat_id: str,
     http_client: httpx.AsyncClient,
+    timeout: float = 120.0,
 ) -> str:
     """Execute a terminal command for a subagent."""
-    from agent.tools.terminal_tools import terminal_execute
-
     try:
-        return await terminal_execute(
-            command=command,
-            workdir=workdir,
-            chat_id=chat_id,
-        )
+        workspace = get_local_sandbox().get_workspace(chat_id)
+        cmd_result = workspace.execute_command(command, cwd=workdir, timeout=timeout)
+        result = cmd_result.stdout + (f"\n[stderr]{cmd_result.stderr}" if cmd_result.stderr else "")
+        return result
     except Exception as e:
         return f"ERROR: {type(e).__name__}: {e}"
 
@@ -263,7 +284,7 @@ class DeepThinkObservation(TextObservation):
         content.append(f"Topic: {self.topic}\n", style="green")
         if self.file_path:
             content.append(f"Saved to: {self.file_path}\n", style="dim")
-        content.append(self.result[:500])
+        content.append(self.result)
         return content
 
 
@@ -307,6 +328,7 @@ class DeepThinkExecutor(ToolExecutor):
                     max_turns=THINKING_MAX_TURNS,
                     chat_id=self.chat_id,
                     http_client=http_client,
+                    original_preset=THINKING_PRESET,
                 )
 
             return result, file_path
@@ -433,7 +455,7 @@ class SpawnSpecialistObservation(TextObservation):
         content.append(f"Specialist Result ({self.specialist_type}):\n", style="bold blue")
         if self.skill:
             content.append(f"Skill: {self.skill}\n", style="yellow")
-        content.append(self.result[:500])
+        content.append(self.result)
         return content
 
 
@@ -496,7 +518,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
             await send_status(
                 StatusType.MODEL_SELECTED,
                 f"Router: {model}",
-                specialist.preset,
+                model,
             )
 
             # Route to SDK agentic loop for agentic specialists
@@ -508,6 +530,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                     max_turns=specialist.max_iterations,
                     chat_id=self.chat_id,
                     tool_names=specialist.tools,
+                    original_preset=specialist.preset,
                 )
             else:
                 # Non-agentic: use raw OpenRouter path
@@ -523,6 +546,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                         chat_id=self.chat_id,
                         tool_schemas=tool_schemas,
                         http_client=http_client,
+                        original_preset=specialist.preset,
                     )
 
             logger.info(f"[Subagents] Completed: slug={specialist.slug} | result_len={len(result)}")
@@ -638,7 +662,7 @@ class SpawnSpecialistsObservation(TextObservation):
         content = Text()
         content.append("Parallel Specialists Results:\n", style="bold blue")
         content.append(f"Specialists: {', '.join(self.specialist_types)}\n", style="green")
-        content.append(self.results[:500])
+        content.append(self.results)
         return content
 
 
@@ -772,6 +796,183 @@ register_tool("spawn_specialists", SpawnSpecialistsTool)
 
 
 # =============================================================================
+# list_specialists tool
+# =============================================================================
+
+LIST_SPECIALISTS_DESCRIPTION = """List all available specialist subagents with their descriptions.
+Returns a formatted list of specialist slugs and descriptions so the main agent
+can pick the most appropriate specialist for the current task.
+
+IMPORTANT constraints (included in output):
+- health_write and finance_write are HANDOFF-ONLY — never select them directly
+- media_reader should only be used for image/file attachments requiring vision analysis"""
+
+
+class ListSpecialistsAction(Action):
+    pass
+
+
+class ListSpecialistsObservation(TextObservation):
+    specialists: str = Field(default="", description="Formatted list of available specialists")
+
+    @property
+    def visualize(self) -> Text:
+        content = Text()
+        content.append("Available Specialists:\n", style="bold blue")
+        content.append(self.specialists, style="green")
+        return content
+
+
+class ListSpecialistsExecutor(ToolExecutor):
+    def __call__(
+        self,
+        action: ListSpecialistsAction,
+        conversation: Any = None,
+    ) -> ListSpecialistsObservation:
+        specialists = list_specialists()
+        handoff_only = {"health_write", "finance_write"}
+
+        lines = []
+        for s in specialists:
+            if s.slug in handoff_only:
+                continue
+            desc = s.description.strip().replace("\n", " ").split(".")[0]
+            lines.append(f"- {s.slug}: {desc}.")
+
+        result = "\n".join(lines)
+        result += "\n\nCONSTRAINTS:"
+        result += "\n- Do NOT select health_write or finance_write — they are used only via HANDOFF_REQUIRED from other specialists."
+        result += "\n- Use media_reader ONLY when the message contains an image or file attachment that requires vision analysis."
+
+        return ListSpecialistsObservation(specialists=result)
+
+
+class ListSpecialistsTool(ToolDefinition[ListSpecialistsAction, ListSpecialistsObservation]):
+    @classmethod
+    def create(
+        cls,
+        conv_state: "ConversationState | None" = None,
+        chat_id: str = "",
+        **params,
+    ) -> Sequence["ListSpecialistsTool"]:
+        return [
+            cls(
+                action_type=ListSpecialistsAction,
+                observation_type=ListSpecialistsObservation,
+                description=LIST_SPECIALISTS_DESCRIPTION,
+                executor=ListSpecialistsExecutor(),
+                annotations=ToolAnnotations(
+                    title="list_specialists",
+                    readOnlyHint=True,
+                    destructiveHint=False,
+                    idempotentHint=True,
+                    openWorldHint=False,
+                ),
+            )
+        ]
+
+
+register_tool("list_specialists", ListSpecialistsTool)
+
+
+# =============================================================================
+# condense_intent tool
+# =============================================================================
+
+CONDENSE_INTENT_DESCRIPTION = """Rewrite the user's message as a focused task for a specialist.
+Strips social elements and produces a concise, actionable prompt. The output
+should be passed directly to spawn_specialist."""
+
+
+class CondenseIntentAction(Action):
+    last_message: str = Field(description="The user's last message")
+    specialist_type: str = Field(description="The specialist type to condense intent for")
+    context_summary: str = Field(default="", description="Relevant context from conversation history")
+
+
+class CondenseIntentObservation(TextObservation):
+    condensed_prompt: str = Field(default="", description="Focused task description for specialist")
+
+    @property
+    def visualize(self) -> Text:
+        content = Text()
+        content.append("Condensed Intent:\n", style="bold blue")
+        content.append(self.condensed_prompt, style="green")
+        return content
+
+
+class CondenseIntentExecutor(ToolExecutor):
+    def __call__(
+        self,
+        action: CondenseIntentAction,
+        conversation: Any = None,
+    ) -> CondenseIntentObservation:
+        from config import CONDENSE_INTENT_MODEL
+        from agent.prompts.loader import render_template
+
+        async def _run():
+            prompt = render_template(
+                "condense_intent.j2",
+                last_message=action.last_message,
+                specialist_type=action.specialist_type,
+                context_summary=action.context_summary,
+            )
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as http_client:
+                    response = await call_openrouter(
+                        model=CONDENSE_INTENT_MODEL,
+                        messages=[{"role": "user", "content": prompt}],
+                        tools=None,
+                        http_client=http_client,
+                    )
+                return CondenseIntentObservation(
+                    condensed_prompt=response.content.strip()
+                )
+            except Exception as e:
+                logger.warning(f"[CondenseIntent] Failed: {e}, using raw message")
+                return CondenseIntentObservation(
+                    condensed_prompt=action.last_message[:500]
+                )
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            with ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, _run()).result()
+        return asyncio.run(_run())
+
+
+class CondenseIntentTool(ToolDefinition[CondenseIntentAction, CondenseIntentObservation]):
+    @classmethod
+    def create(
+        cls,
+        conv_state: "ConversationState | None" = None,
+        chat_id: str = "",
+        **params,
+    ) -> Sequence["CondenseIntentTool"]:
+        return [
+            cls(
+                action_type=CondenseIntentAction,
+                observation_type=CondenseIntentObservation,
+                description=CONDENSE_INTENT_DESCRIPTION,
+                executor=CondenseIntentExecutor(),
+                annotations=ToolAnnotations(
+                    title="condense_intent",
+                    readOnlyHint=True,
+                    destructiveHint=False,
+                    idempotentHint=True,
+                    openWorldHint=False,
+                ),
+            )
+        ]
+
+
+register_tool("condense_intent", CondenseIntentTool)
+
+
+# =============================================================================
 # Tool Registration Helper
 # =============================================================================
 
@@ -785,6 +986,8 @@ def get_subagent_tools(chat_id: str) -> List[Tool]:
         List of Tool specs for Agent initialization
     """
     return [
+        Tool(name="list_specialists", params={}),
+        Tool(name="condense_intent", params={}),
         Tool(name="deep_think", params={"chat_id": chat_id}),
         Tool(name="spawn_specialist", params={"chat_id": chat_id}),
         Tool(name="spawn_specialists", params={"chat_id": chat_id}),

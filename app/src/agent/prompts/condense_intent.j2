@@ -3,7 +3,7 @@ You are a task condenser. Rewrite the user's message as a focused, actionable ta
 ## USER MESSAGE:
 {{ last_message }}
 
-## DETECTED CATEGORY: {{ category }}
+## TARGET SPECIALIST: {{ specialist_type }}
 
 {% if context_summary %}
 ## ADDITIONAL CONTEXT:
@@ -14,7 +14,7 @@ You are a task condenser. Rewrite the user's message as a focused, actionable ta
 - Strip all social elements (greetings, pleasantries, filler).
 - Focus on the actionable request only.
 - Preserve all technical details: numbers, names, commands, code snippets, dates.
-- The output will be used as the task prompt for a domain specialist.
+- The output will be used as the task prompt for a {{ specialist_type }} specialist.
 - Do NOT add instructions that the specialist should "respond in a friendly way" or similar personality directives — the main agent handles that layer.
 - If the message is ambiguous, state what assumptions you're making.
 - Keep it concise — 2-4 sentences maximum.

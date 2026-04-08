@@ -29,14 +29,14 @@ function rpeLabel(rpe: number | null): string {
   return 'Max Effort'
 }
 
-export default function RpeChart() {
+export default function RpeChart({ block }: { block?: string }) {
   const { program } = useProgramStore()
 
   const data = useMemo(() => {
     if (!program) return []
 
     return program.sessions
-      .filter((s) => s.completed && s.session_rpe !== null)
+      .filter((s) => s.completed && s.session_rpe !== null && (s.block ?? 'current') === block)
       .map((session) => ({
         date: session.date,
         label: formatDateShort(session.date),

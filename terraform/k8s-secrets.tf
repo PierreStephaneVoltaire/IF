@@ -1,8 +1,3 @@
-resource "random_password" "terminal_api_key" {
-  length  = 32
-  special = false
-}
-
 data "aws_ecr_authorization_token" "private" {}
 
 locals {
@@ -44,7 +39,6 @@ resource "kubernetes_secret" "if_agent_api_secrets" {
   data = {
     OPENROUTER_API_KEY = var.openrouter_api_key
     DISCORD_TOKEN      = var.discord_token
-    TERMINAL_API_KEY   = random_password.terminal_api_key.result
   }
 
   type = "Opaque"
@@ -86,6 +80,8 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     SPECIALIST_MAX_TURNS = tostring(var.specialist_max_turns)
     SPECIALISTS_PATH     = var.specialists_path
     EXTERNAL_TOOLS_PATH  = var.tools_path
+    MODELS_PATH          = var.models_path
+    SCRIPTS_PATH         = var.scripts_path
     THINKING_PRESET      = var.thinking_preset
     THINKING_MAX_TURNS   = tostring(var.thinking_max_turns)
 
@@ -112,8 +108,6 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     REFLECTION_PERIODIC_HOURS          = tostring(var.reflection_periodic_hours)
     REFLECTION_POST_SESSION_MIN_TURNS  = tostring(var.reflection_post_session_min_turns)
     REFLECTION_THRESHOLD_UNCATEGORIZED = tostring(var.reflection_threshold_uncategorized)
-
-    TERMINAL_URL = "http://open-terminal:7681"
 
     HEALTH_PROGRAM_PK = var.health_program_pk
 

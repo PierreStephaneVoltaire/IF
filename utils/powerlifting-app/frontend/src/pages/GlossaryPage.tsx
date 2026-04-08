@@ -17,12 +17,13 @@ const MUSCLE_LABELS: Record<MuscleGroup, string> = {
   side_delts: 'Side Delts',
   rear_delts: 'Rear Delts',
   lats: 'Lats',
-  upper_back_traps: 'Traps',
+  traps: 'Traps',
   rhomboids: 'Rhomboids',
   teres_major: 'Teres Major',
   biceps: 'Biceps',
   forearms: 'Forearms',
   erectors: 'Erectors',
+  lower_back: 'Lower Back',
   core: 'Core',
   obliques: 'Obliques',
 }
@@ -31,9 +32,12 @@ const CATEGORY_LABELS: Record<ExerciseCategory, string> = {
   squat: 'Squat',
   bench: 'Bench',
   deadlift: 'Deadlift',
-  upper_accessory: 'Upper Accessory',
-  lower_accessory: 'Lower Accessory',
-  core_accessory: 'Core Accessory',
+  back: 'Back',
+  chest: 'Chest',
+  arm: 'Arms',
+  legs: 'Legs',
+  core: 'Core',
+  lower_back: 'Lower Back',
 }
 
 const EQUIPMENT_LABELS: Record<Equipment, string> = {
@@ -210,9 +214,12 @@ export default function GlossaryPage() {
       squat: [],
       bench: [],
       deadlift: [],
-      upper_accessory: [],
-      lower_accessory: [],
-      core_accessory: [],
+      back: [],
+      chest: [],
+      arm: [],
+      legs: [],
+      core: [],
+      lower_back: [],
     }
     for (const exercise of filteredExercises) {
       groups[exercise.category].push(exercise)

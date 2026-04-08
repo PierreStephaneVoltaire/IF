@@ -1,5 +1,5 @@
 description: "Generates release notes and changelogs from git history, PR descriptions, or commit messages"
-preset: "@preset/code"
+preset: "code"
 tools:
   - terminal_execute
   - read_file

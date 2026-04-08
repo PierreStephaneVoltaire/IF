@@ -1,5 +1,5 @@
 description: "Mathematics instruction — algebra, calculus, linear algebra, probability, ML/AI math foundations"
-preset: "@preset/standard"
+preset: "general"
 tools:
   - write_file
 mcp_servers: []

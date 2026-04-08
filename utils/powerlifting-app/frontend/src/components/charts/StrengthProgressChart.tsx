@@ -14,7 +14,7 @@ import { useSettingsStore } from '@/store/settingsStore'
 import { phaseColor } from '@/utils/phases'
 import { displayWeight } from '@/utils/units'
 
-export default function StrengthProgressChart() {
+export default function StrengthProgressChart({ block }: { block?: string }) {
   const { program } = useProgramStore()
   const { unit } = useSettingsStore()
 
@@ -26,6 +26,7 @@ export default function StrengthProgressChart() {
 
     for (const session of program.sessions) {
       if (!session.completed || session.exercises.length === 0) continue
+      if ((session.block ?? 'current') !== block) continue
 
       const week = session.week_number
       const current = weekMap.get(week) || { squat: 0, bench: 0, deadlift: 0, phase: session.phase.name }

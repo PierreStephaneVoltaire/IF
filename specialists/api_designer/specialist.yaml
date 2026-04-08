@@ -1,5 +1,5 @@
-description: "REST/GraphQL/gRPC API design — endpoint structure, schemas, error handling, versioning, OpenAPI specs"
-preset: "@preset/architecture"
+description: "REST/GraphQL/gRPC API interface design — endpoint structure, request/response schemas, error handling, versioning, OpenAPI specs. Focused on the API contract layer, not system infrastructure → architect."
+preset: "architecture"
 tools:
   - read_file
   - write_file

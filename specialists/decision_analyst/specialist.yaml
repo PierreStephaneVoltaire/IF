@@ -1,5 +1,5 @@
 description: "Multi-criteria decision analysis with weighted scoring, tradeoff matrices, and risk-adjusted comparisons"
-preset: "@preset/standard"
+preset: "general"
 tools:
   - write_file
 mcp_servers: []

@@ -3,7 +3,7 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client
 import { Upload } from '@aws-sdk/lib-storage'
 import { docClient, TABLE } from '../db/dynamo'
 import { AppError } from '../middleware/errorHandler'
-import type { Session, SessionVideo } from '@powerlifting/types'
+import type { Session, SessionVideo, VideoLibraryItem } from '@powerlifting/types'
 
 const PK = 'operator'
 
@@ -11,6 +11,16 @@ const S3_BUCKET = process.env.VIDEOS_BUCKET || 'powerlifting-session-videos'
 const S3_REGION = process.env.AWS_REGION || 'ca-central-1'
 
 const s3Client = new S3Client({ region: S3_REGION })
+
+function stripUndefined(obj: any): any {
+  if (obj === null || typeof obj !== 'object') return obj
+  if (Array.isArray(obj)) return obj.map(stripUndefined)
+  const cleaned: any = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) cleaned[k] = stripUndefined(v)
+  }
+  return cleaned
+}
 
 /**
  * Resolve a version string to the actual SK.
@@ -72,9 +82,9 @@ export async function uploadSessionVideo(
     video_id: videoId,
     s3_key: s3Key,
     video_url: videoUrl,
-    exercise_name: exerciseName,
-    set_number: setNumber,
-    notes,
+    ...(exerciseName !== undefined && { exercise_name: exerciseName }),
+    ...(setNumber !== undefined && { set_number: setNumber }),
+    ...(notes !== undefined && { notes }),
     uploaded_at: new Date().toISOString(),
     thumbnail_status: 'pending',
   }
@@ -112,7 +122,7 @@ export async function uploadSessionVideo(
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
-      ':sessions': sessions,
+      ':sessions': stripUndefined(sessions),
       ':now': new Date().toISOString(),
     },
   })
@@ -189,7 +199,7 @@ export async function removeSessionVideo(
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
-      ':sessions': sessions,
+      ':sessions': stripUndefined(sessions),
       ':now': new Date().toISOString(),
     },
   })
@@ -254,7 +264,7 @@ export async function updateVideoThumbnail(
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
-      ':sessions': sessions,
+      ':sessions': stripUndefined(sessions),
       ':now': new Date().toISOString(),
     },
   })
@@ -268,4 +278,71 @@ function generateVideoId(): string {
     const v = c === 'x' ? r : (r & 0x3) | 0x8
     return v.toString(16)
   })
+}
+
+export async function getVideoLibrary(
+  version: string,
+  exercise?: string,
+  sort: 'newest' | 'oldest' = 'newest'
+): Promise<{ videos: VideoLibraryItem[]; exercises: string[] }> {
+  const sk = await resolveVersionSk(version)
+
+  const command = new GetCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk },
+    ProjectionExpression: 'sessions',
+  })
+
+  const result = await docClient.send(command)
+  if (!result.Item) {
+    return { videos: [], exercises: [] }
+  }
+
+  const sessions = (result.Item.sessions ?? []) as Session[]
+  const items: VideoLibraryItem[] = []
+  const exerciseSet = new Set<string>()
+
+  for (const session of sessions) {
+    if (!session.videos || session.videos.length === 0) continue
+
+    for (const video of session.videos) {
+      if (exercise && video.exercise_name !== exercise) continue
+
+      const match = video.exercise_name
+        ? session.exercises.find((e) => e.name === video.exercise_name)
+        : undefined
+
+      if (video.exercise_name) exerciseSet.add(video.exercise_name)
+
+      items.push({
+        video,
+        session_date: session.date,
+        day: session.day,
+        week_number: session.week_number,
+        phase_name: session.phase?.name ?? '',
+        exercise_sets: match?.sets ?? 0,
+        exercise_reps: match?.reps ?? 0,
+        exercise_kg: match?.kg ?? null,
+      })
+    }
+  }
+
+  items.sort((a, b) => {
+    const cmp = a.session_date.localeCompare(b.session_date)
+    return sort === 'newest' ? -cmp : cmp
+  })
+
+  if (!exercise) {
+    for (const session of sessions) {
+      if (!session.videos) continue
+      for (const v of session.videos) {
+        if (v.exercise_name) exerciseSet.add(v.exercise_name)
+      }
+    }
+  }
+
+  return {
+    videos: stripUndefined(items),
+    exercises: Array.from(exerciseSet).sort(),
+  }
 }

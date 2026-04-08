@@ -29,7 +29,8 @@ from config import (
     ORCHESTRATOR_SYNTHESIS_MODEL,
     ORCHESTRATOR_ANALYSIS_MAX_TURNS,
 )
-from terminal import get_static_manager
+from models.router import resolve_preset_to_model
+from sandbox import get_local_sandbox
 
 from .executor import run_subagent, StepResult
 
@@ -291,7 +292,8 @@ async def _analyze_parallel_impl(
                     system_prompt=prompt,
                     user_message=f"Analyze from {p} perspective. Write to /home/user/workspace/{output_file}.",
                     chat_id=chat_id,
-                    model=ORCHESTRATOR_ANALYSIS_MODEL,
+                    model=resolve_preset_to_model(ORCHESTRATOR_ANALYSIS_MODEL),
+                    preset_hint=ORCHESTRATOR_ANALYSIS_MODEL,
                     max_turns=ORCHESTRATOR_ANALYSIS_MAX_TURNS,
                     http_client=http_client,
                 )
@@ -333,7 +335,8 @@ async def _analyze_parallel_impl(
             ),
             user_message="Synthesize all analysis findings from /home/user/workspace/findings/.",
             chat_id=chat_id,
-            model=ORCHESTRATOR_SYNTHESIS_MODEL,
+            model=resolve_preset_to_model(ORCHESTRATOR_SYNTHESIS_MODEL),
+            preset_hint=ORCHESTRATOR_SYNTHESIS_MODEL,
             max_turns=10,
             http_client=http_client,
         )
@@ -360,14 +363,11 @@ async def _analyze_parallel_impl(
 
 async def _ensure_findings_dir(chat_id: str, http_client: httpx.AsyncClient) -> None:
     """Ensure the findings directory exists."""
-    from agent.tools.terminal_tools import terminal_execute
-    
+    from pathlib import Path
     try:
-        await terminal_execute(
-            command="mkdir -p /home/user/workspace/findings",
-            workdir="/home/user/workspace",
-            chat_id=chat_id,
-        )
+        workdir = Path(get_local_sandbox().get_working_dir(chat_id))
+        findings_dir = workdir / "findings"
+        findings_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         logger.warning(f"[Analyzer] Failed to create findings dir: {e}")
 

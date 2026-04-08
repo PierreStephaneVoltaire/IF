@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import {
   BarChart,
   Bar,
@@ -11,17 +11,50 @@ import {
 } from 'recharts'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
-import { weeklyVolumeByCategory } from '@/utils/volume'
+import { weeklyVolumeByCategory6 } from '@/utils/volume'
 import { displayWeight } from '@/utils/units'
+import { fetchGlossary } from '@/api/client'
+import type { GlossaryExercise } from '@powerlifting/types'
 
-export default function VolumeChart() {
+const CATEGORY_COLORS: Record<string, string> = {
+  squat: '#ef4444',
+  bench: '#3b82f6',
+  deadlift: '#22c55e',
+  back: '#f97316',
+  chest: '#a855f7',
+  arm: '#ec4899',
+  legs: '#eab308',
+  core: '#06b6d4',
+  lower_back: '#14b8a6',
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  squat: 'Squat',
+  bench: 'Bench',
+  deadlift: 'Deadlift',
+  back: 'Back',
+  chest: 'Chest',
+  arm: 'Arms',
+  legs: 'Legs',
+  core: 'Core',
+  lower_back: 'Lower Back',
+}
+
+const CATEGORIES = ['squat', 'bench', 'deadlift', 'back', 'chest', 'arm', 'legs', 'core', 'lower_back'] as const
+
+export default function VolumeChart({ block }: { block?: string }) {
   const { program } = useProgramStore()
   const { unit } = useSettingsStore()
+  const [glossary, setGlossary] = useState<GlossaryExercise[]>([])
+
+  useEffect(() => {
+    fetchGlossary().then(setGlossary).catch(() => {})
+  }, [])
 
   const data = useMemo(() => {
     if (!program) return []
-    return weeklyVolumeByCategory(program.sessions)
-  }, [program])
+    return weeklyVolumeByCategory6(program.sessions, block, glossary)
+  }, [program, block, glossary])
 
   if (!program || data.length === 0) {
     return (
@@ -46,30 +79,15 @@ export default function VolumeChart() {
               formatter={(value: number) => [`${(value / 1000).toFixed(1)}k volume`]}
             />
             <Legend />
-            <Bar
-              dataKey="squat"
-              stackId="a"
-              fill="#ef4444"
-              name="Squat"
-            />
-            <Bar
-              dataKey="bench"
-              stackId="a"
-              fill="#3b82f6"
-              name="Bench"
-            />
-            <Bar
-              dataKey="deadlift"
-              stackId="a"
-              fill="#22c55e"
-              name="Deadlift"
-            />
-            <Bar
-              dataKey="accessory"
-              stackId="a"
-              fill="#f97316"
-              name="Accessory"
-            />
+            {CATEGORIES.map((cat) => (
+              <Bar
+                key={cat}
+                dataKey={cat}
+                stackId="a"
+                fill={CATEGORY_COLORS[cat]}
+                name={CATEGORY_LABELS[cat]}
+              />
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import {
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -12,7 +12,7 @@ import {
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 
-export default function IntensityChart() {
+export default function IntensityChart({ block }: { block?: string }) {
   const { program } = useProgramStore()
   const { unit } = useSettingsStore()
 
@@ -26,7 +26,7 @@ export default function IntensityChart() {
     }
 
     return program.sessions
-      .filter((s) => s.completed)
+      .filter((s) => s.completed && (s.block ?? 'current') === block)
       .map((session) => {
         let squatPct = 0
         let benchPct = 0
@@ -68,7 +68,7 @@ export default function IntensityChart() {
       <h3 className="font-medium mb-2">Intensity (% of Target Max)</h3>
       <div>
         <ResponsiveContainer width="100%" height={250}>
-          <AreaChart data={data}>
+          <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="date" />
             <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
@@ -77,28 +77,31 @@ export default function IntensityChart() {
               labelFormatter={(label: string) => `Date: ${label}`}
             />
             <Legend />
-            <Area
+            <Line
               type="monotone"
               dataKey="squat"
               stroke="#ef4444"
-              fill="#ef444433"
+              strokeWidth={2}
+              dot={{ r: 3 }}
               name="Squat"
             />
-            <Area
+            <Line
               type="monotone"
               dataKey="bench"
               stroke="#3b82f6"
-              fill="#3b82f633"
+              strokeWidth={2}
+              dot={{ r: 3 }}
               name="Bench"
             />
-            <Area
+            <Line
               type="monotone"
               dataKey="deadlift"
               stroke="#22c55e"
-              fill="#22c55e33"
+              strokeWidth={2}
+              dot={{ r: 3 }}
               name="Deadlift"
             />
-          </AreaChart>
+          </LineChart>
         </ResponsiveContainer>
       </div>
     </div>
