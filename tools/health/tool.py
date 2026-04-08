@@ -61,7 +61,7 @@ class HealthGetProgramObservation(Observation):
 
 class HealthGetProgramExecutor(ToolExecutor[HealthGetProgramAction, HealthGetProgramObservation]):
     def __call__(self, action: HealthGetProgramAction, conversation=None) -> HealthGetProgramObservation:
-        from health import health_get_program
+        from .core import health_get_program
         result = _run_async(health_get_program())
         return HealthGetProgramObservation.from_text(_format_result(result))
 
@@ -92,7 +92,7 @@ class HealthCompCountdownObservation(Observation):
 
 class HealthCompCountdownExecutor(ToolExecutor[HealthCompCountdownAction, HealthCompCountdownObservation]):
     def __call__(self, action: HealthCompCountdownAction, conversation=None) -> HealthCompCountdownObservation:
-        from health import health_comp_countdown
+        from .core import health_comp_countdown
         result = _run_async(health_comp_countdown())
         return HealthCompCountdownObservation.from_text(_format_result(result))
 
@@ -126,7 +126,7 @@ class HealthUpdateSessionObservation(Observation):
 
 class HealthUpdateSessionExecutor(ToolExecutor[HealthUpdateSessionAction, HealthUpdateSessionObservation]):
     def __call__(self, action: HealthUpdateSessionAction, conversation=None) -> HealthUpdateSessionObservation:
-        from health import health_update_session
+        from .core import health_update_session
         result = _run_async(health_update_session(action.date, action.patch))
         return HealthUpdateSessionObservation.from_text(_format_result(result))
 
@@ -160,7 +160,7 @@ class HealthNewVersionObservation(Observation):
 
 class HealthNewVersionExecutor(ToolExecutor[HealthNewVersionAction, HealthNewVersionObservation]):
     def __call__(self, action: HealthNewVersionAction, conversation=None) -> HealthNewVersionObservation:
-        from health import health_new_version
+        from .core import health_new_version
         result = _run_async(health_new_version(action.change_reason, action.patches))
         return HealthNewVersionObservation.from_text(_format_result(result))
 
@@ -191,7 +191,7 @@ class KgToLbObservation(Observation):
 
 class KgToLbExecutor(ToolExecutor[KgToLbAction, KgToLbObservation]):
     def __call__(self, action: KgToLbAction, conversation=None) -> KgToLbObservation:
-        from health import kg_to_lb
+        from .core import kg_to_lb
         result = kg_to_lb(action.kg)
         return KgToLbObservation.from_text(_format_result(result))
 
@@ -219,7 +219,7 @@ class LbToKgObservation(Observation):
 
 class LbToKgExecutor(ToolExecutor[LbToKgAction, LbToKgObservation]):
     def __call__(self, action: LbToKgAction, conversation=None) -> LbToKgObservation:
-        from health import lb_to_kg
+        from .core import lb_to_kg
         result = lb_to_kg(action.lb)
         return LbToKgObservation.from_text(_format_result(result))
 
@@ -247,7 +247,7 @@ class IpfWeightClassesObservation(Observation):
 
 class IpfWeightClassesExecutor(ToolExecutor[IpfWeightClassesAction, IpfWeightClassesObservation]):
     def __call__(self, action: IpfWeightClassesAction, conversation=None) -> IpfWeightClassesObservation:
-        from health import ipf_weight_classes
+        from .core import ipf_weight_classes
         result = ipf_weight_classes(action.sex)
         return IpfWeightClassesObservation.from_text(_format_result(result))
 
@@ -279,7 +279,7 @@ class PctOfMaxObservation(Observation):
 
 class PctOfMaxExecutor(ToolExecutor[PctOfMaxAction, PctOfMaxObservation]):
     def __call__(self, action: PctOfMaxAction, conversation=None) -> PctOfMaxObservation:
-        from health import pct_of_max
+        from .core import pct_of_max
         result = pct_of_max(action.max_kg, action.pct)
         return PctOfMaxObservation.from_text(_format_result(result))
 
@@ -314,7 +314,7 @@ class CalculateAttemptsObservation(Observation):
 
 class CalculateAttemptsExecutor(ToolExecutor[CalculateAttemptsAction, CalculateAttemptsObservation]):
     def __call__(self, action: CalculateAttemptsAction, conversation=None) -> CalculateAttemptsObservation:
-        from health import calculate_attempts
+        from .core import calculate_attempts
         result = _run_async(calculate_attempts(
             lift=action.lift,
             opener_kg=action.opener_kg,
@@ -352,7 +352,7 @@ class HealthRagSearchObservation(Observation):
 
 class HealthRagSearchExecutor(ToolExecutor[HealthRagSearchAction, HealthRagSearchObservation]):
     def __call__(self, action: HealthRagSearchAction, conversation=None) -> HealthRagSearchObservation:
-        from health import health_rag_search
+        from .core import health_rag_search
         result = _run_async(health_rag_search(action.query, action.n_results))
         return HealthRagSearchObservation.from_text(_format_result(result))
 
@@ -383,7 +383,7 @@ class HealthGetCompetitionObservation(Observation):
 
 class HealthGetCompetitionExecutor(ToolExecutor[HealthGetCompetitionAction, HealthGetCompetitionObservation]):
     def __call__(self, action: HealthGetCompetitionAction, conversation=None) -> HealthGetCompetitionObservation:
-        from health import health_get_competition
+        from .core import health_get_competition
         result = _run_async(health_get_competition(action.date))
         return HealthGetCompetitionObservation.from_text(_format_result(result))
 
@@ -414,7 +414,7 @@ class HealthListCompetitionsObservation(Observation):
 
 class HealthListCompetitionsExecutor(ToolExecutor[HealthListCompetitionsAction, HealthListCompetitionsObservation]):
     def __call__(self, action: HealthListCompetitionsAction, conversation=None) -> HealthListCompetitionsObservation:
-        from health import health_list_competitions
+        from .core import health_list_competitions
         result = _run_async(health_list_competitions())
         return HealthListCompetitionsObservation.from_text(_format_result(result))
 
@@ -446,7 +446,7 @@ class HealthGetDietNotesObservation(Observation):
 
 class HealthGetDietNotesExecutor(ToolExecutor[HealthGetDietNotesAction, HealthGetDietNotesObservation]):
     def __call__(self, action: HealthGetDietNotesAction, conversation=None) -> HealthGetDietNotesObservation:
-        from health import health_get_diet_notes
+        from .core import health_get_diet_notes
         result = _run_async(health_get_diet_notes(action.start_date, action.end_date))
         return HealthGetDietNotesObservation.from_text(_format_result(result))
 
@@ -477,7 +477,7 @@ class HealthGetSessionObservation(Observation):
 
 class HealthGetSessionExecutor(ToolExecutor[HealthGetSessionAction, HealthGetSessionObservation]):
     def __call__(self, action: HealthGetSessionAction, conversation=None) -> HealthGetSessionObservation:
-        from health import health_get_session
+        from .core import health_get_session
         result = _run_async(health_get_session(action.date))
         return HealthGetSessionObservation.from_text(_format_result(result))
 
@@ -509,7 +509,7 @@ class HealthGetSessionsRangeObservation(Observation):
 
 class HealthGetSessionsRangeExecutor(ToolExecutor[HealthGetSessionsRangeAction, HealthGetSessionsRangeObservation]):
     def __call__(self, action: HealthGetSessionsRangeAction, conversation=None) -> HealthGetSessionsRangeObservation:
-        from health import health_get_sessions_range
+        from .core import health_get_sessions_range
         result = _run_async(health_get_sessions_range(action.start_date, action.end_date))
         return HealthGetSessionsRangeObservation.from_text(_format_result(result))
 
@@ -540,7 +540,7 @@ class HealthGetSupplementsObservation(Observation):
 
 class HealthGetSupplementsExecutor(ToolExecutor[HealthGetSupplementsAction, HealthGetSupplementsObservation]):
     def __call__(self, action: HealthGetSupplementsAction, conversation=None) -> HealthGetSupplementsObservation:
-        from health import health_get_supplements
+        from .core import health_get_supplements
         result = _run_async(health_get_supplements())
         return HealthGetSupplementsObservation.from_text(_format_result(result))
 
@@ -571,7 +571,7 @@ class HealthGetMetaObservation(Observation):
 
 class HealthGetMetaExecutor(ToolExecutor[HealthGetMetaAction, HealthGetMetaObservation]):
     def __call__(self, action: HealthGetMetaAction, conversation=None) -> HealthGetMetaObservation:
-        from health import health_get_meta
+        from .core import health_get_meta
         result = _run_async(health_get_meta())
         return HealthGetMetaObservation.from_text(_format_result(result))
 
@@ -603,7 +603,7 @@ class HealthGetPhasesObservation(Observation):
 
 class HealthGetPhasesExecutor(ToolExecutor[HealthGetPhasesAction, HealthGetPhasesObservation]):
     def __call__(self, action: HealthGetPhasesAction, conversation=None) -> HealthGetPhasesObservation:
-        from health import health_get_phases
+        from .core import health_get_phases
         result = _run_async(health_get_phases())
         return HealthGetPhasesObservation.from_text(_format_result(result))
 
@@ -634,7 +634,7 @@ class HealthGetCurrentMaxesObservation(Observation):
 
 class HealthGetCurrentMaxesExecutor(ToolExecutor[HealthGetCurrentMaxesAction, HealthGetCurrentMaxesObservation]):
     def __call__(self, action: HealthGetCurrentMaxesAction, conversation=None) -> HealthGetCurrentMaxesObservation:
-        from health import health_get_current_maxes
+        from .core import health_get_current_maxes
         result = _run_async(health_get_current_maxes())
         return HealthGetCurrentMaxesObservation.from_text(_format_result(result))
 
@@ -665,7 +665,7 @@ class HealthGetOperatorPrefsObservation(Observation):
 
 class HealthGetOperatorPrefsExecutor(ToolExecutor[HealthGetOperatorPrefsAction, HealthGetOperatorPrefsObservation]):
     def __call__(self, action: HealthGetOperatorPrefsAction, conversation=None) -> HealthGetOperatorPrefsObservation:
-        from health import health_get_operator_prefs
+        from .core import health_get_operator_prefs
         result = _run_async(health_get_operator_prefs())
         return HealthGetOperatorPrefsObservation.from_text(_format_result(result))
 
@@ -696,7 +696,7 @@ class HealthGetBreaksObservation(Observation):
 
 class HealthGetBreaksExecutor(ToolExecutor[HealthGetBreaksAction, HealthGetBreaksObservation]):
     def __call__(self, action: HealthGetBreaksAction, conversation=None) -> HealthGetBreaksObservation:
-        from health import health_get_breaks
+        from .core import health_get_breaks
         result = _run_async(health_get_breaks())
         return HealthGetBreaksObservation.from_text(_format_result(result))
 
@@ -728,7 +728,7 @@ class DaysUntilObservation(Observation):
 
 class DaysUntilExecutor(ToolExecutor[DaysUntilAction, DaysUntilObservation]):
     def __call__(self, action: DaysUntilAction, conversation=None) -> DaysUntilObservation:
-        from health import days_until
+        from .core import days_until
         result = _run_async(days_until(action.target_date, action.label))
         return DaysUntilObservation.from_text(_format_result(result))
 
@@ -762,7 +762,7 @@ class HealthUpdateCompetitionObservation(Observation):
 
 class HealthUpdateCompetitionExecutor(ToolExecutor[HealthUpdateCompetitionAction, HealthUpdateCompetitionObservation]):
     def __call__(self, action: HealthUpdateCompetitionAction, conversation=None) -> HealthUpdateCompetitionObservation:
-        from health import health_update_competition
+        from .core import health_update_competition
         result = _run_async(health_update_competition(action.date, action.patch))
         return HealthUpdateCompetitionObservation.from_text(_format_result(result))
 
@@ -794,7 +794,7 @@ class HealthUpdateDietNoteObservation(Observation):
 
 class HealthUpdateDietNoteExecutor(ToolExecutor[HealthUpdateDietNoteAction, HealthUpdateDietNoteObservation]):
     def __call__(self, action: HealthUpdateDietNoteAction, conversation=None) -> HealthUpdateDietNoteObservation:
-        from health import health_update_diet_note
+        from .core import health_update_diet_note
         result = _run_async(health_update_diet_note(action.date, action.notes))
         return HealthUpdateDietNoteObservation.from_text(_format_result(result))
 
@@ -827,7 +827,7 @@ class HealthUpdateSupplementsObservation(Observation):
 
 class HealthUpdateSupplementsExecutor(ToolExecutor[HealthUpdateSupplementsAction, HealthUpdateSupplementsObservation]):
     def __call__(self, action: HealthUpdateSupplementsAction, conversation=None) -> HealthUpdateSupplementsObservation:
-        from health import health_update_supplements
+        from .core import health_update_supplements
         result = _run_async(health_update_supplements(action.patch))
         return HealthUpdateSupplementsObservation.from_text(_format_result(result))
 
@@ -862,7 +862,7 @@ class HealthCreateSessionObservation(Observation):
 
 class HealthCreateSessionExecutor(ToolExecutor[HealthCreateSessionAction, HealthCreateSessionObservation]):
     def __call__(self, action: HealthCreateSessionAction, conversation=None) -> HealthCreateSessionObservation:
-        from health import health_create_session
+        from .core import health_create_session
         result = _run_async(health_create_session(action.date, action.day, action.week_number, action.exercises, action.session_notes))
         return HealthCreateSessionObservation.from_text(_format_result(result))
 
@@ -890,7 +890,7 @@ class HealthDeleteSessionObservation(Observation):
 
 class HealthDeleteSessionExecutor(ToolExecutor[HealthDeleteSessionAction, HealthDeleteSessionObservation]):
     def __call__(self, action: HealthDeleteSessionAction, conversation=None) -> HealthDeleteSessionObservation:
-        from health import health_delete_session
+        from .core import health_delete_session
         result = _run_async(health_delete_session(action.date))
         return HealthDeleteSessionObservation.from_text(_format_result(result))
 
@@ -919,7 +919,7 @@ class HealthRescheduleSessionObservation(Observation):
 
 class HealthRescheduleSessionExecutor(ToolExecutor[HealthRescheduleSessionAction, HealthRescheduleSessionObservation]):
     def __call__(self, action: HealthRescheduleSessionAction, conversation=None) -> HealthRescheduleSessionObservation:
-        from health import health_reschedule_session
+        from .core import health_reschedule_session
         result = _run_async(health_reschedule_session(action.old_date, action.new_date))
         return HealthRescheduleSessionObservation.from_text(_format_result(result))
 
@@ -948,7 +948,7 @@ class HealthAddExerciseObservation(Observation):
 
 class HealthAddExerciseExecutor(ToolExecutor[HealthAddExerciseAction, HealthAddExerciseObservation]):
     def __call__(self, action: HealthAddExerciseAction, conversation=None) -> HealthAddExerciseObservation:
-        from health import health_add_exercise
+        from .core import health_add_exercise
         result = _run_async(health_add_exercise(action.date, action.exercise))
         return HealthAddExerciseObservation.from_text(_format_result(result))
 
@@ -977,7 +977,7 @@ class HealthRemoveExerciseObservation(Observation):
 
 class HealthRemoveExerciseExecutor(ToolExecutor[HealthRemoveExerciseAction, HealthRemoveExerciseObservation]):
     def __call__(self, action: HealthRemoveExerciseAction, conversation=None) -> HealthRemoveExerciseObservation:
-        from health import health_remove_exercise
+        from .core import health_remove_exercise
         result = _run_async(health_remove_exercise(action.date, action.exercise_index))
         return HealthRemoveExerciseObservation.from_text(_format_result(result))
 
@@ -1008,7 +1008,7 @@ class HealthCreateCompetitionObservation(Observation):
 
 class HealthCreateCompetitionExecutor(ToolExecutor[HealthCreateCompetitionAction, HealthCreateCompetitionObservation]):
     def __call__(self, action: HealthCreateCompetitionAction, conversation=None) -> HealthCreateCompetitionObservation:
-        from health import health_create_competition
+        from .core import health_create_competition
         result = _run_async(health_create_competition(action.competition))
         return HealthCreateCompetitionObservation.from_text(_format_result(result))
 
@@ -1036,7 +1036,7 @@ class HealthDeleteCompetitionObservation(Observation):
 
 class HealthDeleteCompetitionExecutor(ToolExecutor[HealthDeleteCompetitionAction, HealthDeleteCompetitionObservation]):
     def __call__(self, action: HealthDeleteCompetitionAction, conversation=None) -> HealthDeleteCompetitionObservation:
-        from health import health_delete_competition
+        from .core import health_delete_competition
         result = _run_async(health_delete_competition(action.date))
         return HealthDeleteCompetitionObservation.from_text(_format_result(result))
 
@@ -1064,7 +1064,7 @@ class HealthDeleteDietNoteObservation(Observation):
 
 class HealthDeleteDietNoteExecutor(ToolExecutor[HealthDeleteDietNoteAction, HealthDeleteDietNoteObservation]):
     def __call__(self, action: HealthDeleteDietNoteAction, conversation=None) -> HealthDeleteDietNoteObservation:
-        from health import health_delete_diet_note
+        from .core import health_delete_diet_note
         result = _run_async(health_delete_diet_note(action.date))
         return HealthDeleteDietNoteObservation.from_text(_format_result(result))
 
@@ -1096,7 +1096,7 @@ class HealthUpdateMetaObservation(Observation):
 
 class HealthUpdateMetaExecutor(ToolExecutor[HealthUpdateMetaAction, HealthUpdateMetaObservation]):
     def __call__(self, action: HealthUpdateMetaAction, conversation=None) -> HealthUpdateMetaObservation:
-        from health import health_update_meta
+        from .core import health_update_meta
         result = _run_async(health_update_meta(action.updates))
         return HealthUpdateMetaObservation.from_text(_format_result(result))
 
@@ -1129,7 +1129,7 @@ class HealthUpdatePhasesObservation(Observation):
 
 class HealthUpdatePhasesExecutor(ToolExecutor[HealthUpdatePhasesAction, HealthUpdatePhasesObservation]):
     def __call__(self, action: HealthUpdatePhasesAction, conversation=None) -> HealthUpdatePhasesObservation:
-        from health import health_update_phases
+        from .core import health_update_phases
         result = _run_async(health_update_phases(action.phases))
         return HealthUpdatePhasesObservation.from_text(_format_result(result))
 
@@ -1159,7 +1159,7 @@ class HealthUpdateCurrentMaxesObservation(Observation):
 
 class HealthUpdateCurrentMaxesExecutor(ToolExecutor[HealthUpdateCurrentMaxesAction, HealthUpdateCurrentMaxesObservation]):
     def __call__(self, action: HealthUpdateCurrentMaxesAction, conversation=None) -> HealthUpdateCurrentMaxesObservation:
-        from health import health_update_current_maxes
+        from .core import health_update_current_maxes
         result = _run_async(health_update_current_maxes(action.squat_kg, action.bench_kg, action.deadlift_kg))
         return HealthUpdateCurrentMaxesObservation.from_text(_format_result(result))
 
@@ -1592,7 +1592,7 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
 
 async def execute(name: str, args: Dict[str, Any]) -> str:
     """Route health tool calls to the underlying health module functions."""
-    from health import (
+    from .core import (
         health_get_program,
         health_get_session,
         health_update_session as do_update_session,
