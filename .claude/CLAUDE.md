@@ -46,7 +46,6 @@ app/
 │   │   ├── memory_tools.py  # ChromaDB memory search/add/remove/list
 │   │   ├── prompts/         # Jinja2 templates + specialist definitions
 │   │   │   ├── system_prompt.j2
-│   │   │   ├── delegation.yaml   # Category→specialist + category→directive mapping
 │   │   │   └── mcp_servers.yaml   # MCP server command definitions
 │   │   ├── reflection/      # Metacognitive layer
 │   │   │   ├── engine.py           # ReflectionEngine (periodic, post-session, on-demand)
@@ -152,9 +151,8 @@ Client (Discord / OpenWebUI / HTTP)
                 base prompt + directives + operator context (LanceDB facts)
                 + signals (diary, financial) + addenda
           → Agent execution (OpenHands SDK → OpenRouter)
-            → Delegation pipeline
-              → categorize_conversation → get_directives → condense_intent
-              → spawn_subagent (model routing via fast LLM)
+            → Specialist delegation
+              → list_specialists → condense_intent → spawn_specialist
                 → Specialist execution (agentic SDK or raw OpenRouter)
                   → Tool execution (with Discord status embeds)
           → Response extraction (FILES: metadata stripping)
@@ -363,9 +361,14 @@ skills: [git-workflows, testing-patterns]  # Skills this specialist uses
 
 **Execution**: Skill scripts run via theuv run --project skills/<name> python scripts/<script>.py` (isolated uv-managed venvs, same as temporal_* plugins).
 
-### Delegation PipelineAutomatic message routing in `delegation.py`: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent`. Uses `delegation.yaml` for category→specialist mapping.
+### Specialist Delegation
 
-Categories: `code` → coder, `architecture` → architect, `finance` → financial_analyst, `health` → health_write, `writing` → proofreader, `shell` → scripter, `planning` → planner, `reasoning` → dialectic, `decision` → decision_analyst, `git` → git_ops, `review` → code_reviewer, `exploration` → code_explorer, `documentation` → doc_generator, `testing` → test_writer, `refactoring` → refactorer, `api_design` → api_designer, `migration` → migration_planner, `incident` → incident_responder, `performance` → performance_analyst, `project_tracking` → project_manager, `tasks` → todo_generator, `requirements` → interviewer, `summarization` → summarizer, `meeting` → meeting_prep, `negotiation` → negotiation_advisor, `pdf` → pdf_generator, `resume` → resume, `cover_letter` → cover_letter, `workday` → workday, `changelog` → changelog_writer, `data` → data_analyst, `legal` → legal_reader, `prompting` → prompt_engineer, `sql` → sql_analyst, `math` → math_tutor, `language` → language_tutor, `ml_learning` → ml_tutor, `career` → career_advisor. Pattern overrides: `simple` → scripter, `investigative` → debugger, `multi_perspective` → consensus_builder, `self_assessment` → self_improver, `adversarial_reasoning` → dialectic, `implementation_check` → project_manager, `production_down` → incident_responder, `job_application` → resume, `study_math` → math_tutor, `study_language` → language_tutor, `study_ml` → ml_tutor.
+The main agent selects and spawns specialists via three tools in `agent/tools/subagents.py`:
+1. `list_specialists` — returns all available specialist slugs and descriptions
+2. `condense_intent` — rewrites the user's message as a focused task for the chosen specialist (fast LLM call)
+3. `spawn_specialist` — spawns the specialist with its system prompt, tools, and directives filtered by `specialist.directive_types`
+
+Directive injection happens automatically inside `SpawnSpecialistExecutor` using the specialist's `directive_types` YAML field — no separate directive-fetching step required.
 
 ## Tools
 
@@ -381,8 +384,7 @@ All tools use the OpenHands SDK Action/Observation/Executor/ToolDefinition patte
 | Session Reflection | `agent/tools/session_reflection.py` | store_session_reflection |
 | Directives | `agent/tools/directive_tools.py` | add, revise, deactivate, list |
 | Context | `agent/tools/context_tools.py` | get_signals, get_financial_context, get_context_snapshot, get_current_date |
-| Delegation | `agent/tools/delegation.py` | categorize_conversation, get_directives, condense_intent, spawn_subagent |
-| Subagents | `agent/tools/subagents.py` | deep_think, spawn_specialist, spawn_specialists |
+| Subagents | `agent/tools/subagents.py` | list_specialists, condense_intent, deep_think, spawn_specialist, spawn_specialists |
 | Subagent SDK | `agent/tools/subagent_sdk.py` | run_subagent_sdk (SDK agentic loop for specialists with `agentic: true`) |
 | Media | `agent/tools/media_tools.py` | read_media |
 | Orchestrator | `orchestrator/executor.py` | execute_plan, analyze_parallel |
@@ -647,8 +649,7 @@ Key configuration (see `app/src/config.py` for full list):
 - **Model registry**: `storage/model_registry.py` mirrors DirectiveStore pattern (PK/SK, boto3, cache). Seeded from OpenRouter API at startup.
 - **Smart model routing**: `models/router.py` uses a fast LLM to pick the best model from a preset's candidate list. Falls back to sorted-first if disabled.
 - **Tool plugin auto-discovery**: `tool_registry.py` scans `tools/*/tool.yaml` at startup — no code changes needed to add domain tools. Plugins export `get_tools()`, `get_schemas()`, `execute()`. Hot reload via `POST /admin/reload-tools`.
-- **Delegation pipeline**: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent` in `delegation.py`
-- **Subagent spawning**: `spawn_specialist(type, task, context)` in `subagents.py`; `_run_subagent()` gives subagents terminal and domain tool access via registry
+- **Specialist delegation**: `list_specialists` → `condense_intent` → `spawn_specialist` in `subagents.py`; directive injection happens automatically in `SpawnSpecialistExecutor` via `specialist.directive_types`
 - **Tool authoring**: System tools use Python classes (Action/Observation/Executor/ToolDefinition) registered with `register_tool()`. External plugins use the same SDK pattern but are self-contained in `tools/`.
 - **Context/signal injection**: `context_tools.py` auto-injects diary signals, financial context, and snapshots into every system prompt
 - **FILES metadata pattern**: `FILES:` lines in agent output are stripped by `FilesStripBuffer` for artifact tracking
