@@ -291,7 +291,7 @@ This project exists to build applied knowledge. Here's what it exercises:
 |----------|----------|
 | [Architecture Deep Dive](docs/ARCHITECTURE.md) | System prompt assembly, tool authoring, channel internals, storage details, model router mechanics |
 | [Comparative Analysis](docs/COMPARATIVE_ANALYSIS.md) | Detailed comparison with OpenHands, Claude Cowork, OpenClaw, Hermes Agent |
-| [Roadmap & Future Work](docs/THINGS_TO_EXPLORE) | Known gaps, planned features, AI concepts to add |
+| [Roadmap & Future Work](docs/THINGS_TO_EXPLORE.md) | Known gaps, planned features, AI concepts to add |
 
 ---
 
