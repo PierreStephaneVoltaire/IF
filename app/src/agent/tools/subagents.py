@@ -34,6 +34,7 @@ from agent.tools.base import TextObservation
 
 from agent.tools.subagent_sdk import run_subagent_sdk
 
+from sandbox import get_local_sandbox
 from config import (
     LLM_BASE_URL,
     OPENROUTER_API_KEY,
@@ -225,16 +226,14 @@ async def _execute_terminal_command(
     workdir: str,
     chat_id: str,
     http_client: httpx.AsyncClient,
+    timeout: float = 120.0,
 ) -> str:
     """Execute a terminal command for a subagent."""
-    from agent.tools.terminal_tools import terminal_execute
-
     try:
-        return await terminal_execute(
-            command=command,
-            workdir=workdir,
-            chat_id=chat_id,
-        )
+        workspace = get_local_sandbox().get_workspace(chat_id)
+        cmd_result = workspace.execute_command(command, cwd=workdir, timeout=timeout)
+        result = cmd_result.stdout + (f"\n[stderr]{cmd_result.stderr}" if cmd_result.stderr else "")
+        return result
     except Exception as e:
         return f"ERROR: {type(e).__name__}: {e}"
 

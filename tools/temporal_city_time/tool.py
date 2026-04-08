@@ -1,40 +1,10 @@
-"""Temporal city time tool plugin — current date/time for major cities worldwide.
-
-Exports:
-    get_tools()       → SDK Tool objects (side effect: register_tool() calls)
-    get_schemas()     → snake_case name → JSON schema
-    execute(name, args) → async dispatcher for non-agentic path
-"""
+"""Temporal city time tool plugin — current date/time for major cities worldwide."""
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict
 from zoneinfo import ZoneInfo
-
-from pydantic import Field
-
-from openhands.sdk import (
-    Action,
-    Observation,
-    Tool,
-    ToolDefinition,
-    register_tool,
-)
-from openhands.sdk.tool import ToolExecutor
-
-
-def _run_async(coro):
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    if loop and loop.is_running():
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            return pool.submit(asyncio.run, coro).result()
-    return asyncio.run(coro)
 
 
 def _format_result(result: Any) -> str:
@@ -132,67 +102,6 @@ def _get_city_time(city: str) -> Dict[str, Any]:
         "time": now.strftime("%H:%M:%S"),
         "utc_offset": formatted_offset,
         "day_of_week": now.strftime("%A"),
-    }
-
-
-class GetCityTimeAction(Action):
-    city: str = Field(
-        description="City name to get the current time for (e.g. 'Tokyo', 'new york', 'London')"
-    )
-
-
-class GetCityTimeObservation(Observation):
-    pass
-
-
-class GetCityTimeExecutor(ToolExecutor[GetCityTimeAction, GetCityTimeObservation]):
-    def __call__(self, action: GetCityTimeAction, conversation=None) -> GetCityTimeObservation:
-        result = _get_city_time(action.city)
-        return GetCityTimeObservation.from_text(_format_result(result))
-
-
-class GetCityTimeTool(ToolDefinition[GetCityTimeAction, GetCityTimeObservation]):
-    @classmethod
-    def create(cls, conv_state=None, **params) -> Sequence["GetCityTimeTool"]:
-        return [cls(
-            description=(
-                "Return the current local time, date, timezone identifier, and UTC offset for a given city. "
-                "Supports ~50 major cities worldwide. If the city isn't recognized, returns a list of supported cities. "
-                "Useful for scheduling across time zones, checking business hours, or coordinating with people in other locations."
-            ),
-            action_type=GetCityTimeAction,
-            observation_type=GetCityTimeObservation,
-            executor=GetCityTimeExecutor(),
-        )]
-
-
-register_tool("GetCityTimeTool", GetCityTimeTool)
-
-
-def get_tools() -> List[Tool]:
-    return [Tool(name="GetCityTimeTool")]
-
-
-def get_schemas() -> Dict[str, Dict[str, Any]]:
-    return {
-        "get_city_time": {
-            "name": "get_city_time",
-            "description": (
-                "Return the current local time, date, timezone identifier, and UTC offset for a given city. "
-                "Supports ~50 major cities worldwide. If the city isn't recognized, returns a list of supported cities. "
-                "Useful for scheduling across time zones, checking business hours, or coordinating with people in other locations."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "City name to get the current time for (e.g. 'Tokyo', 'new york', 'London')",
-                    },
-                },
-                "required": ["city"],
-            },
-        },
     }
 
 

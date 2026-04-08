@@ -1,39 +1,9 @@
-"""Temporal from-unix tool plugin — convert Unix timestamp to structured datetime.
-
-Exports:
-    get_tools()       → SDK Tool objects (side effect: register_tool() calls)
-    get_schemas()     → snake_case name → JSON schema
-    execute(name, args) → async dispatcher for non-agentic path
-"""
+"""Temporal from-unix tool plugin — convert Unix timestamp to structured datetime."""
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Sequence
-
-from pydantic import Field
-
-from openhands.sdk import (
-    Action,
-    Observation,
-    Tool,
-    ToolDefinition,
-    register_tool,
-)
-from openhands.sdk.tool import ToolExecutor
-
-
-def _run_async(coro):
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    if loop and loop.is_running():
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            return pool.submit(asyncio.run, coro).result()
-    return asyncio.run(coro)
+from typing import Any, Dict
 
 
 def _format_result(result: Any) -> str:
@@ -91,69 +61,6 @@ def _unix_to_datetime(unix_timestamp: float) -> Dict[str, Any]:
         "day_of_week": dt.strftime("%A"),
         "human_readable": dt.strftime("%B %d, %Y at %I:%M %p UTC"),
         "relative_description": _relative_description(dt),
-    }
-
-
-class UnixToDatetimeAction(Action):
-    unix_timestamp: float = Field(
-        description="Unix timestamp (seconds or milliseconds since epoch) to convert"
-    )
-
-
-class UnixToDatetimeObservation(Observation):
-    pass
-
-
-class UnixToDatetimeExecutor(ToolExecutor[UnixToDatetimeAction, UnixToDatetimeObservation]):
-    def __call__(self, action: UnixToDatetimeAction, conversation=None) -> UnixToDatetimeObservation:
-        result = _unix_to_datetime(action.unix_timestamp)
-        return UnixToDatetimeObservation.from_text(_format_result(result))
-
-
-class UnixToDatetimeTool(ToolDefinition[UnixToDatetimeAction, UnixToDatetimeObservation]):
-    @classmethod
-    def create(cls, conv_state=None, **params) -> Sequence["UnixToDatetimeTool"]:
-        return [cls(
-            description=(
-                "Convert a Unix timestamp (seconds or milliseconds since epoch) into a structured datetime representation. "
-                'Returns the ISO 8601 format, human-readable date and time, day of week, and relative description '
-                '(e.g., "3 days ago", "in 2 weeks"). '
-                "Auto-detects seconds vs milliseconds based on magnitude (timestamps > 10^12 treated as milliseconds)."
-            ),
-            action_type=UnixToDatetimeAction,
-            observation_type=UnixToDatetimeObservation,
-            executor=UnixToDatetimeExecutor(),
-        )]
-
-
-register_tool("UnixToDatetimeTool", UnixToDatetimeTool)
-
-
-def get_tools() -> List[Tool]:
-    return [Tool(name="UnixToDatetimeTool")]
-
-
-def get_schemas() -> Dict[str, Dict[str, Any]]:
-    return {
-        "unix_to_datetime": {
-            "name": "unix_to_datetime",
-            "description": (
-                "Convert a Unix timestamp (seconds or milliseconds since epoch) into a structured datetime representation. "
-                'Returns the ISO 8601 format, human-readable date and time, day of week, and relative description '
-                '(e.g., "3 days ago", "in 2 weeks"). '
-                "Auto-detects seconds vs milliseconds based on magnitude (timestamps > 10^12 treated as milliseconds)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "unix_timestamp": {
-                        "type": "number",
-                        "description": "Unix timestamp (seconds or milliseconds since epoch) to convert",
-                    },
-                },
-                "required": ["unix_timestamp"],
-            },
-        },
     }
 
 

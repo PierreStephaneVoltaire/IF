@@ -74,17 +74,6 @@ def setup_command_tree(
             except Exception as e:
                 logger.warning(f"[SlashCmd] Failed to persist eviction: {e}")
 
-            try:
-                from terminal import get_k8s_lifecycle_manager
-
-                terminal_mgr = get_k8s_lifecycle_manager()
-                if terminal_mgr:
-                    chat_id = conversation_id
-                    await terminal_mgr.stop(chat_id)
-                    await terminal_mgr.delete_pvc(chat_id)
-            except Exception as e:
-                logger.warning(f"[SlashCmd] Failed to clean terminal: {e}")
-
             await interaction.response.send_message(
                 "Acknowledged. Categorisation state cleared. "
                 "Next message will be re-evaluated."

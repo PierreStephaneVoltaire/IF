@@ -1,15 +1,11 @@
 """External tool plugin registry.
 
 Discovers and loads tool plugins from the tools/ directory at startup.
-Each plugin is a subdirectory containing tool.yaml (metadata) and tool.py
-(exports get_tools, get_schemas, execute).
+Each plugin is a subdirectory containing tool.yaml (metadata) and either:
+  - tool.py (in_process): imported directly, exports get_tools/get_schemas/execute
+  - tool_meta.yaml (subprocess): schema metadata read statically; tools run via RemotePluginExecutor
 
 Mirrors the specialist auto-discovery pattern in specialists.py.
-
-Plugin contract:
-    get_tools() -> List[Tool]:             SDK Tool objects (register_tool() as side effect)
-    get_schemas() -> Dict[str, dict]:      snake_case name -> JSON schema
-    async execute(name, args) -> str:      dispatcher for non-agentic specialist path
 
 Paths:
     EXTERNAL_TOOLS_PATH (env) overrides all
@@ -18,7 +14,7 @@ Paths:
 
 Hot reload:
     POST /admin/reload-tools calls registry.reload()
-    Re-scans, re-installs deps, re-imports modules via importlib.reload()
+    Re-scans, re-runs uv sync (subprocess), re-imports modules (in_process)
     Per-tool status: "reloaded", "removed", "failed: <reason>"
 """
 from __future__ import annotations
@@ -34,6 +30,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from openhands.sdk import Tool
 
+from agent.plugin_runner import make_remote_tool, RemotePluginExecutor, RemotePluginAction
 from agent.prompts.yaml_loader import load_yaml
 from config import EXTERNAL_TOOLS_PATH, EXTERNAL_TOOLS_FALLBACK
 
@@ -51,6 +48,7 @@ class ExternalToolConfig:
     description: str
     version: str
     scope: str  # "main" | "specialist" | "both"
+    execution: str  # "in_process" | "subprocess"
     path: Path
     module: Any = None
     sdk_tools: List[Tool] = field(default_factory=list)
@@ -91,16 +89,11 @@ class ToolRegistry:
                 continue
 
             config_path = subdir / "tool.yaml"
-            module_path = subdir / "tool.py"
-
             if not config_path.exists():
-                continue
-            if not module_path.exists():
-                logger.warning(f"Tool plugin {subdir.name} missing tool.py, skipping")
                 continue
 
             try:
-                self._load_plugin(subdir, config_path, module_path)
+                self._load_plugin(subdir, config_path)
             except Exception as e:
                 logger.error(f"Failed to load tool plugin {subdir.name}: {e}")
                 continue
@@ -110,7 +103,7 @@ class ToolRegistry:
             f"Tool registry: {len(self._tools)} external tools loaded: {list(self._tools.keys())}"
         )
 
-    def _load_plugin(self, subdir: Path, config_path: Path, module_path: Path) -> None:
+    def _load_plugin(self, subdir: Path, config_path: Path) -> None:
         """Load a single tool plugin from its directory."""
         data = load_yaml(config_path)
         slug = subdir.name
@@ -120,7 +113,22 @@ class ToolRegistry:
             logger.warning(f"Tool {slug}: invalid scope '{scope}', defaulting to 'both'")
             scope = "both"
 
-        # Import the module
+        execution = data.get("execution", "subprocess")
+
+        if execution == "in_process":
+            self._load_plugin_in_process(subdir, slug, data, scope)
+        else:
+            self._load_plugin_subprocess(subdir, slug, data, scope)
+
+    def _load_plugin_in_process(
+        self, subdir: Path, slug: str, data: dict, scope: str
+    ) -> None:
+        """Load plugin by importing tool.py directly into the process."""
+        module_path = subdir / "tool.py"
+        if not module_path.exists():
+            logger.warning(f"Tool {slug} (in_process) missing tool.py, skipping")
+            return
+
         spec = importlib.util.spec_from_file_location(f"tools.{slug}", module_path)
         if spec is None or spec.loader is None:
             logger.error(f"Tool {slug}: failed to create module spec")
@@ -135,7 +143,6 @@ class ToolRegistry:
             logger.error(f"Tool {slug}: import error: {e}")
             return
 
-        # Collect SDK tools
         sdk_tools: List[Tool] = []
         if hasattr(module, "get_tools"):
             try:
@@ -143,7 +150,6 @@ class ToolRegistry:
             except Exception as e:
                 logger.warning(f"Tool {slug}: get_tools() error: {e}")
 
-        # Collect JSON schemas
         schemas: Dict[str, dict] = {}
         if hasattr(module, "get_schemas"):
             try:
@@ -151,22 +157,88 @@ class ToolRegistry:
             except Exception as e:
                 logger.warning(f"Tool {slug}: get_schemas() error: {e}")
 
-        # Collect dispatcher
         dispatcher = getattr(module, "execute", None)
 
-        config = ExternalToolConfig(
+        self._tools[slug] = ExternalToolConfig(
             slug=slug,
             name=data.get("name", slug),
             description=data.get("description", slug),
             version=data.get("version", "0.0.0"),
             scope=scope,
+            execution="in_process",
             path=subdir,
             module=module,
             sdk_tools=sdk_tools,
             schemas=schemas,
             dispatcher=dispatcher,
         )
-        self._tools[slug] = config
+
+    def _load_plugin_subprocess(
+        self, subdir: Path, slug: str, data: dict, scope: str
+    ) -> None:
+        """Load plugin as a subprocess-isolated tool via RemotePluginExecutor."""
+        # Run uv sync to ensure plugin deps are installed
+        try:
+            result = subprocess.run(
+                ["uv", "sync", "--project", str(subdir)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    f"Tool {slug}: uv sync failed (non-fatal): {result.stderr[:500]}"
+                )
+            else:
+                logger.info(f"Tool {slug}: uv sync succeeded")
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Tool {slug}: uv sync timed out")
+        except Exception as e:
+            logger.warning(f"Tool {slug}: uv sync error: {e}")
+
+        # Read schema metadata from tool_meta.yaml
+        meta_path = subdir / "tool_meta.yaml"
+        if not meta_path.exists():
+            logger.warning(f"Tool {slug} (subprocess) missing tool_meta.yaml, skipping")
+            return
+
+        try:
+            meta = load_yaml(meta_path)
+        except Exception as e:
+            logger.warning(f"Tool {slug}: failed to load tool_meta.yaml: {e}")
+            return
+
+        raw_schemas = meta.get("tools", meta.get("schemas", {}))
+
+        sdk_tools: List[Tool] = []
+        schemas: Dict[str, dict] = {}
+
+        for tool_name, schema in raw_schemas.items():
+            try:
+                remote_tool = make_remote_tool(slug, tool_name, schema, subdir)
+                sdk_tools.append(remote_tool)
+                schemas[tool_name] = schema
+            except Exception as e:
+                logger.warning(f"Tool {slug}.{tool_name}: make_remote_tool error: {e}")
+
+        async def dispatcher(name: str, args: Dict[str, Any]) -> str:
+            executor = RemotePluginExecutor(slug, name, subdir)
+            obs = executor(RemotePluginAction(tool_name=name, args=args))
+            return obs.result
+
+        self._tools[slug] = ExternalToolConfig(
+            slug=slug,
+            name=data.get("name", slug),
+            description=data.get("description", slug),
+            version=data.get("version", "0.0.0"),
+            scope=scope,
+            execution="subprocess",
+            path=subdir,
+            module=None,
+            sdk_tools=sdk_tools,
+            schemas=schemas,
+            dispatcher=dispatcher,
+        )
 
     def get_sdk_tools(self, scope: str = "main") -> List[Tool]:
         """Get SDK Tool objects for the given scope."""
@@ -216,6 +288,7 @@ class ToolRegistry:
                 "description": c.description,
                 "version": c.version,
                 "scope": c.scope,
+                "execution": c.execution,
                 "tool_count": str(len(c.schemas)),
             }
             for c in self._tools.values()
@@ -228,99 +301,120 @@ class ToolRegistry:
         if not base:
             return {"error": "No tools directory found"}
 
-        # Re-scan requirements first
-        self._install_deps(base)
-
         for slug, old_config in list(self._tools.items()):
             subdir = base / slug
             config_path = subdir / "tool.yaml"
-            module_path = subdir / "tool.py"
 
-            if not config_path.exists() or not module_path.exists():
+            if not config_path.exists():
                 statuses[slug] = "removed"
                 del self._tools[slug]
                 continue
 
             try:
-                # Re-import the module
-                if f"tools.{slug}" in sys.modules:
-                    module = importlib.reload(sys.modules[f"tools.{slug}"])
-                else:
-                    spec = importlib.util.spec_from_file_location(f"tools.{slug}", module_path)
-                    if spec is None or spec.loader is None:
-                        statuses[slug] = f"failed: could not create module spec"
-                        continue
-                    module = importlib.util.module_from_spec(spec)
-                    sys.modules[f"tools.{slug}"] = module
-                    spec.loader.exec_module(module)
-
-                # Re-collect
-                sdk_tools: List[Tool] = []
-                if hasattr(module, "get_tools"):
-                    sdk_tools = module.get_tools()
-
-                schemas: Dict[str, dict] = {}
-                if hasattr(module, "get_schemas"):
-                    schemas = module.get_schemas()
-
-                dispatcher = getattr(module, "execute", None)
                 data = load_yaml(config_path)
+                execution = data.get("execution", "subprocess")
 
-                self._tools[slug] = ExternalToolConfig(
-                    slug=slug,
-                    name=data.get("name", slug),
-                    description=data.get("description", slug),
-                    version=data.get("version", "0.0.0"),
-                    scope=data.get("scope", "both"),
-                    path=subdir,
-                    module=module,
-                    sdk_tools=sdk_tools,
-                    schemas=schemas,
-                    dispatcher=dispatcher,
-                )
+                if execution == "in_process":
+                    module_path = subdir / "tool.py"
+                    if not module_path.exists():
+                        statuses[slug] = "failed: tool.py missing"
+                        continue
+
+                    if f"tools.{slug}" in sys.modules:
+                        module = importlib.reload(sys.modules[f"tools.{slug}"])
+                    else:
+                        spec = importlib.util.spec_from_file_location(f"tools.{slug}", module_path)
+                        if spec is None or spec.loader is None:
+                            statuses[slug] = "failed: could not create module spec"
+                            continue
+                        module = importlib.util.module_from_spec(spec)
+                        sys.modules[f"tools.{slug}"] = module
+                        spec.loader.exec_module(module)
+
+                    sdk_tools: List[Tool] = []
+                    if hasattr(module, "get_tools"):
+                        sdk_tools = module.get_tools()
+
+                    schemas: Dict[str, dict] = {}
+                    if hasattr(module, "get_schemas"):
+                        schemas = module.get_schemas()
+
+                    dispatcher = getattr(module, "execute", None)
+                    scope = data.get("scope", "both")
+
+                    self._tools[slug] = ExternalToolConfig(
+                        slug=slug,
+                        name=data.get("name", slug),
+                        description=data.get("description", slug),
+                        version=data.get("version", "0.0.0"),
+                        scope=scope,
+                        execution="in_process",
+                        path=subdir,
+                        module=module,
+                        sdk_tools=sdk_tools,
+                        schemas=schemas,
+                        dispatcher=dispatcher,
+                    )
+                else:
+                    # subprocess: re-run uv sync and re-read tool_meta.yaml
+                    try:
+                        result = subprocess.run(
+                            ["uv", "sync", "--project", str(subdir)],
+                            capture_output=True,
+                            text=True,
+                            timeout=60,
+                        )
+                        if result.returncode != 0:
+                            logger.warning(
+                                f"Tool {slug}: uv sync failed on reload: {result.stderr[:500]}"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Tool {slug}: uv sync error on reload: {e}")
+
+                    meta_path = subdir / "tool_meta.yaml"
+                    if not meta_path.exists():
+                        statuses[slug] = "failed: tool_meta.yaml missing"
+                        continue
+
+                    meta = load_yaml(meta_path)
+                    raw_schemas = meta.get("tools", meta.get("schemas", {}))
+                    scope = data.get("scope", "both")
+
+                    sdk_tools = []
+                    schemas = {}
+                    for tool_name, schema in raw_schemas.items():
+                        try:
+                            remote_tool = make_remote_tool(slug, tool_name, schema, subdir)
+                            sdk_tools.append(remote_tool)
+                            schemas[tool_name] = schema
+                        except Exception as e:
+                            logger.warning(f"Tool {slug}.{tool_name}: make_remote_tool error on reload: {e}")
+
+                    async def dispatcher(name: str, args: Dict[str, Any], _slug: str = slug) -> str:
+                        executor = RemotePluginExecutor(_slug, name, subdir)
+                        obs = executor(RemotePluginAction(tool_name=name, args=args))
+                        return obs.result
+
+                    self._tools[slug] = ExternalToolConfig(
+                        slug=slug,
+                        name=data.get("name", slug),
+                        description=data.get("description", slug),
+                        version=data.get("version", "0.0.0"),
+                        scope=scope,
+                        execution="subprocess",
+                        path=subdir,
+                        module=None,
+                        sdk_tools=sdk_tools,
+                        schemas=schemas,
+                        dispatcher=dispatcher,
+                    )
+
                 statuses[slug] = "reloaded"
             except Exception as e:
                 logger.error(f"Reload failed for {slug}: {e}")
                 statuses[slug] = f"failed: {type(e).__name__}: {e}"
 
         return statuses
-
-    def _install_deps(self, base: Path) -> None:
-        """Install requirements.txt from each tool directory."""
-        for subdir in base.iterdir():
-            if not subdir.is_dir():
-                continue
-            req_file = subdir / "requirements.txt"
-            if not req_file.exists():
-                continue
-            try:
-                logger.info(f"Installing dependencies for {subdir.name}...")
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-r", str(req_file)],
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                )
-                if result.returncode != 0:
-                    logger.warning(
-                        f"pip install failed for {subdir.name}: {result.stderr[:500]}"
-                    )
-                else:
-                    logger.info(f"Dependencies installed for {subdir.name}")
-            except subprocess.TimeoutExpired:
-                logger.warning(f"pip install timed out for {subdir.name}")
-            except Exception as e:
-                logger.warning(f"Failed to install deps for {subdir.name}: {e}")
-
-
-def install_external_deps() -> None:
-    """Install dependencies for all external tool plugins."""
-    if _registry is None:
-        logger.warning("Tool registry not initialized, cannot install deps")
-        return
-    base = _registry._resolve_path()
-    if base:
-        _registry._install_deps(base)
 
 
 def init_tool_registry() -> ToolRegistry:

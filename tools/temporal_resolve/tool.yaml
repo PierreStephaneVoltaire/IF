@@ -2,3 +2,4 @@ name: temporal_resolve
 description: Resolve natural language temporal phrases into concrete dates
 version: 1.0.0
 scope: specialist
+execution: subprocess

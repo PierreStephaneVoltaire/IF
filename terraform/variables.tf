@@ -323,28 +323,10 @@ variable "reflection_threshold_uncategorized" {
   default     = 20
 }
 
-variable "terminal_image" {
-  description = "Docker image for terminal containers"
-  type        = string
-  default     = "ghcr.io/open-webui/open-terminal:latest"
-}
-
 variable "terminal_network" {
   description = "Docker network for terminals"
   type        = string
   default     = "if-terminal-net"
-}
-
-variable "terminal_mem_limit" {
-  description = "Memory limit per terminal container"
-  type        = string
-  default     = "2Gi"
-}
-
-variable "terminal_cpu_quota" {
-  description = "CPU quota for terminal containers"
-  type        = number
-  default     = 50000
 }
 
 variable "terminal_idle_timeout" {

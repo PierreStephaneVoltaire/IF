@@ -1,39 +1,9 @@
-"""Temporal age tool plugin — calculate age and birthday information from a birth date.
-
-Exports:
-    get_tools()       → SDK Tool objects (side effect: register_tool() calls)
-    get_schemas()     → snake_case name → JSON schema
-    execute(name, args) → async dispatcher for non-agentic path
-"""
+"""Temporal age tool plugin — calculate age and birthday information from a birth date."""
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence
-
-from pydantic import Field
-
-from openhands.sdk import (
-    Action,
-    Observation,
-    Tool,
-    ToolDefinition,
-    register_tool,
-)
-from openhands.sdk.tool import ToolExecutor
-
-
-def _run_async(coro):
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    if loop and loop.is_running():
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            return pool.submit(asyncio.run, coro).result()
-    return asyncio.run(coro)
+from typing import Any, Dict, Optional
 
 
 def _format_result(result: Any) -> str:
@@ -106,73 +76,6 @@ def _calculate_age(birth_date_str: str, reference_date_str: Optional[str] = None
         "next_birthday": next_bday.strftime("%Y-%m-%d"),
         "days_until_birthday": days_until,
         "zodiac_sign": _zodiac_sign(birth.month, birth.day),
-    }
-
-
-class CalculateAgeAction(Action):
-    birth_date: str = Field(description="Birth date in YYYY-MM-DD format or a parseable date string")
-    reference_date: Optional[str] = Field(
-        default=None,
-        description="Optional reference date (defaults to today) to calculate age at a specific point in time"
-    )
-
-
-class CalculateAgeObservation(Observation):
-    pass
-
-
-class CalculateAgeExecutor(ToolExecutor[CalculateAgeAction, CalculateAgeObservation]):
-    def __call__(self, action: CalculateAgeAction, conversation=None) -> CalculateAgeObservation:
-        result = _calculate_age(action.birth_date, action.reference_date)
-        return CalculateAgeObservation.from_text(_format_result(result))
-
-
-class CalculateAgeTool(ToolDefinition[CalculateAgeAction, CalculateAgeObservation]):
-    @classmethod
-    def create(cls, conv_state=None, **params) -> Sequence["CalculateAgeTool"]:
-        return [cls(
-            description=(
-                "Given a birth date, calculate the person's exact age in years, months, and days. "
-                "Also returns the next birthday date, days until the next birthday, and zodiac sign. "
-                "Optionally accepts a reference date (defaults to today) to calculate age at a specific point in time."
-            ),
-            action_type=CalculateAgeAction,
-            observation_type=CalculateAgeObservation,
-            executor=CalculateAgeExecutor(),
-        )]
-
-
-register_tool("CalculateAgeTool", CalculateAgeTool)
-
-
-def get_tools() -> List[Tool]:
-    return [Tool(name="CalculateAgeTool")]
-
-
-def get_schemas() -> Dict[str, Dict[str, Any]]:
-    return {
-        "calculate_age": {
-            "name": "calculate_age",
-            "description": (
-                "Given a birth date, calculate the person's exact age in years, months, and days. "
-                "Also returns the next birthday date, days until the next birthday, and zodiac sign. "
-                "Optionally accepts a reference date (defaults to today) to calculate age at a specific point in time."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "birth_date": {
-                        "type": "string",
-                        "description": "Birth date in YYYY-MM-DD format or a parseable date string",
-                    },
-                    "reference_date": {
-                        "type": "string",
-                        "description": "Optional reference date (defaults to today) to calculate age at a specific point in time",
-                    },
-                },
-                "required": ["birth_date"],
-            },
-        },
     }
 
 

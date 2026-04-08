@@ -46,6 +46,7 @@ from agent.tools.media_tools import get_media_tools
 from agent.tools import file_tools  # registers read_file, write_file, search_files
 from agent.tools.discovery_tools import get_discovery_tools
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
+from sandbox import get_local_sandbox
 
 
 logger = logging.getLogger(__name__)
@@ -490,7 +491,7 @@ async def execute_agent(
         conversation_id_uuid = uuid.uuid4()
         conversation = Conversation(
             agent=agent,
-            workspace=os.getcwd(),
+            workspace=get_local_sandbox().get_workspace(session.conversation_id),
             persistence_dir=PERSISTENCE_DIR,
             conversation_id=conversation_id_uuid,
         )
