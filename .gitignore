@@ -41,3 +41,4 @@ app/src/agent/prompts/specialists/
 
 # Worktrees
 .worktrees/
+.worktrees/**/*
