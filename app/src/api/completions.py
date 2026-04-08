@@ -479,7 +479,7 @@ async def process_chat_completion_internal(
         local_path = None
 
         try:
-            from sandbox import get_local_sandbox
+            from app_sandbox import get_local_sandbox
             workdir = Path(get_local_sandbox().get_working_dir(cache_key))
             # Resolve relative paths - try conversation dir first, then workspace
             if not ref.path.startswith("/"):

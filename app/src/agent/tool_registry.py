@@ -137,6 +137,10 @@ class ToolRegistry:
         module = importlib.util.module_from_spec(spec)
         sys.modules[f"tools.{slug}"] = module
 
+        plugin_dir = str(subdir)
+        if plugin_dir not in sys.path:
+            sys.path.insert(0, plugin_dir)
+
         try:
             spec.loader.exec_module(module)
         except Exception as e:
@@ -272,6 +276,11 @@ class ToolRegistry:
                     return await config.dispatcher(name, args)
                 except Exception as e:
                     logger.error(f"Tool {name} execution error: {e}")
+                    try:
+                        from channels.status import send_status, StatusType
+                        await send_status(StatusType.TOOL_FAILED, f"Tool: {name}", str(e)[:200])
+                    except Exception:
+                        pass
                     return f"ERROR: {type(e).__name__}: {e}"
         return f"Unknown external tool: {name}"
 

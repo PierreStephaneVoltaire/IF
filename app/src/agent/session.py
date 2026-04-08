@@ -39,14 +39,13 @@ from agent.tools.capability_tracker import get_capability_tracker_tools
 from agent.tools.opinion_tools import get_opinion_tools
 from agent.tools.session_reflection import get_session_reflection_tools
 from agent.tools.directive_tools import get_directive_tools
-from agent.tools.terminal_tools import get_terminal_system_prompt
 from agent.tools.context_tools import get_context_tools
 from agent.tools.subagents import get_subagent_tools
 from agent.tools.media_tools import get_media_tools
 from agent.tools import file_tools  # registers read_file, write_file, search_files
 from agent.tools.discovery_tools import get_discovery_tools
 from orchestrator import get_orchestrator_tools, get_analyzer_tools
-from sandbox import get_local_sandbox
+from app_sandbox import get_local_sandbox
 
 
 logger = logging.getLogger(__name__)
@@ -357,13 +356,6 @@ Multiple questions about the same file require separate calls.
             prompt_parts.append(f"\n{pondering_addendum}\n")
     
     # Note: Sandbox MCP server removed in Part6
-    # Terminal tools now provide file system access via persistent Docker containers
-    
-    # Terminal environment instructions (Phase 3)
-    # All presets get access to the persistent terminal
-    terminal_instruction = get_terminal_system_prompt()
-    prompt_parts.append(f"\n{terminal_instruction}\n")
-    
     return "\n".join(prompt_parts)
 
 

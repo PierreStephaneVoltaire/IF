@@ -25,7 +25,7 @@ from openhands.sdk.tool.tool import (
 from openhands.sdk import register_tool
 from agent.tools.base import TextObservation
 
-from sandbox import get_local_sandbox
+from app_sandbox import get_local_sandbox
 
 if TYPE_CHECKING:
     from openhands.sdk.conversation.state import ConversationState

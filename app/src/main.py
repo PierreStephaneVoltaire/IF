@@ -441,7 +441,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Reflection engine initialization failed: {e}")
     
-    from sandbox import init_local_sandbox
+    from app_sandbox import init_local_sandbox
     sandbox_manager = init_local_sandbox()
     logger.info(f"[Sandbox] LocalSandbox initialized at {sandbox_manager.workspace_base}")
     

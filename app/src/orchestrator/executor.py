@@ -33,7 +33,7 @@ from config import (
     ORCHESTRATOR_MAX_TURNS,
 )
 from models.router import resolve_preset_to_model, is_context_limit_error, select_model_by_context
-from sandbox import get_local_sandbox
+from app_sandbox import get_local_sandbox
 from files import strip_files_line, FileRef
 
 if TYPE_CHECKING:

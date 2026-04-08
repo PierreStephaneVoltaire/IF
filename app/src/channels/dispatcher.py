@@ -35,7 +35,7 @@ async def _upload_attachments(
 
     try:
         from pathlib import Path
-        from sandbox import get_local_sandbox
+        from app_sandbox import get_local_sandbox
         from config import MEDIA_UPLOAD_DIR
     except ImportError as e:
         logger.warning(f"[Upload] Import error, skipping attachment upload: {e}")

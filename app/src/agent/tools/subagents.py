@@ -34,7 +34,7 @@ from agent.tools.base import TextObservation
 
 from agent.tools.subagent_sdk import run_subagent_sdk
 
-from sandbox import get_local_sandbox
+from app_sandbox import get_local_sandbox
 from config import (
     LLM_BASE_URL,
     OPENROUTER_API_KEY,
@@ -527,7 +527,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                     system_prompt=system_prompt,
                     user_message=user_message,
                     model=model,
-                    max_turns=specialist.max_iterations,
+                    max_turns=specialist.max_turns,
                     chat_id=self.chat_id,
                     tool_names=specialist.tools,
                     skill_names=getattr(specialist, "skills", []),

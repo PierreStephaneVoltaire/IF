@@ -30,7 +30,7 @@ from config import (
     ORCHESTRATOR_ANALYSIS_MAX_TURNS,
 )
 from models.router import resolve_preset_to_model
-from sandbox import get_local_sandbox
+from app_sandbox import get_local_sandbox
 
 from .executor import run_subagent, StepResult
 

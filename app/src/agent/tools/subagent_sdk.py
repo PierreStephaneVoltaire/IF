@@ -24,7 +24,7 @@ from openhands.sdk.conversation.state import ConversationExecutionStatus
 from openhands.sdk.event.conversation_error import ConversationErrorEvent
 
 from config import LLM_API_KEY, LLM_BASE_URL, SPECIALIST_REASONING_EFFORT
-from sandbox import get_local_sandbox
+from app_sandbox import get_local_sandbox
 from files import strip_files_line, log_file_refs, accumulate_file_refs
 from agent.tools.terminal_tools import get_terminal_system_prompt
 from agent.skills import load_skills_for_specialist
@@ -160,7 +160,7 @@ async def run_subagent_sdk(
         await loop.run_in_executor(None, conversation.run)
 
         # Extract response based on execution status
-        return _extract_response(conversation, max_turns, chat_id)
+        return _extract_response(conversation, max_turns, chat_id, loop)
 
     except (ConversationRunError, Exception) as e:
         from models.router import is_context_limit_error, select_model_by_context
@@ -186,7 +186,7 @@ async def run_subagent_sdk(
                 logger.debug(f"[SDK Subagent] Cleanup error: {e}")
 
 
-def _extract_response(conversation, max_turns: int, chat_id: str) -> str:
+def _extract_response(conversation, max_turns: int, chat_id: str, loop=None) -> str:
     """Extract the specialist's response from SDK conversation events.
 
     Handles FINISHED, STUCK, and ERROR states. Strips FILES: metadata
@@ -196,6 +196,7 @@ def _extract_response(conversation, max_turns: int, chat_id: str) -> str:
         conversation: The SDK Conversation object
         max_turns: Max turns configured (for error messages)
         chat_id: Chat ID for logging
+        loop: Running event loop for fire-and-forget status tasks
 
     Returns:
         Specialist response text with FILES: metadata stripped
@@ -211,19 +212,17 @@ def _extract_response(conversation, max_turns: int, chat_id: str) -> str:
             tool_args = str(getattr(tc, "arguments", getattr(tc, "args", {})))[:200]
             logger.debug(f"[SDK Subagent] tool_call: {tool_name} | args={tool_args}")
 
-    # Emit tool execution status embeds (batched after run completes)
-    try:
-        import asyncio as _aio
-        from channels.status import send_status, StatusType
-        for event in events:
-            if hasattr(event, "tool_call") and event.tool_call:
-                tc = event.tool_call
-                tool_name = getattr(tc, "name", getattr(tc, "function", "unknown"))
-                _aio.get_event_loop().run_until_complete(
-                    send_status(StatusType.TOOL_STARTED, f"Tool: {tool_name}")
-                )
-    except Exception:
-        pass
+    # Emit tool execution status embeds (fire-and-forget via running loop)
+    if loop is not None:
+        try:
+            from channels.status import send_status, StatusType
+            for event in events:
+                if hasattr(event, "tool_call") and event.tool_call:
+                    tc = event.tool_call
+                    tool_name = getattr(tc, "name", getattr(tc, "function", "unknown"))
+                    loop.create_task(send_status(StatusType.TOOL_STARTED, f"Tool: {tool_name}"))
+        except Exception:
+            pass
 
     if status == ConversationExecutionStatus.STUCK:
         logger.warning(f"[SDK Subagent] Specialist got stuck after {max_turns} iterations")

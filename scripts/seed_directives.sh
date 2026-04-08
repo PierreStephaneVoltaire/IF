@@ -111,7 +111,7 @@ that as a failure.
 
 Never return content that appears to come from a successful tool
 call when the call actually failed.'
-put 0 6 "TOOL_FAILURE_REPORTING" "$C" core tool
+put 0 6 "TOOL_FAILURE_REPORTING" "$C" core tool health finance competition
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TIER 1 — CRITICAL. Only bypass with explicit operator request.
@@ -1728,7 +1728,7 @@ Do not:
 
 Partial answers with acknowledged gaps are better than no
 answer. The operator can decide whether the gap matters.'
-put 2 47 "ERROR_RECOVERY" "$C" core tool
+put 2 47 "ERROR_RECOVERY" "$C" core tool health finance competition
 
 # ─── NEW: Progressive Disclosure ─────────────────────────────────────────────
 

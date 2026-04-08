@@ -122,7 +122,7 @@ class ReadMediaExecutor(ToolExecutor):
         # Read file from local sandbox filesystem
         try:
             from pathlib import Path
-            from sandbox import get_local_sandbox
+            from app_sandbox import get_local_sandbox
             file_path_obj = Path(get_local_sandbox().get_working_dir(self.conversation_id)) / file_path
             file_bytes = file_path_obj.read_bytes()
         except Exception as e:

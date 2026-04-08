@@ -13,4 +13,4 @@ After completing work that creates or modifies files, emit a single `FILES:` lin
 ```
 FILES: output.csv (cleaned sales data), chart.png (revenue by quarter)
 ```
-This line will be automatically processed and removed before display.
+This line will be automatically processed and removed before display. When you emit a `FILES:` line, do **not** repeat the file contents in your response — the file attachment handles delivery. Describe what you built in one sentence instead.
