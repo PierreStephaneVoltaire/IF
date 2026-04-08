@@ -260,6 +260,15 @@ SPECIALISTS_PATH = os.getenv(
 )
 
 # =============================================================================
+# Skills Directory (AgentSkills-compliant)
+# =============================================================================
+
+SKILLS_PATH = os.getenv(
+    "SKILLS_PATH",
+    str(Path(__file__).parent.parent.parent / "skills")  # project_root/skills/
+)
+
+# =============================================================================
 # Health Module Configuration
 # =============================================================================
 

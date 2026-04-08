@@ -98,6 +98,14 @@ resource "kubernetes_deployment" "if_agent_api" {
           }
         }
 
+        volume {
+          name = "skills-directory"
+          host_path {
+            path = var.skills_host_path
+            type = "DirectoryOrCreate"
+          }
+        }
+
         container {
           name              = "api"
           image             = "${aws_ecr_repository.if_agent_api.repository_url}:latest"
@@ -177,6 +185,12 @@ resource "kubernetes_deployment" "if_agent_api" {
           volume_mount {
             name       = "scripts-directory"
             mount_path = "/app/scripts"
+            read_only  = true
+          }
+
+          volume_mount {
+            name       = "skills-directory"
+            mount_path = "/app/skills"
             read_only  = true
           }
 

@@ -94,7 +94,6 @@ build {
       "mkdir -p /app/src/data/memory_db",
       "mkdir -p /app/src/data/conversations",
       "mkdir -p /app/src/data/facts",
-      "mkdir -p /app/src/sandbox",
       "mkdir -p /app/src/logs"
     ]
   }

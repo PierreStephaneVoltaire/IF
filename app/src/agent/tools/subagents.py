@@ -530,6 +530,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                     max_turns=specialist.max_iterations,
                     chat_id=self.chat_id,
                     tool_names=specialist.tools,
+                    skill_names=getattr(specialist, "skills", []),
                     original_preset=specialist.preset,
                 )
             else:

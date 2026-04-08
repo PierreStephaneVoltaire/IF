@@ -541,6 +541,17 @@ variable "scripts_path" {
   default     = "/app/scripts"
 }
 
+variable "skills_host_path" {
+  description = "Host path to AgentSkills directory for hostPath volume"
+  type        = string
+}
+
+variable "skills_path" {
+  description = "Path to AgentSkills directory (mounted volume)"
+  type        = string
+  default     = "/app/skills"
+}
+
 variable "tinyauth_oauth_whitelist" {
   description = "Comma-separated list of allowed Google email addresses"
   type        = string

@@ -5,6 +5,8 @@ proper tool dispatch, stuck detection, and iterative execution.
 
 Specialists with `agentic: true` in their YAML config are routed here instead
 of the raw OpenRouter call loop in _run_subagent().
+
+Skills are loaded per-specialist (not globally) to avoid context bloat.
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ from typing import List
 
 from pydantic import SecretStr
 
-from openhands.sdk import LLM, Agent, Conversation, MessageEvent, TextContent, Tool
+from openhands.sdk import LLM, Agent, AgentContext, Conversation, MessageEvent, TextContent, Tool
 from openhands.sdk.conversation.exceptions import ConversationRunError
 from openhands.sdk.conversation.state import ConversationExecutionStatus
 from openhands.sdk.event.conversation_error import ConversationErrorEvent
@@ -25,6 +27,7 @@ from config import LLM_API_KEY, LLM_BASE_URL, SPECIALIST_REASONING_EFFORT
 from sandbox import get_local_sandbox
 from files import strip_files_line, log_file_refs, accumulate_file_refs
 from agent.tools.terminal_tools import get_terminal_system_prompt
+from agent.skills import load_skills_for_specialist
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +75,7 @@ async def run_subagent_sdk(
     max_turns: int,
     chat_id: str,
     tool_names: List[str],
+    skill_names: List[str] | None = None,
     original_preset: str | None = None,
 ) -> str:
     """Run a specialist using the OpenHands SDK agentic loop.
@@ -87,6 +91,7 @@ async def run_subagent_sdk(
         max_turns: Maximum iterations for the agentic loop
         chat_id: Chat ID for terminal container scoping
         tool_names: Tool names from specialist config (respected exactly)
+        skill_names: AgentSkills names to load for this specialist (loaded at spawn time)
 
     Returns:
         Specialist response text (with FILES: metadata stripped)
@@ -117,11 +122,23 @@ async def run_subagent_sdk(
             max_output_tokens=max_output_tokens,
         )
 
-        # Create Agent — reuses existing system_prompt.j2 pass-through template
+        # Load skills for this specialist (per-specialist, not global)
+        skills = load_skills_for_specialist(skill_names or [])
+        if skills:
+            logger.info(f"[SDK Subagent] Loaded {len(skills)} skills: {skill_names}")
+
+        # Create Agent with optional AgentContext for skills
+        agent_context = AgentContext(
+            skills=skills,
+            load_user_skills=False,
+            load_public_skills=False,
+        ) if skills else None
+
         agent = Agent(
             llm=llm,
             tools=tools,
             mcp_config={},
+            agent_context=agent_context,
             system_prompt_filename=str(_SYSTEM_PROMPT_TEMPLATE),
             system_prompt_kwargs={"system_prompt": full_prompt},
         )

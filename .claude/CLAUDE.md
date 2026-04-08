@@ -111,6 +111,12 @@ app/
 ├── terraform/               # Kubernetes, AWS infra
 └── main_system_prompt.txt   # Agent personality base prompt
 specialists/                 # One subdir per specialist (specialist.yaml + agent.j2)
+skills/                       # AgentSkills-compliant skill packages
+└── {skill-name}/
+    ├── SKILL.md              # YAML frontmatter + markdown body
+    ├── scripts/              # optional: executables (run via uv/uvx/npx)
+    ├── references/           # optional: on-demand reference docs
+    └── assets/               # optional: templates/data
 models/                       # Dynamic model routing config
 ├── presets.yaml             # Subagent preset definitions (YAML)
 ├── tiers.yaml               # Internal tier config (air/standard/heavy + media)
@@ -329,9 +335,35 @@ Specialists with `agentic: true` in their `specialist.yaml` are routed to `run_s
 
 **Model routing for specialists**: When a specialist is spawned, its `@preset/X` reference is mapped to a YAML preset via `ModelPresetManager.resolve_preset_name()`. The `select_model_for_specialist()` function uses the fast router model to pick the best concrete model from the preset's candidate list based on the condensed task intent. If no matching YAML preset exists, the original `@preset/X` reference is used as fallback.
 
-### Delegation Pipeline
+### Skills System
 
-Automatic message routing in `delegation.py`: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent`. Uses `delegation.yaml` for category→specialist mapping.
+AgentSkills-compliant skill packages loaded per-specialist at spawn time. Skills are **not** loaded globally in the main agent (context size concern).
+
+**Directory layout**:
+```
+skills/                       # AgentSkills-compliant skill packages
+└── {skill-name}/
+    ├── SKILL.md              # YAML frontmatter + markdown body
+    ├── scripts/              # optional: executables (run via uv/uvx/npx from the agent's bash tool)
+    ├── references/           # optional: on-demand reference docs
+    └── assets/               # optional: templates/data
+```
+
+**Configuration**: Specialists declare which skills they need in their `specialist.yaml`:
+
+```yaml
+description: Code generation and debugging
+tools: [terminal_execute, read_file, write_file]
+preset: "@preset/code"
+agentic: true
+skills: [git-workflows, testing-patterns]  # Skills this specialist uses
+```
+
+**Loading**: Skills are loaded via `openhands.sdk.load_skills_from_dir` in `app/src/agent/skills.py`. The loader returns a `list[Skill]` which is passed to the specialist's `AgentContext`.
+
+**Execution**: Skill scripts run via theuv run --project skills/<name> python scripts/<script>.py` (isolated uv-managed venvs, same as temporal_* plugins).
+
+### Delegation PipelineAutomatic message routing in `delegation.py`: `categorize_conversation` → `get_directives` → `condense_intent` → `spawn_subagent`. Uses `delegation.yaml` for category→specialist mapping.
 
 Categories: `code` → coder, `architecture` → architect, `finance` → financial_analyst, `health` → health_write, `writing` → proofreader, `shell` → scripter, `planning` → planner, `reasoning` → dialectic, `decision` → decision_analyst, `git` → git_ops, `review` → code_reviewer, `exploration` → code_explorer, `documentation` → doc_generator, `testing` → test_writer, `refactoring` → refactorer, `api_design` → api_designer, `migration` → migration_planner, `incident` → incident_responder, `performance` → performance_analyst, `project_tracking` → project_manager, `tasks` → todo_generator, `requirements` → interviewer, `summarization` → summarizer, `meeting` → meeting_prep, `negotiation` → negotiation_advisor, `pdf` → pdf_generator, `resume` → resume, `cover_letter` → cover_letter, `workday` → workday, `changelog` → changelog_writer, `data` → data_analyst, `legal` → legal_reader, `prompting` → prompt_engineer, `sql` → sql_analyst, `math` → math_tutor, `language` → language_tutor, `ml_learning` → ml_tutor, `career` → career_advisor. Pattern overrides: `simple` → scripter, `investigative` → debugger, `multi_perspective` → consensus_builder, `self_assessment` → self_improver, `adversarial_reasoning` → dialectic, `implementation_check` → project_manager, `production_down` → incident_responder, `job_application` → resume, `study_math` → math_tutor, `study_language` → language_tutor, `study_ml` → ml_tutor.
 
@@ -592,6 +624,7 @@ Key configuration (see `app/src/config.py` for full list):
 | `EXTERNAL_TOOLS_PATH` | "" | Override path for external tool plugins |
 | `EXTERNAL_TOOLS_FALLBACK` | `project_root/tools/` | Fallback path if EXTERNAL_TOOLS_PATH is empty |
 | `SPECIALISTS_PATH` | `project_root/specialists/` | Path to specialists directory |
+| `SKILLS_PATH` | `project_root/skills/` | Path to AgentSkills directory |
 | `IF_MODELS_TABLE_NAME` | `if-models` | DynamoDB table for model registry |
 | `MODELS_PATH` | `project_root/models/` | Path to model preset YAML configs |
 | `MODEL_ROUTER_MODEL` | `google/gemma-3-4b-it` | Fast model for subagent model selection |

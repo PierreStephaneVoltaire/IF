@@ -36,6 +36,7 @@ class SpecialistConfig:
         max_turns: Maximum turns before timeout (non-agentic path)
         agentic: Whether to use the SDK agentic loop (Conversation.run())
         max_iterations: Maximum iterations for the SDK agentic loop
+        skills: List of AgentSkills names this specialist uses (loaded at spawn time)
     """
     slug: str
     description: str
@@ -47,6 +48,7 @@ class SpecialistConfig:
     max_turns: int = SPECIALIST_MAX_TURNS
     agentic: bool = False
     max_iterations: int = AGENTIC_MAX_ITERATIONS
+    skills: List[str] = field(default_factory=list)
 
 
 def _load_specialists() -> Dict[str, SpecialistConfig]:
@@ -92,6 +94,7 @@ def _load_specialists() -> Dict[str, SpecialistConfig]:
             max_turns=data.get("max_turns", SPECIALIST_MAX_TURNS),
             agentic=data.get("agentic", False),
             max_iterations=data.get("max_iterations", AGENTIC_MAX_ITERATIONS),
+            skills=data.get("skills", []),
         )
 
     logger.info(f"Loaded {len(registry)} specialists: {list(registry.keys())}")
