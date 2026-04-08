@@ -186,7 +186,8 @@ async def lifespan(app: FastAPI):
 
     # Health module initialization
     try:
-        from health import ProgramStore, HealthDocsRAG, init_tools, ProgramNotFoundError
+        from tools.health.core import init_tools
+        from health import ProgramStore, HealthDocsRAG, ProgramNotFoundError
 
         program_store = ProgramStore(
             table_name=os.environ.get("IF_HEALTH_TABLE_NAME", "if-health"),
