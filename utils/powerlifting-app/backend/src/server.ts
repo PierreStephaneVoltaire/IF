@@ -9,6 +9,8 @@ import { supplementsRouter } from './routes/supplements'
 import { dietNotesRouter } from './routes/dietNotes'
 import { competitionsRouter } from './routes/competitions'
 import { videosRouter } from './routes/videos'
+import { analyticsRouter } from './routes/analytics'
+import { exportRouter } from './routes/export'
 import { errorHandler } from './middleware/errorHandler'
 
 const app = express()
@@ -34,6 +36,8 @@ app.use('/api/supplements', supplementsRouter)
 app.use('/api/diet-notes', dietNotesRouter)
 app.use('/api/competitions', competitionsRouter)
 app.use('/api/videos', videosRouter)
+app.use('/api/analytics', analyticsRouter)
+app.use('/api/export', exportRouter)
 
 // Error handler
 app.use(errorHandler)

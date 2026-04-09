@@ -31,6 +31,12 @@ tools:
   - health_comp_countdown
   - get_current_date
   - health_rag_search
+  - export_program_history
+  - analyze_progression
+  - analyze_rpe_drift
+  - estimate_1rm
+  - calculate_dots
+  - weekly_analysis
 mcp_servers: []
 directive_types:
   - health

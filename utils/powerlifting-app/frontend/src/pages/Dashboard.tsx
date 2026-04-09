@@ -6,7 +6,7 @@ import { fetchWeightLog } from '@/api/client'
 import { daysUntil, formatDateShort, sessionsThisCalendarWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
-import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2 } from 'lucide-react'
+import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2, Download } from 'lucide-react'
 import type { Phase, WeightEntry } from '@powerlifting/types'
 
 export default function Dashboard() {
@@ -151,7 +151,17 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <a
+          href="/api/export/xlsx"
+          download="program_history.xlsx"
+          className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90 transition-opacity"
+        >
+          <Download className="w-4 h-4" />
+          Export Excel
+        </a>
+      </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

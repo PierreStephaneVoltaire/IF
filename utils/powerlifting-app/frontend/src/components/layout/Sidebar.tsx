@@ -12,6 +12,7 @@ import {
   Utensils,
   Trophy,
   TrendingUp,
+  Activity,
   Film,
   MoreHorizontal,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ const PRIMARY_NAV_ITEMS = [
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/list', icon: List, label: 'List' },
   { to: '/charts', icon: BarChart3, label: 'Charts' },
+  { to: '/analysis', icon: Activity, label: 'Analysis' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
 ]
 
@@ -45,6 +47,7 @@ const ALL_NAV_ITEMS = [
   { to: '/list', icon: List, label: 'List' },
   { to: '/timeline', icon: GitBranch, label: 'Timeline' },
   { to: '/charts', icon: BarChart3, label: 'Charts' },
+  { to: '/analysis', icon: Activity, label: 'Analysis' },
   { to: '/supplements', icon: Pill, label: 'Supplements' },
   { to: '/diet', icon: Utensils, label: 'Diet Notes' },
   { to: '/competitions', icon: Trophy, label: 'Competitions' },

@@ -7,6 +7,7 @@ import CalendarPage from '@/pages/CalendarPage'
 import ListPage from '@/pages/ListPage'
 import TimelinePage from '@/pages/TimelinePage'
 import ChartsPage from '@/pages/ChartsPage'
+import AnalysisPage from '@/pages/AnalysisPage'
 import GlossaryPage from '@/pages/GlossaryPage'
 import ToolsPage from '@/pages/ToolsPage'
 import SupplementsPage from '@/pages/SupplementsPage'
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/list" element={<ListPage />} />
         <Route path="/timeline" element={<TimelinePage />} />
         <Route path="/charts" element={<ChartsPage />} />
+        <Route path="/analysis" element={<AnalysisPage />} />
         <Route path="/supplements" element={<SupplementsPage />} />
         <Route path="/diet" element={<DietNotesPage />} />
         <Route path="/competitions" element={<CompetitionsPage />} />

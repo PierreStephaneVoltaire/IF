@@ -1218,6 +1218,261 @@ register_tool("HealthUpdateCurrentMaxesTool", HealthUpdateCurrentMaxesTool)
 
 
 # =============================================================================
+# Analytics & Export Tools
+# =============================================================================
+
+# --- export_program_history ---
+
+class ExportProgramHistoryAction(Action):
+    format: str = Field(default="xlsx", description="Export format (only 'xlsx' supported)")
+
+
+class ExportProgramHistoryObservation(Observation):
+    pass
+
+
+class ExportProgramHistoryExecutor(ToolExecutor[ExportProgramHistoryAction, ExportProgramHistoryObservation]):
+    def __init__(self, chat_id: str):
+        self.chat_id = chat_id
+
+    def __call__(self, action: ExportProgramHistoryAction, conversation=None) -> ExportProgramHistoryObservation:
+        import os
+        import tempfile
+        from core import _get_store
+        from src.health.export import build_program_xlsx
+
+        program = _run_async(_get_store().get_program())
+        filename = "program_history.xlsx"
+
+        if self.chat_id:
+            try:
+                from src.sandbox.local import get_local_sandbox
+                work_dir = get_local_sandbox().get_working_dir(self.chat_id)
+            except Exception:
+                work_dir = tempfile.gettempdir()
+        else:
+            work_dir = tempfile.gettempdir()
+
+        out_path = os.path.join(work_dir, filename)
+        build_program_xlsx(program, out_path)
+
+        return ExportProgramHistoryObservation.from_text(
+            f"Exported program history to {filename}.\n"
+            f"Emit this line at the end of your reply:\n"
+            f"FILES: {filename} (Excel export of full program history)"
+        )
+
+
+class ExportProgramHistoryTool(ToolDefinition[ExportProgramHistoryAction, ExportProgramHistoryObservation]):
+    @classmethod
+    def create(cls, conv_state=None, chat_id: str = "", **params) -> Sequence["ExportProgramHistoryTool"]:
+        return [cls(
+            description=(
+                "Export the full training program to an Excel (.xlsx) file. "
+                "The file contains sheets for Meta, Current Maxes, Phases, Sessions, Exercises, and Competitions. "
+                "After calling this tool, emit a FILES: line to deliver the file."
+            ),
+            action_type=ExportProgramHistoryAction,
+            observation_type=ExportProgramHistoryObservation,
+            executor=ExportProgramHistoryExecutor(chat_id=chat_id),
+        )]
+
+
+# --- analyze_progression ---
+
+class AnalyzeProgressionAction(Action):
+    exercise_name: str = Field(description="Name of the exercise (e.g. 'Squat', 'Bench Press')")
+    weeks: Optional[int] = Field(default=None, description="Number of recent weeks to analyze (default: all available)")
+
+
+class AnalyzeProgressionObservation(Observation):
+    pass
+
+
+class AnalyzeProgressionExecutor(ToolExecutor[AnalyzeProgressionAction, AnalyzeProgressionObservation]):
+    def __call__(self, action: AnalyzeProgressionAction, conversation=None) -> AnalyzeProgressionObservation:
+        from datetime import timedelta
+        from core import _get_store
+        from src.health.analytics import progression_rate, _calculate_current_week, _parse_date
+
+        program = _run_async(_get_store().get_program())
+        sessions = program.get("sessions", [])
+        program_start = program.get("meta", {}).get("program_start", "")
+
+        if action.weeks:
+            cutoff_week = _calculate_current_week(program_start) - action.weeks
+            start = _parse_date(program_start)
+            if start:
+                cutoff_date = start + timedelta(weeks=cutoff_week)
+                sessions = [s for s in sessions if _parse_date(s.get("date", "")) and _parse_date(s.get("date", "")) >= cutoff_date]
+
+        result = progression_rate(sessions, action.exercise_name, program_start)
+        return AnalyzeProgressionObservation.from_text(_format_result(result))
+
+
+class AnalyzeProgressionTool(ToolDefinition[AnalyzeProgressionAction, AnalyzeProgressionObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["AnalyzeProgressionTool"]:
+        return [cls(
+            description=(
+                "Calculate the weekly progression rate (kg/week) for a specific lift using OLS regression "
+                "on top sets across completed sessions. Returns slope, R², and data points."
+            ),
+            action_type=AnalyzeProgressionAction,
+            observation_type=AnalyzeProgressionObservation,
+            executor=AnalyzeProgressionExecutor(),
+        )]
+
+
+# --- analyze_rpe_drift ---
+
+class AnalyzeRpeDriftAction(Action):
+    exercise_name: str = Field(description="Name of the exercise")
+    window_weeks: int = Field(default=4, description="Number of weeks to analyze for drift")
+
+
+class AnalyzeRpeDriftObservation(Observation):
+    pass
+
+
+class AnalyzeRpeDriftExecutor(ToolExecutor[AnalyzeRpeDriftAction, AnalyzeRpeDriftObservation]):
+    def __call__(self, action: AnalyzeRpeDriftAction, conversation=None) -> AnalyzeRpeDriftObservation:
+        from core import _get_store
+        from src.health.analytics import rpe_drift
+
+        program = _run_async(_get_store().get_program())
+        sessions = program.get("sessions", [])
+        program_start = program.get("meta", {}).get("program_start", "")
+
+        result = rpe_drift(sessions, action.exercise_name, program_start, action.window_weeks)
+        return AnalyzeRpeDriftObservation.from_text(_format_result(result))
+
+
+class AnalyzeRpeDriftTool(ToolDefinition[AnalyzeRpeDriftAction, AnalyzeRpeDriftObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["AnalyzeRpeDriftTool"]:
+        return [cls(
+            description=(
+                "Detect RPE drift for a lift — whether perceived exertion is trending up at the same loads "
+                "(fatigue signal) or down (adaptation). Flags 'fatigue' if RPE is rising >= 0.1/week."
+            ),
+            action_type=AnalyzeRpeDriftAction,
+            observation_type=AnalyzeRpeDriftObservation,
+            executor=AnalyzeRpeDriftExecutor(),
+        )]
+
+
+# --- estimate_1rm ---
+
+class Estimate1rmAction(Action):
+    weight_kg: float = Field(description="Weight lifted in kg")
+    reps: int = Field(description="Number of repetitions performed")
+    rpe: Optional[int] = Field(default=None, description="RPE of the set (6-10), enables RPE-based estimation")
+
+
+class Estimate1rmObservation(Observation):
+    pass
+
+
+class Estimate1rmExecutor(ToolExecutor[Estimate1rmAction, Estimate1rmObservation]):
+    def __call__(self, action: Estimate1rmAction, conversation=None) -> Estimate1rmObservation:
+        from src.health.analytics import estimate_1rm
+        result = estimate_1rm(action.weight_kg, action.reps, action.rpe)
+        return Estimate1rmObservation.from_text(_format_result(result))
+
+
+class Estimate1rmTool(ToolDefinition[Estimate1rmAction, Estimate1rmObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["Estimate1rmTool"]:
+        return [cls(
+            description=(
+                "Estimate one-rep max from a working set using Epley, Brzycki, and RPE-based formulas. "
+                "Provide weight, reps, and optionally RPE for the most accurate RPE-table estimate."
+            ),
+            action_type=Estimate1rmAction,
+            observation_type=Estimate1rmObservation,
+            executor=Estimate1rmExecutor(),
+        )]
+
+
+# --- calculate_dots ---
+
+class CalculateDotsAction(Action):
+    total_kg: float = Field(description="Combined squat + bench + deadlift total in kg")
+    bodyweight_kg: float = Field(description="Lifter bodyweight in kg")
+    sex: str = Field(description="'male' or 'female'")
+
+
+class CalculateDotsObservation(Observation):
+    pass
+
+
+class CalculateDotsExecutor(ToolExecutor[CalculateDotsAction, CalculateDotsObservation]):
+    def __call__(self, action: CalculateDotsAction, conversation=None) -> CalculateDotsObservation:
+        from src.health.analytics import calculate_dots
+        result = calculate_dots(action.total_kg, action.bodyweight_kg, action.sex)
+        return CalculateDotsObservation.from_text(_format_result({"dots": result}))
+
+
+class CalculateDotsTool(ToolDefinition[CalculateDotsAction, CalculateDotsObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["CalculateDotsTool"]:
+        return [cls(
+            description=(
+                "Calculate DOTS (Dynamic Objective Total Score) from a competition total and bodyweight. "
+                "Used for comparing strength across weight classes and sexes."
+            ),
+            action_type=CalculateDotsAction,
+            observation_type=CalculateDotsObservation,
+            executor=CalculateDotsExecutor(),
+        )]
+
+
+# --- weekly_analysis ---
+
+class WeeklyAnalysisAction(Action):
+    weeks: int = Field(default=1, description="Number of weeks to analyze (default: 1)")
+
+
+class WeeklyAnalysisObservation(Observation):
+    pass
+
+
+class WeeklyAnalysisExecutor(ToolExecutor[WeeklyAnalysisAction, WeeklyAnalysisObservation]):
+    def __call__(self, action: WeeklyAnalysisAction, conversation=None) -> WeeklyAnalysisObservation:
+        from core import _get_store
+        from src.health.analytics import weekly_analysis
+
+        program = _run_async(_get_store().get_program())
+        sessions = program.get("sessions", [])
+        result = weekly_analysis(program, sessions, weeks=action.weeks)
+        return WeeklyAnalysisObservation.from_text(_format_result(result))
+
+
+class WeeklyAnalysisTool(ToolDefinition[WeeklyAnalysisAction, WeeklyAnalysisObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["WeeklyAnalysisTool"]:
+        return [cls(
+            description=(
+                "Full weekly training analysis — runs progression rate, RPE drift, fatigue index, "
+                "periodization compliance, and meet projection for the specified number of weeks. "
+                "Returns structured JSON with per-lift breakdowns, flags, and projected total."
+            ),
+            action_type=WeeklyAnalysisAction,
+            observation_type=WeeklyAnalysisObservation,
+            executor=WeeklyAnalysisExecutor(),
+        )]
+
+
+register_tool("ExportProgramHistoryTool", ExportProgramHistoryTool)
+register_tool("AnalyzeProgressionTool", AnalyzeProgressionTool)
+register_tool("AnalyzeRpeDriftTool", AnalyzeRpeDriftTool)
+register_tool("Estimate1rmTool", Estimate1rmTool)
+register_tool("CalculateDotsTool", CalculateDotsTool)
+register_tool("WeeklyAnalysisTool", WeeklyAnalysisTool)
+
+
+# =============================================================================
 # Plugin contract: get_tools()
 # =============================================================================
 
@@ -1260,6 +1515,12 @@ def get_tools() -> List[Tool]:
         Tool(name="HealthUpdateMetaTool"),
         Tool(name="HealthUpdatePhasesTool"),
         Tool(name="HealthUpdateCurrentMaxesTool"),
+        Tool(name="ExportProgramHistoryTool"),
+        Tool(name="AnalyzeProgressionTool"),
+        Tool(name="AnalyzeRpeDriftTool"),
+        Tool(name="Estimate1rmTool"),
+        Tool(name="CalculateDotsTool"),
+        Tool(name="WeeklyAnalysisTool"),
     ]
 
 
@@ -1583,7 +1844,149 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "required": ["target_date"],
             },
         },
+        "export_program_history": {
+            "name": "export_program_history",
+            "description": (
+                "Export the full training program to an Excel (.xlsx) file. "
+                "Contains sheets for Meta, Current Maxes, Phases, Sessions, Exercises, and Competitions. "
+                "After calling, emit a FILES: line to deliver the file."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "format": {"type": "string", "description": "Export format (only 'xlsx' supported)", "default": "xlsx"},
+                },
+                "required": [],
+            },
+        },
+        "analyze_progression": {
+            "name": "analyze_progression",
+            "description": (
+                "Calculate weekly progression rate (kg/week) for a lift via OLS regression on top sets. "
+                "Returns slope, R², and data points."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "exercise_name": {"type": "string", "description": "Name of the exercise"},
+                    "weeks": {"type": "integer", "description": "Number of recent weeks to analyze"},
+                },
+                "required": ["exercise_name"],
+            },
+        },
+        "analyze_rpe_drift": {
+            "name": "analyze_rpe_drift",
+            "description": (
+                "Detect RPE drift for a lift — whether perceived exertion is trending up (fatigue) or down (adaptation)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "exercise_name": {"type": "string", "description": "Name of the exercise"},
+                    "window_weeks": {"type": "integer", "description": "Number of weeks to analyze", "default": 4},
+                },
+                "required": ["exercise_name"],
+            },
+        },
+        "estimate_1rm": {
+            "name": "estimate_1rm",
+            "description": "Estimate one-rep max using Epley, Brzycki, and RPE-based formulas.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "weight_kg": {"type": "number", "description": "Weight lifted in kg"},
+                    "reps": {"type": "integer", "description": "Number of repetitions"},
+                    "rpe": {"type": "integer", "description": "RPE of the set (6-10)"},
+                },
+                "required": ["weight_kg", "reps"],
+            },
+        },
+        "calculate_dots": {
+            "name": "calculate_dots",
+            "description": "Calculate DOTS score from competition total and bodyweight.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "total_kg": {"type": "number", "description": "Combined squat + bench + deadlift total"},
+                    "bodyweight_kg": {"type": "number", "description": "Lifter bodyweight in kg"},
+                    "sex": {"type": "string", "description": "'male' or 'female'"},
+                },
+                "required": ["total_kg", "bodyweight_kg", "sex"],
+            },
+        },
+        "weekly_analysis": {
+            "name": "weekly_analysis",
+            "description": (
+                "Full weekly training analysis — progression, RPE drift, fatigue index, "
+                "compliance, meet projection. Returns structured JSON."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "weeks": {"type": "integer", "description": "Number of weeks to analyze", "default": 1},
+                },
+                "required": [],
+            },
+        },
     }
+
+
+# =============================================================================
+# Route helpers for analytics/export tools (non-agentic specialist path)
+# =============================================================================
+
+def _get_program_and_sessions():
+    """Fetch program from store, return (program, sessions, program_start)."""
+    from core import _get_store
+    program = _run_async(_get_store().get_program())
+    sessions = program.get("sessions", [])
+    program_start = program.get("meta", {}).get("program_start", "")
+    return program, sessions, program_start
+
+
+def _do_export(args):
+    import os
+    import tempfile
+    from core import _get_store
+    from src.health.export import build_program_xlsx
+
+    program = _run_async(_get_store().get_program())
+    filename = "program_history.xlsx"
+    out_path = os.path.join(tempfile.gettempdir(), filename)
+    build_program_xlsx(program, out_path)
+    return (
+        f"Exported program history to {filename}.\n"
+        f"Emit this line at the end of your reply:\n"
+        f"FILES: {filename} (Excel export of full program history)"
+    )
+
+
+def _do_analyze_progression(args):
+    from src.health.analytics import progression_rate
+    program, sessions, program_start = _get_program_and_sessions()
+    return progression_rate(sessions, args["exercise_name"], program_start)
+
+
+def _do_analyze_rpe_drift(args):
+    from src.health.analytics import rpe_drift
+    program, sessions, program_start = _get_program_and_sessions()
+    return rpe_drift(sessions, args["exercise_name"], program_start, args.get("window_weeks", 4))
+
+
+def _do_estimate_1rm(args):
+    from src.health.analytics import estimate_1rm
+    return estimate_1rm(args["weight_kg"], args["reps"], args.get("rpe"))
+
+
+def _do_calculate_dots(args):
+    from src.health.analytics import calculate_dots
+    return {"dots": calculate_dots(args["total_kg"], args["bodyweight_kg"], args["sex"])}
+
+
+def _do_weekly_analysis(args):
+    from src.health.analytics import weekly_analysis
+    program, sessions, program_start = _get_program_and_sessions()
+    return weekly_analysis(program, sessions, weeks=args.get("weeks", 1))
 
 
 # =============================================================================
@@ -1660,6 +2063,12 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "pct_of_max": lambda: pct_of_max(args["max_kg"], args["pct"]),
         "calculate_attempts": lambda: calculate_attempts(args["lift"], args["opener_kg"], args.get("j1_override"), args.get("j2_override"), args.get("last_felt")),
         "days_until": lambda: days_until(args["target_date"], args.get("label", "target")),
+        "export_program_history": lambda: _do_export(args),
+        "analyze_progression": lambda: _do_analyze_progression(args),
+        "analyze_rpe_drift": lambda: _do_analyze_rpe_drift(args),
+        "estimate_1rm": lambda: _do_estimate_1rm(args),
+        "calculate_dots": lambda: _do_calculate_dots(args),
+        "weekly_analysis": lambda: _do_weekly_analysis(args),
     }
 
     handler = ROUTES.get(name)

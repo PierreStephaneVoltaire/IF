@@ -47,6 +47,10 @@ num2words>=0.5.12
 # PDF Extraction for Health RAG
 tika>=2.0.0
 
+# Excel export for health module
+openpyxl>=3.1.0
+
+
 # Date/Time Parsing for Temporal Tools
 dateparser>=1.1.0
 python-dateutil>=2.8.0
