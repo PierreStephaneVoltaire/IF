@@ -35,6 +35,7 @@ from api.files import router as files_router, get_sandbox_directory
 from api.webhooks import router as webhooks_router
 from api.directives import router as directives_router
 from api.admin import router as admin_router
+from api import health_analytics
 from presets.loader import get_preset_manager
 from mcp_servers.config import validate_mcp_config
 from storage.factory import init_store, close_store, get_webhook_store, init_directive_store
@@ -492,6 +493,7 @@ app.include_router(files_router)
 app.include_router(webhooks_router)
 app.include_router(directives_router)
 app.include_router(admin_router)
+app.include_router(health_analytics.router)
 
 
 

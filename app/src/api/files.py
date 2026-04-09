@@ -278,6 +278,7 @@ def get_content_type(extension: str) -> Optional[str]:
         ".csv": "text/csv",
         ".parquet": "application/octet-stream",
         ".sql": "text/x-sql",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }
     
     return content_types.get(extension)
