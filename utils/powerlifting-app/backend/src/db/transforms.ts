@@ -62,6 +62,7 @@ export function transformProgram(item: Record<string, unknown>): Program {
       ...session,
       week_number: weekNum,
       phase,
+      phase_name: phase.name,
     }
   })
 

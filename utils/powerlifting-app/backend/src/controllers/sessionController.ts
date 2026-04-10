@@ -1,7 +1,7 @@
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
 import { docClient, TABLE } from '../db/dynamo'
 import { AppError } from '../middleware/errorHandler'
-import type { Session, Exercise, Phase } from '@powerlifting/types'
+import type { Session, Exercise, Phase, SessionStatus } from '@powerlifting/types'
 
 const PK = 'operator'
 
@@ -292,6 +292,57 @@ export async function completeSession(
     session_rpe: data.rpe ?? sessions[index].session_rpe,
     body_weight_kg: data.bodyWeightKg ?? sessions[index].body_weight_kg,
     session_notes: data.notes ?? sessions[index].session_notes,
+  }
+
+  const updateCommand = new UpdateCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk },
+    UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
+    ExpressionAttributeNames: { '#meta': 'meta' },
+    ExpressionAttributeValues: {
+      ':sessions': sessions,
+      ':now': new Date().toISOString(),
+    },
+  })
+
+  await docClient.send(updateCommand)
+}
+
+/**
+ * Update only the status field on a session
+ */
+export async function updateSessionStatus(
+  version: string,
+  date: string,
+  index: number,
+  status: SessionStatus
+): Promise<void> {
+  const sk = await resolveVersionSk(version)
+  const getCommand = new GetCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk },
+    ProjectionExpression: 'sessions',
+  })
+
+  const result = await docClient.send(getCommand)
+
+  if (!result.Item) {
+    throw new AppError(`Program version ${version} not found`, 404)
+  }
+
+  const sessions = (result.Item.sessions ?? []) as Session[]
+
+  if (index < 0 || index >= sessions.length) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  if (sessions[index].date !== date) {
+    throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
+  }
+
+  sessions[index] = {
+    ...sessions[index],
+    status,
+    completed: status === 'completed' ? true : sessions[index].completed,
   }
 
   const updateCommand = new UpdateCommand({

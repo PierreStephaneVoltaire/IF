@@ -1,6 +1,7 @@
 import { Router } from 'express'
+import crypto from 'crypto'
 import * as sessionController from '../controllers/sessionController'
-import type { Session, Exercise } from '@powerlifting/types'
+import type { Session, Exercise, SessionStatus } from '@powerlifting/types'
 
 export const sessionsRouter = Router({ mergeParams: true })
 
@@ -33,12 +34,15 @@ sessionsRouter.post('/:version', async (req, res, next) => {
 
     // Create a complete session with defaults
     const newSession: Session = {
+      id: session.id || crypto.randomUUID(),
       date: session.date,
       day: session.day || 'Monday',
       week: session.week || 'W1',
       week_number: 1,
       phase: session.phase || { name: 'Unknown', intent: '', start_week: 1, end_week: 1 },
+      status: session.status || 'planned',
       completed: false,
+      planned_exercises: session.planned_exercises || [],
       exercises: session.exercises || [],
       session_notes: session.session_notes || '',
       session_rpe: session.session_rpe || null,
@@ -118,6 +122,32 @@ sessionsRouter.patch('/:version/:date/:index/reschedule', async (req, res, next)
   }
 })
 
+// PATCH /api/sessions/:version/:date/:index/status - Update session status
+sessionsRouter.patch('/:version/:date/:index/status', async (req, res, next) => {
+  try {
+    const { status } = req.body as { status: SessionStatus }
+    const index = parseInt(req.params.index, 10)
+
+    const validStatuses: SessionStatus[] = ['planned', 'logged', 'completed', 'skipped']
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({
+        data: null,
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+      })
+    }
+
+    await sessionController.updateSessionStatus(
+      req.params.version,
+      req.params.date,
+      index,
+      status
+    )
+    res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // PATCH /api/sessions/:version/:date/:index/complete - Mark session complete
 sessionsRouter.patch('/:version/:date/:index/complete', async (req, res, next) => {
   try {
@@ -149,11 +179,16 @@ sessionsRouter.post('/:version/:date/:index/exercise', async (req, res, next) =>
       })
     }
 
+    const newExercise: Exercise = {
+      ...exercise,
+      failed: exercise.failed ?? false,
+    }
+
     await sessionController.addExercise(
       req.params.version,
       req.params.date,
       index,
-      exercise
+      newExercise
     )
     res.json({ data: { success: true }, error: null })
   } catch (err) {

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import * as programController from '../controllers/programController'
+import type { PlannedExercise } from '@powerlifting/types'
 
 export const programsRouter = Router()
 
@@ -86,6 +87,72 @@ programsRouter.put('/:version/phases', async (req, res, next) => {
     }
 
     await programController.updatePhases(req.params.version, phases)
+    res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/programs/:version/designer/batch-week - Batch create planned sessions for a week
+programsRouter.post('/:version/designer/batch-week', async (req, res, next) => {
+  try {
+    const { week_number, week_label, days, phase_name, exercises } = req.body as {
+      week_number: number
+      week_label: string
+      days: Array<{ date: string; day: string }>
+      phase_name: string
+      exercises: PlannedExercise[]
+    }
+
+    if (!week_number || !week_label || !Array.isArray(days) || days.length === 0) {
+      return res.status(400).json({
+        data: null,
+        error: 'Missing required fields: week_number, week_label, days',
+      })
+    }
+
+    for (const day of days) {
+      if (!day.date || !day.day) {
+        return res.status(400).json({
+          data: null,
+          error: 'Each day must have date and day fields',
+        })
+      }
+    }
+
+    await programController.batchCreateWeek(
+      req.params.version,
+      week_number,
+      week_label,
+      days,
+      phase_name || 'Unknown',
+      exercises || []
+    )
+    res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PUT /api/programs/:version/designer/:date/:index/planned-exercises - Update planned exercises on a session
+programsRouter.put('/:version/designer/:date/:index/planned-exercises', async (req, res, next) => {
+  try {
+    const { planned_exercises } = req.body as { planned_exercises: PlannedExercise[] }
+    const index = parseInt(req.params.index, 10)
+
+    if (!Array.isArray(planned_exercises)) {
+      return res.status(400).json({
+        data: null,
+        error: 'planned_exercises must be an array',
+      })
+    }
+
+    await programController.updatePlannedExercises(
+      req.params.version,
+      req.params.date,
+      index,
+      planned_exercises
+    )
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)

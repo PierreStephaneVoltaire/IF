@@ -3,7 +3,7 @@ import { Search, Plus, X, ChevronDown, ChevronUp, Trash2, Edit2 } from 'lucide-r
 import { clsx } from 'clsx'
 import * as api from '@/api/client'
 import { useUiStore } from '@/store/uiStore'
-import type { GlossaryExercise, MuscleGroup, ExerciseCategory, Equipment } from '@powerlifting/types'
+import type { GlossaryExercise, MuscleGroup, ExerciseCategory, Equipment, FatigueCategory } from '@powerlifting/types'
 
 const MUSCLE_LABELS: Record<MuscleGroup, string> = {
   quads: 'Quads',
@@ -51,6 +51,20 @@ const EQUIPMENT_LABELS: Record<Equipment, string> = {
   kettlebell: 'Kettlebell',
 }
 
+const FATIGUE_CATEGORY_OPTIONS: { value: FatigueCategory; label: string }[] = [
+  { value: 'primary_axial', label: 'Primary Axial' },
+  { value: 'primary_upper', label: 'Primary Upper' },
+  { value: 'secondary', label: 'Secondary' },
+  { value: 'accessory', label: 'Accessory' },
+]
+
+const FATIGUE_LABELS: Record<FatigueCategory, string> = {
+  primary_axial: 'Primary Axial',
+  primary_upper: 'Primary Upper',
+  secondary: 'Secondary',
+  accessory: 'Accessory',
+}
+
 export default function GlossaryPage() {
   const { pushToast } = useUiStore()
   const [exercises, setExercises] = useState<GlossaryExercise[]>([])
@@ -64,6 +78,7 @@ export default function GlossaryPage() {
   const [formData, setFormData] = useState<Partial<GlossaryExercise>>({
     name: '',
     category: 'squat',
+    fatigue_category: 'accessory',
     primary_muscles: [],
     secondary_muscles: [],
     equipment: 'barbell',
@@ -111,9 +126,10 @@ export default function GlossaryPage() {
 
     try {
       const exercise: GlossaryExercise = {
-        id: isEditing?.id || '',
+        ...(isEditing || {}),
         name: formData.name || '',
         category: formData.category || 'squat',
+        fatigue_category: formData.fatigue_category || 'accessory',
         primary_muscles: formData.primary_muscles || [],
         secondary_muscles: formData.secondary_muscles || [],
         equipment: formData.equipment || 'barbell',
@@ -131,6 +147,7 @@ export default function GlossaryPage() {
       setFormData({
         name: '',
         category: 'squat',
+        fatigue_category: 'accessory',
         primary_muscles: [],
         secondary_muscles: [],
         equipment: 'barbell',
@@ -160,6 +177,7 @@ export default function GlossaryPage() {
     setFormData({
       name: exercise.name,
       category: exercise.category,
+      fatigue_category: exercise.fatigue_category || 'accessory',
       primary_muscles: exercise.primary_muscles,
       secondary_muscles: exercise.secondary_muscles,
       equipment: exercise.equipment,
@@ -330,6 +348,19 @@ export default function GlossaryPage() {
             </select>
           </div>
 
+          <div>
+            <label className="text-sm text-muted-foreground">Fatigue Category</label>
+            <select
+              value={formData.fatigue_category || 'accessory'}
+              onChange={(e) => setFormData((p) => ({ ...p, fatigue_category: e.target.value as FatigueCategory }))}
+              className="w-full px-3 py-2 border border-border rounded-md bg-background"
+            >
+              {FATIGUE_CATEGORY_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm text-muted-foreground">Primary Muscles</label>
@@ -461,6 +492,9 @@ export default function GlossaryPage() {
                       <span className="font-medium">{exercise.name}</span>
                       <span className="text-xs px-2 py-0.5 bg-secondary rounded">
                         {EQUIPMENT_LABELS[exercise.equipment]}
+                      </span>
+                      <span className="text-xs px-2 py-0.5 bg-muted text-muted-foreground rounded">
+                        {FATIGUE_LABELS[exercise.fatigue_category || 'accessory']}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">

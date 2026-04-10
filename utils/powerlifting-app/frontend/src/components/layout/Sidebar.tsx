@@ -15,6 +15,7 @@ import {
   Activity,
   Film,
   MoreHorizontal,
+  ClipboardList,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -25,6 +26,7 @@ interface SidebarProps {
 const PRIMARY_NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
+  { to: '/designer', icon: ClipboardList, label: 'Designer' },
   { to: '/list', icon: List, label: 'List' },
   { to: '/charts', icon: BarChart3, label: 'Charts' },
   { to: '/analysis', icon: Activity, label: 'Analysis' },
@@ -44,6 +46,7 @@ const SECONDARY_NAV_ITEMS = [
 const ALL_NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
+  { to: '/designer', icon: ClipboardList, label: 'Designer' },
   { to: '/list', icon: List, label: 'List' },
   { to: '/timeline', icon: GitBranch, label: 'Timeline' },
   { to: '/charts', icon: BarChart3, label: 'Charts' },

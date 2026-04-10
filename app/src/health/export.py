@@ -126,12 +126,14 @@ def build_program_xlsx(program: dict, out_path: str) -> str:
             phase.get("start_week", ""),
             phase.get("end_week", ""),
             phase.get("intent", ""),
-            phase.get("target_rpe", ""),
+            phase.get("target_rpe_min", ""),
+            phase.get("target_rpe_max", ""),
             phase.get("days_per_week", ""),
+            phase.get("notes", ""),
         ])
     _write_sheet(
         ws_phases,
-        ["Phase", "Start Week", "End Week", "Intent", "Target RPE", "Days/Week"],
+        ["Phase", "Start Week", "End Week", "Intent", "Target RPE Min", "Target RPE Max", "Days/Week", "Notes"],
         phase_rows,
     )
 
@@ -140,11 +142,13 @@ def build_program_xlsx(program: dict, out_path: str) -> str:
     session_rows = []
     for s in sessions:
         session_rows.append([
+            s.get("id", ""),
             s.get("date", ""),
             s.get("week", ""),
             s.get("week_number", ""),
             _extract_phase_name(s.get("phase", "")),
             s.get("day", ""),
+            s.get("status", ""),
             s.get("completed", ""),
             s.get("body_weight_kg", ""),
             s.get("session_rpe", ""),
@@ -152,7 +156,7 @@ def build_program_xlsx(program: dict, out_path: str) -> str:
         ])
     _write_sheet(
         ws_sessions,
-        ["Date", "Week", "Week #", "Phase", "Day", "Completed", "Body Weight (kg)", "Session RPE", "Notes"],
+        ["ID", "Date", "Week", "Week #", "Phase", "Day", "Status", "Completed", "Body Weight (kg)", "Session RPE", "Notes"],
         session_rows,
     )
 
@@ -180,12 +184,13 @@ def build_program_xlsx(program: dict, out_path: str) -> str:
                 sets,
                 reps,
                 ex.get("kg", ""),
+                ex.get("failed", False),
                 ex.get("rpe", ""),
                 round(volume, 1),
             ])
     _write_sheet(
         ws_exercises,
-        ["Date", "Week", "Phase", "Exercise", "Sets", "Reps", "Weight (kg)", "RPE", "Volume"],
+        ["Date", "Week", "Phase", "Exercise", "Sets", "Reps", "Weight (kg)", "Failed", "RPE", "Volume"],
         ex_rows,
     )
 

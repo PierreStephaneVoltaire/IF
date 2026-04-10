@@ -37,7 +37,10 @@ router = APIRouter(prefix="/v1/health", tags=["health"])
 
 
 @router.get("/analysis/weekly")
-async def get_weekly_analysis(weeks: int = Query(default=1, ge=1, le=52)):
+async def get_weekly_analysis(
+    weeks: int = Query(default=1, ge=1, le=52),
+    block: str = Query(default="current"),
+):
     """Return structured weekly analysis JSON."""
     from health.program_store import ProgramStore
     from health.analytics import weekly_analysis
@@ -47,7 +50,7 @@ async def get_weekly_analysis(weeks: int = Query(default=1, ge=1, le=52)):
         store = ProgramStore(IF_HEALTH_TABLE_NAME)
         program = _sanitize_decimals(await store.get_program())
         sessions = program.get("sessions", [])
-        result = weekly_analysis(program, sessions, weeks=weeks)
+        result = weekly_analysis(program, sessions, weeks=weeks, block=block)
         return result
     except Exception as e:
         logger.error(f"[HealthAnalytics] weekly_analysis failed: {e}")

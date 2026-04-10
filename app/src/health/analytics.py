@@ -102,6 +102,13 @@ _RPE_TABLE_PRIMARY.update({
 
 INSUFFICIENT_DATA = {"status": "insufficient_data"}
 
+FATIGUE_MULTIPLIERS = {
+    "primary_axial": 1.0,
+    "primary_upper": 0.8,
+    "secondary": 0.6,
+    "accessory": 0.3,
+}
+
 
 def _num(v: Any) -> float:
     """Convert a value that may be Decimal, str, int, or float to float."""
@@ -422,6 +429,7 @@ def rpe_drift(
         wk = _week_index(s, program_start)
         if wk is None:
             continue
+        rpe = None
         rpe_val = s.get("session_rpe")
         if rpe_val is not None:
             rpe = _num(rpe_val)
@@ -467,16 +475,12 @@ def rpe_drift(
 
 
 def fatigue_index(sessions: list[dict], days: int = 14) -> dict:
-    """Composite fatigue score from recent training signals.
+    """Composite fatigue score from observable training data.
 
-    Components (weighted):
-      - avg_rpe (weight 0.4): mean session RPE, normalized to 0-1 (10 = max fatigue)
-      - volume_delta (weight 0.35): week-over-week volume change, capped
-      - bodyweight_delta (weight 0.25): bodyweight drop (stress indicator), capped
-
-    Returns:
-        {"score": float (0-1), "components": {...}, "flags": [...]}
-        or INSUFFICIENT_DATA.
+    No RPE required. Derived from:
+      - failed compound sets ratio (40%)
+      - fatigue load spike (35%)
+      - session skip rate (25%)
     """
     ref = date.today()
     cutoff = ref - timedelta(days=days)
@@ -489,186 +493,110 @@ def fatigue_index(sessions: list[dict], days: int = 14) -> dict:
     if len(recent) < 2:
         return {**INSUFFICIENT_DATA, "reason": f"Need at least 2 sessions in the last {days} days"}
 
-    # Component 1: average RPE
-    rpes = []
+    # Component 1: failed compound sets ratio (40%)
+    total_compound_sets = 0
+    failed_compound_sets = 0
     for s in recent:
-        rpe_raw = s.get("session_rpe")
-        if rpe_raw is not None:
-            try:
-                rpes.append(_num(rpe_raw))
-            except (ValueError, TypeError):
-                pass
-    avg_rpe = sum(rpes) / len(rpes) if rpes else 7.0
-    rpe_norm = _clamp((avg_rpe - 5) / 5, 0, 1)  # 5 RPE = 0, 10 RPE = 1
-
-    # Component 2: volume delta (this week vs last week)
-    this_week_start = ref - timedelta(days=7)
-    last_week_start = ref - timedelta(days=14)
-    vol_this = 0.0
-    vol_last = 0.0
-    for s in recent:
-        d = _parse_date(s.get("date", ""))
-        if d is None:
-            continue
         for ex in s.get("exercises", []):
-            kg = ex.get("kg")
-            try:
-                kg_f = _num(kg) if kg is not None else 0
-            except (ValueError, TypeError):
-                kg_f = 0
+            name_lower = ex.get("name", "").lower()
+            is_compound = any(kw in name_lower for kw in
+                ["squat", "deadlift", "bench", "press", "row", "rdl", "pullup", "chinup"])
+            if not is_compound:
+                continue
             sets = _num(ex.get("sets", 0))
-            reps = _num(ex.get("reps", 0))
-            v = sets * reps * kg_f
-            if d >= this_week_start:
-                vol_this += v
-            elif d >= last_week_start:
-                vol_last += v
+            total_compound_sets += sets
+            if ex.get("failed", False):
+                failed_compound_sets += sets
 
-    if vol_last > 0:
-        vol_change = (vol_this - vol_last) / vol_last
-    else:
-        vol_change = 0.0
-    # Volume spike is a fatigue risk; negative = deload (less fatigue)
-    vol_norm = _clamp(vol_change, -1, 1) * 0.5 + 0.5  # map -1..1 to 0..1
+    failed_ratio = _clamp(failed_compound_sets / total_compound_sets, 0, 1) if total_compound_sets > 0 else 0
 
-    # Component 3: bodyweight delta (weight loss = potential stress)
-    bws = []
-    for s in recent:
-        bw = _num(s.get("body_weight_kg"))
-        if bw is not None:
-            try:
-                bws.append((s.get("date", ""), _num(s.get("body_weight_kg"))))
-            except (ValueError, TypeError):
-                pass
+    # Component 2: fatigue load spike (35%)
+    this_week_start = ref - timedelta(days=7)
+    this_week_load = 0.0
+    prev_weeks_load = []
+    for week_offset in range(1, 4):
+        wk_start = ref - timedelta(days=7 * (week_offset + 1))
+        wk_end = ref - timedelta(days=7 * week_offset)
+        wk_load = 0.0
+        for s in sessions:
+            d = _parse_date(s.get("date", ""))
+            if d and wk_start <= d < wk_end:
+                for ex in s.get("exercises", []):
+                    kg = _num(ex.get("kg", 0))
+                    sets = _num(ex.get("sets", 0))
+                    reps = _num(ex.get("reps", 0))
+                    wk_load += sets * reps * kg
+        if wk_load > 0:
+            prev_weeks_load.append(wk_load)
 
-    bw_delta_norm = 0.3  # neutral default
-    if len(bws) >= 2:
-        bws.sort(key=lambda x: x[0])
-        bw_change = bws[-1][1] - bws[0][1]
-        # More than 1kg drop in 2 weeks is notable stress
-        bw_delta_norm = _clamp(-bw_change / 2.0, 0, 1)
+    for s in sessions:
+        d = _parse_date(s.get("date", ""))
+        if d and d >= this_week_start:
+            for ex in s.get("exercises", []):
+                kg = _num(ex.get("kg", 0))
+                sets = _num(ex.get("sets", 0))
+                reps = _num(ex.get("reps", 0))
+                this_week_load += sets * reps * kg
 
-    score = round(rpe_norm * 0.4 + vol_norm * 0.35 + bw_delta_norm * 0.25, 3)
+    avg_prev = sum(prev_weeks_load) / len(prev_weeks_load) if prev_weeks_load else 0
+    load_spike = _clamp((this_week_load - avg_prev) / avg_prev, 0, 1) if avg_prev > 0 else 0
+
+    # Component 3: skip rate (25%)
+    planned_in_window = [s for s in sessions if _parse_date(s.get("date", ""))
+                         and cutoff <= _parse_date(s.get("date", "")) <= ref
+                         and s.get("status") in ("planned", "logged", "completed", "skipped")]
+    skipped = sum(1 for s in planned_in_window if s.get("status") == "skipped")
+    skip_rate = _clamp(skipped / len(planned_in_window), 0, 1) if planned_in_window else 0
+
+    score = round(0.40 * failed_ratio + 0.35 * load_spike + 0.25 * skip_rate, 3)
 
     flags = []
-    if rpe_norm >= 0.7:
-        flags.append("high_rpe")
-    if vol_change > 0.15:
+    if failed_ratio > 0.15:
+        flags.append("failed_sets_spike")
+    if load_spike > 0.20:
         flags.append("volume_spike")
-    if bw_delta_norm >= 0.5:
-        flags.append("weight_loss")
-    if score >= 0.7:
+    if skip_rate > 0.30:
+        flags.append("skipping_sessions")
+    if score >= 0.6:
         flags.append("overreaching_risk")
 
     return {
         "score": score,
         "components": {
-            "avg_rpe": round(avg_rpe, 1),
-            "rpe_normalized": round(rpe_norm, 3),
-            "volume_change_pct": round(vol_change * 100, 1),
-            "volume_normalized": round(vol_norm, 3),
-            "bodyweight_delta_norm": round(bw_delta_norm, 3),
+            "failed_compound_ratio": round(failed_ratio, 3),
+            "fatigue_load_spike": round(load_spike, 3),
+            "skip_rate": round(skip_rate, 3),
         },
         "flags": flags,
     }
 
 
-def periodization_compliance(program: dict, weeks: int = 4) -> dict:
-    """Compare actual volume/intensity against phase targets.
-
-    Looks at the current phase's target RPE ranges and volume prescriptions
-    vs what was actually logged.
-
-    Returns:
-        {"phase": str, "planned_intensity": float, "actual_intensity": float,
-         "planned_volume_sessions": int, "actual_volume_sessions": int,
-         "compliance_pct": float}
-        or INSUFFICIENT_DATA.
-    """
-    phases = program.get("phases", [])
+def session_compliance(program: dict, weeks: int = 4) -> dict:
+    """Planned vs completed session compliance."""
     sessions = program.get("sessions", [])
     meta = program.get("meta", {})
-
-    if not phases or not sessions:
-        return {**INSUFFICIENT_DATA, "reason": "No phases or sessions in program"}
-
-    current_week = _calculate_current_week(meta.get("program_start", ""))
-    current_phase = _find_current_phase(phases, current_week)
-    if not current_phase:
-        # Fall back to last phase
-        current_phase = phases[-1]
-
-    phase_name = current_phase.get("name", "Unknown")
-
-    # Determine phase window
-    phase_start_week = current_phase.get("start_week", 1)
-    phase_end_week = current_phase.get("end_week", current_week)
-    # Look at the last `weeks` weeks within the phase
-    lookback_start = max(phase_start_week, current_week - weeks + 1)
-
-    # Filter sessions to the lookback window
     program_start = meta.get("program_start", "")
-    phase_sessions = []
-    for s in sessions:
-        if not s.get("completed"):
-            continue
-        wk = _week_index(s, program_start) if program_start else None
-        if wk is None:
-            continue
-        week_num = int(wk) + 1
-        if lookback_start <= week_num <= min(phase_end_week, current_week):
-            phase_sessions.append(s)
+    current_week = _calculate_current_week(program_start)
+    cutoff_week = max(1, current_week - weeks + 1)
 
-    if not phase_sessions:
-        return {**INSUFFICIENT_DATA, "reason": f"No completed sessions in weeks {lookback_start}-{current_week}"}
+    planned = [s for s in sessions
+               if s.get("status") in ("planned", "logged", "completed", "skipped")
+               and cutoff_week <= int(s.get("week_number", 0)) <= current_week]
+    completed = [s for s in planned if s.get("status") in ("logged", "completed")]
 
-    # Planned intensity: use phase target_rpe if available
-    planned_intensity = current_phase.get("target_rpe", 8.0)
-    try:
-        planned_intensity = _num(planned_intensity)
-    except (ValueError, TypeError):
-        planned_intensity = 8.0
+    planned_count = len(planned)
+    completed_count = len(completed)
+    compliance_pct = round((completed_count / planned_count) * 100, 1) if planned_count > 0 else 0
 
-    # Actual intensity: mean session RPE
-    actual_rpes = []
-    for s in phase_sessions:
-        rpe_raw = s.get("session_rpe")
-        if rpe_raw is not None:
-            try:
-                actual_rpes.append(_num(rpe_raw))
-            except (ValueError, TypeError):
-                pass
-    actual_intensity = sum(actual_rpes) / len(actual_rpes) if actual_rpes else 0
-
-    # Volume: count sessions completed vs planned
-    # Planned sessions per week from phase
-    planned_sessions_per_week = current_phase.get("days_per_week", 4)
-    try:
-        planned_sessions_per_week = int(planned_sessions_per_week)
-    except (ValueError, TypeError):
-        planned_sessions_per_week = 4
-    weeks_in_window = current_week - lookback_start + 1
-    planned_volume_sessions = planned_sessions_per_week * weeks_in_window
-    actual_volume_sessions = len(phase_sessions)
-
-    if planned_volume_sessions > 0:
-        compliance_pct = round((actual_volume_sessions / planned_volume_sessions) * 100, 1)
-    else:
-        compliance_pct = 100.0
-
-    # Intensity compliance (how close actual RPE is to target, ±1 RPE tolerance)
-    intensity_deviation = abs(actual_intensity - planned_intensity)
-    intensity_compliance = max(0, 1.0 - intensity_deviation / 2.0)  # 0 deviation = 100%, 2+ = 0%
-    overall_compliance = round(compliance_pct * 0.5 + intensity_compliance * 100 * 0.5, 1)
+    phases = program.get("phases", [])
+    current_phase = _find_current_phase(phases, current_week)
+    phase_name = current_phase.get("name", "Unknown") if current_phase else "Unknown"
 
     return {
         "phase": phase_name,
-        "weeks_analyzed": weeks_in_window,
-        "planned_intensity": round(planned_intensity, 1),
-        "actual_intensity": round(actual_intensity, 1),
-        "planned_volume_sessions": planned_volume_sessions,
-        "actual_volume_sessions": actual_volume_sessions,
-        "compliance_pct": overall_compliance,
+        "planned_sessions": planned_count,
+        "completed_sessions": completed_count,
+        "compliance_pct": compliance_pct,
     }
 
 
@@ -691,28 +619,56 @@ def _estimate_maxes_from_comps(competitions: list[dict]) -> dict:
     return {}
 
 
-def _estimate_maxes_from_sessions(sessions: list[dict]) -> dict:
-    """Estimate current maxes from the heaviest singles/doubles in recent sessions."""
-    top: dict[str, float] = {}
+def _estimate_maxes_from_sessions(sessions: list[dict], lookback_days: int = 90) -> dict:
+    """Estimate current maxes from best sets in the last N days.
+    Uses RPE table when available, Epley formula as fallback.
+    """
+    cutoff = date.today() - timedelta(days=lookback_days)
+    best_estimates: dict[str, float] = {}
+
     for s in sessions:
+        d = _parse_date(s.get("date", ""))
+        if d is None or d < cutoff:
+            continue
+        status = s.get("status", "")
+        if status in ("planned", "skipped"):
+            continue
+
+        session_rpe = s.get("session_rpe")
         for ex in s.get("exercises", []):
-            name = ex.get("name", "").lower()
-            kg = ex.get("kg")
-            if kg is None:
+            if ex.get("failed", False):
                 continue
-            try:
-                kg_f = _num(kg)
-            except (ValueError, TypeError):
+            name = ex.get("name", "").lower().strip()
+            kg = _num(ex.get("kg", 0))
+            reps = int(_num(ex.get("reps", 0)))
+            if kg <= 0 or reps <= 0:
                 continue
-            for canonical in ("squat", "bench press", "bench", "deadlift"):
-                if canonical in name or name in canonical:
-                    key = "bench" if canonical == "bench press" else canonical
-                    if key not in top or kg_f > top[key]:
-                        top[key] = kg_f
-    # Only return if we found at least 2 of the 3 lifts
-    if len(top) >= 2:
-        return top
-    return {}
+
+            canonical = None
+            # Exact match only — no substring matching
+            if name == "squat":
+                canonical = "squat"
+            elif name in ("bench press", "bench"):
+                canonical = "bench"
+            elif name == "deadlift":
+                canonical = "deadlift"
+            if canonical is None:
+                continue
+
+            rpe = session_rpe if session_rpe is not None else None
+            if rpe is not None and 1 <= reps <= 10 and 6 <= int(rpe) <= 10:
+                pct = _RPE_TABLE_PRIMARY.get((reps, int(rpe)))
+                if pct is not None:
+                    e1rm = kg / pct
+                else:
+                    e1rm = kg * (1 + reps / 30)
+            else:
+                e1rm = kg * (1 + reps / 30)
+
+            if canonical not in best_estimates or e1rm > best_estimates[canonical]:
+                best_estimates[canonical] = round(e1rm, 1)
+
+    return best_estimates if len(best_estimates) >= 2 else {}
 
 
 def meet_projection(
@@ -748,18 +704,42 @@ def meet_projection(
     if not program_start:
         program_start = _infer_program_start(sessions)
 
-    # Get current maxes — fall back to most recent competition results
-    maxes = program.get("current_maxes", {})
-    method = "current_maxes"
-    if not maxes:
-        maxes = _estimate_maxes_from_comps(program.get("competitions", []))
-        method = "comp_results"
-    if not maxes:
-        maxes = _estimate_maxes_from_sessions(sessions)
-        method = "session_estimated"
+    # Get maxes from session estimates
+    maxes = _estimate_maxes_from_sessions(sessions)
+    method = "session_estimated"
 
     if not maxes:
-        return {**INSUFFICIENT_DATA, "reason": "No current maxes recorded and no competition results or session data to estimate from"}
+        return {**INSUFFICIENT_DATA, "reason": "No session data to estimate maxes from"}
+
+    # Diminishing returns projection parameters — λ based on DOTS level
+    # <300 beginner (0.96), 300-400 intermediate (0.90), >=400 advanced (0.85)
+    bodyweight = _num(meta.get("current_body_weight_kg", meta.get("bodyweight_kg", 0)))
+    sex = meta.get("sex", "male").lower()
+    total_now = sum(_num(maxes.get(k, 0)) for k in ("squat", "bench", "deadlift"))
+    dots_now = calculate_dots(total_now, bodyweight, sex) if bodyweight > 0 and total_now > 0 else 0
+    if dots_now >= 400:
+        lam = 0.85
+    elif dots_now < 300:
+        lam = 0.96
+    else:
+        lam = 0.90
+
+    # Peaking factor: beginners barely peak, advanced lifters with practiced tapers peak harder
+    if dots_now >= 400:
+        peak_factor = 1.05
+    elif dots_now < 300:
+        peak_factor = 1.01
+    else:
+        peak_factor = 1.03
+
+    # Taper weeks: scale with time remaining (per message.txt guidelines)
+    if weeks_to_comp >= 12:
+        weeks_taper = 3
+    elif weeks_to_comp >= 8:
+        weeks_taper = 2
+    else:
+        weeks_taper = 1
+    n_t = max(0, weeks_to_comp - weeks_taper)
 
     lifts = {}
     for lift_name in ("squat", "bench", "deadlift"):
@@ -773,19 +753,23 @@ def meet_projection(
 
         # Get progression rate
         prog = progression_rate(sessions, lift_name, program_start)
-        slope = prog.get("slope_kg_per_week", 0)
+        delta_w = prog.get("slope_kg_per_week", 0)
         r2 = prog.get("r2", 0)
 
-        # Project forward (cap at 12 weeks of progression to avoid over-extrapolation)
-        effective_weeks = min(weeks_to_comp, 12)
-        projected = current_kg + slope * effective_weeks
-        # Don't project below current
-        projected = max(projected, current_kg)
+        # Diminishing returns: gain = delta_w * lambda * (1 - lambda^n_t) / (1 - lambda)
+        if n_t > 0 and delta_w > 0:
+            projected_gain = delta_w * lam * (1 - lam ** n_t) / (1 - lam)
+        else:
+            projected_gain = 0
+
+        projected_e1rm = current_kg + projected_gain
+        comp_max = projected_e1rm * peak_factor
+        comp_max = max(comp_max, current_kg)  # never project below current
 
         lifts[lift_name] = {
             "current": round(current_kg, 1),
-            "projected": round(projected, 1),
-            "slope_kg_per_week": slope,
+            "projected": round(comp_max, 1),
+            "slope_kg_per_week": delta_w,
             "confidence": round(_clamp(r2, 0, 1), 2),
         }
 
@@ -812,14 +796,17 @@ def weekly_analysis(
     sessions: list[dict],
     ref_date: Optional[str] = None,
     weeks: int = 1,
+    block: Optional[str] = None,
 ) -> dict:
     """Full weekly analysis aggregation — the single entry point for tools and API.
 
     Pulls the last `weeks` weeks of sessions and runs all applicable algorithms.
 
-    Returns structured JSON matching the spec:
+    Returns structured JSON:
         {"week": int, "block": str, "lifts": {...}, "fatigue_index": float,
-         "compliance": float, "flags": [...], "projection": {...}}
+         "compliance": {...}, "current_maxes": {...}, "estimated_dots": float|null,
+         "projection": {...}, "projection_reason": str|null, "flags": [...],
+         "sessions_analyzed": int}
     """
     meta = program.get("meta", {})
     phases = program.get("phases", [])
@@ -828,6 +815,10 @@ def weekly_analysis(
     current_week = _calculate_current_week(program_start)
     current_phase = _find_current_phase(phases, current_week)
     phase_name = current_phase.get("name", "Unknown") if current_phase else "Unknown"
+
+    # Filter sessions by block if specified
+    if block:
+        sessions = [s for s in sessions if s.get("block", "current") == block]
 
     # Filter sessions to the analysis window
     ref = _parse_date(ref_date) if ref_date else date.today()
@@ -841,10 +832,30 @@ def weekly_analysis(
     # Sort by date descending
     recent_sessions.sort(key=lambda s: s.get("date", ""), reverse=True)
 
-    # Identify main lifts
-    main_lifts = ["squat", "bench press", "bench", "deadlift", "deadlift (conventional)",
-                   "deadlift (sumo)"]
-    # Normalize: use whatever names appear in the data
+    # Per-exercise stats from filtered sessions
+    exercise_stats: dict[str, dict[str, Any]] = {}
+    for s in recent_sessions:
+        for ex in s.get("exercises", []):
+            name = ex.get("name", "").strip()
+            if not name:
+                continue
+            kg = _num(ex.get("kg", 0))
+            sets = _num(ex.get("sets", 0))
+            reps = _num(ex.get("reps", 0))
+            vol = sets * reps * kg
+
+            if name not in exercise_stats:
+                exercise_stats[name] = {"total_sets": 0, "total_volume": 0.0, "max_kg": 0.0}
+            exercise_stats[name]["total_sets"] += int(sets)
+            exercise_stats[name]["total_volume"] += vol
+            if kg > exercise_stats[name]["max_kg"]:
+                exercise_stats[name]["max_kg"] = kg
+
+    for v in exercise_stats.values():
+        v["total_volume"] = round(v["total_volume"], 1)
+        v["max_kg"] = round(v["max_kg"], 1)
+
+    # Identify main lifts — exact match only (no substring matching)
     exercise_names = set()
     for s in recent_sessions:
         for ex in s.get("exercises", []):
@@ -852,20 +863,14 @@ def weekly_analysis(
             if name:
                 exercise_names.add(name)
 
-    # Determine which main lifts actually have data
+    # Only match the exact big-three lift names
     tracked_lifts = []
     lift_alias_map = {}
-    for canonical in ["squat", "bench press", "bench", "deadlift"]:
-        for ex_name in exercise_names:
-            if canonical in ex_name or ex_name in canonical:
-                lift_alias_map[canonical] = ex_name
-                if canonical not in tracked_lifts:
-                    tracked_lifts.append(canonical)
-                break
-
-    # If no alias found, just use the exercise names directly
-    if not tracked_lifts:
-        tracked_lifts = sorted(exercise_names)
+    for canonical, output_key in [("squat", "squat"), ("bench press", "bench"), ("deadlift", "deadlift"), ("bench", "bench")]:
+        if canonical in exercise_names and output_key not in lift_alias_map:
+            lift_alias_map[output_key] = canonical
+            if output_key not in tracked_lifts:
+                tracked_lifts.append(output_key)
 
     # Per-lift analysis
     lifts_report = {}
@@ -879,8 +884,10 @@ def weekly_analysis(
         prog = progression_rate(sessions, ex_name, program_start)
         if "slope_kg_per_week" in prog:
             lift_data["progression_rate_kg_per_week"] = prog["slope_kg_per_week"]
+            lift_data["r2"] = prog.get("r2", 0)
         elif prog.get("status") == "insufficient_data":
             lift_data["progression_rate_kg_per_week"] = None
+            lift_data["r2"] = None
 
         # Volume and intensity (compare last week to week before)
         vol_corr = volume_intensity_correlation(sessions, ex_name, program_start)
@@ -907,30 +914,103 @@ def weekly_analysis(
         else:
             lift_data["rpe_trend"] = "unknown"
 
+        # Failed sets count
+        failed_sets = 0
+        for s in recent_sessions:
+            for ex in s.get("exercises", []):
+                ex_lower = ex.get("name", "").lower().strip()
+                if ex_lower == ex_name and ex.get("failed", False):
+                    failed_sets += _num(ex.get("sets", 0))
+        lift_data["failed_sets"] = int(failed_sets)
+
         lifts_report[ex_name] = lift_data
 
     # Fatigue index
     fatigue = fatigue_index(sessions, days=weeks * 7)
     fatigue_score = fatigue.get("score", 0) if "score" in fatigue else None
+    fatigue_components = fatigue.get("components", {}) if "components" in fatigue else {}
     if fatigue.get("flags"):
         all_flags.extend(fatigue["flags"])
 
-    # Periodization compliance
-    compliance_result = periodization_compliance(program, weeks=min(weeks, 4))
-    compliance_pct = compliance_result.get("compliance_pct", 0) if "compliance_pct" in compliance_result else None
+    # Session compliance
+    compliance_result = session_compliance(program, weeks=min(weeks, 4))
+    compliance_obj = {
+        "phase": compliance_result.get("phase", "Unknown"),
+        "planned": compliance_result.get("planned_sessions", 0),
+        "completed": compliance_result.get("completed_sessions", 0),
+        "pct": compliance_result.get("compliance_pct", 0),
+    }
 
-    # Meet projection (if comp date exists)
-    projection = None
+    # Current maxes: always estimate from session data
+    current_maxes_raw = _estimate_maxes_from_sessions(sessions)
+    maxes_method = "session_estimated" if current_maxes_raw else "none"
+
+    current_maxes_out = {}
+    if current_maxes_raw:
+        for lift_key in ("squat", "bench", "deadlift"):
+            val = current_maxes_raw.get(lift_key)
+            if val is not None:
+                try:
+                    current_maxes_out[lift_key] = round(_num(val), 1)
+                except (ValueError, TypeError):
+                    pass
+    current_maxes_out["method"] = maxes_method
+
+    # Estimated DOTS
+    estimated_dots = None
+    bodyweight = _num(meta.get("bodyweight_kg", 0))
+    sex = meta.get("sex", "").lower()
+    if bodyweight > 0 and sex in ("male", "female") and len(current_maxes_out) >= 3:
+        total_kg = sum(
+            current_maxes_out.get(lift, 0)
+            for lift in ("squat", "bench", "deadlift")
+        )
+        if total_kg > 0:
+            estimated_dots = calculate_dots(total_kg, bodyweight, sex)
+
+    # Meet projection — find upcoming competitions
+    projections: list[dict[str, Any]] = []
     projection_reason = None
-    if meta.get("comp_date"):
-        proj = meet_projection(program, sessions)
+    competitions = program.get("competitions", [])
+    today = date.today()
+
+    # Find all upcoming confirmed/optional competitions
+    upcoming: list[dict] = []
+    for c in sorted(competitions, key=lambda x: x.get("date", "")):
+        if c.get("status") in ("confirmed", "optional"):
+            d = _parse_date(c.get("date", ""))
+            if d and d > today:
+                upcoming.append(c)
+
+    # Pick which comps to project: next + final (if different)
+    to_project: list[dict] = []
+    if len(upcoming) >= 2:
+        to_project = [upcoming[0], upcoming[-1]]
+    elif len(upcoming) == 1:
+        to_project = [upcoming[0]]
+
+    for comp in to_project:
+        proj = meet_projection(program, sessions, comp_date=comp["date"])
         if "total" in proj:
-            projection = {
+            projections.append({
                 "total": proj["total"],
                 "confidence": proj["confidence"],
                 "weeks_to_comp": proj.get("weeks_to_comp"),
                 "method": proj.get("method"),
-            }
+                "comp_name": comp.get("name"),
+            })
+
+    # Fallback to legacy meta.comp_date if no upcoming competitions
+    if not projections and not to_project and meta.get("comp_date"):
+        proj = meet_projection(program, sessions, comp_date=meta["comp_date"])
+        if "total" in proj:
+            projections.append({
+                "total": proj["total"],
+                "confidence": proj["confidence"],
+                "weeks_to_comp": proj.get("weeks_to_comp"),
+                "method": proj.get("method"),
+                "comp_name": None,
+            })
         else:
             projection_reason = proj.get("reason", "Insufficient data for projection")
 
@@ -939,11 +1019,15 @@ def weekly_analysis(
         "block": phase_name,
         "lifts": lifts_report,
         "fatigue_index": fatigue_score,
-        "compliance": compliance_pct,
-        "flags": all_flags,
-        "projection": projection,
+        "fatigue_components": fatigue_components,
+        "compliance": compliance_obj,
+        "current_maxes": current_maxes_out,
+        "estimated_dots": estimated_dots,
+        "projections": projections,
         "projection_reason": projection_reason,
+        "flags": all_flags,
         "sessions_analyzed": len(recent_sessions),
+        "exercise_stats": exercise_stats,
     }
 
 

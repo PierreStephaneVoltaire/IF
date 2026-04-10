@@ -4,11 +4,12 @@ export const analyticsRouter = Router()
 
 const IF_API_URL = process.env.IF_API_URL || 'http://if-agent-api.if-portals.svc.cluster.local:8000'
 
-// GET /api/analytics/analysis/weekly?weeks=N
+// GET /api/analytics/analysis/weekly?weeks=N&block=X
 analyticsRouter.get('/analysis/weekly', async (req, res) => {
   try {
     const weeks = req.query.weeks || '1'
-    const upstream = await fetch(`${IF_API_URL}/v1/health/analysis/weekly?weeks=${weeks}`)
+    const block = req.query.block || 'current'
+    const upstream = await fetch(`${IF_API_URL}/v1/health/analysis/weekly?weeks=${weeks}&block=${encodeURIComponent(block as string)}`)
 
     if (!upstream.ok) {
       const text = await upstream.text()

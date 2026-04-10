@@ -85,7 +85,7 @@ Example patterns:
 ═══════════════════════════════════════════
 SPEECH PATTERNS TO AVOID
 ═══════════════════════════════════════════
-"I see the full picture now!"
+"I have the full picture"
 "You are absolutly right"
 "The issue is clear"
 "You’re absolutely right to call this out”

@@ -1,8 +1,9 @@
 import { GetCommand, QueryCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
+import crypto from 'crypto'
 import { docClient, TABLE } from '../db/dynamo'
 import { transformProgram } from '../db/transforms'
 import { AppError } from '../middleware/errorHandler'
-import type { Program, ProgramListItem, Phase } from '@powerlifting/types'
+import type { Program, ProgramListItem, Phase, Session, PlannedExercise } from '@powerlifting/types'
 
 const PK = 'operator'
 
@@ -247,4 +248,126 @@ export async function updatePhases(
   })
 
   await docClient.send(command)
+}
+
+/**
+ * Batch create planned sessions for a week.
+ * Creates one session per day entry, all with status "planned" and the same planned_exercises.
+ */
+export async function batchCreateWeek(
+  version: string,
+  weekNumber: number,
+  weekLabel: string,
+  days: Array<{ date: string; day: string }>,
+  phaseName: string,
+  exercises: PlannedExercise[]
+): Promise<void> {
+  const sk = await resolveVersionSk(version)
+  const getCommand = new GetCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk },
+    ProjectionExpression: 'sessions, phases',
+  })
+
+  const result = await docClient.send(getCommand)
+
+  if (!result.Item) {
+    throw new AppError(`Program version ${version} not found`, 404)
+  }
+
+  const sessions = (result.Item.sessions ?? []) as Session[]
+  const phases = (result.Item.phases ?? []) as Phase[]
+
+  const phase = phases.find(p => weekNumber >= p.start_week && weekNumber <= p.end_week)
+    ?? { name: phaseName, intent: '', start_week: weekNumber, end_week: weekNumber }
+
+  const existingDates = new Set(sessions.map(s => s.date))
+  for (const day of days) {
+    if (existingDates.has(day.date)) {
+      throw new AppError(`Session with date ${day.date} already exists`, 400)
+    }
+  }
+
+  const newSessions: Session[] = days.map(day => ({
+    id: crypto.randomUUID(),
+    date: day.date,
+    day: day.day,
+    week: weekLabel,
+    week_number: weekNumber,
+    phase,
+    status: 'planned',
+    completed: false,
+    planned_exercises: exercises,
+    exercises: [],
+    session_notes: '',
+    session_rpe: null,
+    body_weight_kg: null,
+    block: 'current',
+  }))
+
+  sessions.push(...newSessions)
+  sessions.sort((a, b) => a.date.localeCompare(b.date))
+
+  const updateCommand = new UpdateCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk },
+    UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
+    ExpressionAttributeNames: { '#meta': 'meta' },
+    ExpressionAttributeValues: {
+      ':sessions': sessions,
+      ':now': new Date().toISOString(),
+    },
+  })
+
+  await docClient.send(updateCommand)
+}
+
+/**
+ * Update planned exercises on a session.
+ */
+export async function updatePlannedExercises(
+  version: string,
+  date: string,
+  index: number,
+  plannedExercises: PlannedExercise[]
+): Promise<void> {
+  const sk = await resolveVersionSk(version)
+  const getCommand = new GetCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk },
+    ProjectionExpression: 'sessions',
+  })
+
+  const result = await docClient.send(getCommand)
+
+  if (!result.Item) {
+    throw new AppError(`Program version ${version} not found`, 404)
+  }
+
+  const sessions = (result.Item.sessions ?? []) as Session[]
+
+  if (index < 0 || index >= sessions.length) {
+    throw new AppError(`Session at index ${index} not found`, 404)
+  }
+  if (sessions[index].date !== date) {
+    throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
+  }
+
+  sessions[index] = {
+    ...sessions[index],
+    planned_exercises: plannedExercises,
+  }
+
+  const updateCommand = new UpdateCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk },
+    UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
+    ExpressionAttributeNames: { '#meta': 'meta' },
+    ExpressionAttributeValues: {
+      ':sessions': sessions,
+      ':now': new Date().toISOString(),
+    },
+  })
+
+  await docClient.send(updateCommand)
 }

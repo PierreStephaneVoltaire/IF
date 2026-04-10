@@ -67,6 +67,10 @@ export interface Phase {
   intent: string
   start_week: number
   end_week: number
+  target_rpe_min?: number
+  target_rpe_max?: number
+  days_per_week?: number
+  notes?: string
 }
 
 // ─── Competition ─────────────────────────────────────────────────────────────
@@ -104,21 +108,35 @@ export interface Exercise {
   reps: number
   kg: number | null
   notes: string
+  failed?: boolean
 }
 
+export interface PlannedExercise {
+  name: string
+  sets: number
+  reps: number
+  kg: number | null
+}
+
+export type SessionStatus = 'planned' | 'logged' | 'completed' | 'skipped'
+
 export interface Session {
+  id?: string
   date: string              // YYYY-MM-DD
   day: string               // 'Friday' etc
   week: string              // 'W1 (Warmup)' — raw label from DynamoDB
   week_number: number       // parsed integer, derived on load by backend transform
   phase: Phase              // resolved from program.phases on load by backend transform
+  block?: string            // Training block identifier. Default: "current". Archived blocks get user-chosen names.
+  status?: SessionStatus
   completed: boolean
+  planned_exercises?: PlannedExercise[]
   exercises: Exercise[]
   session_notes: string
   session_rpe: number | null
   body_weight_kg: number | null
   videos?: SessionVideo[]   // Optional video attachments
-  block?: string            // Training block identifier. Default: "current". Archived blocks get user-chosen names.
+  pain_log?: unknown[]
 }
 
 // ─── Session Video ───────────────────────────────────────────────────────────
@@ -171,6 +189,10 @@ export interface Program {
 export interface DietNote {
   date: string
   notes: string
+  avg_daily_calories?: number
+  water_intake?: number
+  water_unit?: 'litres' | 'cups'
+  consistent?: boolean
 }
 
 export interface Supplement {
@@ -222,10 +244,13 @@ export type Equipment =
   | 'barbell' | 'dumbbell' | 'cable' | 'machine'
   | 'bodyweight' | 'hex_bar' | 'bands' | 'kettlebell'
 
+export type FatigueCategory = 'primary_axial' | 'primary_upper' | 'secondary' | 'accessory'
+
 export interface GlossaryExercise {
   id: string
   name: string
   category: ExerciseCategory
+  fatigue_category: FatigueCategory
   primary_muscles: MuscleGroup[]
   secondary_muscles: MuscleGroup[]
   equipment: Equipment
