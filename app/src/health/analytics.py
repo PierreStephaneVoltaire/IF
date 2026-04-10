@@ -11,7 +11,10 @@ from __future__ import annotations
 import math
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from statistics import median
 from typing import Any, Literal, Optional
+
+from scipy.stats import theilslopes
 
 
 # ---------------------------------------------------------------------------
@@ -102,11 +105,14 @@ _RPE_TABLE_PRIMARY.update({
 
 INSUFFICIENT_DATA = {"status": "insufficient_data"}
 
-FATIGUE_MULTIPLIERS = {
-    "primary_axial": 1.0,
-    "primary_upper": 0.8,
-    "secondary": 0.6,
-    "accessory": 0.3,
+# Conservative percentage table for estimating e1RM when no RPE is recorded.
+# Only valid for reps 1-5. Derived from RTS-standard conversions.
+_CONSERVATIVE_REP_PCT: dict[int, float] = {
+    1: 1.000,
+    2: 0.955,
+    3: 0.925,
+    4: 0.898,
+    5: 0.875,
 }
 
 
@@ -240,36 +246,172 @@ def _get_exercise_sessions(sessions: list[dict], exercise_name: str) -> list[dic
     return out
 
 
+def _compute_weekly_volume_load(
+    sessions: list[dict],
+    program_start: str,
+) -> dict[float, float]:
+    """Map week_index -> total volume load (sum of sets*reps*kg for all exercises)."""
+    weekly: dict[float, float] = {}
+    for s in sessions:
+        if not s.get("completed"):
+            continue
+        wk = _week_index(s, program_start)
+        if wk is None:
+            continue
+        week_load = 0.0
+        for ex in s.get("exercises", []):
+            kg = _num(ex.get("kg", 0))
+            sets = _num(ex.get("sets", 0))
+            reps = _num(ex.get("reps", 0))
+            week_load += sets * reps * kg
+        weekly[wk] = weekly.get(wk, 0.0) + week_load
+    return weekly
+
+
+def _detect_deloads(
+    sessions: list[dict],
+    program_start: str,
+    threshold: float = 0.65,
+    rolling_window: int = 4,
+) -> list[dict]:
+    """Detect deload and break weeks from session volume patterns.
+
+    Returns list of {week_index, is_deload, is_break, effective_index} for each week.
+    A week is a deload if VL < threshold * rolling_median(previous 4 non-deload weeks).
+    A week is a break if zero sessions or zero volume load.
+    Remaining weeks are re-indexed contiguously as effective training weeks.
+    """
+    if not program_start:
+        program_start = _infer_program_start(sessions)
+
+    weekly_vl = _compute_weekly_volume_load(sessions, program_start)
+
+    # Count sessions per week
+    sessions_per_week: dict[float, int] = {}
+    for s in sessions:
+        if not s.get("completed"):
+            continue
+        wk = _week_index(s, program_start)
+        if wk is not None:
+            sessions_per_week[wk] = sessions_per_week.get(wk, 0) + 1
+
+    # Also track weeks with sessions that may not be completed (for break detection)
+    for s in sessions:
+        wk = _week_index(s, program_start)
+        if wk is not None:
+            sessions_per_week[wk] = sessions_per_week.get(wk, 0) + 1
+
+    if not weekly_vl:
+        return []
+
+    sorted_weeks = sorted(weekly_vl.keys())
+    results = []
+    prev_non_deload_vls: list[float] = []
+
+    for wk in sorted_weeks:
+        vl = weekly_vl.get(wk, 0.0)
+        session_count = sessions_per_week.get(wk, 0)
+
+        is_break = session_count == 0 or vl == 0.0
+
+        is_deload = False
+        if not is_break and len(prev_non_deload_vls) >= 1:
+            # Use rolling median of up to `rolling_window` previous non-deload weeks
+            window = prev_non_deload_vls[-rolling_window:]
+            med = median(window)
+            if med > 0 and vl < threshold * med:
+                is_deload = True
+
+        results.append({
+            "week_index": wk,
+            "is_deload": is_deload,
+            "is_break": is_break,
+            "volume_load": vl,
+            "effective_index": -1,  # filled below
+        })
+
+        if not is_deload and not is_break:
+            prev_non_deload_vls.append(vl)
+
+    # Re-index effective training weeks contiguously
+    eff_idx = 0
+    for r in results:
+        if not r["is_deload"] and not r["is_break"]:
+            r["effective_index"] = eff_idx
+            eff_idx += 1
+
+    return results
+
+
+def _effective_training_data(
+    sessions: list[dict],
+    program_start: str,
+) -> tuple[list[dict], dict[float, int]]:
+    """Return (filtered sessions, mapping of original week_index -> effective week index).
+
+    Removes sessions in deload/break weeks and returns effective week mapping.
+    """
+    deload_info = _detect_deloads(sessions, program_start)
+    excluded_weeks = set()
+    effective_map: dict[float, int] = {}
+    for d in deload_info:
+        if d["is_deload"] or d["is_break"]:
+            excluded_weeks.add(d["week_index"])
+        else:
+            effective_map[d["week_index"]] = d["effective_index"]
+
+    filtered = [
+        s for s in sessions
+        if _week_index(s, program_start) not in excluded_weeks
+    ]
+    return filtered, effective_map
+
+
 # ---------------------------------------------------------------------------
 # Public algorithms
 # ---------------------------------------------------------------------------
 
 def estimate_1rm(weight_kg: float, reps: int, rpe: Optional[int] = None) -> dict:
-    """Estimate 1RM via Epley, Brzycki, and (optionally) RPE table.
+    """Estimate 1RM via RPE table or conservative rep percentage.
+
+    Priority cascade (no Epley/Brzycki fallback):
+      1. RPE recorded (6-10) AND reps <= 6 → RPE table lookup
+      2. No RPE AND reps <= 5 → conservative percentage table
+      3. Otherwise → discard (return None)
 
     Args:
         weight_kg: Load lifted.
         reps: Repetitions performed.
-        rpe: Optional RPE (6-10). Enables RPE-based estimation.
+        rpe: Optional RPE (6-10).
 
     Returns:
-        {"epley": float, "brzycki": float, "rpe_based": float | None}
+        {"e1rm": float | None, "method": str | None, "input_weight_kg": float,
+         "epley": None, "brzycki": None, "rpe_based": float | None}
     """
-    epley = _num(weight_kg) * (1 + reps / 30) if reps > 0 else _num(weight_kg)
-    brzycki = _num(weight_kg) * 36 / (37 - reps) if reps < 37 else _num(weight_kg)
-
+    w = _num(weight_kg)
+    e1rm = None
+    method = None
     rpe_based = None
-    if rpe is not None and 1 <= reps <= 10 and 6 <= rpe <= 10:
-        rpe_rounded = int(rpe)
-        pct = _RPE_TABLE_PRIMARY.get((reps, rpe_rounded))
+
+    if rpe is not None and 1 <= reps <= 6 and 6 <= int(rpe) <= 10:
+        pct = _RPE_TABLE_PRIMARY.get((reps, int(rpe)))
         if pct is not None:
-            rpe_based = round(_num(weight_kg) / pct, 1)
+            e1rm = round(w / pct, 1)
+            rpe_based = e1rm
+            method = "rpe_table"
+    elif rpe is None and 1 <= reps <= 5:
+        pct = _CONSERVATIVE_REP_PCT.get(reps)
+        if pct is not None:
+            e1rm = round(w / pct, 1)
+            method = "conservative"
 
     return {
-        "epley": round(epley, 1),
-        "brzycki": round(brzycki, 1),
+        "e1rm": e1rm,
+        "method": method,
+        "input_weight_kg": round(w, 1),
+        "epley": None,
+        "brzycki": None,
         "rpe_based": rpe_based,
-        "input_weight_kg": round(_num(weight_kg), 1),
     }
 
 
@@ -300,7 +442,10 @@ def calculate_dots(total_kg: float, bodyweight_kg: float, sex: str) -> float:
 
 
 def progression_rate(sessions: list[dict], exercise_name: str, program_start: str = "") -> dict:
-    """Weekly rate of change (kg/week) for a lift via OLS on top sets.
+    """Weekly rate of change (kg/week) for a lift via Theil-Sen regression on e1RM.
+
+    Excludes deload/break weeks. Regresses on e1RM estimates per effective
+    training week instead of raw top-set kg.
 
     Args:
         sessions: List of session dicts.
@@ -308,24 +453,97 @@ def progression_rate(sessions: list[dict], exercise_name: str, program_start: st
         program_start: ISO date string for the program start.
 
     Returns:
-        {"slope_kg_per_week": float, "r2": float, "points": [(week, kg), ...]}
+        {"slope_kg_per_week": float, "r2": float, "points": [(week, e1rm), ...],
+         "method": "theilsen", "deload_weeks_excluded": int}
         or INSUFFICIENT_DATA.
     """
     if not program_start:
         program_start = _infer_program_start(sessions)
 
-    points = _exercise_top_sets(sessions, exercise_name, program_start)
-    if len(points) < 2:
-        return {**INSUFFICIENT_DATA, "reason": f"Need at least 2 completed sessions with {exercise_name} data"}
+    name_lower = exercise_name.lower()
 
-    xs = [p[0] for p in points]
-    ys = [p[1] for p in points]
-    slope, intercept, r2 = _ols(xs, ys)
+    # Get deload info for this exercise's sessions
+    ex_sessions = _get_exercise_sessions(sessions, exercise_name)
+    deload_info = _detect_deloads(ex_sessions, program_start)
+    excluded_weeks = set(
+        d["week_index"] for d in deload_info if d["is_deload"] or d["is_break"]
+    )
+    deload_count = len(excluded_weeks)
+
+    # Collect best e1RM per effective training week
+    week_e1rm: dict[int, list[float]] = {}
+    effective_map = {d["week_index"]: d["effective_index"] for d in deload_info
+                     if d["effective_index"] >= 0}
+
+    for s in ex_sessions:
+        wk = _week_index(s, program_start)
+        if wk is None or wk in excluded_weeks:
+            continue
+        eff_idx = effective_map.get(wk)
+        if eff_idx is None:
+            continue
+
+        session_rpe = s.get("session_rpe")
+        best_e1rm_week = None
+
+        for ex in s.get("exercises", []):
+            if ex.get("name", "").lower() != name_lower:
+                continue
+            if ex.get("failed", False):
+                continue
+            kg = _num(ex.get("kg", 0))
+            reps = int(_num(ex.get("reps", 0)))
+            if kg <= 0 or reps <= 0:
+                continue
+
+            e1rm = None
+            rpe = session_rpe if session_rpe is not None else None
+            if rpe is not None and 1 <= reps <= 6 and 6 <= int(rpe) <= 10:
+                pct = _RPE_TABLE_PRIMARY.get((reps, int(rpe)))
+                if pct is not None:
+                    e1rm = kg / pct
+            elif rpe is None and 1 <= reps <= 5:
+                pct = _CONSERVATIVE_REP_PCT.get(reps)
+                if pct is not None:
+                    e1rm = kg / pct
+
+            if e1rm is not None:
+                if best_e1rm_week is None or e1rm > best_e1rm_week:
+                    best_e1rm_week = e1rm
+
+        if best_e1rm_week is not None:
+            week_e1rm.setdefault(eff_idx, []).append(best_e1rm_week)
+
+    if not week_e1rm:
+        return {**INSUFFICIENT_DATA, "reason": f"No qualifying e1RM estimates for {exercise_name}"}
+
+    # Take median e1RM per effective week (most robust central tendency)
+    xs = sorted(week_e1rm.keys())
+    ys = [median(week_e1rm[w]) for w in xs]
+
+    if len(xs) < 2:
+        return {**INSUFFICIENT_DATA, "reason": f"Need at least 2 effective training weeks with {exercise_name} data"}
+
+    # Theil-Sen regression
+    result = theilslopes(ys, xs)
+    slope = result[0]
+    intercept = result[1]
+
+    # Compute R² from residuals
+    predicted = [intercept + slope * x for x in xs]
+    mean_y = sum(ys) / len(ys)
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    ss_res = sum((y - p) ** 2 for y, p in zip(ys, predicted))
+    r_squared = 1.0 - (ss_res / ss_tot) if abs(ss_tot) > 1e-12 else 0.0
+
+    points = [(round(float(x), 1), round(y, 1)) for x, y in zip(xs, ys)]
 
     return {
         "slope_kg_per_week": round(slope, 2),
-        "r2": round(r2, 3),
-        "points": [(round(w, 1), round(k, 1)) for w, k in points],
+        "r2": round(r_squared, 3),
+        "points": points,
+        "method": "theilsen",
+        "deload_weeks_excluded": deload_count,
     }
 
 
@@ -619,12 +837,15 @@ def _estimate_maxes_from_comps(competitions: list[dict]) -> dict:
     return {}
 
 
-def _estimate_maxes_from_sessions(sessions: list[dict], lookback_days: int = 90) -> dict:
-    """Estimate current maxes from best sets in the last N days.
-    Uses RPE table when available, Epley formula as fallback.
+def _estimate_maxes_from_sessions(sessions: list[dict], lookback_days: int = 42) -> dict:
+    """Estimate current maxes from qualifying sets in the last N days.
+
+    Uses RPE table (reps<=6) or conservative table (reps<=5).
+    Takes 90th percentile of qualifying e1RM estimates (not the max).
+    Requires at least 3 qualifying sets per lift.
     """
     cutoff = date.today() - timedelta(days=lookback_days)
-    best_estimates: dict[str, float] = {}
+    all_estimates: dict[str, list[float]] = {"squat": [], "bench": [], "deadlift": []}
 
     for s in sessions:
         d = _parse_date(s.get("date", ""))
@@ -645,7 +866,6 @@ def _estimate_maxes_from_sessions(sessions: list[dict], lookback_days: int = 90)
                 continue
 
             canonical = None
-            # Exact match only — no substring matching
             if name == "squat":
                 canonical = "squat"
             elif name in ("bench press", "bench"):
@@ -655,20 +875,29 @@ def _estimate_maxes_from_sessions(sessions: list[dict], lookback_days: int = 90)
             if canonical is None:
                 continue
 
+            e1rm = None
             rpe = session_rpe if session_rpe is not None else None
-            if rpe is not None and 1 <= reps <= 10 and 6 <= int(rpe) <= 10:
+            if rpe is not None and 1 <= reps <= 6 and 6 <= int(rpe) <= 10:
                 pct = _RPE_TABLE_PRIMARY.get((reps, int(rpe)))
                 if pct is not None:
                     e1rm = kg / pct
-                else:
-                    e1rm = kg * (1 + reps / 30)
-            else:
-                e1rm = kg * (1 + reps / 30)
+            elif rpe is None and 1 <= reps <= 5:
+                pct = _CONSERVATIVE_REP_PCT.get(reps)
+                if pct is not None:
+                    e1rm = kg / pct
 
-            if canonical not in best_estimates or e1rm > best_estimates[canonical]:
-                best_estimates[canonical] = round(e1rm, 1)
+            if e1rm is not None:
+                all_estimates[canonical].append(round(e1rm, 1))
 
-    return best_estimates if len(best_estimates) >= 2 else {}
+    # Take 90th percentile per lift, require at least 3 qualifying sets
+    result: dict[str, float] = {}
+    for lift, vals in all_estimates.items():
+        if len(vals) >= 3:
+            sorted_vals = sorted(vals)
+            idx = min(int(len(sorted_vals) * 0.9), len(sorted_vals) - 1)
+            result[lift] = sorted_vals[idx]
+
+    return result if len(result) >= 2 else {}
 
 
 def meet_projection(
@@ -941,6 +1170,14 @@ def weekly_analysis(
         "pct": compliance_result.get("compliance_pct", 0),
     }
 
+    # Deload detection (used by multiple downstream metrics)
+    deload_info_raw = _detect_deloads(sessions, program_start)
+    deload_info = {
+        "deload_weeks": [d["week_index"] for d in deload_info_raw if d["is_deload"]],
+        "break_weeks": [d["week_index"] for d in deload_info_raw if d["is_break"]],
+        "effective_training_weeks": sum(1 for d in deload_info_raw if d["effective_index"] >= 0),
+    }
+
     # Current maxes: always estimate from session data
     current_maxes_raw = _estimate_maxes_from_sessions(sessions)
     maxes_method = "session_estimated" if current_maxes_raw else "none"
@@ -1028,6 +1265,7 @@ def weekly_analysis(
         "flags": all_flags,
         "sessions_analyzed": len(recent_sessions),
         "exercise_stats": exercise_stats,
+        "deload_info": deload_info,
     }
 
 

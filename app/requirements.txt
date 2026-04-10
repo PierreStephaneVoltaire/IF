@@ -50,6 +50,9 @@ tika>=2.0.0
 # Excel export for health module
 openpyxl>=3.1.0
 
+# Statistics for Theil-Sen regression in health analytics
+scipy>=1.11.0
+
 
 # Date/Time Parsing for Temporal Tools
 dateparser>=1.1.0
