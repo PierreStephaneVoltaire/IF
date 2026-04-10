@@ -5,6 +5,8 @@ import { fetchWeeklyAnalysis, type WeeklyAnalysis } from '@/api/analytics'
 import { useProgramStore } from '@/store/programStore'
 import { fetchWeightLog, fetchGlossary } from '@/api/client'
 import { normalizeExerciseName } from '@/utils/volume'
+import { FORMULA_DESCRIPTIONS } from '@/constants/formulaDescriptions'
+import { updateMetaField } from '@/api/client'
 import type { WeightEntry, GlossaryExercise, Competition, FatigueCategory, ExerciseCategory } from '@powerlifting/types'
 
 function fatigueColor(score: number | null): string {
@@ -70,6 +72,8 @@ export default function AnalysisPage() {
   const [glossary, setGlossary] = useState<GlossaryExercise[]>([])
   const [viewMode, setViewMode] = useState<'raw' | 'graph'>('raw')
   const [expandedLifts, setExpandedLifts] = useState<Set<string>>(new Set())
+  const [attemptPct, setAttemptPct] = useState({ opener: 0.90, second: 0.955, third: 1.00 })
+  const [savingAttempt, setSavingAttempt] = useState(false)
 
   const competitions = useMemo(() => {
     return (program?.competitions || []).sort((a, b) => a.date.localeCompare(b.date))
@@ -88,6 +92,13 @@ export default function AnalysisPage() {
     fetchWeightLog(version).then(setWeightLog).catch(console.error)
     fetchGlossary().then(setGlossary).catch(console.error)
   }, [version])
+
+  useEffect(() => {
+    const metaPct = program?.meta?.attempt_pct
+    if (metaPct) {
+      setAttemptPct({ opener: metaPct.opener, second: metaPct.second, third: metaPct.third })
+    }
+  }, [program?.meta?.attempt_pct])
 
   // Fix 1: Shared filtered sessions respecting weeks filter
   const filteredSessions = useMemo(() => {
@@ -489,11 +500,220 @@ export default function AnalysisPage() {
               </p>
               <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
                 Failed compounds: {((data.fatigue_components?.failed_compound_ratio ?? 0) * 100).toFixed(0)}%
-                &middot; Load spike: {((data.fatigue_components?.fatigue_load_spike ?? 0) * 100).toFixed(0)}%
+                &middot; Fatigue spike: {((data.fatigue_components?.composite_spike ?? 0) * 100).toFixed(0)}%
                 &middot; Skip rate: {((data.fatigue_components?.skip_rate ?? 0) * 100).toFixed(0)}%
               </p>
             </div>
+
+            {/* Readiness Score */}
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="w-5 h-5 text-primary" />
+                <h3 className="font-medium">Readiness</h3>
+              </div>
+              {data.readiness_score ? (
+                <>
+                  <p className={`text-3xl font-bold px-2 py-1 rounded inline-block ${
+                    data.readiness_score.zone === 'green' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : data.readiness_score.zone === 'yellow' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  }`}>
+                    {data.readiness_score.score.toFixed(0)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                    Fatigue: {((data.readiness_score.components.fatigue_norm ?? 0) * 100).toFixed(0)}%
+                    &middot; RPE drift: {((data.readiness_score.components.rpe_drift ?? 0) * 100).toFixed(0)}%
+                    &middot; BW stability: {((data.readiness_score.components.bw_stability ?? 0) * 100).toFixed(0)}%
+                    &middot; Miss rate: {((data.readiness_score.components.miss_rate ?? 0) * 100).toFixed(0)}%
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">N/A</p>
+              )}
+            </div>
           </div>
+
+          {/* INOL Section */}
+          {data.inol && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <h3 className="font-medium mb-3">INOL (Current Week)</h3>
+              <div className="grid grid-cols-3 gap-4 mb-3">
+                {Object.entries(data.inol.current_week).map(([lift, val]) => (
+                  <div key={lift} className="text-center p-3 bg-secondary/50 rounded">
+                    <p className="text-xs text-muted-foreground capitalize">{lift}</p>
+                    <p className={`text-2xl font-bold ${
+                      val > 4.0 ? 'text-red-600' : val < 2.0 ? 'text-yellow-600' : 'text-green-600'
+                    }`}>
+                      {val.toFixed(2)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {val > 4.0 ? 'Overreaching' : val < 2.0 ? 'Low stimulus' : 'Productive'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {data.inol.flags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {data.inol.flags.map((flag) => (
+                    <span key={flag} className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                      {flag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ACWR Section */}
+          {data.acwr && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-medium">ACWR (Acute:Chronic Workload Ratio)</h3>
+                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                  data.acwr.composite_zone === 'optimal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : data.acwr.composite_zone === 'caution' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                  : data.acwr.composite_zone === 'danger' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                }`}>
+                  Composite: {data.acwr.composite?.toFixed(2) ?? 'N/A'} ({data.acwr.composite_zone})
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-4">
+                {Object.entries(data.acwr.dimensions).map(([dim, info]) => {
+                  const zoneColor = info.zone === 'optimal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : info.zone === 'caution' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                    : info.zone === 'danger' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                  return (
+                    <div key={dim} className={`text-center p-3 rounded ${zoneColor}`}>
+                      <p className="text-xs capitalize">{dim}</p>
+                      <p className="text-xl font-bold">{info.value?.toFixed(2) ?? '--'}</p>
+                      <p className="text-xs capitalize">{info.zone}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* RI Distribution Section */}
+          {data.ri_distribution && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <h3 className="font-medium mb-3">Relative Intensity Distribution</h3>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                {(['heavy', 'moderate', 'light'] as const).map((bucket) => {
+                  const info = data.ri_distribution!.overall[bucket]
+                  const color = bucket === 'heavy' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    : bucket === 'moderate' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                  return (
+                    <div key={bucket} className={`text-center p-3 rounded ${color}`}>
+                      <p className="text-xs capitalize">{bucket}</p>
+                      <p className="text-2xl font-bold">{info.pct.toFixed(0)}%</p>
+                      <p className="text-xs">{info.count} sets</p>
+                    </div>
+                  )
+                })}
+              </div>
+              {Object.keys(data.ri_distribution.per_lift).length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-2 pr-4">Lift</th>
+                        <th className="text-right py-2 px-4">Heavy %</th>
+                        <th className="text-right py-2 px-4">Moderate %</th>
+                        <th className="text-right py-2 pl-4">Light %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(data.ri_distribution.per_lift).map(([lift, buckets]) => (
+                        <tr key={lift} className="border-b border-border/50">
+                          <td className="py-2 pr-4 font-medium capitalize">{lift}</td>
+                          <td className="text-right py-2 px-4 text-red-600">{buckets.heavy.pct.toFixed(0)}%</td>
+                          <td className="text-right py-2 px-4 text-green-600">{buckets.moderate.pct.toFixed(0)}%</td>
+                          <td className="text-right py-2 pl-4 text-blue-600">{buckets.light.pct.toFixed(0)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Specificity Ratio Section */}
+          {data.specificity_ratio && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <h3 className="font-medium mb-3">Specificity Ratio</h3>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Narrow (SBD only)</p>
+                  <div className="w-full bg-secondary rounded-full h-4 overflow-hidden">
+                    <div
+                      className="bg-primary h-4 rounded-full transition-all"
+                      style={{ width: `${Math.min(data.specificity_ratio.narrow * 100, 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-sm font-medium mt-1">{(data.specificity_ratio.narrow * 100).toFixed(1)}%</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Broad (SBD + secondary)</p>
+                  <div className="w-full bg-secondary rounded-full h-4 overflow-hidden">
+                    <div
+                      className="bg-primary/70 h-4 rounded-full transition-all"
+                      style={{ width: `${Math.min(data.specificity_ratio.broad * 100, 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-sm font-medium mt-1">{(data.specificity_ratio.broad * 100).toFixed(1)}%</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                {data.specificity_ratio.sbd_sets} SBD sets / {data.specificity_ratio.total_sets} total sets
+              </p>
+            </div>
+          )}
+
+          {/* Fatigue Dimensions Section */}
+          {data.fatigue_dimensions && Object.keys(data.fatigue_dimensions.weekly).length > 0 && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <h3 className="font-medium mb-3">Fatigue Dimensions (Weekly)</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={Object.entries(data.fatigue_dimensions.weekly)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .slice(-8)
+                    .map(([week, dims]) => ({
+                      week: `W${week}`,
+                      axial: dims.axial,
+                      neural: dims.neural,
+                      peripheral: dims.peripheral,
+                      systemic: dims.systemic,
+                    }))}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="week" tick={{ fontSize: 11 }} />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="axial" stackId="a" fill="#ef4444" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="neural" stackId="a" fill="#3b82f6" />
+                  <Bar dataKey="peripheral" stackId="a" fill="#22c55e" />
+                  <Bar dataKey="systemic" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              {(data.acwr?.dimensions) && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {Object.entries(data.acwr.dimensions).map(([dim, info]) =>
+                    info.zone === 'caution' || info.zone === 'danger' ? (
+                      <span key={dim} className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                        {dim.charAt(0).toUpperCase() + dim.slice(1)} overload (ACWR {info.value?.toFixed(2)})
+                      </span>
+                    ) : null
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Projection tiles (1-2 cards) */}
           {data.projections.length > 0 ? (
@@ -1162,6 +1382,117 @@ export default function AnalysisPage() {
               )}
             </div>
           )}
+
+          {/* Attempt Selector Settings */}
+          {data.attempt_selection && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <h3 className="font-medium mb-3">Competition Attempt Percentages</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs text-muted-foreground">Opener</label>
+                  <input
+                    type="number" step="0.005" min="0.80" max="0.95"
+                    value={attemptPct.opener}
+                    onChange={(e) => setAttemptPct(p => ({ ...p, opener: parseFloat(e.target.value) || 0.90 }))}
+                    onBlur={() => {
+                      setSavingAttempt(true)
+                      updateMetaField(version, 'attempt_pct', attemptPct).finally(() => setSavingAttempt(false))
+                    }}
+                    className="w-full mt-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Should feel easy under worst conditions</p>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Second</label>
+                  <input
+                    type="number" step="0.005" min="0.90" max="0.98"
+                    value={attemptPct.second}
+                    onChange={(e) => setAttemptPct(p => ({ ...p, second: parseFloat(e.target.value) || 0.955 }))}
+                    onBlur={() => {
+                      setSavingAttempt(true)
+                      updateMetaField(version, 'attempt_pct', attemptPct).finally(() => setSavingAttempt(false))
+                    }}
+                    className="w-full mt-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">A confident single, builds momentum</p>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Third</label>
+                  <input
+                    type="number" step="0.005" min="0.95" max="1.05"
+                    value={attemptPct.third}
+                    onChange={(e) => setAttemptPct(p => ({ ...p, third: parseFloat(e.target.value) || 1.00 }))}
+                    onBlur={() => {
+                      setSavingAttempt(true)
+                      updateMetaField(version, 'attempt_pct', attemptPct).finally(() => setSavingAttempt(false))
+                    }}
+                    className="w-full mt-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Your projected max &mdash; go for it</p>
+                </div>
+              </div>
+              {savingAttempt && <p className="text-xs text-muted-foreground mt-2">Saving...</p>}
+              {/* Display computed attempts */}
+              <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
+                {Object.entries(data.attempt_selection)
+                  .filter(([k]) => k !== 'total' && k !== 'attempt_pct_used')
+                  .map(([lift, attempts]) => (
+                    <div key={lift} className="text-center">
+                      <div className="font-medium capitalize">{lift}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {(attempts as { opener: number; second: number; third: number }).opener} / {(attempts as { opener: number; second: number; third: number }).second} / {(attempts as { opener: number; second: number; third: number }).third} kg
+                      </div>
+                    </div>
+                  ))}
+                {data.attempt_selection.total !== undefined && (
+                  <div className="text-center col-span-3 mt-2 pt-2 border-t border-border">
+                    <span className="font-medium">Projected total: {data.attempt_selection.total} kg</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Formula Reference */}
+          <div className="mt-8">
+            <details className="group">
+              <summary className="cursor-pointer text-sm font-medium text-gray-400 hover:text-gray-200">
+                How These Numbers Are Calculated
+              </summary>
+              <div className="mt-4 space-y-2">
+                {FORMULA_DESCRIPTIONS.map(formula => (
+                  <details key={formula.id} className="border border-gray-700 rounded-lg">
+                    <summary className="px-4 py-2 cursor-pointer text-sm font-medium">
+                      {formula.title}
+                    </summary>
+                    <div className="px-4 py-3 space-y-2 text-sm text-gray-300">
+                      <p>{formula.summary}</p>
+                      <pre className="bg-gray-800 rounded p-3 font-mono text-xs overflow-x-auto">
+                        {formula.formula}
+                      </pre>
+                      {formula.variables && (
+                        <div className="grid grid-cols-2 gap-1 text-xs">
+                          {formula.variables.map(v => (
+                            <div key={v.name}><code>{v.name}</code>: {v.description}</div>
+                          ))}
+                        </div>
+                      )}
+                      {formula.thresholds && (
+                        <table className="w-full text-xs mt-2">
+                          <thead><tr><th className="text-left">Condition</th><th className="text-left">Value</th><th className="text-left">Flag</th></tr></thead>
+                          <tbody>
+                            {formula.thresholds.map(t => (
+                              <tr key={t.label}><td className="py-0.5">{t.label}</td><td className="py-0.5">{t.value}</td><td className="py-0.5">{t.flag || '\u2014'}</td></tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </details>
+          </div>
 
           {/* Flags */}
           {data.flags.length > 0 && (

@@ -15,6 +15,11 @@ export interface ProgramMeta {
   target_bench_kg: number
   target_dl_kg: number
   target_total_kg: number
+  attempt_pct?: {
+    opener: number   // default 0.90
+    second: number   // default 0.955
+    third: number    // default 1.00
+  }
   training_notes: string[]
   change_log: ChangeLogEntry[]
   updated_at: string
@@ -246,6 +251,15 @@ export type Equipment =
 
 export type FatigueCategory = 'primary_axial' | 'primary_upper' | 'secondary' | 'accessory'
 
+export interface FatigueProfile {
+  axial: number       // 0.0-1.0, spinal compression loading
+  neural: number      // 0.0-1.0, CNS demand baseline
+  peripheral: number  // 0.0-1.0, local muscle damage potential
+  systemic: number    // 0.0-1.0, cardiovascular/metabolic demand
+}
+
+export type FatigueProfileSource = 'ai_estimated' | 'manual'
+
 export interface GlossaryExercise {
   id: string
   name: string
@@ -257,6 +271,9 @@ export interface GlossaryExercise {
   cues: string[]
   notes: string
   video_url?: string
+  fatigue_profile?: FatigueProfile
+  fatigue_profile_source?: FatigueProfileSource
+  fatigue_profile_reasoning?: string | null
 }
 
 // ─── Plate Calculator ─────────────────────────────────────────────────────────

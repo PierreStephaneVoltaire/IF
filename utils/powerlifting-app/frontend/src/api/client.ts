@@ -16,6 +16,7 @@ import type {
   LiftResults,
   VideoLibraryItem,
   VideoLibraryResponse,
+  FatigueProfile,
 } from '@powerlifting/types'
 
 const api = axios.create({
@@ -327,6 +328,24 @@ export async function removeSessionVideo(
   videoId: string
 ): Promise<void> {
   await api.delete(`/videos/${version}/${sessionDate}/${videoId}`)
+}
+
+// ─── Fatigue Profile ──────────────────────────────────────────────────────────
+
+export async function estimateFatigueProfile(exercise: {
+  name: string
+  category?: string
+  equipment?: string
+  primary_muscles?: string[]
+  secondary_muscles?: string[]
+  cues?: string[]
+  notes?: string
+}): Promise<FatigueProfile & { reasoning: string }> {
+  const res = await api.post<ApiResponse<FatigueProfile & { reasoning: string }>>(
+    '/analytics/fatigue-profile/estimate',
+    exercise
+  )
+  return res.data.data
 }
 
 export default api

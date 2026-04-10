@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 const PK = 'operator'
 const GLOSSARY_SK = 'glossary#v1'
+const INTERNAL_API_URL = process.env.INTERNAL_API_URL || 'http://localhost:3002'
 
 /**
  * Get the exercise glossary
@@ -65,11 +66,56 @@ export async function upsertExercise(exercise: GlossaryExercise): Promise<void> 
   })
 
   await docClient.send(command)
+
+  // Fire-and-forget AI fatigue profile estimation if profile is missing and not manually set
+  if (!exercise.fatigue_profile && exercise.fatigue_profile_source !== 'manual') {
+    fetch(`${INTERNAL_API_URL}/api/analytics/fatigue-profile/estimate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: exercise.name,
+        category: exercise.category,
+        equipment: exercise.equipment,
+        primary_muscles: exercise.primary_muscles,
+        secondary_muscles: exercise.secondary_muscles,
+        cues: exercise.cues,
+        notes: exercise.notes,
+      }),
+    })
+      .then(res => res.json())
+      .then(({ data: profile }) => {
+        if (!profile) return
+        return updateExerciseProfile(exercise.id, {
+          fatigue_profile: { axial: profile.axial, neural: profile.neural, peripheral: profile.peripheral, systemic: profile.systemic },
+          fatigue_profile_source: 'ai_estimated',
+          fatigue_profile_reasoning: profile.reasoning,
+        })
+      })
+      .catch(err => console.error('Fatigue profile estimation failed:', err))
+  }
 }
 
 /**
- * Remove an exercise from the glossary
+ * Update only the fatigue profile fields of an exercise in the glossary
  */
+async function updateExerciseProfile(
+  exerciseId: string,
+  profile: { fatigue_profile: GlossaryExercise['fatigue_profile']; fatigue_profile_source: GlossaryExercise['fatigue_profile_source']; fatigue_profile_reasoning: string | null }
+): Promise<void> {
+  const glossary = await getGlossary()
+  const idx = glossary.exercises.findIndex(e => e.id === exerciseId)
+  if (idx < 0) return
+
+  glossary.exercises[idx] = {
+    ...glossary.exercises[idx],
+    ...profile,
+  }
+  glossary.updated_at = new Date().toISOString()
+
+  const command = new PutCommand({ TableName: TABLE, Item: glossary })
+  await docClient.send(command)
+}
+
 export async function removeExercise(exerciseId: string): Promise<void> {
   const glossary = await getGlossary()
 

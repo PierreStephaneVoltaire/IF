@@ -14,7 +14,7 @@ export interface WeeklyAnalysis {
   fatigue_index: number | null
   fatigue_components: {
     failed_compound_ratio?: number
-    fatigue_load_spike?: number
+    composite_spike?: number
     skip_rate?: number
   } | null
   compliance: {
@@ -22,6 +22,10 @@ export interface WeeklyAnalysis {
     planned: number
     completed: number
     pct: number
+    excluded_weeks?: {
+      deload: number[]
+      break: number[]
+    }
   } | null
   current_maxes: {
     squat?: number
@@ -45,6 +49,46 @@ export interface WeeklyAnalysis {
     total_volume: number
     max_kg: number
   }> | null
+  deload_info?: {
+    deload_weeks: number[]
+    break_weeks: number[]
+    effective_training_weeks: number
+  }
+  inol?: {
+    per_lift_per_week: Record<string, Record<string, number>>
+    current_week: Record<string, number>
+    flags: string[]
+  }
+  acwr?: {
+    composite: number
+    composite_zone: string
+    dimensions: Record<string, { value: number; zone: string }>
+  }
+  ri_distribution?: {
+    overall: Record<string, { count: number; pct: number }>
+    per_lift: Record<string, Record<string, { count: number; pct: number }>>
+  }
+  specificity_ratio?: {
+    narrow: number
+    broad: number
+    total_sets: number
+    sbd_sets: number
+  }
+  readiness_score?: {
+    score: number
+    zone: string
+    components: Record<string, number>
+  }
+  fatigue_dimensions?: {
+    weekly: Record<string, { axial: number; neural: number; peripheral: number; systemic: number }>
+    acwr: Record<string, any>
+    spike: Record<string, any>
+  }
+  attempt_selection?: Record<string, {
+    opener: number
+    second: number
+    third: number
+  }> & { total?: number; attempt_pct_used?: { opener: number; second: number; third: number } }
 }
 
 export async function fetchWeeklyAnalysis(weeks = 1, block = 'current'): Promise<WeeklyAnalysis> {

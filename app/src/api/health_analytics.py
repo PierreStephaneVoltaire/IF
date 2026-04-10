@@ -2,6 +2,7 @@
 
 GET /v1/health/analysis/weekly  — structured weekly analysis JSON
 GET /v1/health/export/xlsx      — download program as Excel
+POST /v1/health/fatigue-profile/estimate — AI fatigue profile estimation
 """
 from __future__ import annotations
 
@@ -33,6 +34,21 @@ def _sanitize_decimals(obj):
         return [_sanitize_decimals(v) for v in obj]
     return obj
 
+
+def _get_glossary_sync(table_name: str) -> list[dict]:
+    """Fetch glossary from DynamoDB (pk='operator', sk='glossary#v1')."""
+    import boto3
+    from config import IF_HEALTH_TABLE_NAME
+
+    dynamodb = boto3.resource("dynamodb", region_name="ca-central-1")
+    table = dynamodb.Table(table_name)
+    resp = table.get_item(Key={"pk": "operator", "sk": "glossary#v1"})
+    item = resp.get("Item")
+    if not item:
+        return []
+    return _sanitize_decimals(item.get("exercises", []))
+
+
 router = APIRouter(prefix="/v1/health", tags=["health"])
 
 
@@ -50,11 +66,21 @@ async def get_weekly_analysis(
         store = ProgramStore(IF_HEALTH_TABLE_NAME)
         program = _sanitize_decimals(await store.get_program())
         sessions = program.get("sessions", [])
-        result = weekly_analysis(program, sessions, weeks=weeks, block=block)
+        glossary = _get_glossary_sync(IF_HEALTH_TABLE_NAME)
+        result = weekly_analysis(program, sessions, weeks=weeks, block=block, glossary=glossary)
         return result
     except Exception as e:
         logger.error(f"[HealthAnalytics] weekly_analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/fatigue-profile/estimate")
+async def estimate_fatigue_profile_endpoint(request: dict):
+    """Estimate fatigue profile for an exercise using AI."""
+    from health.fatigue_ai import estimate_fatigue_profile
+
+    result = await estimate_fatigue_profile(request)
+    return result
 
 
 @router.get("/export/xlsx")

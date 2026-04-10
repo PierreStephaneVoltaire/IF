@@ -1,9 +1,40 @@
-import { useState, useEffect, useMemo } from 'react'
-import { Search, Plus, X, ChevronDown, ChevronUp, Trash2, Edit2 } from 'lucide-react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Search, Plus, X, ChevronDown, ChevronUp, Trash2, Edit2, RefreshCw } from 'lucide-react'
 import { clsx } from 'clsx'
+import * as Slider from '@radix-ui/react-slider'
 import * as api from '@/api/client'
 import { useUiStore } from '@/store/uiStore'
-import type { GlossaryExercise, MuscleGroup, ExerciseCategory, Equipment, FatigueCategory } from '@powerlifting/types'
+import type { GlossaryExercise, MuscleGroup, ExerciseCategory, Equipment, FatigueCategory, FatigueProfile, FatigueProfileSource } from '@powerlifting/types'
+
+interface FatigueSliderProps {
+  label: string
+  value: number
+  onChange: (v: number) => void
+}
+
+function FatigueSlider({ label, value, onChange }: FatigueSliderProps) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-mono text-xs tabular-nums">{(value / 100).toFixed(2)}</span>
+      </div>
+      <Slider.Root
+        className="relative flex items-center select-none touch-none w-full h-5"
+        value={[value]}
+        onValueChange={([v]) => onChange(v)}
+        min={0}
+        max={100}
+        step={5}
+      >
+        <Slider.Track className="bg-secondary relative grow rounded-full h-2">
+          <Slider.Range className="absolute bg-primary rounded-full h-full" />
+        </Slider.Track>
+        <Slider.Thumb className="block w-4 h-4 bg-background border-2 border-primary rounded-full hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary" />
+      </Slider.Root>
+    </div>
+  )
+}
 
 const MUSCLE_LABELS: Record<MuscleGroup, string> = {
   quads: 'Quads',
@@ -86,6 +117,10 @@ export default function GlossaryPage() {
     notes: '',
   })
   const [cueInput, setCueInput] = useState('')
+  const [fatigueProfile, setFatigueProfile] = useState<FatigueProfile | null>(null)
+  const [fatigueSource, setFatigueSource] = useState<FatigueProfileSource | null>(null)
+  const [fatigueReasoning, setFatigueReasoning] = useState<string | null>(null)
+  const [isEstimating, setIsEstimating] = useState(false)
 
   useEffect(() => {
     loadExercises()
@@ -135,6 +170,9 @@ export default function GlossaryPage() {
         equipment: formData.equipment || 'barbell',
         cues: formData.cues || [],
         notes: formData.notes || '',
+        fatigue_profile: fatigueProfile || undefined,
+        fatigue_profile_source: fatigueSource || undefined,
+        fatigue_profile_reasoning: fatigueReasoning,
       }
 
       await api.upsertExercise(exercise)
@@ -154,6 +192,9 @@ export default function GlossaryPage() {
         cues: [],
         notes: '',
       })
+      setFatigueProfile(null)
+      setFatigueSource(null)
+      setFatigueReasoning(null)
       loadExercises()
     } catch (err) {
       pushToast({ message: 'Failed to save exercise', type: 'error' })
@@ -184,6 +225,9 @@ export default function GlossaryPage() {
       cues: exercise.cues,
       notes: exercise.notes,
     })
+    setFatigueProfile(exercise.fatigue_profile || null)
+    setFatigueSource(exercise.fatigue_profile_source || null)
+    setFatigueReasoning(exercise.fatigue_profile_reasoning || null)
     setShowAddForm(true)
   }
 
@@ -214,6 +258,44 @@ export default function GlossaryPage() {
           : [...current, muscle],
       }
     })
+  }
+
+  function handleFatigueSliderChange(dimension: keyof FatigueProfile, value: number) {
+    setFatigueProfile((prev) => {
+      const next = prev
+        ? { ...prev, [dimension]: value / 100 }
+        : { axial: 0, neural: 0, peripheral: 0, systemic: 0, [dimension]: value / 100 }
+      return next as FatigueProfile
+    })
+    setFatigueSource('manual')
+    setFatigueReasoning(null)
+  }
+
+  async function handleReEstimate() {
+    setIsEstimating(true)
+    try {
+      const result = await api.estimateFatigueProfile({
+        name: formData.name || '',
+        category: formData.category,
+        equipment: formData.equipment,
+        primary_muscles: formData.primary_muscles,
+        secondary_muscles: formData.secondary_muscles,
+        cues: formData.cues,
+        notes: formData.notes,
+      })
+      setFatigueProfile({
+        axial: result.axial,
+        neural: result.neural,
+        peripheral: result.peripheral,
+        systemic: result.systemic,
+      })
+      setFatigueSource('ai_estimated')
+      setFatigueReasoning(result.reasoning)
+    } catch {
+      pushToast({ message: 'Fatigue estimation failed', type: 'error' })
+    } finally {
+      setIsEstimating(false)
+    }
   }
 
   const filteredExercises = useMemo(() => {
@@ -359,6 +441,57 @@ export default function GlossaryPage() {
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
+          </div>
+
+          {/* Fatigue Profile Sliders */}
+          <div className="space-y-3 border border-border rounded-md p-4">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Fatigue Profile</label>
+              <div className="flex items-center gap-2">
+                {fatigueSource && (
+                  <span className={clsx(
+                    'text-xs px-2 py-0.5 rounded-full',
+                    fatigueSource === 'ai_estimated'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                      : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                  )}>
+                    {fatigueSource === 'ai_estimated' ? 'AI estimated' : 'Manual override'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleReEstimate}
+                  disabled={isEstimating || !formData.name}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-secondary rounded-md hover:bg-secondary/80 disabled:opacity-50"
+                >
+                  <RefreshCw className={clsx('w-3 h-3', isEstimating && 'animate-spin')} />
+                  {isEstimating ? 'Estimating...' : 'Re-estimate'}
+                </button>
+              </div>
+            </div>
+            <FatigueSlider
+              label="Axial (spinal loading)"
+              value={Math.round((fatigueProfile?.axial ?? 0) * 100)}
+              onChange={(v) => handleFatigueSliderChange('axial', v)}
+            />
+            <FatigueSlider
+              label="Neural (CNS demand)"
+              value={Math.round((fatigueProfile?.neural ?? 0) * 100)}
+              onChange={(v) => handleFatigueSliderChange('neural', v)}
+            />
+            <FatigueSlider
+              label="Peripheral (muscle damage)"
+              value={Math.round((fatigueProfile?.peripheral ?? 0) * 100)}
+              onChange={(v) => handleFatigueSliderChange('peripheral', v)}
+            />
+            <FatigueSlider
+              label="Systemic (metabolic load)"
+              value={Math.round((fatigueProfile?.systemic ?? 0) * 100)}
+              onChange={(v) => handleFatigueSliderChange('systemic', v)}
+            />
+            {fatigueSource === 'ai_estimated' && fatigueReasoning && (
+              <p className="text-xs text-muted-foreground italic">{fatigueReasoning}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

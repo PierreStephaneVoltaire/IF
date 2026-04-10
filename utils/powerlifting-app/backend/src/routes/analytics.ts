@@ -22,3 +22,24 @@ analyticsRouter.get('/analysis/weekly', async (req, res) => {
     res.status(502).json({ data: null, error: `Proxy error: ${err}` })
   }
 })
+
+// POST /api/analytics/fatigue-profile/estimate
+analyticsRouter.post('/fatigue-profile/estimate', async (req, res) => {
+  try {
+    const upstream = await fetch(`${IF_API_URL}/v1/health/fatigue-profile/estimate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body),
+    })
+
+    if (!upstream.ok) {
+      const text = await upstream.text()
+      return res.status(upstream.status).json({ data: null, error: text })
+    }
+
+    const data = await upstream.json()
+    res.json({ data, error: null })
+  } catch (err) {
+    res.status(502).json({ data: null, error: `Proxy error: ${err}` })
+  }
+})
