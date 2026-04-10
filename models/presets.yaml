@@ -3,12 +3,13 @@ provider: openrouter
 presets:
   code:
     models:
-      - anthropic/claude-sonnet-4.6
       - z-ai/glm-5.1
+      - x-ai/grok-4.1-fast
       - deepseek/deepseek-v3.2
-      - google/gemini-3.1-pro-preview
-      - openai/gpt-5.4
       - moonshotai/kimi-k2.5
+      - google/gemini-3.1-pro-preview
+      - anthropic/claude-sonnet-4.6
+      - openai/gpt-5.4
       - minimax/minimax-m2.7
     sort_by: throughput_desc
     when: >
@@ -24,11 +25,11 @@ presets:
 
   architecture:
     models:
-      - anthropic/claude-opus-4.6
       - z-ai/glm-5.1
       - google/gemini-3.1-pro-preview
       - openai/gpt-5.4
       - anthropic/claude-sonnet-4.6
+      - anthropic/claude-opus-4.6
     sort_by: price_asc
     when: >
       System design, architecture planning, and technical strategy where the output is a plan,
@@ -43,14 +44,15 @@ presets:
 
   shell:
     models:
-      - google/gemma-4-26b-a4b-it
-      - google/gemini-3-flash-lite-preview
+      - x-ai/grok-4.1-fast
+      - openai/gpt-5.4-nano
       - openai/gpt-5-nano
+      - google/gemini-3.1-flash-lite-preview
+      - google/gemma-4-26b-a4b-it
       - anthropic/claude-haiku-4.5
-      - nvidia/nemotron-3-super
-      - minimax/minimax-m2.7
-      - z-ai/glm-5-turbo
-      - qwen/qwen3.6-plus
+      - openai/gpt-oss-120b
+      - qwen/qwen3-next-80b-a3b-instruct
+      - nvidia/nemotron-3-super-120b-a12b
     sort_by: price_asc
     when: >
       One-liner commands, piped commands, short CLI snippets, and terminal troubleshooting.
@@ -63,9 +65,9 @@ presets:
   security:
     models:
       - anthropic/claude-sonnet-4.6
-      - anthropic/claude-opus-4.6
-      - z-ai/glm-5.1
       - google/gemini-3.1-pro-preview
+      - openai/gpt-5.4
+      - anthropic/claude-opus-4.6
     sort_by: price_asc
     when: >
       Security analysis, threat modeling, vulnerability assessment, penetration testing methodology,
@@ -99,8 +101,8 @@ presets:
     models:
       - moonshotai/kimi-k2.5
       - anthropic/claude-sonnet-4.6
+      - google/gemini-3-flash-preview
       - anthropic/claude-opus-4.6
-      - google/gemini-3.1-pro-preview
     sort_by: throughput_desc
     when: >
       Emotional processing, venting, and mental health support. Includes: hopelessness, despair,
@@ -113,10 +115,11 @@ presets:
 
   finance:
     models:
-      - perplexity/sonar-pro-search
+      - deepseek/deepseek-v3.2
       - moonshotai/kimi-k2.5
-      - anthropic/claude-sonnet-4.6
+      - google/gemini-3.1-pro-preview
       - openai/gpt-5.4
+      - anthropic/claude-opus-4.6
     sort_by: throughput_desc
     when: >
       Financial instruments, market data, and structured financial analysis. Includes: stocks,
@@ -129,12 +132,12 @@ presets:
 
   proofreader:
     models:
-      - google/gemini-3-flash-lite-preview
+      - google/gemini-3.1-flash-lite-preview
       - anthropic/claude-haiku-4.5
       - openai/gpt-5.4-mini
+      - mistralai/mistral-small-3.2-24b-instruct
       - google/gemma-4-31b-it
       - minimax/minimax-m2.7
-      - mistral/mistral-small-3.2-24b-instruct
     sort_by: latency_asc
     when: >
       Editing, rewriting, or drafting non-code prose. Includes: emails, Slack messages, cover
@@ -146,12 +149,13 @@ presets:
 
   social:
     models:
-      - google/gemini-3-flash-lite-preview
+      - google/gemini-3.1-flash-lite-preview
+      - openai/gpt-5.4-nano
+      - z-ai/glm-4.7-flash
       - openai/gpt-5-nano
       - google/gemma-4-26b-a4b-it
-      - minimax/minimax-m2.7
-      - nvidia/nemotron-3-super
-      - z-ai/glm-5-turbo
+      - x-ai/grok-4.1-fast
+      - openai/gpt-oss-120b
     sort_by: latency_asc
     when: >
       Pure social exchanges with no substantive information request and no emotional distress.
@@ -164,7 +168,8 @@ presets:
   general:
     models:
       - anthropic/claude-sonnet-4.6
-      - google/gemini-3-flash-preview
+      - google/gemini-3.1-pro-preview
+      - openai/gpt-5.4-nano
       - deepseek/deepseek-v3.2
       - openai/gpt-5.4-mini
       - moonshotai/kimi-k2.5
@@ -182,11 +187,12 @@ presets:
   pondering:
     models:
       - qwen/qwen3-max-thinking
-      - deepseek/deepseek-v3.2
+      - deepseek/deepseek-v3.2-speciale
       - z-ai/glm-5-turbo
+      - openai/gpt-5.4-nano
       - moonshotai/kimi-k2.5
-      - anthropic/claude-sonnet-4.6
       - google/gemma-4-31b-it
+      - anthropic/claude-sonnet-4.6
     sort_by: price_asc
     when: >
       Agent-initiated reflective conversation. Used by the heartbeat system after idle periods
