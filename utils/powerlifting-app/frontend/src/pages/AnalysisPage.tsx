@@ -89,9 +89,21 @@ export default function AnalysisPage() {
     fetchGlossary().then(setGlossary).catch(console.error)
   }, [version])
 
-  // Muscle group sets aggregation
-  const muscleGroupSets = useMemo(() => {
-    if (!glossary.length || !program?.sessions) return {}
+  // Fix 1: Shared filtered sessions respecting weeks filter
+  const filteredSessions = useMemo(() => {
+    if (!program?.sessions) return []
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - weeks * 7)
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    return program.sessions.filter(s =>
+      (s.block ?? 'current') === 'current' &&
+      s.completed &&
+      s.date >= cutoffStr
+    )
+  }, [program?.sessions, weeks])
+
+  // Glossary lookups (shared across memos)
+  const glossaryMuscles = useMemo(() => {
     const lookup = new Map<string, { primary: string[]; secondary: string[] }>()
     for (const ex of glossary) {
       lookup.set(normalizeExerciseName(ex.name), {
@@ -99,12 +111,32 @@ export default function AnalysisPage() {
         secondary: ex.secondary_muscles,
       })
     }
+    return lookup
+  }, [glossary])
 
-    const filtered = program.sessions.filter(s => (s.block ?? 'current') === 'current' && s.completed)
+  const glossaryFatigue = useMemo(() => {
+    const lookup = new Map<string, FatigueCategory>()
+    for (const ex of glossary) {
+      lookup.set(normalizeExerciseName(ex.name), ex.fatigue_category)
+    }
+    return lookup
+  }, [glossary])
+
+  const glossaryCategory = useMemo(() => {
+    const lookup = new Map<string, { category: ExerciseCategory; fatigue_category: FatigueCategory }>()
+    for (const ex of glossary) {
+      lookup.set(normalizeExerciseName(ex.name), { category: ex.category, fatigue_category: ex.fatigue_category })
+    }
+    return lookup
+  }, [glossary])
+
+  // Muscle group sets aggregation
+  const muscleGroupSets = useMemo(() => {
+    if (!glossaryMuscles.size || !filteredSessions.length) return {}
     const mgSets: Record<string, number> = {}
-    for (const s of filtered) {
+    for (const s of filteredSessions) {
       for (const ex of s.exercises || []) {
-        const muscles = lookup.get(normalizeExerciseName(ex.name))
+        const muscles = glossaryMuscles.get(normalizeExerciseName(ex.name))
         if (!muscles) continue
         const sets = ex.sets || 0
         for (const m of muscles.primary) mgSets[m] = (mgSets[m] || 0) + sets
@@ -112,44 +144,29 @@ export default function AnalysisPage() {
       }
     }
     return mgSets
-  }, [glossary, program?.sessions])
+  }, [glossaryMuscles, filteredSessions])
 
   // Fatigue category sets aggregation
   const fatigueCategorySets = useMemo(() => {
-    if (!glossary.length || !program?.sessions) return {}
-    const lookup = new Map<string, FatigueCategory>()
-    for (const ex of glossary) {
-      lookup.set(normalizeExerciseName(ex.name), ex.fatigue_category)
-    }
-
-    const filtered = program.sessions.filter(s => (s.block ?? 'current') === 'current' && s.completed)
+    if (!glossaryFatigue.size || !filteredSessions.length) return {}
     const fcSets: Record<string, number> = {}
-    for (const s of filtered) {
+    for (const s of filteredSessions) {
       for (const ex of s.exercises || []) {
-        const fc = lookup.get(normalizeExerciseName(ex.name))
+        const fc = glossaryFatigue.get(normalizeExerciseName(ex.name))
         if (!fc) continue
         fcSets[fc] = (fcSets[fc] || 0) + (ex.sets || 0)
       }
     }
     return fcSets
-  }, [glossary, program?.sessions])
+  }, [glossaryFatigue, filteredSessions])
 
   // Muscle group volume aggregation
   const muscleGroupVolume = useMemo(() => {
-    if (!glossary.length || !program?.sessions) return {}
-    const lookup = new Map<string, { primary: string[]; secondary: string[] }>()
-    for (const ex of glossary) {
-      lookup.set(normalizeExerciseName(ex.name), {
-        primary: ex.primary_muscles,
-        secondary: ex.secondary_muscles,
-      })
-    }
-
-    const filtered = program.sessions.filter(s => (s.block ?? 'current') === 'current' && s.completed)
+    if (!glossaryMuscles.size || !filteredSessions.length) return {}
     const mgVol: Record<string, number> = {}
-    for (const s of filtered) {
+    for (const s of filteredSessions) {
       for (const ex of s.exercises || []) {
-        const muscles = lookup.get(normalizeExerciseName(ex.name))
+        const muscles = glossaryMuscles.get(normalizeExerciseName(ex.name))
         if (!muscles) continue
         const vol = (ex.sets || 0) * (ex.reps || 0) * (ex.kg || 0)
         for (const m of muscles.primary) mgVol[m] = (mgVol[m] || 0) + vol
@@ -157,47 +174,32 @@ export default function AnalysisPage() {
       }
     }
     return mgVol
-  }, [glossary, program?.sessions])
+  }, [glossaryMuscles, filteredSessions])
 
   // Fatigue category volume aggregation
   const fatigueCategoryVolume = useMemo(() => {
-    if (!glossary.length || !program?.sessions) return {}
-    const lookup = new Map<string, FatigueCategory>()
-    for (const ex of glossary) {
-      lookup.set(normalizeExerciseName(ex.name), ex.fatigue_category)
-    }
-
-    const filtered = program.sessions.filter(s => (s.block ?? 'current') === 'current' && s.completed)
+    if (!glossaryFatigue.size || !filteredSessions.length) return {}
     const fcVol: Record<string, number> = {}
-    for (const s of filtered) {
+    for (const s of filteredSessions) {
       for (const ex of s.exercises || []) {
-        const fc = lookup.get(normalizeExerciseName(ex.name))
+        const fc = glossaryFatigue.get(normalizeExerciseName(ex.name))
         if (!fc) continue
         const vol = (ex.sets || 0) * (ex.reps || 0) * (ex.kg || 0)
         fcVol[fc] = (fcVol[fc] || 0) + vol
       }
     }
     return fcVol
-  }, [glossary, program?.sessions])
+  }, [glossaryFatigue, filteredSessions])
 
   // Avg per week: muscle group
   const muscleGroupAvgWeekly = useMemo(() => {
-    if (!glossary.length || !program?.sessions) return { sets: {}, volume: {} }
-    const lookup = new Map<string, { primary: string[]; secondary: string[] }>()
-    for (const ex of glossary) {
-      lookup.set(normalizeExerciseName(ex.name), {
-        primary: ex.primary_muscles,
-        secondary: ex.secondary_muscles,
-      })
-    }
-
-    const filtered = program.sessions.filter(s => (s.block ?? 'current') === 'current' && s.completed)
-    const numWeeks = new Set(filtered.map(s => s.week_number)).size || 1
+    if (!glossaryMuscles.size || !filteredSessions.length) return { sets: {}, volume: {} }
+    const numWeeks = new Set(filteredSessions.map(s => s.week_number)).size || 1
     const mgSets: Record<string, number> = {}
     const mgVol: Record<string, number> = {}
-    for (const s of filtered) {
+    for (const s of filteredSessions) {
       for (const ex of s.exercises || []) {
-        const muscles = lookup.get(normalizeExerciseName(ex.name))
+        const muscles = glossaryMuscles.get(normalizeExerciseName(ex.name))
         if (!muscles) continue
         const sets = ex.sets || 0
         const vol = sets * (ex.reps || 0) * (ex.kg || 0)
@@ -218,23 +220,17 @@ export default function AnalysisPage() {
       avgVol[m] = Math.round(mgVol[m] / numWeeks)
     }
     return { sets: avgSets, volume: avgVol }
-  }, [glossary, program?.sessions])
+  }, [glossaryMuscles, filteredSessions])
 
   // Avg per week: fatigue category
   const fatigueCategoryAvgWeekly = useMemo(() => {
-    if (!glossary.length || !program?.sessions) return { sets: {}, volume: {} }
-    const lookup = new Map<string, FatigueCategory>()
-    for (const ex of glossary) {
-      lookup.set(normalizeExerciseName(ex.name), ex.fatigue_category)
-    }
-
-    const filtered = program.sessions.filter(s => (s.block ?? 'current') === 'current' && s.completed)
-    const numWeeks = new Set(filtered.map(s => s.week_number)).size || 1
+    if (!glossaryFatigue.size || !filteredSessions.length) return { sets: {}, volume: {} }
+    const numWeeks = new Set(filteredSessions.map(s => s.week_number)).size || 1
     const fcSets: Record<string, number> = {}
     const fcVol: Record<string, number> = {}
-    for (const s of filtered) {
+    for (const s of filteredSessions) {
       for (const ex of s.exercises || []) {
-        const fc = lookup.get(normalizeExerciseName(ex.name))
+        const fc = glossaryFatigue.get(normalizeExerciseName(ex.name))
         if (!fc) continue
         const sets = ex.sets || 0
         const vol = sets * (ex.reps || 0) * (ex.kg || 0)
@@ -249,18 +245,12 @@ export default function AnalysisPage() {
       avgVol[fc] = Math.round(fcVol[fc] / numWeeks)
     }
     return { sets: avgSets, volume: avgVol }
-  }, [glossary, program?.sessions])
+  }, [glossaryFatigue, filteredSessions])
 
-  // Per-lift details: frequency, raw sets, accessory work
+  // Fix 2: Per-lift details — frequency counts any exercise in same category
   const perLiftDetails = useMemo(() => {
-    if (!glossary.length || !program?.sessions) return {}
-    const filtered = program.sessions.filter(s => (s.block ?? 'current') === 'current' && s.completed)
-    const numWeeks = new Set(filtered.map(s => s.week_number)).size || 1
-
-    const glossaryLookup = new Map<string, { category: ExerciseCategory; fatigue_category: FatigueCategory }>()
-    for (const ex of glossary) {
-      glossaryLookup.set(normalizeExerciseName(ex.name), { category: ex.category, fatigue_category: ex.fatigue_category })
-    }
+    if (!glossaryCategory.size || !filteredSessions.length) return {}
+    const numWeeks = new Set(filteredSessions.map(s => s.week_number)).size || 1
 
     const result: Record<string, { frequency: number; raw_sets: number; accessories: { name: string; sets: number; volume: number }[] }> = {}
 
@@ -269,15 +259,21 @@ export default function AnalysisPage() {
       let rawSets = 0
       const accessoryMap: Record<string, { sets: number; volume: number }> = {}
 
-      for (const s of filtered) {
+      for (const s of filteredSessions) {
         let hasLift = false
         for (const ex of s.exercises || []) {
           const exLower = ex.name.toLowerCase().trim()
-          const info = glossaryLookup.get(normalizeExerciseName(ex.name))
-          if (exLower === liftName || (liftName === 'bench' && exLower === 'bench press')) {
+          const info = glossaryCategory.get(normalizeExerciseName(ex.name))
+          // Fix 2: match exact name OR any exercise in the same category
+          if (exLower === liftName || (liftName === 'bench' && exLower === 'bench press') ||
+              (info && info.category === category)) {
             hasLift = true
+          }
+          // Count raw sets only for the exact main lift
+          if (exLower === liftName || (liftName === 'bench' && exLower === 'bench press')) {
             rawSets += ex.sets || 0
           }
+          // Accessory work: same category, secondary or accessory fatigue
           if (info && info.category === category && (info.fatigue_category === 'secondary' || info.fatigue_category === 'accessory')) {
             const sets = ex.sets || 0
             const vol = sets * (ex.reps || 0) * (ex.kg || 0)
@@ -298,25 +294,44 @@ export default function AnalysisPage() {
       }
     }
     return result
-  }, [glossary, program?.sessions])
+  }, [glossaryCategory, filteredSessions])
 
   // Avg sessions per week
   const avgSessionsPerWeek = data ? Math.round((data.sessions_analyzed / weeks) * 10) / 10 : null
 
-  // Nutrition trend
+  // Fix 3: Nutrition trend with +/- per week deltas
   const nutritionTrend = useMemo(() => {
     if (!program?.diet_notes?.length) return null
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - weeks * 7)
     const cutoffStr = cutoff.toISOString().slice(0, 10)
-    const inWindow = program.diet_notes.filter(n => n.date >= cutoffStr)
+    const inWindow = program.diet_notes
+      .filter(n => n.date >= cutoffStr)
+      .sort((a, b) => a.date.localeCompare(b.date))
     if (!inWindow.length) return null
     const withCalories = inWindow.filter(n => n.avg_daily_calories != null)
     const withWater = inWindow.filter(n => n.water_intake != null)
     const consistent = inWindow.filter(n => n.consistent).length
+
+    let caloriesChangePerWeek: number | null = null
+    if (withCalories.length >= 2) {
+      const delta = withCalories[withCalories.length - 1].avg_daily_calories! - withCalories[0].avg_daily_calories!
+      const dateDelta = (new Date(withCalories[withCalories.length - 1].date).getTime() - new Date(withCalories[0].date).getTime()) / (7 * 86400000)
+      if (dateDelta > 0) caloriesChangePerWeek = Math.round(delta / dateDelta)
+    }
+
+    let waterChangePerWeek: number | null = null
+    if (withWater.length >= 2) {
+      const delta = withWater[withWater.length - 1].water_intake! - withWater[0].water_intake!
+      const dateDelta = (new Date(withWater[withWater.length - 1].date).getTime() - new Date(withWater[0].date).getTime()) / (7 * 86400000)
+      if (dateDelta > 0) waterChangePerWeek = Math.round(delta / dateDelta * 10) / 10
+    }
+
     return {
       avgCalories: withCalories.length ? Math.round(withCalories.reduce((s, n) => s + (n.avg_daily_calories || 0), 0) / withCalories.length) : null,
+      caloriesChangePerWeek,
       avgWater: withWater.length ? Math.round(withWater.reduce((s, n) => s + (n.water_intake || 0), 0) / withWater.length * 10) / 10 : null,
+      waterChangePerWeek,
       waterUnit: withWater[0]?.water_unit || 'litres',
       consistencyPct: inWindow.length ? Math.round((consistent / inWindow.length) * 100) : null,
       entries: inWindow.length,
@@ -536,7 +551,7 @@ export default function AnalysisPage() {
             </div>
           )}
 
-          {/* Nutrition Trend */}
+          {/* Fix 3: Nutrition Trend with +/- per week deltas */}
           {nutritionTrend && (
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -548,12 +563,22 @@ export default function AnalysisPage() {
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground">Avg Daily Calories</p>
                     <p className="text-lg font-bold">{nutritionTrend.avgCalories.toLocaleString()}</p>
+                    {nutritionTrend.caloriesChangePerWeek !== null && (
+                      <p className={`text-xs font-medium ${nutritionTrend.caloriesChangePerWeek >= 0 ? 'text-yellow-600' : 'text-green-600'}`}>
+                        {nutritionTrend.caloriesChangePerWeek >= 0 ? '+' : ''}{nutritionTrend.caloriesChangePerWeek}/wk
+                      </p>
+                    )}
                   </div>
                 )}
                 {nutritionTrend.avgWater !== null && (
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground">Avg Water</p>
                     <p className="text-lg font-bold">{nutritionTrend.avgWater} {nutritionTrend.waterUnit === 'litres' ? 'L' : 'cups'}/day</p>
+                    {nutritionTrend.waterChangePerWeek !== null && (
+                      <p className={`text-xs font-medium ${nutritionTrend.waterChangePerWeek >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                        {nutritionTrend.waterChangePerWeek >= 0 ? '+' : ''}{nutritionTrend.waterChangePerWeek} {nutritionTrend.waterUnit === 'litres' ? 'L' : 'cups'}/wk
+                      </p>
+                    )}
                   </div>
                 )}
                 {nutritionTrend.consistencyPct !== null && (
@@ -731,7 +756,7 @@ export default function AnalysisPage() {
             </div>
           )}
 
-          {/* Exercise Stats */}
+          {/* Exercise Stats — Fix 5: increased chart heights */}
           {data.exercise_stats && Object.keys(data.exercise_stats).length > 0 && (
             <div className="bg-card border border-border rounded-lg p-4">
               <h3 className="font-medium mb-3">Exercise Volume</h3>
@@ -765,7 +790,7 @@ export default function AnalysisPage() {
                   {/* Sets pie */}
                   <div>
                     <p className="text-xs text-muted-foreground text-center mb-2">Sets Distribution</p>
-                    <ResponsiveContainer width="100%" height={250}>
+                    <ResponsiveContainer width="100%" height={350}>
                       <PieChart>
                         <Pie
                           data={Object.entries(data.exercise_stats)
@@ -791,7 +816,7 @@ export default function AnalysisPage() {
                   {/* Volume pie */}
                   <div>
                     <p className="text-xs text-muted-foreground text-center mb-2">Volume Distribution</p>
-                    <ResponsiveContainer width="100%" height={250}>
+                    <ResponsiveContainer width="100%" height={350}>
                       <PieChart>
                         <Pie
                           data={Object.entries(data.exercise_stats)
@@ -814,10 +839,10 @@ export default function AnalysisPage() {
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-                  {/* Max bar */}
+                  {/* Max bar — Fix 5: height 350, YAxis width 130, fontSize 12 */}
                   <div>
                     <p className="text-xs text-muted-foreground text-center mb-2">Max Weight (kg)</p>
-                    <ResponsiveContainer width="100%" height={250}>
+                    <ResponsiveContainer width="100%" height={350}>
                       <BarChart
                         data={Object.entries(data.exercise_stats)
                           .sort((a, b) => b[1].max_kg - a[1].max_kg)
@@ -827,7 +852,7 @@ export default function AnalysisPage() {
                       >
                         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                         <XAxis type="number" />
-                        <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11 }} />
+                        <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 12 }} />
                         <Tooltip />
                         <Bar dataKey="max_kg" radius={[0, 4, 4, 0]}>
                           {Object.entries(data.exercise_stats)
@@ -1003,7 +1028,7 @@ export default function AnalysisPage() {
             </div>
           )}
 
-          {/* Avg Weekly by Muscle Group */}
+          {/* Fix 4: Avg Weekly by Muscle Group — separate charts */}
           {Object.keys(muscleGroupAvgWeekly.sets).length > 0 && (
             <div className="bg-card border border-border rounded-lg p-4">
               <h3 className="font-medium mb-3">Avg Weekly by Muscle Group</h3>
@@ -1031,29 +1056,45 @@ export default function AnalysisPage() {
                   </table>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart
-                    data={Object.entries(muscleGroupAvgWeekly.sets)
-                      .sort((a, b) => (muscleGroupAvgWeekly.volume[b[0]] || 0) - (muscleGroupAvgWeekly.volume[a[0]] || 0))
-                      .map(([name]) => ({
-                        name: name.replace(/_/g, ' '),
-                        'Avg Sets/wk': muscleGroupAvgWeekly.sets[name],
-                        'Avg Vol/wk': Math.round((muscleGroupAvgWeekly.volume[name] || 0) / 100),
-                      }))}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" height={60} />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="Avg Sets/wk" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Avg Vol/wk" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground text-center mb-2">Avg Sets/wk</p>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart
+                        data={Object.entries(muscleGroupAvgWeekly.sets)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([name, value]) => ({ name: name.replace(/_/g, ' '), 'Avg Sets/wk': value }))}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" height={60} />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="Avg Sets/wk" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground text-center mb-2">Avg Vol/wk (kg)</p>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart
+                        data={Object.entries(muscleGroupAvgWeekly.volume)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([name, value]) => ({ name: name.replace(/_/g, ' '), 'Avg Vol/wk': value }))}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" height={60} />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="Avg Vol/wk" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               )}
             </div>
           )}
 
-          {/* Avg Weekly by Fatigue Category */}
+          {/* Fix 4: Avg Weekly by Fatigue Category — separate charts */}
           {Object.keys(fatigueCategoryAvgWeekly.sets).length > 0 && (
             <div className="bg-card border border-border rounded-lg p-4">
               <h3 className="font-medium mb-3">Avg Weekly by Fatigue Category</h3>
@@ -1084,24 +1125,40 @@ export default function AnalysisPage() {
                   </table>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart
-                    data={FATIGUE_ORDER
-                      .filter(fc => fatigueCategoryAvgWeekly.sets[fc] || fatigueCategoryAvgWeekly.volume[fc])
-                      .map(fc => ({
-                        name: FATIGUE_LABELS[fc],
-                        'Avg Sets/wk': fatigueCategoryAvgWeekly.sets[fc] || 0,
-                        'Avg Vol/wk': Math.round((fatigueCategoryAvgWeekly.volume[fc] || 0) / 100),
-                      }))}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="Avg Sets/wk" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Avg Vol/wk" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground text-center mb-2">Avg Sets/wk</p>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart
+                        data={FATIGUE_ORDER
+                          .filter(fc => fatigueCategoryAvgWeekly.sets[fc])
+                          .map(fc => ({ name: FATIGUE_LABELS[fc], 'Avg Sets/wk': fatigueCategoryAvgWeekly.sets[fc] || 0 }))}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="Avg Sets/wk" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground text-center mb-2">Avg Vol/wk (kg)</p>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart
+                        data={FATIGUE_ORDER
+                          .filter(fc => fatigueCategoryAvgWeekly.volume[fc])
+                          .map(fc => ({ name: FATIGUE_LABELS[fc], 'Avg Vol/wk': fatigueCategoryAvgWeekly.volume[fc] || 0 }))}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="Avg Vol/wk" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               )}
             </div>
           )}
