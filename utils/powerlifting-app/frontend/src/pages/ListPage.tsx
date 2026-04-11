@@ -205,7 +205,10 @@ export default function ListPage() {
               {/* Session List */}
               {isExpanded && (
                 <div className="border-t border-border">
-                  {sessions.map((session, arrayIdx) => (
+                  {sessions.map((session, arrayIdx) => {
+                    const previewExercises = session.exercises.length > 0 ? session.exercises : session.planned_exercises || []
+                    const isPlanned = session.exercises.length === 0 && (session.planned_exercises?.length ?? 0) > 0
+                    return (
                     <button
                       key={`${session.date}-${arrayIdx}`}
                       onClick={() => handleSessionClick(session.date, program.sessions.indexOf(session))}
@@ -228,7 +231,11 @@ export default function ListPage() {
 
                       <div className="flex-1 text-right">
                         <div className="text-sm">
-                          {session.exercises.length} exercise{session.exercises.length !== 1 ? 's' : ''}
+                          {session.exercises.length > 0
+                            ? `${session.exercises.length} exercise${session.exercises.length !== 1 ? 's' : ''}`
+                            : isPlanned
+                              ? `${session.planned_exercises!.length} planned`
+                              : 'No exercises'}
                         </div>
                         {session.session_rpe !== null && (
                           <div className="text-xs text-muted-foreground">
@@ -239,21 +246,22 @@ export default function ListPage() {
 
                       {/* Quick exercise preview */}
                       <div className="hidden lg:block flex-1 text-right text-sm text-muted-foreground">
-                        {session.exercises.slice(0, 3).map((ex, idx) => (
+                        {previewExercises.slice(0, 3).map((ex, idx) => (
                           <span key={idx}>
                             {ex.name}
                             {ex.kg !== null && ` @ ${displayWeight(ex.kg, unit)}`}
-                            {idx < Math.min(session.exercises.length, 3) - 1 && ', '}
+                            {idx < Math.min(previewExercises.length, 3) - 1 && ', '}
                           </span>
                         ))}
-                        {session.exercises.length > 3 && (
+                        {previewExercises.length > 3 && (
                           <span className="text-muted-foreground">
-                            {' '}+{session.exercises.length - 3} more
+                            {' '}+{previewExercises.length - 3} more
                           </span>
                         )}
                       </div>
                     </button>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

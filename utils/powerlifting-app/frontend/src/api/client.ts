@@ -3,6 +3,7 @@ import type {
   Program,
   ProgramListItem,
   Session,
+  PlannedExercise,
   Exercise,
   MaxEntry,
   WeightEntry,
@@ -96,6 +97,15 @@ export async function updateSession(
   session: Session
 ): Promise<void> {
   await api.put(`/sessions/${version}/${date}/${index}`, session)
+}
+
+export async function updatePlannedExercises(
+  version: string,
+  date: string,
+  index: number,
+  plannedExercises: PlannedExercise[]
+): Promise<void> {
+  await api.put(`/programs/${version}/designer/${date}/${index}/planned-exercises`, { planned_exercises: plannedExercises })
 }
 
 export async function rescheduleSession(

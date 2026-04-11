@@ -7,7 +7,7 @@ import { fetchWeightLog, fetchGlossary } from '@/api/client'
 import { normalizeExerciseName } from '@/utils/volume'
 import { FORMULA_DESCRIPTIONS } from '@/constants/formulaDescriptions'
 import { updateMetaField } from '@/api/client'
-import type { WeightEntry, GlossaryExercise, Competition, FatigueCategory, ExerciseCategory } from '@powerlifting/types'
+import type { WeightEntry, GlossaryExercise, Competition, ExerciseCategory } from '@powerlifting/types'
 
 function fatigueColor(score: number | null): string {
   if (score === null) return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
@@ -50,15 +50,6 @@ function compStatusBadge(status: string) {
     </span>
   )
 }
-
-const FATIGUE_LABELS: Record<FatigueCategory, string> = {
-  primary_axial: 'Primary Axial',
-  primary_upper: 'Primary Upper',
-  secondary: 'Secondary',
-  accessory: 'Accessory',
-}
-
-const FATIGUE_ORDER: FatigueCategory[] = ['primary_axial', 'primary_upper', 'secondary', 'accessory']
 
 const CHART_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#6366f1']
 
@@ -125,18 +116,10 @@ export default function AnalysisPage() {
     return lookup
   }, [glossary])
 
-  const glossaryFatigue = useMemo(() => {
-    const lookup = new Map<string, FatigueCategory>()
-    for (const ex of glossary) {
-      lookup.set(normalizeExerciseName(ex.name), ex.fatigue_category)
-    }
-    return lookup
-  }, [glossary])
-
   const glossaryCategory = useMemo(() => {
-    const lookup = new Map<string, { category: ExerciseCategory; fatigue_category: FatigueCategory }>()
+    const lookup = new Map<string, ExerciseCategory>()
     for (const ex of glossary) {
-      lookup.set(normalizeExerciseName(ex.name), { category: ex.category, fatigue_category: ex.fatigue_category })
+      lookup.set(normalizeExerciseName(ex.name), ex.category)
     }
     return lookup
   }, [glossary])
@@ -157,20 +140,6 @@ export default function AnalysisPage() {
     return mgSets
   }, [glossaryMuscles, filteredSessions])
 
-  // Fatigue category sets aggregation
-  const fatigueCategorySets = useMemo(() => {
-    if (!glossaryFatigue.size || !filteredSessions.length) return {}
-    const fcSets: Record<string, number> = {}
-    for (const s of filteredSessions) {
-      for (const ex of s.exercises || []) {
-        const fc = glossaryFatigue.get(normalizeExerciseName(ex.name))
-        if (!fc) continue
-        fcSets[fc] = (fcSets[fc] || 0) + (ex.sets || 0)
-      }
-    }
-    return fcSets
-  }, [glossaryFatigue, filteredSessions])
-
   // Muscle group volume aggregation
   const muscleGroupVolume = useMemo(() => {
     if (!glossaryMuscles.size || !filteredSessions.length) return {}
@@ -186,21 +155,6 @@ export default function AnalysisPage() {
     }
     return mgVol
   }, [glossaryMuscles, filteredSessions])
-
-  // Fatigue category volume aggregation
-  const fatigueCategoryVolume = useMemo(() => {
-    if (!glossaryFatigue.size || !filteredSessions.length) return {}
-    const fcVol: Record<string, number> = {}
-    for (const s of filteredSessions) {
-      for (const ex of s.exercises || []) {
-        const fc = glossaryFatigue.get(normalizeExerciseName(ex.name))
-        if (!fc) continue
-        const vol = (ex.sets || 0) * (ex.reps || 0) * (ex.kg || 0)
-        fcVol[fc] = (fcVol[fc] || 0) + vol
-      }
-    }
-    return fcVol
-  }, [glossaryFatigue, filteredSessions])
 
   // Avg per week: muscle group
   const muscleGroupAvgWeekly = useMemo(() => {
@@ -233,31 +187,6 @@ export default function AnalysisPage() {
     return { sets: avgSets, volume: avgVol }
   }, [glossaryMuscles, filteredSessions])
 
-  // Avg per week: fatigue category
-  const fatigueCategoryAvgWeekly = useMemo(() => {
-    if (!glossaryFatigue.size || !filteredSessions.length) return { sets: {}, volume: {} }
-    const numWeeks = new Set(filteredSessions.map(s => s.week_number)).size || 1
-    const fcSets: Record<string, number> = {}
-    const fcVol: Record<string, number> = {}
-    for (const s of filteredSessions) {
-      for (const ex of s.exercises || []) {
-        const fc = glossaryFatigue.get(normalizeExerciseName(ex.name))
-        if (!fc) continue
-        const sets = ex.sets || 0
-        const vol = sets * (ex.reps || 0) * (ex.kg || 0)
-        fcSets[fc] = (fcSets[fc] || 0) + sets
-        fcVol[fc] = (fcVol[fc] || 0) + vol
-      }
-    }
-    const avgSets: Record<string, number> = {}
-    const avgVol: Record<string, number> = {}
-    for (const fc of Object.keys(fcSets)) {
-      avgSets[fc] = Math.round((fcSets[fc] / numWeeks) * 10) / 10
-      avgVol[fc] = Math.round(fcVol[fc] / numWeeks)
-    }
-    return { sets: avgSets, volume: avgVol }
-  }, [glossaryFatigue, filteredSessions])
-
   // Fix 2: Per-lift details — frequency counts any exercise in same category
   const perLiftDetails = useMemo(() => {
     if (!glossaryCategory.size || !filteredSessions.length) return {}
@@ -275,17 +204,15 @@ export default function AnalysisPage() {
         for (const ex of s.exercises || []) {
           const exLower = ex.name.toLowerCase().trim()
           const info = glossaryCategory.get(normalizeExerciseName(ex.name))
-          // Fix 2: match exact name OR any exercise in the same category
-          if (exLower === liftName || (liftName === 'bench' && exLower === 'bench press') ||
-              (info && info.category === category)) {
+          const isMainLift = exLower === liftName || (liftName === 'bench' && exLower === 'bench press')
+          if (isMainLift || (info && info === category)) {
             hasLift = true
           }
-          // Count raw sets only for the exact main lift
-          if (exLower === liftName || (liftName === 'bench' && exLower === 'bench press')) {
+          if (isMainLift) {
             rawSets += ex.sets || 0
           }
-          // Accessory work: same category, secondary or accessory fatigue
-          if (info && info.category === category && (info.fatigue_category === 'secondary' || info.fatigue_category === 'accessory')) {
+          // Accessory work: same category but not the main lift itself
+          if (info && info === category && !isMainLift) {
             const sets = ex.sets || 0
             const vol = sets * (ex.reps || 0) * (ex.kg || 0)
             if (!accessoryMap[ex.name]) accessoryMap[ex.name] = { sets: 0, volume: 0 }
@@ -320,28 +247,53 @@ export default function AnalysisPage() {
       .filter(n => n.date >= cutoffStr)
       .sort((a, b) => a.date.localeCompare(b.date))
     if (!inWindow.length) return null
-    const withCalories = inWindow.filter(n => n.avg_daily_calories != null)
-    const withWater = inWindow.filter(n => n.water_intake != null)
-    const consistent = inWindow.filter(n => n.consistent).length
+
+    const withCalories = inWindow.filter((n) => n.avg_daily_calories != null)
+    const withWater = inWindow.filter((n) => n.water_intake != null)
+    const consistent = inWindow.filter((n) => n.consistent).length
+
+    const weeklyMap = new Map<string, { calories: number[]; water: number[]; consistent: number; total: number }>()
+    for (const note of inWindow) {
+      const d = new Date(note.date)
+      const day = d.getDay() || 7
+      d.setDate(d.getDate() - day + 1)
+      const weekKey = d.toISOString().slice(0, 10)
+      const bucket = weeklyMap.get(weekKey) || { calories: [], water: [], consistent: 0, total: 0 }
+      if (note.avg_daily_calories != null) bucket.calories.push(note.avg_daily_calories)
+      if (note.water_intake != null) bucket.water.push(note.water_intake)
+      if (note.consistent) bucket.consistent += 1
+      bucket.total += 1
+      weeklyMap.set(weekKey, bucket)
+    }
+
+    const weekly = Array.from(weeklyMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([week, bucket]) => ({
+        week,
+        calories: bucket.calories.length ? bucket.calories.reduce((s, v) => s + v, 0) / bucket.calories.length : null,
+        water: bucket.water.length ? bucket.water.reduce((s, v) => s + v, 0) / bucket.water.length : null,
+        consistency: bucket.total ? Math.round((bucket.consistent / bucket.total) * 100) : null,
+      }))
 
     let caloriesChangePerWeek: number | null = null
-    if (withCalories.length >= 2) {
-      const delta = withCalories[withCalories.length - 1].avg_daily_calories! - withCalories[0].avg_daily_calories!
-      const dateDelta = (new Date(withCalories[withCalories.length - 1].date).getTime() - new Date(withCalories[0].date).getTime()) / (7 * 86400000)
-      if (dateDelta > 0) caloriesChangePerWeek = Math.round(delta / dateDelta)
+    if (weekly.filter(w => w.calories != null).length >= 2) {
+      const first = weekly.find(w => w.calories != null)!
+      const last = [...weekly].reverse().find(w => w.calories != null)!
+      caloriesChangePerWeek = Math.round((last.calories! - first.calories!) / Math.max(1, weekly.length - 1))
     }
 
     let waterChangePerWeek: number | null = null
-    if (withWater.length >= 2) {
-      const delta = withWater[withWater.length - 1].water_intake! - withWater[0].water_intake!
-      const dateDelta = (new Date(withWater[withWater.length - 1].date).getTime() - new Date(withWater[0].date).getTime()) / (7 * 86400000)
-      if (dateDelta > 0) waterChangePerWeek = Math.round(delta / dateDelta * 10) / 10
+    if (weekly.filter(w => w.water != null).length >= 2) {
+      const first = weekly.find(w => w.water != null)!
+      const last = [...weekly].reverse().find(w => w.water != null)!
+      waterChangePerWeek = Math.round(((last.water! - first.water!) / Math.max(1, weekly.length - 1)) * 10) / 10
     }
 
     return {
       avgCalories: withCalories.length ? Math.round(withCalories.reduce((s, n) => s + (n.avg_daily_calories || 0), 0) / withCalories.length) : null,
       caloriesChangePerWeek,
       avgWater: withWater.length ? Math.round(withWater.reduce((s, n) => s + (n.water_intake || 0), 0) / withWater.length * 10) / 10 : null,
+      weekly,
       waterChangePerWeek,
       waterUnit: withWater[0]?.water_unit || 'litres',
       consistencyPct: inWindow.length ? Math.round((consistent / inWindow.length) * 100) : null,
@@ -420,7 +372,7 @@ export default function AnalysisPage() {
       {data && !loading && (
         <>
           {/* Top summary cards - 4 columns */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
 
             {/* Current Maxes */}
             <div className="bg-card border border-border rounded-lg p-4">
@@ -501,7 +453,7 @@ export default function AnalysisPage() {
               <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
                 Failed compounds: {((data.fatigue_components?.failed_compound_ratio ?? 0) * 100).toFixed(0)}%
                 &middot; Fatigue spike: {((data.fatigue_components?.composite_spike ?? 0) * 100).toFixed(0)}%
-                &middot; Skip rate: {((data.fatigue_components?.skip_rate ?? 0) * 100).toFixed(0)}%
+                &middot; RPE stress: {((data.fatigue_components?.rpe_stress ?? 0) * 100).toFixed(0)}%
               </p>
             </div>
 
@@ -534,11 +486,11 @@ export default function AnalysisPage() {
           </div>
 
           {/* INOL Section */}
-          {data.inol && (
+          {data.inol && data.inol.avg_inol && (
             <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">INOL (Current Week)</h3>
+              <h3 className="font-medium mb-3">INOL (Window Average)</h3>
               <div className="grid grid-cols-3 gap-4 mb-3">
-                {Object.entries(data.inol.current_week).map(([lift, val]) => (
+                {Object.entries(data.inol.avg_inol).map(([lift, val]) => (
                   <div key={lift} className="text-center p-3 bg-secondary/50 rounded">
                     <p className="text-xs text-muted-foreground capitalize">{lift}</p>
                     <p className={`text-2xl font-bold ${
@@ -565,21 +517,21 @@ export default function AnalysisPage() {
           )}
 
           {/* ACWR Section */}
-          {data.acwr && (
+          {data.acwr && !('status' in data.acwr) && (
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-medium">ACWR (Acute:Chronic Workload Ratio)</h3>
                 <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                  data.acwr.composite_zone === 'optimal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : data.acwr.composite_zone === 'caution' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                  : data.acwr.composite_zone === 'danger' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  (data.acwr as any).composite_zone === 'optimal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : (data.acwr as any).composite_zone === 'caution' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                  : (data.acwr as any).composite_zone === 'danger' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                   : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
                 }`}>
-                  Composite: {data.acwr.composite?.toFixed(2) ?? 'N/A'} ({data.acwr.composite_zone})
+                  Composite: {(data.acwr as any).composite?.toFixed(2) ?? 'N/A'} ({(data.acwr as any).composite_zone})
                 </span>
               </div>
               <div className="grid grid-cols-4 gap-4">
-                {Object.entries(data.acwr.dimensions).map(([dim, info]) => {
+                {Object.entries((data.acwr as any).dimensions).map(([dim, info]: [string, any]) => {
                   const zoneColor = info.zone === 'optimal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                     : info.zone === 'caution' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
                     : info.zone === 'danger' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
@@ -593,6 +545,14 @@ export default function AnalysisPage() {
                   )
                 })}
               </div>
+            </div>
+          )}
+          {data.acwr && 'status' in data.acwr && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <h3 className="font-medium mb-2">ACWR (Acute:Chronic Workload Ratio)</h3>
+              <p className="text-sm text-muted-foreground">
+                {(data.acwr as any).reason ?? 'Not enough data yet. Keep logging sessions.'}
+              </p>
             </div>
           )}
 
@@ -678,32 +638,36 @@ export default function AnalysisPage() {
           {data.fatigue_dimensions && Object.keys(data.fatigue_dimensions.weekly).length > 0 && (
             <div className="bg-card border border-border rounded-lg p-4">
               <h3 className="font-medium mb-3">Fatigue Dimensions (Weekly)</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart
-                  data={Object.entries(data.fatigue_dimensions.weekly)
-                    .sort(([a], [b]) => Number(a) - Number(b))
-                    .slice(-8)
-                    .map(([week, dims]) => ({
-                      week: `W${week}`,
-                      axial: dims.axial,
-                      neural: dims.neural,
-                      peripheral: dims.peripheral,
-                      systemic: dims.systemic,
-                    }))}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="axial" stackId="a" fill="#ef4444" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="neural" stackId="a" fill="#3b82f6" />
-                  <Bar dataKey="peripheral" stackId="a" fill="#22c55e" />
-                  <Bar dataKey="systemic" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-              {(data.acwr?.dimensions) && (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {Object.entries(data.acwr.dimensions).map(([dim, info]) =>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 pr-4">Week</th>
+                      <th className="text-right py-2 px-4">Axial</th>
+                      <th className="text-right py-2 px-4">Neural</th>
+                      <th className="text-right py-2 px-4">Peripheral</th>
+                      <th className="text-right py-2 pl-4">Systemic</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(data.fatigue_dimensions.weekly)
+                      .sort(([a], [b]) => Number(a) - Number(b))
+                      .slice(-8)
+                      .map(([week, dims]) => (
+                        <tr key={week} className="border-b border-border/50">
+                          <td className="py-2 pr-4 font-medium">W{week}</td>
+                          <td className="text-right py-2 px-4">{dims.axial.toFixed(1)}</td>
+                          <td className="text-right py-2 px-4">{dims.neural.toFixed(1)}</td>
+                          <td className="text-right py-2 px-4">{dims.peripheral.toFixed(1)}</td>
+                          <td className="text-right py-2 pl-4">{dims.systemic.toFixed(1)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              {(data.acwr && !('status' in data.acwr) && (data.acwr as any).dimensions) && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
+                  {Object.entries((data.acwr as any).dimensions).map(([dim, info]: [string, any]) =>
                     info.zone === 'caution' || info.zone === 'danger' ? (
                       <span key={dim} className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
                         {dim.charAt(0).toUpperCase() + dim.slice(1)} overload (ACWR {info.value?.toFixed(2)})
@@ -717,7 +681,7 @@ export default function AnalysisPage() {
 
           {/* Projection tiles (1-2 cards) */}
           {data.projections.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {data.projections.map((proj, i) => (
                 <div key={i} className="bg-card border border-border rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
@@ -1128,46 +1092,6 @@ export default function AnalysisPage() {
             </div>
           )}
 
-          {/* Fatigue Category Sets */}
-          {Object.keys(fatigueCategorySets).length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Sets by Fatigue Category</h3>
-              {viewMode === 'raw' ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {FATIGUE_ORDER.map(fc => {
-                    const sets = fatigueCategorySets[fc]
-                    if (!sets) return null
-                    return (
-                      <div key={fc} className="text-center p-3 bg-secondary/50 rounded">
-                        <p className="text-xs text-muted-foreground">{FATIGUE_LABELS[fc]}</p>
-                        <p className="text-lg font-bold">{sets}</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={FATIGUE_ORDER
-                        .filter(fc => fatigueCategorySets[fc])
-                        .map((fc, i) => ({ name: FATIGUE_LABELS[fc], value: fatigueCategorySets[fc] }))}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={90}
-                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                    >
-                      {FATIGUE_ORDER.filter(fc => fatigueCategorySets[fc]).map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          )}
-
           {/* Volume by Muscle Group */}
           {Object.keys(muscleGroupVolume).length > 0 && (
             <div className="bg-card border border-border rounded-lg p-4">
@@ -1200,46 +1124,6 @@ export default function AnalysisPage() {
                       {Object.entries(muscleGroupVolume)
                         .sort((a, b) => b[1] - a[1])
                         .map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          )}
-
-          {/* Volume by Fatigue Category */}
-          {Object.keys(fatigueCategoryVolume).length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Volume by Fatigue Category</h3>
-              {viewMode === 'raw' ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {FATIGUE_ORDER.map(fc => {
-                    const vol = fatigueCategoryVolume[fc]
-                    if (!vol) return null
-                    return (
-                      <div key={fc} className="text-center p-3 bg-secondary/50 rounded">
-                        <p className="text-xs text-muted-foreground">{FATIGUE_LABELS[fc]}</p>
-                        <p className="text-lg font-bold">{Math.round(vol).toLocaleString()} kg</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={FATIGUE_ORDER
-                        .filter(fc => fatigueCategoryVolume[fc])
-                        .map((fc, i) => ({ name: FATIGUE_LABELS[fc], value: fatigueCategoryVolume[fc] }))}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={90}
-                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                    >
-                      {FATIGUE_ORDER.filter(fc => fatigueCategoryVolume[fc]).map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
                   </PieChart>
@@ -1314,87 +1198,27 @@ export default function AnalysisPage() {
             </div>
           )}
 
-          {/* Fix 4: Avg Weekly by Fatigue Category — separate charts */}
-          {Object.keys(fatigueCategoryAvgWeekly.sets).length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Avg Weekly by Fatigue Category</h3>
-              {viewMode === 'raw' ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-2 pr-4">Category</th>
-                        <th className="text-right py-2 px-4">Avg Sets/wk</th>
-                        <th className="text-right py-2 pl-4">Avg Vol/wk (kg)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {FATIGUE_ORDER.map(fc => {
-                        const sets = fatigueCategoryAvgWeekly.sets[fc]
-                        const vol = fatigueCategoryAvgWeekly.volume[fc]
-                        if (!sets && !vol) return null
-                        return (
-                          <tr key={fc} className="border-b border-border/50">
-                            <td className="py-2 pr-4 font-medium">{FATIGUE_LABELS[fc]}</td>
-                            <td className="text-right py-2 px-4">{sets || 0}</td>
-                            <td className="text-right py-2 pl-4">{(vol || 0).toLocaleString()}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground text-center mb-2">Avg Sets/wk</p>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart
-                        data={FATIGUE_ORDER
-                          .filter(fc => fatigueCategoryAvgWeekly.sets[fc])
-                          .map(fc => ({ name: FATIGUE_LABELS[fc], 'Avg Sets/wk': fatigueCategoryAvgWeekly.sets[fc] || 0 }))}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="Avg Sets/wk" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground text-center mb-2">Avg Vol/wk (kg)</p>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart
-                        data={FATIGUE_ORDER
-                          .filter(fc => fatigueCategoryAvgWeekly.volume[fc])
-                          .map(fc => ({ name: FATIGUE_LABELS[fc], 'Avg Vol/wk': fatigueCategoryAvgWeekly.volume[fc] || 0 }))}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="Avg Vol/wk" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Attempt Selector Settings */}
           {data.attempt_selection && (
             <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Competition Attempt Percentages</h3>
-              <div className="grid grid-cols-3 gap-4">
+              <h3 className="font-medium mb-1">Competition Attempt Percentages</h3>
+              <p className="text-xs text-muted-foreground mb-3">Based on projected competition maxes. Enter as decimal (e.g. 0.90 for 90%).</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="text-xs text-muted-foreground">Opener</label>
                   <input
-                    type="number" step="0.005" min="0.80" max="0.95"
+                    type="text"
+                    inputMode="decimal"
                     value={attemptPct.opener}
-                    onChange={(e) => setAttemptPct(p => ({ ...p, opener: parseFloat(e.target.value) || 0.90 }))}
-                    onBlur={() => {
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value)
+                      if (!isNaN(v) && v >= 0.70 && v <= 1.10) setAttemptPct(p => ({ ...p, opener: v }))
+                      else if (e.target.value === '' || e.target.value.endsWith('.')) setAttemptPct(p => ({ ...p, opener: parseFloat(e.target.value.replace(/[^0-9.]/g, '')) || p.opener }))
+                    }}
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value)
+                      const valid = !isNaN(v) && v >= 0.70 && v <= 1.10
+                      if (!valid) setAttemptPct(p => ({ ...p, opener: 0.90 }))
                       setSavingAttempt(true)
                       updateMetaField(version, 'attempt_pct', attemptPct).finally(() => setSavingAttempt(false))
                     }}
@@ -1405,10 +1229,17 @@ export default function AnalysisPage() {
                 <div>
                   <label className="text-xs text-muted-foreground">Second</label>
                   <input
-                    type="number" step="0.005" min="0.90" max="0.98"
+                    type="text"
+                    inputMode="decimal"
                     value={attemptPct.second}
-                    onChange={(e) => setAttemptPct(p => ({ ...p, second: parseFloat(e.target.value) || 0.955 }))}
-                    onBlur={() => {
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value)
+                      if (!isNaN(v) && v >= 0.70 && v <= 1.10) setAttemptPct(p => ({ ...p, second: v }))
+                    }}
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value)
+                      const valid = !isNaN(v) && v >= 0.70 && v <= 1.10
+                      if (!valid) setAttemptPct(p => ({ ...p, second: 0.955 }))
                       setSavingAttempt(true)
                       updateMetaField(version, 'attempt_pct', attemptPct).finally(() => setSavingAttempt(false))
                     }}
@@ -1419,10 +1250,17 @@ export default function AnalysisPage() {
                 <div>
                   <label className="text-xs text-muted-foreground">Third</label>
                   <input
-                    type="number" step="0.005" min="0.95" max="1.05"
+                    type="text"
+                    inputMode="decimal"
                     value={attemptPct.third}
-                    onChange={(e) => setAttemptPct(p => ({ ...p, third: parseFloat(e.target.value) || 1.00 }))}
-                    onBlur={() => {
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value)
+                      if (!isNaN(v) && v >= 0.70 && v <= 1.10) setAttemptPct(p => ({ ...p, third: v }))
+                    }}
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value)
+                      const valid = !isNaN(v) && v >= 0.70 && v <= 1.10
+                      if (!valid) setAttemptPct(p => ({ ...p, third: 1.00 }))
                       setSavingAttempt(true)
                       updateMetaField(version, 'attempt_pct', attemptPct).finally(() => setSavingAttempt(false))
                     }}
@@ -1433,7 +1271,7 @@ export default function AnalysisPage() {
               </div>
               {savingAttempt && <p className="text-xs text-muted-foreground mt-2">Saving...</p>}
               {/* Display computed attempts */}
-              <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {Object.entries(data.attempt_selection)
                   .filter(([k]) => k !== 'total' && k !== 'attempt_pct_used')
                   .map(([lift, attempts]) => (

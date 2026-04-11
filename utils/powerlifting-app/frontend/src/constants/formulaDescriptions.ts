@@ -96,11 +96,16 @@ I = weight / E_now (intensity ratio)`,
     summary: 'Composite fatigue score from failed compounds, volume spikes, and session skip rate.',
     formula: `FI = 0.40 * failed_compound_ratio
    + 0.35 * composite_spike
-   + 0.25 * skip_rate`,
+   + 0.25 * rpe_stress
+
+rpe_stress = clamp((avg_session_rpe − 6.0) / 4.0, 0, 1)
+  RPE 6 → 0.0 | RPE 8 → 0.5 | RPE 10 → 1.0
+
+Note: skip_rate excluded — resting reduces fatigue, not increases it.`,
     variables: [
       { name: 'failed_compound_ratio', description: 'Failed compound sets / total compound sets' },
-      { name: 'composite_spike', description: 'Weighted average dimensional volume spike' },
-      { name: 'skip_rate', description: 'Skipped sessions / planned sessions' },
+      { name: 'composite_spike', description: 'Weighted dimensional fatigue spike (axial/neural/peripheral/systemic)' },
+      { name: 'rpe_stress', description: 'Normalized session RPE — captures weeks of RPE 9-10 grinding without failures' },
     ],
     thresholds: [
       { label: 'Low', value: '< 0.30', flag: 'Normal' },
@@ -219,9 +224,9 @@ slope <= -0.1 -> adaptation`,
   {
     id: 'compliance',
     title: 'Compliance',
-    summary: 'Completed vs planned session ratio. Deload and break weeks excluded from both numerator and denominator.',
+    summary: 'Completed vs planned session ratio. All weeks counted — deloads and programmed breaks are NOT excluded.',
     formula: `compliance = (completed_sessions / planned_sessions) * 100
-deload + break weeks excluded`,
+All weeks included. A week with no planned sessions contributes nothing.`,
     variables: [
       { name: 'completed', description: 'Sessions with status logged or completed' },
       { name: 'planned', description: 'Total sessions minus deload/break weeks' },

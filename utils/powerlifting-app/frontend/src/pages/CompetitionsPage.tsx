@@ -238,7 +238,7 @@ export default function CompetitionsPage() {
                 {isExpanded && (
                   <div className="px-4 pb-4 pt-2 border-t border-border space-y-4">
                     {/* Basic Info */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <label className="text-xs text-muted-foreground">Name</label>
                         <input
@@ -290,7 +290,7 @@ export default function CompetitionsPage() {
                     </div>
 
                     {/* Weight & Location */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                       <div>
                         <label className="text-xs text-muted-foreground">Weight Class (kg)</label>
                         <input
@@ -328,7 +328,7 @@ export default function CompetitionsPage() {
                       <label className="text-xs text-muted-foreground">
                         {comp.status === 'completed' ? 'Results (kg)' : 'Targets (kg)'}
                       </label>
-                      <div className="grid grid-cols-4 gap-4 mt-1">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-1">
                         {['squat_kg', 'bench_kg', 'deadlift_kg', 'total_kg'].map((lift) => (
                           <div key={lift}>
                             <label className="text-xs text-muted-foreground capitalize">

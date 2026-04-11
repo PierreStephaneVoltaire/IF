@@ -164,6 +164,7 @@ export async function updateMetaField(
     'version_label', 'weight_class_kg', 'weight_class_confirm_by',
     'current_body_weight_kg', 'current_body_weight_lb',
     'target_squat_kg', 'target_bench_kg', 'target_dl_kg', 'target_total_kg',
+    'attempt_pct',
   ]
 
   if (!allowedFields.includes(field)) {
@@ -353,9 +354,23 @@ export async function updatePlannedExercises(
     throw new AppError(`Session at index ${index} has date ${sessions[index].date}, expected ${date}`, 409)
   }
 
+  // Sync exercises from planned for incomplete sessions
+  const existing = sessions[index]
+  const syncExercises = !existing.completed
+    ? plannedExercises.map(pe => ({
+        name: pe.name,
+        sets: pe.sets,
+        reps: pe.reps,
+        kg: pe.kg,
+        notes: '',
+        failed_sets: Array(pe.sets).fill(false),
+      }))
+    : existing.exercises
+
   sessions[index] = {
-    ...sessions[index],
+    ...existing,
     planned_exercises: plannedExercises,
+    ...(syncExercises !== existing.exercises ? { exercises: syncExercises } : {}),
   }
 
   const updateCommand = new UpdateCommand({

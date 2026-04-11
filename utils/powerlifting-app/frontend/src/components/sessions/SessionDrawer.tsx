@@ -48,7 +48,25 @@ export default function SessionDrawer({
   // Initialize local state when session changes
   useEffect(() => {
     if (session) {
-      setLocalSession(JSON.parse(JSON.stringify(session)))
+      const clone = JSON.parse(JSON.stringify(session)) as Session
+      // Pre-populate exercises from planned_exercises for incomplete sessions
+      if (!clone.completed && clone.exercises.length === 0 && (clone.planned_exercises?.length ?? 0) > 0) {
+        clone.exercises = clone.planned_exercises!.map(pe => ({
+          name: pe.name,
+          sets: pe.sets,
+          reps: pe.reps,
+          kg: pe.kg,
+          notes: '',
+          failed_sets: Array(pe.sets).fill(false),
+        }))
+      }
+      // Ensure failed_sets exists on all exercises
+      for (const ex of clone.exercises) {
+        if (!ex.failed_sets) {
+          ex.failed_sets = Array(ex.sets).fill(false)
+        }
+      }
+      setLocalSession(clone)
       setOriginalDate(session.date)
       setHasChanges(false)
     }
@@ -111,7 +129,7 @@ export default function SessionDrawer({
         ...prev,
         exercises: [
           ...prev.exercises,
-          { name: '', sets: 3, reps: 5, kg: null, notes: '' },
+          { name: '', sets: 3, reps: 5, kg: null, notes: '', failed_sets: [false, false, false] },
         ],
       }
     })
@@ -122,6 +140,38 @@ export default function SessionDrawer({
     setLocalSession((prev) => {
       if (!prev) return prev
       const exercises = prev.exercises.filter((_, i) => i !== index)
+      return { ...prev, exercises }
+    })
+    setHasChanges(true)
+  }
+
+  const toggleFailedSet = (exerciseIndex: number, setIndex: number) => {
+    setLocalSession((prev) => {
+      if (!prev) return prev
+      const exercises = prev.exercises.map((ex, i) => {
+        if (i !== exerciseIndex) return ex
+        const failed = [...(ex.failed_sets || Array(ex.sets).fill(false))]
+        failed[setIndex] = !failed[setIndex]
+        return { ...ex, failed_sets: failed }
+      })
+      return { ...prev, exercises }
+    })
+    setHasChanges(true)
+  }
+
+  const updateSetsWithResize = (index: number, newSets: number) => {
+    setLocalSession((prev) => {
+      if (!prev) return prev
+      const exercises = prev.exercises.map((ex, i) => {
+        if (i !== index) return ex
+        let failed = ex.failed_sets || Array(ex.sets).fill(false)
+        if (failed.length < newSets) {
+          failed = [...failed, ...Array(newSets - failed.length).fill(false)]
+        } else if (failed.length > newSets) {
+          failed = failed.slice(0, newSets)
+        }
+        return { ...ex, sets: newSets, failed_sets: failed }
+      })
       return { ...prev, exercises }
     })
     setHasChanges(true)
@@ -248,6 +298,19 @@ export default function SessionDrawer({
 
                     {/* Exercises */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                      {/* Planned exercises reference */}
+                      {(localSession.planned_exercises?.length ?? 0) > 0 && (
+                        <div className="bg-secondary/50 rounded-lg p-2.5 text-xs">
+                          <p className="text-muted-foreground font-medium mb-1">Planned</p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                            {localSession.planned_exercises!.map((pe, i) => (
+                              <span key={i} className="text-muted-foreground">
+                                {pe.name} {pe.sets}x{pe.reps}{pe.kg !== null ? ` @${toDisplayUnit(pe.kg, unit)}${unit}` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {(() => {
                         const groups: Array<{ name: string; entries: Array<{ exercise: Exercise; originalIndex: number }> }> = []
                         for (let i = 0; i < localSession.exercises.length; i++) {
@@ -296,6 +359,7 @@ export default function SessionDrawer({
                                     <th className="text-left py-1 px-1 w-12">Sets</th>
                                     <th className="text-left py-1 px-1 w-12">Reps</th>
                                     <th className="text-left py-1 px-1 w-16">{unit}</th>
+                                    <th className="text-left py-1 px-1">Failed</th>
                                     <th className="text-left py-1 px-1">Notes</th>
                                     <th className="w-8" />
                                   </tr>
@@ -304,13 +368,31 @@ export default function SessionDrawer({
                                   {group.entries.map((entry) => (
                                     <tr key={entry.originalIndex} className="border-b border-border/50 last:border-b-0">
                                       <td className="py-1 px-1">
-                                        <input type="number" value={entry.exercise.sets || ''} onChange={(e) => updateExercise(entry.originalIndex, 'sets', Number(e.target.value) || 0)} className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
+                                        <input type="number" value={entry.exercise.sets || ''} onChange={(e) => updateSetsWithResize(entry.originalIndex, Number(e.target.value) || 0)} className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
                                       </td>
                                       <td className="py-1 px-1">
                                         <input type="number" value={entry.exercise.reps || ''} onChange={(e) => updateExercise(entry.originalIndex, 'reps', Number(e.target.value) || 0)} className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
                                       </td>
                                       <td className="py-1 px-1">
-                                        <input type="number" step={0.25} value={entry.exercise.kg ? toDisplayUnit(entry.exercise.kg, unit) : ''} onChange={(e) => updateExercise(entry.originalIndex, 'kg', e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null)} className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
+                                        <input type="number" step="any" value={entry.exercise.kg !== null && entry.exercise.kg !== undefined ? toDisplayUnit(entry.exercise.kg, unit) : ''} onChange={(e) => updateExercise(entry.originalIndex, 'kg', e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null)} className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
+                                      </td>
+                                      <td className="py-1 px-1">
+                                        <div className="flex gap-0.5">
+                                          {(entry.exercise.failed_sets || []).map((f, si) => (
+                                            <button
+                                              key={si}
+                                              type="button"
+                                              onClick={() => toggleFailedSet(entry.originalIndex, si)}
+                                              className={clsx(
+                                                'w-4 h-4 rounded-full border text-[8px] flex items-center justify-center transition-colors',
+                                                f ? 'bg-red-500 border-red-600 text-white' : 'bg-secondary border-border hover:border-red-400'
+                                              )}
+                                              title={`Set ${si + 1}${f ? ' (failed)' : ''}`}
+                                            >
+                                              {si + 1}
+                                            </button>
+                                          ))}
+                                        </div>
                                       </td>
                                       <td className="py-1 px-1">
                                         <input type="text" value={entry.exercise.notes || ''} onChange={(e) => updateExercise(entry.originalIndex, 'notes', e.target.value)} placeholder="Notes" className="w-full px-1 py-0.5 border border-border rounded bg-background text-sm" />
@@ -325,23 +407,46 @@ export default function SessionDrawer({
                                 </tbody>
                               </table>
                             ) : (
-                              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Sets</label>
-                                  <input type="number" value={group.entries[0].exercise.sets || ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'sets', Number(e.target.value) || 0)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
+                              <div>
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">Sets</label>
+                                    <input type="number" value={group.entries[0].exercise.sets || ''} onChange={(e) => updateSetsWithResize(group.entries[0].originalIndex, Number(e.target.value) || 0)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">Reps</label>
+                                    <input type="number" value={group.entries[0].exercise.reps || ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'reps', Number(e.target.value) || 0)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">{unit}</label>
+                                    <input type="number" step="any" value={group.entries[0].exercise.kg !== null && group.entries[0].exercise.kg !== undefined ? toDisplayUnit(group.entries[0].exercise.kg, unit) : ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'kg', e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">Notes</label>
+                                    <input type="text" value={group.entries[0].exercise.notes || ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'notes', e.target.value)} placeholder="Notes" className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
+                                  </div>
                                 </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Reps</label>
-                                  <input type="number" value={group.entries[0].exercise.reps || ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'reps', Number(e.target.value) || 0)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">{unit}</label>
-                                  <input type="number" step={0.25} value={group.entries[0].exercise.kg ? toDisplayUnit(group.entries[0].exercise.kg, unit) : ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'kg', e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Notes</label>
-                                  <input type="text" value={group.entries[0].exercise.notes || ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'notes', e.target.value)} placeholder="Notes" className="w-full px-2 py-1 border border-border rounded bg-background text-sm col-span-3 sm:col-span-1" />
-                                </div>
+                                {(group.entries[0].exercise.failed_sets || []).length > 0 && (
+                                  <div className="mt-1.5 flex items-center gap-1.5">
+                                    <span className="text-xs text-muted-foreground">Failed:</span>
+                                    <div className="flex gap-0.5">
+                                      {(group.entries[0].exercise.failed_sets || []).map((f, si) => (
+                                        <button
+                                          key={si}
+                                          type="button"
+                                          onClick={() => toggleFailedSet(group.entries[0].originalIndex, si)}
+                                          className={clsx(
+                                            'w-5 h-5 rounded-full border text-[9px] flex items-center justify-center transition-colors',
+                                            f ? 'bg-red-500 border-red-600 text-white' : 'bg-secondary border-border hover:border-red-400'
+                                          )}
+                                          title={`Set ${si + 1}${f ? ' (failed)' : ''}`}
+                                        >
+                                          {si + 1}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

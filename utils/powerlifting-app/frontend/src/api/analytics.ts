@@ -15,17 +15,14 @@ export interface WeeklyAnalysis {
   fatigue_components: {
     failed_compound_ratio?: number
     composite_spike?: number
-    skip_rate?: number
+    /** RPE stress = clamp((avg_session_rpe - 6.0) / 4.0, 0, 1). Replaces skip_rate. */
+    rpe_stress?: number
   } | null
   compliance: {
     phase: string
     planned: number
     completed: number
     pct: number
-    excluded_weeks?: {
-      deload: number[]
-      break: number[]
-    }
   } | null
   current_maxes: {
     squat?: number
@@ -56,14 +53,15 @@ export interface WeeklyAnalysis {
   }
   inol?: {
     per_lift_per_week: Record<string, Record<string, number>>
-    current_week: Record<string, number>
+    /** Average INOL per lift across the analysis window. */
+    avg_inol: Record<string, number>
     flags: string[]
-  }
+  } | null
   acwr?: {
     composite: number
     composite_zone: string
     dimensions: Record<string, { value: number; zone: string }>
-  }
+  } | { status: 'insufficient_data'; reason: string } | null
   ri_distribution?: {
     overall: Record<string, { count: number; pct: number }>
     per_lift: Record<string, Record<string, { count: number; pct: number }>>

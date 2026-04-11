@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Plus, Edit2, Trash2, X, ChevronRight, Save } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useProgramStore } from '@/store/programStore'
+import { useUiStore } from '@/store/uiStore'
 import * as api from '@/api/client'
 import type { Phase, Session, PlannedExercise, GlossaryExercise } from '@powerlifting/types'
 
@@ -9,16 +10,18 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 
 export default function DesignerPage() {
   const { program, version, createSession, updatePhases } = useProgramStore()
+  const { pushToast } = useUiStore()
 
   const [block, setBlock] = useState('current')
   const [selectedPhaseIndex, setSelectedPhaseIndex] = useState(0)
   const [selectedWeek, setSelectedWeek] = useState(1)
   const [editingSession, setEditingSession] = useState<Session | null>(null)
+  const [editingSessionGlobalIndex, setEditingSessionGlobalIndex] = useState<number>(-1)
   const [editingSessionDate, setEditingSessionDate] = useState<string>('')
-  const [editingSessionIdx, setEditingSessionIdx] = useState<number>(-1)
   const [editingPhase, setEditingPhase] = useState<Phase | null>(null)
   const [editingPhaseIndex, setEditingPhaseIndex] = useState<number>(-1)
   const [isNewPhase, setIsNewPhase] = useState(false)
+  const [isSessionEditorOpen, setIsSessionEditorOpen] = useState(false)
   const [glossary, setGlossary] = useState<GlossaryExercise[]>([])
   const [exerciseSearch, setExerciseSearch] = useState('')
 
@@ -80,7 +83,11 @@ export default function DesignerPage() {
     if (session) {
       setEditingSession(session)
       setEditingSessionDate(session.date)
-      setEditingSessionIdx(index ?? -1)
+      setEditingSessionGlobalIndex(
+        index !== undefined && index >= 0
+          ? program?.sessions.indexOf(session) ?? -1
+          : program?.sessions.findIndex(s => s.date === session.date && s.week_number === session.week_number && s.day === session.day) ?? -1
+      )
       setSessionDate(session.date)
       setSessionDay(session.day)
       setSessionWeek(session.week)
@@ -89,7 +96,7 @@ export default function DesignerPage() {
     } else {
       setEditingSession(null)
       setEditingSessionDate('')
-      setEditingSessionIdx(-1)
+      setEditingSessionGlobalIndex(-1)
       const dayName = DAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]
       setSessionDate(new Date().toISOString().slice(0, 10))
       setSessionDay(dayName)
@@ -97,12 +104,14 @@ export default function DesignerPage() {
       setSessionPhase(selectedPhase?.name || '')
       setPlannedExercises([])
     }
+    setIsSessionEditorOpen(true)
   }
 
   function closeSessionEditor() {
     setEditingSession(null)
     setEditingSessionDate('')
-    setEditingSessionIdx(-1)
+    setEditingSessionGlobalIndex(-1)
+    setIsSessionEditorOpen(false)
     setPlannedExercises([])
     setExerciseSearch('')
   }
@@ -121,10 +130,10 @@ export default function DesignerPage() {
       }
 
       if (editingSession) {
-        await api.updateSession(version, editingSessionDate, editingSessionIdx, {
-          ...editingSession,
-          planned_exercises: plannedExercises,
-        })
+        if (editingSessionGlobalIndex < 0) {
+          throw new Error('Could not resolve the session index for update')
+        }
+        await api.updatePlannedExercises(version, editingSessionDate, editingSessionGlobalIndex, plannedExercises)
       } else {
         await createSession(sessionData)
       }
@@ -133,6 +142,7 @@ export default function DesignerPage() {
       useProgramStore.getState().loadProgram(version)
     } catch (err) {
       console.error('Failed to save session:', err)
+      pushToast({ message: 'Failed to save session', type: 'error' })
     }
   }
 
@@ -196,6 +206,16 @@ export default function DesignerPage() {
       notes: phaseForm.notes,
     }
 
+    const overlaps = updatedPhases.some((phase, idx) => {
+      if (idx === editingPhaseIndex) return false
+      return !(phaseData.end_week < phase.start_week || phaseData.start_week > phase.end_week)
+    })
+
+    if (overlaps) {
+      pushToast({ message: 'Phase weeks overlap another phase', type: 'error' })
+      return
+    }
+
     if (editingPhaseIndex >= 0) {
       updatedPhases[editingPhaseIndex] = phaseData
     } else {
@@ -223,9 +243,9 @@ export default function DesignerPage() {
   }, [glossary, exerciseSearch])
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] gap-0">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] gap-0">
       {/* Left sidebar — Phase list */}
-      <div className="w-64 border-r border-border flex flex-col">
+      <div className="w-full md:w-64 md:border-r border-b md:border-b-0 border-border flex flex-col shrink-0">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold">Phases</h2>
           <button
@@ -277,10 +297,10 @@ export default function DesignerPage() {
       </div>
 
       {/* Main area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <h1 className="text-2xl font-bold">Program Designer</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {blocks.length > 1 && (
               <select
                 value={block}
@@ -323,7 +343,7 @@ export default function DesignerPage() {
 
         {/* Session cards */}
         {weekSessions.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {weekSessions.map((session, i) => (
               <div
                 key={`${session.date}-${i}`}
@@ -375,9 +395,9 @@ export default function DesignerPage() {
       </div>
 
       {/* Session Editor Modal */}
-      {editingSession !== null || editingSessionDate !== '' ? (
+      {isSessionEditorOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeSessionEditor}>
-          <div className="bg-card border border-border rounded-lg w-full max-w-lg max-h-[80vh] overflow-y-auto p-6 space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-card border border-border rounded-lg w-[calc(100%-1rem)] sm:w-full max-w-2xl max-h-[85vh] overflow-y-auto p-4 sm:p-6 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">{editingSession ? 'Edit Session' : 'Plan Session'}</h3>
               <button onClick={closeSessionEditor} className="p-1 hover:bg-accent rounded">
@@ -385,7 +405,7 @@ export default function DesignerPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-muted-foreground">Date</label>
                 <input
@@ -407,7 +427,7 @@ export default function DesignerPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-muted-foreground">Week</label>
                 <input
@@ -435,34 +455,38 @@ export default function DesignerPage() {
               <label className="text-sm text-muted-foreground block mb-2">Planned Exercises</label>
 
               {plannedExercises.map((ex, i) => (
-                <div key={i} className="flex items-center gap-2 mb-2">
-                  <span className="text-sm flex-1 truncate">{ex.name}</span>
-                  <input
-                    type="number"
-                    value={ex.sets}
-                    onChange={(e) => updatePlannedExercise(i, 'sets', Number(e.target.value))}
-                    className="w-14 px-2 py-1 border border-border rounded text-sm text-center"
-                    placeholder="Sets"
-                  />
-                  <span className="text-xs text-muted-foreground">x</span>
-                  <input
-                    type="number"
-                    value={ex.reps}
-                    onChange={(e) => updatePlannedExercise(i, 'reps', Number(e.target.value))}
-                    className="w-14 px-2 py-1 border border-border rounded text-sm text-center"
-                    placeholder="Reps"
-                  />
-                  <span className="text-xs text-muted-foreground">@</span>
-                  <input
-                    type="number"
-                    value={ex.kg ?? ''}
-                    onChange={(e) => updatePlannedExercise(i, 'kg', e.target.value ? Number(e.target.value) : null)}
-                    className="w-16 px-2 py-1 border border-border rounded text-sm text-center"
-                    placeholder="kg"
-                  />
-                  <button onClick={() => removePlannedExercise(i)} className="p-1 text-destructive hover:bg-accent rounded">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                <div key={i} className="mb-2.5 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium truncate">{ex.name}</span>
+                    <button onClick={() => removePlannedExercise(i)} className="p-1 text-destructive hover:bg-accent rounded shrink-0">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      value={ex.sets}
+                      onChange={(e) => updatePlannedExercise(i, 'sets', Number(e.target.value))}
+                      className="w-14 px-2 py-1 border border-border rounded bg-background text-sm text-center"
+                      placeholder="Sets"
+                    />
+                    <span className="text-xs text-muted-foreground">x</span>
+                    <input
+                      type="number"
+                      value={ex.reps}
+                      onChange={(e) => updatePlannedExercise(i, 'reps', Number(e.target.value))}
+                      className="w-14 px-2 py-1 border border-border rounded bg-background text-sm text-center"
+                      placeholder="Reps"
+                    />
+                    <span className="text-xs text-muted-foreground">@</span>
+                    <input
+                      type="number"
+                      value={ex.kg ?? ''}
+                      onChange={(e) => updatePlannedExercise(i, 'kg', e.target.value ? Number(e.target.value) : null)}
+                      className="w-16 px-2 py-1 border border-border rounded bg-background text-sm text-center"
+                      placeholder="kg"
+                    />
+                  </div>
                 </div>
               ))}
 
@@ -472,6 +496,12 @@ export default function DesignerPage() {
                   type="text"
                   value={exerciseSearch}
                   onChange={(e) => setExerciseSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && filteredGlossary.length > 0) {
+                      e.preventDefault()
+                      addPlannedExercise(filteredGlossary[0])
+                    }
+                  }}
                   placeholder="Search exercises to add..."
                   className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
                 />
@@ -488,6 +518,7 @@ export default function DesignerPage() {
                     ))}
                   </div>
                 )}
+                <p className="text-xs text-muted-foreground mt-1">Press Enter to add the first match.</p>
               </div>
             </div>
 

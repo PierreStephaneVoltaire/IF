@@ -113,7 +113,8 @@ export interface Exercise {
   reps: number
   kg: number | null
   notes: string
-  failed?: boolean
+  failed?: boolean          // deprecated — kept for backwards compat
+  failed_sets?: boolean[]   // per-set: [false, false, true, false] = set 3 failed
 }
 
 export interface PlannedExercise {

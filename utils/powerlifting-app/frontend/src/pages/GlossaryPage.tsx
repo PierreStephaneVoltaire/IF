@@ -4,7 +4,7 @@ import { clsx } from 'clsx'
 import * as Slider from '@radix-ui/react-slider'
 import * as api from '@/api/client'
 import { useUiStore } from '@/store/uiStore'
-import type { GlossaryExercise, MuscleGroup, ExerciseCategory, Equipment, FatigueCategory, FatigueProfile, FatigueProfileSource } from '@powerlifting/types'
+import type { GlossaryExercise, MuscleGroup, ExerciseCategory, Equipment, FatigueProfile, FatigueProfileSource } from '@powerlifting/types'
 
 interface FatigueSliderProps {
   label: string
@@ -82,20 +82,6 @@ const EQUIPMENT_LABELS: Record<Equipment, string> = {
   kettlebell: 'Kettlebell',
 }
 
-const FATIGUE_CATEGORY_OPTIONS: { value: FatigueCategory; label: string }[] = [
-  { value: 'primary_axial', label: 'Primary Axial' },
-  { value: 'primary_upper', label: 'Primary Upper' },
-  { value: 'secondary', label: 'Secondary' },
-  { value: 'accessory', label: 'Accessory' },
-]
-
-const FATIGUE_LABELS: Record<FatigueCategory, string> = {
-  primary_axial: 'Primary Axial',
-  primary_upper: 'Primary Upper',
-  secondary: 'Secondary',
-  accessory: 'Accessory',
-}
-
 export default function GlossaryPage() {
   const { pushToast } = useUiStore()
   const [exercises, setExercises] = useState<GlossaryExercise[]>([])
@@ -109,7 +95,6 @@ export default function GlossaryPage() {
   const [formData, setFormData] = useState<Partial<GlossaryExercise>>({
     name: '',
     category: 'squat',
-    fatigue_category: 'accessory',
     primary_muscles: [],
     secondary_muscles: [],
     equipment: 'barbell',
@@ -164,7 +149,7 @@ export default function GlossaryPage() {
         ...(isEditing || {}),
         name: formData.name || '',
         category: formData.category || 'squat',
-        fatigue_category: formData.fatigue_category || 'accessory',
+        fatigue_category: (isEditing as GlossaryExercise | null)?.fatigue_category || 'accessory',
         primary_muscles: formData.primary_muscles || [],
         secondary_muscles: formData.secondary_muscles || [],
         equipment: formData.equipment || 'barbell',
@@ -185,7 +170,6 @@ export default function GlossaryPage() {
       setFormData({
         name: '',
         category: 'squat',
-        fatigue_category: 'accessory',
         primary_muscles: [],
         secondary_muscles: [],
         equipment: 'barbell',
@@ -218,7 +202,6 @@ export default function GlossaryPage() {
     setFormData({
       name: exercise.name,
       category: exercise.category,
-      fatigue_category: exercise.fatigue_category || 'accessory',
       primary_muscles: exercise.primary_muscles,
       secondary_muscles: exercise.secondary_muscles,
       equipment: exercise.equipment,
@@ -379,7 +362,8 @@ export default function GlossaryPage() {
 
       {/* Add/Edit Form */}
       {showAddForm && (
-        <div className="bg-card border border-border rounded-lg p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setShowAddForm(false); setIsEditing(null) }}>
+          <div className="bg-card border border-border rounded-lg w-full max-w-4xl max-h-[85vh] overflow-y-auto p-4 sm:p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between">
             <h3 className="font-medium">{isEditing ? 'Edit Exercise' : 'Add New Exercise'}</h3>
             <button
@@ -393,7 +377,7 @@ export default function GlossaryPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm text-muted-foreground">Name</label>
               <input
@@ -426,19 +410,6 @@ export default function GlossaryPage() {
             >
               {Object.entries(EQUIPMENT_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-sm text-muted-foreground">Fatigue Category</label>
-            <select
-              value={formData.fatigue_category || 'accessory'}
-              onChange={(e) => setFormData((p) => ({ ...p, fatigue_category: e.target.value as FatigueCategory }))}
-              className="w-full px-3 py-2 border border-border rounded-md bg-background"
-            >
-              {FATIGUE_CATEGORY_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
@@ -494,10 +465,10 @@ export default function GlossaryPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div>
               <label className="text-sm text-muted-foreground">Primary Muscles</label>
-              <div className="flex flex-wrap gap-1 mt-1">
+              <div className="flex flex-wrap gap-1 mt-1 max-h-56 overflow-y-auto">
                 {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
                   <button
                     key={value}
@@ -516,7 +487,7 @@ export default function GlossaryPage() {
             </div>
             <div>
               <label className="text-sm text-muted-foreground">Secondary Muscles</label>
-              <div className="flex flex-wrap gap-1 mt-1">
+              <div className="flex flex-wrap gap-1 mt-1 max-h-56 overflow-y-auto">
                 {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
                   <button
                     key={value}
@@ -578,7 +549,7 @@ export default function GlossaryPage() {
             />
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 sticky bottom-0 bg-card pt-2">
             <button
               onClick={() => {
                 setShowAddForm(false)
@@ -594,6 +565,7 @@ export default function GlossaryPage() {
             >
               {isEditing ? 'Update' : 'Add'} Exercise
             </button>
+          </div>
           </div>
         </div>
       )}
@@ -626,9 +598,11 @@ export default function GlossaryPage() {
                       <span className="text-xs px-2 py-0.5 bg-secondary rounded">
                         {EQUIPMENT_LABELS[exercise.equipment]}
                       </span>
-                      <span className="text-xs px-2 py-0.5 bg-muted text-muted-foreground rounded">
-                        {FATIGUE_LABELS[exercise.fatigue_category || 'accessory']}
-                      </span>
+                      {exercise.fatigue_profile && (
+                        <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded">
+                          {(exercise.fatigue_profile_source === 'ai_estimated' ? 'AI' : 'Manual')}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex gap-1">

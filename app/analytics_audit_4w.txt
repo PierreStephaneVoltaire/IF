@@ -1,0 +1,998 @@
+================================================================================
+ANALYTICS AUDIT — Last 4 week(s)
+Generated: 2026-04-11
+================================================================================
+
+────────────────────────────────────────────────────────────
+SECTION: Current Week & Phase
+────────────────────────────────────────────────────────────
+  Formula: max(1, (today - program_start).days // 7 + 1)
+  current_week: 8
+  phase/block: Rebuild
+
+────────────────────────────────────────────────────────────
+SECTION: Sessions Analyzed
+────────────────────────────────────────────────────────────
+  sessions_in_window: 77
+
+────────────────────────────────────────────────────────────
+SECTION: Deload Detection
+  Formula: A week is deload if VL < 0.65 * median(previous 4 non-deload weeks)
+  Formula: A week is break if session_count == 0 or VL == 0
+────────────────────────────────────────────────────────────
+  Deload weeks (12): [0.0, 0.14285714285714285, 0.42857142857142855, 1.1428571428571428, 1.4285714285714286, 2.142857142857143, 2.4285714285714284, 3.142857142857143, 3.4285714285714284, 4.0, 6.0, 6.285714285714286]
+  Break weeks (0): []
+  Effective training weeks: 13
+
+────────────────────────────────────────────────────────────
+SECTION: Per-Lift Breakdown
+────────────────────────────────────────────────────────────
+
+  === SQUAT ===
+  Progression Rate:
+    Formula: Theil-Sen regression on best e1RM per effective training week
+    Lookback: 90 days | Excludes: deload weeks, failed sets
+    slope_kg_per_week: 3.87
+    r²: 0.645
+  Volume/Intensity Change:
+    Formula: % change = ((recent - previous) / previous) * 100
+    volume_change_pct: 28.2
+    intensity_change_pct: -15.5
+  RPE Drift:
+    Formula: Theil-Sen regression on RPE over time
+    Residual mode: y = actual_rpe - phase_target_midpoint (if phase targets)
+    drift: unknown
+  Failed Sets: 0
+
+  === BENCH PRESS ===
+  Progression Rate:
+    Formula: Theil-Sen regression on best e1RM per effective training week
+    Lookback: 90 days | Excludes: deload weeks, failed sets
+    slope_kg_per_week: 0.79
+    r²: -0.222
+  Volume/Intensity Change:
+    Formula: % change = ((recent - previous) / previous) * 100
+    volume_change_pct: -54.6
+    intensity_change_pct: 6.1
+  RPE Drift:
+    Formula: Theil-Sen regression on RPE over time
+    Residual mode: y = actual_rpe - phase_target_midpoint (if phase targets)
+    drift: unknown
+  Failed Sets: 0
+
+  === DEADLIFT ===
+  Progression Rate:
+    Formula: Theil-Sen regression on best e1RM per effective training week
+    Lookback: 90 days | Excludes: deload weeks, failed sets
+    slope_kg_per_week: 4.82
+    r²: -1.53
+  Volume/Intensity Change:
+    Formula: % change = ((recent - previous) / previous) * 100
+    volume_change_pct: -29.5
+    intensity_change_pct: -6.0
+  RPE Drift:
+    Formula: Theil-Sen regression on RPE over time
+    Residual mode: y = actual_rpe - phase_target_midpoint (if phase targets)
+    drift: unknown
+  Failed Sets: 0
+
+────────────────────────────────────────────────────────────
+SECTION: Compliance
+  Formula: compliance_pct = completed_sessions / planned_sessions * 100
+  Where completed = status in ('logged','completed')
+  Excludes deload and break weeks
+────────────────────────────────────────────────────────────
+  Phase: Rebuild
+  Planned sessions: 13
+  Completed sessions: 10
+  Compliance %: 76.9
+  Excluded deload weeks: [-30.714285714285715, -30.571428571428573, -30.142857142857142, -29.428571428571427, -28.428571428571427, 3.857142857142857, 4.0, 4.857142857142857, 5.285714285714286, 6.0, 6.285714285714286]
+  Excluded break weeks: []
+
+────────────────────────────────────────────────────────────
+SECTION: Current Maxes (Estimated from Sessions)
+  Formula: For each qualifying set: e1RM = kg / pct_of_1RM
+  pct_of_1RM from RPE table (if session_rpe present, reps 1-6, rpe 6-10)
+  OR from conservative rep table (if no session_rpe, reps 1-5)
+  Requires >= 3 qualifying sets per lift
+  Takes 90th percentile of sorted e1RM estimates
+────────────────────────────────────────────────────────────
+  squat: 179.7 kg
+  bench: 118.9 kg
+  deadlift: 224.4 kg
+  Method: session_estimated
+
+────────────────────────────────────────────────────────────
+SECTION: Estimated DOTS
+  Formula: DOTS = (500 / denom) * total_kg
+  where denom uses sex-specific bodyweight polynomial coefficients
+  Requires bodyweight, sex, and all 3 lift maxes
+────────────────────────────────────────────────────────────
+  DOTS score: None
+
+────────────────────────────────────────────────────────────
+SECTION: Fatigue Index
+  Formula: score = 0.40 * failed_ratio + 0.35 * composite_spike + 0.25 * skip_rate
+  failed_ratio = failed_compound_sets / total_compound_sets
+  composite_spike = weighted dimensional spike (axial+neural+peripheral+systemic)
+  skip_rate = skipped_sessions / planned_sessions
+────────────────────────────────────────────────────────────
+  Score: 0.002 (0-1 scale)
+  Components:
+    failed_compound_ratio: 0
+    composite_spike: 0.007
+    skip_rate: 0
+
+────────────────────────────────────────────────────────────
+SECTION: Meet Projections
+  Formula per lift:
+    delta_w = slope from progression_rate()
+    projected_gain = delta_w * λ * (1 - λ^n_t) / (1 - λ)  [diminishing returns]
+    n_t = max(0, weeks_to_comp - weeks_taper - planned_deload_weeks)
+    comp_max = (current_kg + projected_gain) * peak_factor
+    Ceiling: current_kg * 1.10 | Floor: current_kg
+  Returns INSUFFICIENT_DATA if no real progression data exists
+────────────────────────────────────────────────────────────
+  Projection count: 2
+
+  --- Strength Lives Here ---
+  total: 567.0kg | confidence: 0.21
+  weeks_to_comp: 7.0 | method: session_estimated
+    squat: current=179.7 projected=197.7 slope=3.87 conf=0.64 clamped=True
+    bench: current=118.9 projected=122.5 slope=0 conf=0 clamped=False
+    deadlift: current=224.4 projected=246.8 slope=4.82 conf=0 clamped=True
+
+  --- APEX TOP 4 ---
+  total: 567.0kg | confidence: 0.21
+  weeks_to_comp: 19.0 | method: session_estimated
+    squat: current=179.7 projected=197.7 slope=3.87 conf=0.64 clamped=True
+    bench: current=118.9 projected=122.5 slope=0 conf=0 clamped=False
+    deadlift: current=224.4 projected=246.8 slope=4.82 conf=0 clamped=True
+
+────────────────────────────────────────────────────────────
+SECTION: Attempt Selection
+  Formula: round_to_2_5(projected_max * attempt_pct)
+  Pcts: {'opener': 0.9, 'third': 1, 'second': 0.955}
+────────────────────────────────────────────────────────────
+  squat: opener=177.5 second=190.0 third=197.5
+  bench: opener=110.0 second=117.5 third=122.5
+  deadlift: opener=222.5 second=235.0 third=247.5
+  Total: 567.5kg
+
+────────────────────────────────────────────────────────────
+SECTION: INOL (Intensity Number of Lifts)
+  Formula per set: INOL = (reps / (100 * max(0.01, 1 - I))) * sets
+  where I = kg / estimated_max (relative intensity)
+  Flags: <2.0 = low_stimulus | >4.0 = overreaching_risk
+────────────────────────────────────────────────────────────
+  Current week: {
+  "squat": 0,
+  "bench": 0,
+  "deadlift": 0.12
+}
+  Per-lift per-week: {
+  "squat": {
+    "1": 1.16,
+    "2": 0.81,
+    "3": 0.93,
+    "4": 0.7,
+    "5": 1.08,
+    "7": 1.17
+  },
+  "bench": {
+    "1": 1.3,
+    "2": 0.82,
+    "3": 0.78,
+    "4": 0.78,
+    "5": 0.64,
+    "7": 0.43
+  },
+  "deadlift": {
+    "1": 0.36,
+    "2": 0.56,
+    "3": 0.68,
+    "4": 0.82,
+    "5": 0.18,
+    "8": 0.12
+  }
+}
+  Flags: ['low_stimulus_squat', 'low_stimulus_bench', 'low_stimulus_deadlift']
+
+────────────────────────────────────────────────────────────
+SECTION: ACWR (Acute:Chronic Workload Ratio)
+  Formula per dimension: ACWR = acute_mean / chronic_mean
+  acute = last 1 week, chronic = last 4 weeks (excluding deloads)
+  Composite = weighted: axial=0.30, neural=0.30, peripheral=0.25, systemic=0.15
+  Zones: <0.8 undertraining | 0.8-1.3 optimal | 1.3-1.5 caution | >1.5 danger
+────────────────────────────────────────────────────────────
+  Composite: 0.754 (undertraining)
+    axial: value=0.781 zone=undertraining
+    neural: value=0.322 zone=undertraining
+    peripheral: value=1.03 zone=optimal
+    systemic: value=1.104 zone=optimal
+
+────────────────────────────────────────────────────────────
+SECTION: Fatigue Dimensions (Weekly)
+  Formula per set per dimension:
+    F_axial     = profile.axial * weight * reps
+    F_neural    = profile.neural * reps * φ(I)
+    F_peripheral = profile.peripheral * weight * reps
+    F_systemic  = profile.systemic * weight * reps
+    where φ(I) = ((max(0, I - 0.60)) / 0.40)²
+    and I = kg / e1RM (relative intensity)
+────────────────────────────────────────────────────────────
+  W4.0: axial=772.0 neural=1.4 peripheral=1039.7 systemic=854.2
+  W4.9: axial=2398.1 neural=6.8 peripheral=2869.3 systemic=2030.6
+  W5.3: axial=1484.8 neural=1.0 peripheral=2751.0 systemic=2052.1
+  W5.6: axial=2267.0 neural=2.1 peripheral=2888.8 systemic=2314.8
+  W6.0: axial=22.2 neural=0.5 peripheral=72.2 systemic=38.9
+  W6.3: axial=1064.2 neural=1.4 peripheral=1023.8 systemic=783.0
+  W6.9: axial=3287.7 neural=4.7 peripheral=4110.8 systemic=3366.9
+  W7.0: axial=1842.5 neural=1.2 peripheral=3250.7 systemic=2695.6
+  Dimensional ACWR: {
+  "dimensions": {
+    "axial": 0.781,
+    "neural": 0.322,
+    "peripheral": 1.03,
+    "systemic": 1.104
+  },
+  "composite": 0.754
+}
+  Dimensional Spike: {
+  "dimensions": {
+    "axial": 0.0,
+    "neural": 0.0,
+    "peripheral": 0.0,
+    "systemic": 0.046
+  },
+  "composite": 0.007
+}
+  Weights: {
+  "axial": 0.3,
+  "neural": 0.3,
+  "peripheral": 0.25,
+  "systemic": 0.15
+}
+
+────────────────────────────────────────────────────────────
+SECTION: Relative Intensity Distribution
+  Formula: RI = kg / estimated_max
+  Buckets: heavy (>0.85) | moderate (0.70-0.85) | light (<0.70)
+  Only SBD exercises with known maxes
+────────────────────────────────────────────────────────────
+  Overall: {
+  "heavy": {
+    "count": 8,
+    "pct": 10.1
+  },
+  "moderate": {
+    "count": 34,
+    "pct": 43.0
+  },
+  "light": {
+    "count": 37,
+    "pct": 46.8
+  }
+}
+  Per-lift: {
+  "squat": {
+    "heavy": {
+      "count": 2,
+      "pct": 6.5
+    },
+    "moderate": {
+      "count": 18,
+      "pct": 58.1
+    },
+    "light": {
+      "count": 11,
+      "pct": 35.5
+    }
+  },
+  "bench": {
+    "heavy": {
+      "count": 6,
+      "pct": 22.2
+    },
+    "moderate": {
+      "count": 12,
+      "pct": 44.4
+    },
+    "light": {
+      "count": 9,
+      "pct": 33.3
+    }
+  },
+  "deadlift": {
+    "heavy": {
+      "count": 0,
+      "pct": 0.0
+    },
+    "moderate": {
+      "count": 4,
+      "pct": 19.0
+    },
+    "light": {
+      "count": 17,
+      "pct": 81.0
+    }
+  }
+}
+
+────────────────────────────────────────────────────────────
+SECTION: Specificity Ratio
+  narrow = SBD_sets / total_sets
+  broad = (SBD_sets + secondary_sets) / total_sets
+  Secondary = exercises in glossary with category squat/bench/deadlift but not main SBD names
+────────────────────────────────────────────────────────────
+  Narrow (SBD only): 40.5%
+  Broad (SBD + secondary): 50.8%
+  SBD sets: 79 / Total sets: 195
+
+────────────────────────────────────────────────────────────
+SECTION: Readiness Score
+  Formula: R = (1 - (0.30*F + 0.25*D + 0.20*S + 0.15*M + 0.10*(1-C))) * 100
+  F = fatigue_norm (0-1) from fatigue_index(14d)
+  D = rpe_drift = |avg_session_rpe - phase_target_mid| / 2, clamped [0,1]
+  S = bw_stability = bodyweight_CV / 0.03, clamped [0,1]
+  M = miss_rate = failed_sets / total_sets (14d)
+  C = compliance_pct from session_compliance(2w)
+  Zones: >75 green | >=50 yellow | else red
+────────────────────────────────────────────────────────────
+  Score: 85.6 / 100
+  Zone: green
+  Components:
+    fatigue_norm: 0.153
+    rpe_drift: 0
+    bw_stability: 0.322
+    miss_rate: 0
+    compliance_pct: 66.7
+
+────────────────────────────────────────────────────────────
+SECTION: Exercise Stats (All exercises in window)
+  total_sets = sum of sets across sessions
+  total_volume = sum of sets * reps * kg
+  max_kg = highest kg seen
+────────────────────────────────────────────────────────────
+  Leg Press: sets=103 volume=135797 max=245.0kg
+  Squat: sets=78 volume=32374 max=217.5kg
+  Bench Press: sets=108 volume=31460 max=130.0kg
+  Cable Rows: sets=45 volume=30600 max=68.0kg
+  Chest Supported Row: sets=45 volume=29520 max=82.0kg
+  Leg Extensions: sets=30 volume=26659 max=91.0kg
+  Pause Bench Press: sets=49 volume=14616 max=110.5kg
+  Bicep Curls: sets=45 volume=10350 max=23.0kg
+  Deadlift: sets=42 volume=8600 max=250.0kg
+  Leg Curls: sets=30 volume=8104 max=45.4kg
+  Strict BB Shoulder Press: sets=28 volume=7560 max=27.0kg
+  GHR: sets=45 volume=4140 max=11.5kg
+  Weighted Pull-ups: sets=21 volume=2700 max=45.0kg
+  Single-Leg Leg Press: sets=2 volume=1452 max=90.7kg
+  Shrugs: sets=4 volume=1392 max=120.2kg
+  Spoto Press: sets=4 volume=1370 max=89.6kg
+  Pullover: sets=2 volume=1091 max=54.5kg
+  Hamstring Curl: sets=5 volume=1089 max=54.4kg
+  Hex Bar RDL: sets=2 volume=1044 max=87.0kg
+  Chest supported rows: sets=2 volume=980 max=81.6kg
+  Shoulder Press: sets=2 volume=544 max=45.4kg
+  Dumbbell RDL: sets=15 volume=0 max=0.0kg
+  DB RDLs: sets=2 volume=0 max=0.0kg
+
+────────────────────────────────────────────────────────────
+SECTION: Flags
+────────────────────────────────────────────────────────────
+  - low_stimulus_squat
+  - low_stimulus_bench
+  - low_stimulus_deadlift
+
+────────────────────────────────────────────────────────────
+SECTION: Raw API Response (JSON)
+────────────────────────────────────────────────────────────
+{
+  "week": 8,
+  "block": "Rebuild",
+  "lifts": {
+    "squat": {
+      "progression_rate_kg_per_week": 3.87,
+      "r2": 0.645,
+      "volume_change_pct": 28.2,
+      "intensity_change_pct": -15.5,
+      "rpe_trend": "unknown",
+      "failed_sets": 0
+    },
+    "bench press": {
+      "progression_rate_kg_per_week": 0.79,
+      "r2": -0.222,
+      "volume_change_pct": -54.6,
+      "intensity_change_pct": 6.1,
+      "rpe_trend": "unknown",
+      "failed_sets": 0
+    },
+    "deadlift": {
+      "progression_rate_kg_per_week": 4.82,
+      "r2": -1.53,
+      "volume_change_pct": -29.5,
+      "intensity_change_pct": -6.0,
+      "rpe_trend": "unknown",
+      "failed_sets": 0
+    }
+  },
+  "fatigue_index": 0.002,
+  "fatigue_components": {
+    "failed_compound_ratio": 0,
+    "composite_spike": 0.007,
+    "skip_rate": 0
+  },
+  "compliance": {
+    "phase": "Rebuild",
+    "planned": 13,
+    "completed": 10,
+    "pct": 76.9,
+    "excluded_weeks": {
+      "deload": [
+        -30.714285714285715,
+        -30.571428571428573,
+        -30.142857142857142,
+        -29.428571428571427,
+        -28.428571428571427,
+        3.857142857142857,
+        4.0,
+        4.857142857142857,
+        5.285714285714286,
+        6.0,
+        6.285714285714286
+      ],
+      "break": []
+    }
+  },
+  "current_maxes": {
+    "squat": 179.7,
+    "bench": 118.9,
+    "deadlift": 224.4,
+    "method": "session_estimated"
+  },
+  "estimated_dots": null,
+  "projections": [
+    {
+      "total": 567.0,
+      "confidence": 0.21,
+      "weeks_to_comp": 7.0,
+      "method": "session_estimated",
+      "comp_name": "Strength Lives Here",
+      "lifts": {
+        "squat": {
+          "current": 179.7,
+          "projected": 197.7,
+          "slope_kg_per_week": 3.87,
+          "confidence": 0.64,
+          "ceiling_clamped": true
+        },
+        "bench": {
+          "current": 118.9,
+          "projected": 122.5,
+          "slope_kg_per_week": 0,
+          "confidence": 0,
+          "ceiling_clamped": false
+        },
+        "deadlift": {
+          "current": 224.4,
+          "projected": 246.8,
+          "slope_kg_per_week": 4.82,
+          "confidence": 0,
+          "ceiling_clamped": true
+        }
+      }
+    },
+    {
+      "total": 567.0,
+      "confidence": 0.21,
+      "weeks_to_comp": 19.0,
+      "method": "session_estimated",
+      "comp_name": "APEX TOP 4",
+      "lifts": {
+        "squat": {
+          "current": 179.7,
+          "projected": 197.7,
+          "slope_kg_per_week": 3.87,
+          "confidence": 0.64,
+          "ceiling_clamped": true
+        },
+        "bench": {
+          "current": 118.9,
+          "projected": 122.5,
+          "slope_kg_per_week": 0,
+          "confidence": 0,
+          "ceiling_clamped": false
+        },
+        "deadlift": {
+          "current": 224.4,
+          "projected": 246.8,
+          "slope_kg_per_week": 4.82,
+          "confidence": 0,
+          "ceiling_clamped": true
+        }
+      }
+    }
+  ],
+  "projection_reason": null,
+  "flags": [
+    "low_stimulus_squat",
+    "low_stimulus_bench",
+    "low_stimulus_deadlift"
+  ],
+  "sessions_analyzed": 77,
+  "exercise_stats": {
+    "Squat": {
+      "total_sets": 78,
+      "total_volume": 32374.0,
+      "max_kg": 217.5
+    },
+    "Bench Press": {
+      "total_sets": 108,
+      "total_volume": 31460.1,
+      "max_kg": 130.0
+    },
+    "Deadlift": {
+      "total_sets": 42,
+      "total_volume": 8600.5,
+      "max_kg": 250.0
+    },
+    "Pause Bench Press": {
+      "total_sets": 49,
+      "total_volume": 14616.2,
+      "max_kg": 110.5
+    },
+    "Leg Press": {
+      "total_sets": 103,
+      "total_volume": 135796.7,
+      "max_kg": 245.0
+    },
+    "Bicep Curls": {
+      "total_sets": 45,
+      "total_volume": 10350.0,
+      "max_kg": 23.0
+    },
+    "Cable Rows": {
+      "total_sets": 45,
+      "total_volume": 30600.0,
+      "max_kg": 68.0
+    },
+    "Chest Supported Row": {
+      "total_sets": 45,
+      "total_volume": 29520.0,
+      "max_kg": 82.0
+    },
+    "GHR": {
+      "total_sets": 45,
+      "total_volume": 4140.0,
+      "max_kg": 11.5
+    },
+    "Strict BB Shoulder Press": {
+      "total_sets": 28,
+      "total_volume": 7560.0,
+      "max_kg": 27.0
+    },
+    "Leg Extensions": {
+      "total_sets": 30,
+      "total_volume": 26659.3,
+      "max_kg": 91.0
+    },
+    "Leg Curls": {
+      "total_sets": 30,
+      "total_volume": 8104.3,
+      "max_kg": 45.4
+    },
+    "Weighted Pull-ups": {
+      "total_sets": 21,
+      "total_volume": 2700.3,
+      "max_kg": 45.0
+    },
+    "Dumbbell RDL": {
+      "total_sets": 15,
+      "total_volume": 0.0,
+      "max_kg": 0.0
+    },
+    "Shoulder Press": {
+      "total_sets": 2,
+      "total_volume": 544.3,
+      "max_kg": 45.4
+    },
+    "Spoto Press": {
+      "total_sets": 4,
+      "total_volume": 1369.6,
+      "max_kg": 89.6
+    },
+    "DB RDLs": {
+      "total_sets": 2,
+      "total_volume": 0.0,
+      "max_kg": 0.0
+    },
+    "Hamstring Curl": {
+      "total_sets": 5,
+      "total_volume": 1088.6,
+      "max_kg": 54.4
+    },
+    "Hex Bar RDL": {
+      "total_sets": 2,
+      "total_volume": 1044.0,
+      "max_kg": 87.0
+    },
+    "Single-Leg Leg Press": {
+      "total_sets": 2,
+      "total_volume": 1451.5,
+      "max_kg": 90.7
+    },
+    "Pullover": {
+      "total_sets": 2,
+      "total_volume": 1090.9,
+      "max_kg": 54.5
+    },
+    "Chest supported rows": {
+      "total_sets": 2,
+      "total_volume": 979.8,
+      "max_kg": 81.6
+    },
+    "Shrugs": {
+      "total_sets": 4,
+      "total_volume": 1392.4,
+      "max_kg": 120.2
+    }
+  },
+  "deload_info": {
+    "deload_weeks": [
+      0.0,
+      0.14285714285714285,
+      0.42857142857142855,
+      1.1428571428571428,
+      1.4285714285714286,
+      2.142857142857143,
+      2.4285714285714284,
+      3.142857142857143,
+      3.4285714285714284,
+      4.0,
+      6.0,
+      6.285714285714286
+    ],
+    "break_weeks": [],
+    "effective_training_weeks": 13
+  },
+  "fatigue_dimensions": {
+    "weekly": {
+      "-0.3": {
+        "axial": 2472.8,
+        "neural": 0.4,
+        "peripheral": 3441.0,
+        "systemic": 2311.2
+      },
+      "0.0": {
+        "axial": 1584.0,
+        "neural": 0.9,
+        "peripheral": 1750.7,
+        "systemic": 1631.8
+      },
+      "0.1": {
+        "axial": 188.8,
+        "neural": 0.4,
+        "peripheral": 528.5,
+        "systemic": 302.0
+      },
+      "0.4": {
+        "axial": 719.1,
+        "neural": 0.8,
+        "peripheral": 634.5,
+        "systemic": 507.6
+      },
+      "0.7": {
+        "axial": 2535.6,
+        "neural": 1.1,
+        "peripheral": 3492.5,
+        "systemic": 2352.5
+      },
+      "1.0": {
+        "axial": 2741.1,
+        "neural": 0.5,
+        "peripheral": 2798.7,
+        "systemic": 2733.6
+      },
+      "1.1": {
+        "axial": 204.0,
+        "neural": 0.4,
+        "peripheral": 571.2,
+        "systemic": 326.4
+      },
+      "1.4": {
+        "axial": 994.5,
+        "neural": 0.8,
+        "peripheral": 877.5,
+        "systemic": 702.0
+      },
+      "1.7": {
+        "axial": 2851.7,
+        "neural": 3.5,
+        "peripheral": 3767.6,
+        "systemic": 2572.7
+      },
+      "2.0": {
+        "axial": 3034.1,
+        "neural": 1.1,
+        "peripheral": 3085.5,
+        "systemic": 3020.8
+      },
+      "2.1": {
+        "axial": 219.5,
+        "neural": 0.4,
+        "peripheral": 614.6,
+        "systemic": 351.2
+      },
+      "2.4": {
+        "axial": 1147.5,
+        "neural": 0.8,
+        "peripheral": 1012.5,
+        "systemic": 810.0
+      },
+      "2.7": {
+        "axial": 2904.6,
+        "neural": 5.0,
+        "peripheral": 3625.7,
+        "systemic": 2525.5
+      },
+      "3.0": {
+        "axial": 3190.9,
+        "neural": 2.4,
+        "peripheral": 3242.7,
+        "systemic": 3176.0
+      },
+      "3.1": {
+        "axial": 229.5,
+        "neural": 0.4,
+        "peripheral": 642.6,
+        "systemic": 367.2
+      },
+      "3.4": {
+        "axial": 1269.9,
+        "neural": 0.8,
+        "peripheral": 1120.5,
+        "systemic": 896.4
+      },
+      "3.9": {
+        "axial": 2302.0,
+        "neural": 4.2,
+        "peripheral": 3034.3,
+        "systemic": 2072.5
+      },
+      "4.0": {
+        "axial": 772.0,
+        "neural": 1.4,
+        "peripheral": 1039.7,
+        "systemic": 854.2
+      },
+      "4.9": {
+        "axial": 2398.1,
+        "neural": 6.8,
+        "peripheral": 2869.3,
+        "systemic": 2030.6
+      },
+      "5.3": {
+        "axial": 1484.8,
+        "neural": 1.0,
+        "peripheral": 2751.0,
+        "systemic": 2052.1
+      },
+      "5.6": {
+        "axial": 2267.0,
+        "neural": 2.1,
+        "peripheral": 2888.8,
+        "systemic": 2314.8
+      },
+      "6.0": {
+        "axial": 22.2,
+        "neural": 0.5,
+        "peripheral": 72.2,
+        "systemic": 38.9
+      },
+      "6.3": {
+        "axial": 1064.2,
+        "neural": 1.4,
+        "peripheral": 1023.8,
+        "systemic": 783.0
+      },
+      "6.9": {
+        "axial": 3287.7,
+        "neural": 4.7,
+        "peripheral": 4110.8,
+        "systemic": 3366.9
+      },
+      "7.0": {
+        "axial": 1842.5,
+        "neural": 1.2,
+        "peripheral": 3250.7,
+        "systemic": 2695.6
+      }
+    },
+    "acwr": {
+      "dimensions": {
+        "axial": 0.781,
+        "neural": 0.322,
+        "peripheral": 1.03,
+        "systemic": 1.104
+      },
+      "composite": 0.754
+    },
+    "spike": {
+      "dimensions": {
+        "axial": 0.0,
+        "neural": 0.0,
+        "peripheral": 0.0,
+        "systemic": 0.046
+      },
+      "composite": 0.007
+    },
+    "dimension_weights": {
+      "axial": 0.3,
+      "neural": 0.3,
+      "peripheral": 0.25,
+      "systemic": 0.15
+    }
+  },
+  "inol": {
+    "per_lift_per_week": {
+      "squat": {
+        "1": 1.16,
+        "2": 0.81,
+        "3": 0.93,
+        "4": 0.7,
+        "5": 1.08,
+        "7": 1.17
+      },
+      "bench": {
+        "1": 1.3,
+        "2": 0.82,
+        "3": 0.78,
+        "4": 0.78,
+        "5": 0.64,
+        "7": 0.43
+      },
+      "deadlift": {
+        "1": 0.36,
+        "2": 0.56,
+        "3": 0.68,
+        "4": 0.82,
+        "5": 0.18,
+        "8": 0.12
+      }
+    },
+    "current_week": {
+      "squat": 0,
+      "bench": 0,
+      "deadlift": 0.12
+    },
+    "flags": [
+      "low_stimulus_squat",
+      "low_stimulus_bench",
+      "low_stimulus_deadlift"
+    ]
+  },
+  "acwr": {
+    "composite": 0.754,
+    "composite_zone": "undertraining",
+    "dimensions": {
+      "axial": {
+        "value": 0.781,
+        "zone": "undertraining"
+      },
+      "neural": {
+        "value": 0.322,
+        "zone": "undertraining"
+      },
+      "peripheral": {
+        "value": 1.03,
+        "zone": "optimal"
+      },
+      "systemic": {
+        "value": 1.104,
+        "zone": "optimal"
+      }
+    }
+  },
+  "ri_distribution": {
+    "overall": {
+      "heavy": {
+        "count": 8,
+        "pct": 10.1
+      },
+      "moderate": {
+        "count": 34,
+        "pct": 43.0
+      },
+      "light": {
+        "count": 37,
+        "pct": 46.8
+      }
+    },
+    "per_lift": {
+      "squat": {
+        "heavy": {
+          "count": 2,
+          "pct": 6.5
+        },
+        "moderate": {
+          "count": 18,
+          "pct": 58.1
+        },
+        "light": {
+          "count": 11,
+          "pct": 35.5
+        }
+      },
+      "bench": {
+        "heavy": {
+          "count": 6,
+          "pct": 22.2
+        },
+        "moderate": {
+          "count": 12,
+          "pct": 44.4
+        },
+        "light": {
+          "count": 9,
+          "pct": 33.3
+        }
+      },
+      "deadlift": {
+        "heavy": {
+          "count": 0,
+          "pct": 0.0
+        },
+        "moderate": {
+          "count": 4,
+          "pct": 19.0
+        },
+        "light": {
+          "count": 17,
+          "pct": 81.0
+        }
+      }
+    }
+  },
+  "specificity_ratio": {
+    "narrow": 0.405,
+    "broad": 0.508,
+    "total_sets": 195,
+    "sbd_sets": 79,
+    "secondary_sets": 20
+  },
+  "readiness_score": {
+    "score": 85.6,
+    "zone": "green",
+    "components": {
+      "fatigue_norm": 0.153,
+      "rpe_drift": 0,
+      "bw_stability": 0.322,
+      "miss_rate": 0,
+      "compliance_pct": 66.7
+    }
+  },
+  "attempt_selection": {
+    "squat": {
+      "opener": 177.5,
+      "second": 190.0,
+      "third": 197.5
+    },
+    "bench": {
+      "opener": 110.0,
+      "second": 117.5,
+      "third": 122.5
+    },
+    "deadlift": {
+      "opener": 222.5,
+      "second": 235.0,
+      "third": 247.5
+    },
+    "total": 567.5,
+    "attempt_pct_used": {
+      "opener": 0.9,
+      "third": 1,
+      "second": 0.955
+    }
+  }
+}
