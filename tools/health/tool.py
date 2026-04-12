@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence
 
 from pydantic import Field
@@ -43,6 +44,31 @@ def _format_result(result: Any) -> str:
     if isinstance(result, str):
         return result
     return json.dumps(result, indent=2, default=str)
+
+
+def _sanitize_decimals(obj: Any) -> Any:
+    if isinstance(obj, Decimal):
+        if obj % 1 == 0:
+            return int(obj)
+        return float(obj)
+    if isinstance(obj, dict):
+        return {k: _sanitize_decimals(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_decimals(v) for v in obj]
+    return obj
+
+
+def _get_glossary_sync(table_name: str) -> list[dict]:
+    """Fetch glossary from DynamoDB (pk='operator', sk='glossary#v1')."""
+    import boto3
+
+    dynamodb = boto3.resource("dynamodb", region_name="ca-central-1")
+    table = dynamodb.Table(table_name)
+    resp = table.get_item(Key={"pk": "operator", "sk": "glossary#v1"})
+    item = resp.get("Item")
+    if not item:
+        return []
+    return _sanitize_decimals(item.get("exercises", []))
 
 
 # =============================================================================
@@ -1239,14 +1265,14 @@ class ExportProgramHistoryExecutor(ToolExecutor[ExportProgramHistoryAction, Expo
         import os
         import tempfile
         from core import _get_store
-        from src.health.export import build_program_xlsx
+        from health.export import build_program_xlsx
 
         program = _run_async(_get_store().get_program())
         filename = "program_history.xlsx"
 
         if self.chat_id:
             try:
-                from src.sandbox.local import get_local_sandbox
+                from app_sandbox import get_local_sandbox
                 work_dir = get_local_sandbox().get_working_dir(self.chat_id)
             except Exception:
                 work_dir = tempfile.gettempdir()
@@ -1293,7 +1319,7 @@ class AnalyzeProgressionExecutor(ToolExecutor[AnalyzeProgressionAction, AnalyzeP
     def __call__(self, action: AnalyzeProgressionAction, conversation=None) -> AnalyzeProgressionObservation:
         from datetime import timedelta
         from core import _get_store
-        from src.health.analytics import progression_rate, _calculate_current_week, _parse_date
+        from health.analytics import progression_rate, _calculate_current_week, _parse_date
 
         program = _run_async(_get_store().get_program())
         sessions = program.get("sessions", [])
@@ -1338,7 +1364,7 @@ class AnalyzeRpeDriftObservation(Observation):
 class AnalyzeRpeDriftExecutor(ToolExecutor[AnalyzeRpeDriftAction, AnalyzeRpeDriftObservation]):
     def __call__(self, action: AnalyzeRpeDriftAction, conversation=None) -> AnalyzeRpeDriftObservation:
         from core import _get_store
-        from src.health.analytics import rpe_drift
+        from health.analytics import rpe_drift
 
         program = _run_async(_get_store().get_program())
         sessions = program.get("sessions", [])
@@ -1376,7 +1402,7 @@ class Estimate1rmObservation(Observation):
 
 class Estimate1rmExecutor(ToolExecutor[Estimate1rmAction, Estimate1rmObservation]):
     def __call__(self, action: Estimate1rmAction, conversation=None) -> Estimate1rmObservation:
-        from src.health.analytics import estimate_1rm
+        from health.analytics import estimate_1rm
         result = estimate_1rm(action.weight_kg, action.reps, action.rpe)
         return Estimate1rmObservation.from_text(_format_result(result))
 
@@ -1409,7 +1435,7 @@ class CalculateDotsObservation(Observation):
 
 class CalculateDotsExecutor(ToolExecutor[CalculateDotsAction, CalculateDotsObservation]):
     def __call__(self, action: CalculateDotsAction, conversation=None) -> CalculateDotsObservation:
-        from src.health.analytics import calculate_dots
+        from health.analytics import calculate_dots
         result = calculate_dots(action.total_kg, action.bodyweight_kg, action.sex)
         return CalculateDotsObservation.from_text(_format_result({"dots": result}))
 
@@ -1432,6 +1458,7 @@ class CalculateDotsTool(ToolDefinition[CalculateDotsAction, CalculateDotsObserva
 
 class WeeklyAnalysisAction(Action):
     weeks: int = Field(default=1, description="Number of weeks to analyze (default: 1)")
+    block: str = Field(default="current", description="Program block filter (default 'current')")
 
 
 class WeeklyAnalysisObservation(Observation):
@@ -1441,11 +1468,19 @@ class WeeklyAnalysisObservation(Observation):
 class WeeklyAnalysisExecutor(ToolExecutor[WeeklyAnalysisAction, WeeklyAnalysisObservation]):
     def __call__(self, action: WeeklyAnalysisAction, conversation=None) -> WeeklyAnalysisObservation:
         from core import _get_store
-        from src.health.analytics import weekly_analysis
+        from health.analytics import weekly_analysis
+        from config import IF_HEALTH_TABLE_NAME
 
         program = _run_async(_get_store().get_program())
         sessions = program.get("sessions", [])
-        result = weekly_analysis(program, sessions, weeks=action.weeks)
+        glossary = _get_glossary_sync(IF_HEALTH_TABLE_NAME)
+        result = weekly_analysis(
+            program,
+            sessions,
+            weeks=action.weeks,
+            block=action.block,
+            glossary=glossary,
+        )
         return WeeklyAnalysisObservation.from_text(_format_result(result))
 
 
@@ -1470,6 +1505,129 @@ register_tool("AnalyzeRpeDriftTool", AnalyzeRpeDriftTool)
 register_tool("Estimate1rmTool", Estimate1rmTool)
 register_tool("CalculateDotsTool", CalculateDotsTool)
 register_tool("WeeklyAnalysisTool", WeeklyAnalysisTool)
+
+
+# --- correlation_analysis ---
+
+class CorrelationAnalysisAction(Action):
+    weeks: int = Field(default=4, description="Rolling window in weeks (default 4)")
+    block: str = Field(default="current", description="Program block filter (default 'current')")
+    refresh: bool = Field(default=False, description="Force regeneration, ignore cache")
+
+
+class CorrelationAnalysisObservation(Observation):
+    pass
+
+
+class CorrelationAnalysisExecutor(ToolExecutor[CorrelationAnalysisAction, CorrelationAnalysisObservation]):
+    def __call__(self, action: CorrelationAnalysisAction, conversation=None) -> CorrelationAnalysisObservation:
+        from datetime import datetime, timedelta
+
+        from core import _get_store
+        from health.correlation_ai import generate_correlation_report
+        from config import IF_HEALTH_TABLE_NAME
+        import boto3
+
+        today = datetime.utcnow().date()
+        raw_cutoff = today - timedelta(weeks=action.weeks)
+        days_since_monday = raw_cutoff.weekday()
+        window_start = raw_cutoff - timedelta(days=days_since_monday)
+        window_start_str = window_start.isoformat()
+        cache_sk = f"corr_report#{window_start_str}_{action.weeks}w"
+
+        dynamodb = boto3.resource("dynamodb", region_name="ca-central-1")
+        table = dynamodb.Table(IF_HEALTH_TABLE_NAME)
+
+        if not action.refresh:
+            cached = table.get_item(Key={"pk": "operator", "sk": cache_sk}).get("Item")
+            if cached and cached.get("report"):
+                report = cached["report"]
+                if isinstance(report, dict):
+                    report["cached"] = True
+                    report["generated_at"] = cached.get("generated_at", "")
+                    report["window_start"] = window_start_str
+                    report["weeks"] = action.weeks
+                return CorrelationAnalysisObservation.from_text(_format_result(report))
+
+        program = _run_async(_get_store().get_program())
+        sessions = program.get("sessions", [])
+        lift_profiles = program.get("lift_profiles", [])
+
+        report = _run_async(generate_correlation_report(
+            sessions=sessions,
+            lift_profiles=lift_profiles,
+            weeks=action.weeks,
+            window_start=window_start_str,
+        ))
+
+        generated_at = datetime.utcnow().isoformat() + "Z"
+
+        table.put_item(Item={
+            "pk": "operator",
+            "sk": cache_sk,
+            "report": report,
+            "generated_at": generated_at,
+            "window_start": window_start_str,
+            "weeks": action.weeks,
+        })
+
+        report["cached"] = False
+        report["generated_at"] = generated_at
+        report["window_start"] = window_start_str
+        report["weeks"] = action.weeks
+        return CorrelationAnalysisObservation.from_text(_format_result(report))
+
+
+class CorrelationAnalysisTool(ToolDefinition[CorrelationAnalysisAction, CorrelationAnalysisObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["CorrelationAnalysisTool"]:
+        return [cls(
+            description=(
+                "AI-powered exercise ROI correlation analysis. Identifies which accessory "
+                "exercises correlate with improvements in squat/bench/deadlift over a rolling "
+                "window. Results are cached in DynamoDB. Use refresh=true to force regeneration."
+            ),
+            action_type=CorrelationAnalysisAction,
+            observation_type=CorrelationAnalysisObservation,
+            executor=CorrelationAnalysisExecutor(),
+        )]
+
+
+# --- fatigue_profile_estimate ---
+
+class FatigueProfileEstimateAction(Action):
+    exercise: dict = Field(
+        description="Exercise metadata: name, category, equipment, primary_muscles, secondary_muscles, cues, notes"
+    )
+
+
+class FatigueProfileEstimateObservation(Observation):
+    pass
+
+
+class FatigueProfileEstimateExecutor(ToolExecutor[FatigueProfileEstimateAction, FatigueProfileEstimateObservation]):
+    def __call__(self, action: FatigueProfileEstimateAction, conversation=None) -> FatigueProfileEstimateObservation:
+        from health.fatigue_ai import estimate_fatigue_profile
+        result = _run_async(estimate_fatigue_profile(action.exercise))
+        return FatigueProfileEstimateObservation.from_text(_format_result(result))
+
+
+class FatigueProfileEstimateTool(ToolDefinition[FatigueProfileEstimateAction, FatigueProfileEstimateObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["FatigueProfileEstimateTool"]:
+        return [cls(
+            description=(
+                "Estimate the fatigue profile (axial/neural/peripheral/systemic components) for "
+                "an exercise using AI analysis of its biomechanical characteristics."
+            ),
+            action_type=FatigueProfileEstimateAction,
+            observation_type=FatigueProfileEstimateObservation,
+            executor=FatigueProfileEstimateExecutor(),
+        )]
+
+
+register_tool("CorrelationAnalysisTool", CorrelationAnalysisTool)
+register_tool("FatigueProfileEstimateTool", FatigueProfileEstimateTool)
 
 
 # =============================================================================
@@ -1521,6 +1679,8 @@ def get_tools() -> List[Tool]:
         Tool(name="Estimate1rmTool"),
         Tool(name="CalculateDotsTool"),
         Tool(name="WeeklyAnalysisTool"),
+        Tool(name="CorrelationAnalysisTool"),
+        Tool(name="FatigueProfileEstimateTool"),
     ]
 
 
@@ -1924,8 +2084,52 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "weeks": {"type": "integer", "description": "Number of weeks to analyze", "default": 1},
+                    "block": {"type": "string", "description": "Program block filter", "default": "current"},
                 },
                 "required": [],
+            },
+        },
+        "correlation_analysis": {
+            "name": "correlation_analysis",
+            "description": (
+                "AI-powered exercise ROI correlation analysis. Identifies which accessory "
+                "exercises correlate with improvements in squat/bench/deadlift over a rolling "
+                "window. Results are cached in DynamoDB. Use refresh=true to force regeneration."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "weeks": {"type": "integer", "description": "Rolling window in weeks", "default": 4},
+                    "block": {"type": "string", "description": "Program block filter", "default": "current"},
+                    "refresh": {"type": "boolean", "description": "Force regeneration, ignore cache", "default": False},
+                },
+                "required": [],
+            },
+        },
+        "fatigue_profile_estimate": {
+            "name": "fatigue_profile_estimate",
+            "description": (
+                "Estimate the fatigue profile (axial/neural/peripheral/systemic components) "
+                "for an exercise using AI analysis of biomechanical characteristics."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "exercise": {
+                        "type": "object",
+                        "description": "Exercise metadata dict",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "category": {"type": "string"},
+                            "equipment": {"type": "string"},
+                            "primary_muscles": {"type": "array", "items": {"type": "string"}},
+                            "secondary_muscles": {"type": "array", "items": {"type": "string"}},
+                            "cues": {"type": "array", "items": {"type": "string"}},
+                            "notes": {"type": "string"},
+                        },
+                    },
+                },
+                "required": ["exercise"],
             },
         },
     }
@@ -1948,7 +2152,7 @@ def _do_export(args):
     import os
     import tempfile
     from core import _get_store
-    from src.health.export import build_program_xlsx
+    from health.export import build_program_xlsx
 
     program = _run_async(_get_store().get_program())
     filename = "program_history.xlsx"
@@ -1962,31 +2166,104 @@ def _do_export(args):
 
 
 def _do_analyze_progression(args):
-    from src.health.analytics import progression_rate
+    from health.analytics import progression_rate
     program, sessions, program_start = _get_program_and_sessions()
     return progression_rate(sessions, args["exercise_name"], program_start)
 
 
 def _do_analyze_rpe_drift(args):
-    from src.health.analytics import rpe_drift
+    from health.analytics import rpe_drift
     program, sessions, program_start = _get_program_and_sessions()
     return rpe_drift(sessions, args["exercise_name"], program_start, args.get("window_weeks", 4))
 
 
 def _do_estimate_1rm(args):
-    from src.health.analytics import estimate_1rm
+    from health.analytics import estimate_1rm
     return estimate_1rm(args["weight_kg"], args["reps"], args.get("rpe"))
 
 
 def _do_calculate_dots(args):
-    from src.health.analytics import calculate_dots
+    from health.analytics import calculate_dots
     return {"dots": calculate_dots(args["total_kg"], args["bodyweight_kg"], args["sex"])}
 
 
 def _do_weekly_analysis(args):
-    from src.health.analytics import weekly_analysis
+    from health.analytics import weekly_analysis
+    from config import IF_HEALTH_TABLE_NAME
     program, sessions, program_start = _get_program_and_sessions()
-    return weekly_analysis(program, sessions, weeks=args.get("weeks", 1))
+    glossary = _get_glossary_sync(IF_HEALTH_TABLE_NAME)
+    return weekly_analysis(
+        program,
+        sessions,
+        weeks=args.get("weeks", 1),
+        block=args.get("block", "current"),
+        glossary=glossary,
+    )
+
+
+def _do_correlation_analysis(args):
+    from datetime import datetime, timedelta
+    from core import _get_store
+    from health.correlation_ai import generate_correlation_report
+    from config import IF_HEALTH_TABLE_NAME
+    import boto3
+
+    weeks = args.get("weeks", 4)
+    refresh = args.get("refresh", False)
+
+    today = datetime.utcnow().date()
+    raw_cutoff = today - timedelta(weeks=weeks)
+    days_since_monday = raw_cutoff.weekday()
+    window_start = raw_cutoff - timedelta(days=days_since_monday)
+    window_start_str = window_start.isoformat()
+    cache_sk = f"corr_report#{window_start_str}_{weeks}w"
+
+    dynamodb = boto3.resource("dynamodb", region_name="ca-central-1")
+    table = dynamodb.Table(IF_HEALTH_TABLE_NAME)
+
+    if not refresh:
+        cached = table.get_item(Key={"pk": "operator", "sk": cache_sk}).get("Item")
+        if cached and cached.get("report"):
+            report = cached["report"]
+            if isinstance(report, dict):
+                report["cached"] = True
+                report["generated_at"] = cached.get("generated_at", "")
+                report["window_start"] = window_start_str
+                report["weeks"] = weeks
+            return report
+
+    program = _run_async(_get_store().get_program())
+    sessions = program.get("sessions", [])
+    lift_profiles = program.get("lift_profiles", [])
+
+    report = _run_async(generate_correlation_report(
+        sessions=sessions,
+        lift_profiles=lift_profiles,
+        weeks=weeks,
+        window_start=window_start_str,
+    ))
+
+    generated_at = datetime.utcnow().isoformat() + "Z"
+
+    table.put_item(Item={
+        "pk": "operator",
+        "sk": cache_sk,
+        "report": report,
+        "generated_at": generated_at,
+        "window_start": window_start_str,
+        "weeks": weeks,
+    })
+
+    report["cached"] = False
+    report["generated_at"] = generated_at
+    report["window_start"] = window_start_str
+    report["weeks"] = weeks
+    return report
+
+
+def _do_fatigue_profile_estimate(args):
+    from health.fatigue_ai import estimate_fatigue_profile
+    return _run_async(estimate_fatigue_profile(args["exercise"]))
 
 
 # =============================================================================
@@ -2069,6 +2346,8 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "estimate_1rm": lambda: _do_estimate_1rm(args),
         "calculate_dots": lambda: _do_calculate_dots(args),
         "weekly_analysis": lambda: _do_weekly_analysis(args),
+        "correlation_analysis": lambda: _do_correlation_analysis(args),
+        "fatigue_profile_estimate": lambda: _do_fatigue_profile_estimate(args),
     }
 
     handler = ROUTES.get(name)

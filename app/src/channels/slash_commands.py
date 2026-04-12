@@ -231,3 +231,164 @@ def setup_command_tree(
     _make_reflection_handler(
         "tools", "Show tool suggestions from capability gaps"
     )
+
+    # --- Dynamic commands from tool registry and specialists ---
+    _register_dynamic_commands(tree, channel_id, conversation_id)
+
+
+STATIC_COMMAND_NAMES = {
+    "end_convo", "pondering", "clear", "reflect", "gaps",
+    "patterns", "opinions", "growth", "meta", "tools",
+}
+
+# Discord hard-limits chat input commands per application/guild.
+MAX_DISCORD_CHAT_INPUT_COMMANDS = 100
+
+
+async def _invoke_via_agent(message_content: str, interaction: discord.Interaction):
+    """Route a message through the agent pipeline and return the response text."""
+    from main import app
+    from api.completions import process_chat_completion_internal
+    from config import API_MODEL_NAME
+
+    http_client = app.state.http_client
+    request_data = {
+        "model": API_MODEL_NAME,
+        "messages": [{"role": "user", "content": message_content}],
+        "platform": "discord",
+        "channel_id": str(interaction.channel_id) if interaction.channel_id else "",
+        "conversation_id": str(interaction.channel_id) if interaction.channel_id else "",
+        "user": str(interaction.user.id),
+    }
+
+    response_text, _ = await process_chat_completion_internal(
+        request_data=request_data,
+        http_client=http_client,
+    )
+    return response_text
+
+
+async def _send_chunked(interaction: discord.Interaction, text: str):
+    """Send response text, splitting over Discord's 2000-char limit."""
+    if len(text) <= 2000:
+        await interaction.followup.send(text)
+    else:
+        for i in range(0, len(text), 2000):
+            await interaction.followup.send(text[i : i + 2000])
+
+
+def _register_dynamic_commands(tree, channel_id, conversation_id):
+    """Register tool and specialist slash commands from registries."""
+    used_names = set(STATIC_COMMAND_NAMES)
+    _register_tool_commands(tree, used_names)
+    _register_specialist_commands(tree, used_names)
+
+
+def _register_tool_commands(tree, used_names: set[str]):
+    """Register slash commands for each tool in the tool registry."""
+    try:
+        from agent.tool_registry import get_tool_registry
+        registry = get_tool_registry()
+    except Exception:
+        logger.debug("[SlashCmd] Tool registry not available, skipping tool commands")
+        return
+
+    for config in registry._tools.values():
+        for tool_name, schema in config.schemas.items():
+            if len(used_names) >= MAX_DISCORD_CHAT_INPUT_COMMANDS:
+                logger.warning(
+                    "[SlashCmd] Reached Discord slash command limit while registering tools; skipping remaining tools"
+                )
+                return
+
+            discord_name = tool_name[:32]
+            if discord_name in used_names:
+                logger.warning(f"[SlashCmd] Skipping duplicate tool command: {discord_name} -> {tool_name}")
+                continue
+
+            used_names.add(discord_name)
+            description = (schema.get("description") or tool_name)[:100]
+
+            @tree.command(name=discord_name, description=description)
+            @app_commands.describe(args="Optional JSON arguments e.g. {\"weeks\": 4}")
+            async def tool_handler(
+                interaction: discord.Interaction,
+                args: str = "",
+                _name=tool_name,
+                _command_name=discord_name,
+            ):
+                await interaction.response.defer()
+                try:
+                    message_content = f"/{_name} {args}".strip()
+                    result = await _invoke_via_agent(message_content, interaction)
+                    await _send_chunked(interaction, result)
+                except Exception as e:
+                    logger.error(f"[SlashCmd] /{_command_name} error: {e}")
+                    await interaction.followup.send(f"Error: {e}")
+
+
+def _register_specialist_commands(tree, used_names: set[str]):
+    """Register slash commands for each specialist."""
+    try:
+        from agent.specialists import (
+            SPECIALIST_COMMAND_ALIASES,
+            list_specialists,
+            get_specialist_command_map,
+        )
+        specialists = list_specialists()
+        command_map = get_specialist_command_map()
+    except Exception:
+        logger.debug("[SlashCmd] Specialists not available, skipping specialist commands")
+        return
+
+    spec_by_slug = {spec.slug: spec for spec in specialists}
+
+    ordered_command_items: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    for alias, slug in SPECIALIST_COMMAND_ALIASES.items():
+        if alias in command_map and alias not in seen:
+            ordered_command_items.append((alias, command_map[alias]))
+            seen.add(alias)
+
+    for spec in specialists:
+        if spec.slug in command_map and spec.slug not in seen:
+            ordered_command_items.append((spec.slug, command_map[spec.slug]))
+            seen.add(spec.slug)
+
+    for command_name, slug in ordered_command_items:
+        if len(used_names) >= MAX_DISCORD_CHAT_INPUT_COMMANDS:
+            logger.warning(
+                "[SlashCmd] Reached Discord slash command limit while registering specialists; skipping remaining specialist commands"
+            )
+            return
+
+        discord_name = command_name[:32]
+        if discord_name in used_names:
+            logger.warning(f"[SlashCmd] Skipping duplicate specialist command: {discord_name} -> {slug}")
+            continue
+
+        spec = spec_by_slug.get(slug)
+        if spec is None:
+            continue
+
+        used_names.add(discord_name)
+        description = spec.description[:100]
+
+        @tree.command(name=discord_name, description=description)
+        @app_commands.describe(args="Task or question for the specialist")
+        async def specialist_handler(
+            interaction: discord.Interaction,
+            args: str = "",
+            _slash_name=command_name,
+            _slug=slug,
+            _command_name=discord_name,
+        ):
+            await interaction.response.defer()
+            try:
+                message_content = f"/{_slash_name} {args}".strip()
+                result = await _invoke_via_agent(message_content, interaction)
+                await _send_chunked(interaction, result)
+            except Exception as e:
+                logger.error(f"[SlashCmd] /{_command_name} error: {e}")
+                await interaction.followup.send(f"Error: {e}")

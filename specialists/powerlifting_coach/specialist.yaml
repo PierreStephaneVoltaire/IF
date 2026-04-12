@@ -8,7 +8,8 @@ description: >
   scheduled breaks, competition countdown, competition details, diet notes,
   supplement protocol, and IPF rulebook RAG search. Also provides unit conversions
   (kg/lb), weight class lookups, percentage-of-max calculations, attempt weight
-  calculators, and date math.
+  calculators, date math, weekly training analysis, exercise ROI correlation analysis,
+  and fatigue profile estimation.
 
   Use for: exercise selection guidance, volume/intensity analysis, periodization
   questions, competition readiness assessment, peaking strategy, deload timing,
@@ -29,14 +30,21 @@ tools:
   - health_get_operator_prefs
   - health_get_breaks
   - health_comp_countdown
-  - get_current_date
+  - health_get_competition
+  - health_list_competitions
+  - health_get_diet_notes
+  - health_get_supplements
   - health_rag_search
-  - export_program_history
-  - analyze_progression
-  - analyze_rpe_drift
-  - estimate_1rm
-  - calculate_dots
+  - get_current_date
+  - kg_to_lb
+  - lb_to_kg
+  - ipf_weight_classes
+  - pct_of_max
+  - calculate_attempts
+  - days_until
   - weekly_analysis
+  - correlation_analysis
+  - fatigue_profile_estimate
 mcp_servers: []
 directive_types:
   - health

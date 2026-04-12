@@ -23,6 +23,8 @@ class CommandAction(Enum):
     RESET_CACHE = "reset_cache"
     PIN_PRESET = "pin_preset"
     NOOP = "noop"
+    INVOKE_SPECIALIST = "invoke_specialist"
+    INVOKE_TOOL = "invoke_tool"
     # Part8: New commands for reflection and memory system
     REFLECT = "reflect"
     GAPS = "gaps"
@@ -41,16 +43,23 @@ class CommandResult:
     Attributes:
         action: The action to take
         preset: For PIN_PRESET, the preset slug to pin to
+        target: For INVOKE_SPECIALIST / INVOKE_TOOL, the resolved target slug/name
         response_text: The response to send back to the user
         command_args: Arguments passed to the command (for Part8 commands)
     """
     action: CommandAction
     preset: str | None = None
+    target: str | None = None
     response_text: str = ""
     command_args: str = ""
 
 
-def parse_command(content: str, available_presets: list[str]) -> CommandResult | None:
+def parse_command(
+    content: str,
+    available_presets: list[str],
+    available_tools: list[str] | None = None,
+    specialist_commands: dict[str, str] | None = None,
+) -> CommandResult | None:
     """Parse a slash command from message content.
     
     Commands start with / and are processed before any routing.
@@ -58,6 +67,8 @@ def parse_command(content: str, available_presets: list[str]) -> CommandResult |
     Args:
         content: Raw message content
         available_presets: List of valid preset slugs
+        available_tools: Optional list of slash-addressable tool names
+        specialist_commands: Optional slash command -> specialist slug mapping
         
     Returns:
         CommandResult if a command was found, None otherwise
@@ -150,8 +161,28 @@ def parse_command(content: str, available_presets: list[str]) -> CommandResult |
             response_text=f"Acknowledged. Routing pinned to preset: {cmd}. Send /end_convo to release."
         )
 
+    # Handle /{specialist_slug_or_alias} - invoke a specific specialist directly
+    if specialist_commands and cmd in specialist_commands:
+        return CommandResult(
+            action=CommandAction.INVOKE_SPECIALIST,
+            target=specialist_commands[cmd],
+            command_args=args,
+        )
+
+    # Handle /{tool_name} - invoke a specific tool directly
+    if available_tools and cmd in available_tools:
+        return CommandResult(
+            action=CommandAction.INVOKE_TOOL,
+            target=cmd,
+            command_args=args,
+        )
+
     # Unknown command - return NOOP with error message
     return CommandResult(
         action=CommandAction.NOOP,
-        response_text=f"Negative. Command \"{cmd}\" not recognized.\nAvailable: end_convo, reflect, gaps, patterns, opinions, growth, meta, tools, or a preset name."
+        response_text=(
+            f"Negative. Command \"{cmd}\" not recognized.\n"
+            "Available: end_convo, reflect, gaps, patterns, opinions, growth, meta, tools, "
+            "a preset name, a registered specialist slash command, or a registered tool slash command."
+        )
     )

@@ -103,6 +103,12 @@ def _load_specialists() -> Dict[str, SpecialistConfig]:
 
 SPECIALISTS: Dict[str, SpecialistConfig] = _load_specialists()
 
+# Human-friendly slash command aliases for specialists.
+# These are registered alongside the raw specialist slug when possible.
+SPECIALIST_COMMAND_ALIASES: Dict[str, str] = {
+    "plan": "planner",
+}
+
 SKILLS: List[str] = [
     "red_team",
     "blue_team",
@@ -137,6 +143,19 @@ def list_specialists() -> List[SpecialistConfig]:
         List of all SpecialistConfig objects
     """
     return list(SPECIALISTS.values())
+
+
+def get_specialist_command_map() -> Dict[str, str]:
+    """Return slash command name -> specialist slug mapping.
+
+    Includes both the canonical specialist slug and any configured aliases.
+    Aliases pointing at missing specialists are ignored.
+    """
+    mapping: Dict[str, str] = {slug: slug for slug in SPECIALISTS.keys()}
+    for alias, slug in SPECIALIST_COMMAND_ALIASES.items():
+        if slug in SPECIALISTS:
+            mapping[alias] = slug
+    return mapping
 
 
 def render_specialist_prompt(

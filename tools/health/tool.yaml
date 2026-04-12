@@ -1,5 +1,11 @@
 name: health
-description: Training program management and powerlifting tools
+description: >
+  Sports scientist toolset for powerlifting program management. Exclusively available to
+  powerlifting_coach and health_write specialists. Provides: training session CRUD (get,
+  create, update, delete, reschedule), program metadata and phases, competition management,
+  attempt calculation, supplement protocol, diet notes, IPF weight classes, RPE/e1RM
+  calculations, weekly training analysis, exercise ROI correlation analysis, fatigue profile
+  estimation, and IPF rulebook semantic search.
 version: 1.0.0
 scope: specialist
 execution: in_process

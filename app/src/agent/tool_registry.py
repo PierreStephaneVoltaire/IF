@@ -60,8 +60,8 @@ class ToolRegistry:
     """Discovers, loads, and indexes external tool plugins."""
 
     def __init__(self, tools_path: str = "", fallback_path: str = ""):
-        self.tools_path = Path(tools_path) if tools_path else Path()
-        self.fallback_path = Path(fallback_path) if fallback_path else Path()
+        self.tools_path = Path(tools_path) if tools_path else None
+        self.fallback_path = Path(fallback_path) if fallback_path else None
         self._tools: Dict[str, ExternalToolConfig] = {}
         self._resolved = False
 

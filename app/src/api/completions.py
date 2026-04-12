@@ -135,6 +135,11 @@ def resolve_cache_key(
         config = webhook.get_config()
         return config.get("channel_id", webhook.conversation_id)
 
+    platform = request_data.get("platform")
+    channel_id = request_data.get("channel_id")
+    if platform and channel_id:
+        return str(channel_id)
+
     chat_id = request_data.get("chat_id")
     if chat_id:
         return chat_id
@@ -178,6 +183,11 @@ def build_context_id(
         platform = webhook.platform.lower()
         channel_id = config.get("channel_id", webhook.conversation_id)
         return f"{platform}_{channel_id}"
+
+    platform = request_data.get("platform")
+    channel_id = request_data.get("channel_id")
+    if platform and channel_id:
+        return f"{str(platform).lower()}_{channel_id}"
 
     chat_id = request_data.get("chat_id")
     if chat_id:
@@ -262,10 +272,43 @@ def extract_last_user_message(messages: List[Dict]) -> str:
     return ""
 
 
+def _parse_json_object_args(raw_args: str) -> Dict[str, Any]:
+    """Parse slash-command tool args as a JSON object."""
+    raw_args = raw_args.strip()
+    if not raw_args:
+        return {}
+
+    parsed = json.loads(raw_args)
+    if not isinstance(parsed, dict):
+        raise ValueError("Tool arguments must be a JSON object.")
+    return parsed
+
+
+def _find_specialist_for_tool(tool_name: str) -> Optional[str]:
+    """Pick the best specialist to handle a human slash tool invocation."""
+    try:
+        from agent.specialists import list_specialists
+
+        candidates = [
+            specialist.slug
+            for specialist in list_specialists()
+            if tool_name in specialist.tools
+        ]
+        if not candidates:
+            return None
+
+        # Prefer read-oriented specialists over *_write when a tool is shared.
+        candidates.sort(key=lambda slug: (slug.endswith("_write"), slug))
+        return candidates[0]
+    except Exception:
+        return None
+
+
 async def process_chat_completion_internal(
     request_data: Dict[str, Any],
     http_client: "httpx.AsyncClient",
     webhook: Optional["WebhookRecord"] = None,
+    direct_invoke: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]]]:
 
     messages = request_data.get("messages", [])
@@ -275,6 +318,27 @@ async def process_chat_completion_internal(
     context_id = build_context_id(request_data, webhook)
     last_user_message = extract_last_user_message(messages)
     logger.info(f"[Request] cache_key={cache_key} | user={request_data.get('user', '?')} | prompt={last_user_message[:80]}")
+
+    # Direct tool invoke — bypass agent, call tool imperatively
+    if direct_invoke:
+        import re
+        match = re.match(r'^/(\w+)\s*(.*)', last_user_message.strip(), re.DOTALL)
+        if not match:
+            return json.dumps({"error": "Direct tool invoke expects '/tool_name {json_args}'."}), []
+
+        tool_name, raw_args = match.group(1), match.group(2).strip()
+        try:
+            args = _parse_json_object_args(raw_args)
+        except (json.JSONDecodeError, ValueError) as e:
+            return json.dumps({"error": f"Invalid tool arguments: {e}"}), []
+
+        from agent.tool_registry import get_tool_registry
+        registry = get_tool_registry()
+        if not registry.has_tool(tool_name):
+            return json.dumps({"error": f"Unknown tool: {tool_name}"}), []
+
+        result = await registry.execute_tool(tool_name, args)
+        return result, []
 
     try:
         from heartbeat.activity import ActivityTracker
@@ -290,7 +354,33 @@ async def process_chat_completion_internal(
     preset_manager = get_preset_manager()
     cache = get_cache()
 
-    cmd = parse_command(last_user_message, preset_manager.slugs())
+    available_tools: list[str] = []
+    try:
+        from agent.tool_registry import get_tool_registry
+        registry = get_tool_registry()
+        available_tools = sorted(
+            {
+                tool_name
+                for config in registry._tools.values()
+                for tool_name in config.schemas.keys()
+            }
+        )
+    except Exception:
+        available_tools = []
+
+    specialist_commands: dict[str, str] = {}
+    try:
+        from agent.specialists import get_specialist_command_map
+        specialist_commands = get_specialist_command_map()
+    except Exception:
+        specialist_commands = {}
+
+    cmd = parse_command(
+        last_user_message,
+        preset_manager.slugs(),
+        available_tools=available_tools,
+        specialist_commands=specialist_commands,
+    )
     if cmd is not None:
         if cmd.action == CommandAction.RESET_CACHE:
             cache.evict(cache_key)
@@ -331,6 +421,61 @@ async def process_chat_completion_internal(
         
         if cmd.action == CommandAction.NOOP:
             return cmd.response_text, []
+
+        if cmd.action == CommandAction.INVOKE_TOOL:
+            if not cmd.target:
+                return "Error executing command: missing tool target.", []
+            try:
+                args = _parse_json_object_args(cmd.command_args)
+            except (json.JSONDecodeError, ValueError) as e:
+                return f"Error executing /{cmd.target}: {e}", []
+
+            try:
+                specialist_slug = _find_specialist_for_tool(cmd.target)
+                if specialist_slug:
+                    from agent.tools.subagents import SpawnSpecialistAction, SpawnSpecialistExecutor
+
+                    args_json = json.dumps(args, indent=2, default=str)
+                    task = (
+                        f"Handle the slash command /{cmd.target}. "
+                        f"Call the tool '{cmd.target}' with these exact JSON arguments:\n{args_json}\n\n"
+                        "Return the result to the user."
+                    )
+                    observation = SpawnSpecialistExecutor(chat_id=cache_key)(
+                        SpawnSpecialistAction(
+                            specialist_type=specialist_slug,
+                            task=task,
+                        )
+                    )
+                    return observation.result, []
+
+                from agent.tool_registry import get_tool_registry
+                registry = get_tool_registry()
+                result = await registry.execute_tool(cmd.target, args)
+                return result, []
+            except Exception as e:
+                logger.error(f"[Command] Error executing tool {cmd.target}: {e}")
+                return f"Error executing /{cmd.target}: {type(e).__name__}: {e}", []
+
+        if cmd.action == CommandAction.INVOKE_SPECIALIST:
+            if not cmd.target:
+                return "Error executing command: missing specialist target.", []
+            task = cmd.command_args.strip()
+            if not task:
+                return f"Command /{cmd.target} requires a task description.", []
+
+            try:
+                from agent.tools.subagents import SpawnSpecialistAction, SpawnSpecialistExecutor
+                observation = SpawnSpecialistExecutor(chat_id=cache_key)(
+                    SpawnSpecialistAction(
+                        specialist_type=cmd.target,
+                        task=task,
+                    )
+                )
+                return observation.result, []
+            except Exception as e:
+                logger.error(f"[Command] Error executing specialist {cmd.target}: {e}")
+                return f"Error executing /{cmd.target}: {type(e).__name__}: {e}", []
         
         if cmd.action in (CommandAction.REFLECT, CommandAction.GAPS,
                           CommandAction.PATTERNS, CommandAction.OPINIONS,
@@ -554,9 +699,11 @@ async def chat_completions(
     stream = request_data.get("stream", False)
     
     try:
+        direct_invoke = raw_request.headers.get("X-Direct-Tool-Invoke", "").lower() == "true"
         response_text, attachments = await process_chat_completion_internal(
             request_data=request_data,
             http_client=http_client,
+            direct_invoke=direct_invoke,
         )
     except Exception as e:
         logger.error(f"Chat completion failed: {e}")

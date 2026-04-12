@@ -1,9 +1,24 @@
-description: "Use health_write when a mutation to the training program is required: logging a completed session, updating body weight, recording RPE, changing attempt targets, updating supplement protocol, or any other write to the health DynamoDB record. Do not use for read-only queries."
+description: >
+  Use health_write exclusively when a write mutation to the training program record is
+  needed: logging a completed session, updating body weight, recording RPE, changing
+  attempt targets, updating supplement protocol, editing diet notes, or creating/deleting
+  sessions. For read-only queries, coaching advice, or analysis — use powerlifting_coach
+  instead. Never use health_write for reads.
 preset: "health"
 tools:
   - health_get_program
   - health_get_session
   - health_update_session
+  - health_new_version
+  - health_update_competition
+  - health_update_diet_note
+  - health_update_supplements
+  - health_create_session
+  - health_delete_session
+  - health_reschedule_session
+  - health_add_exercise
+  - health_remove_exercise
+  - health_create_competition
 mcp_servers: []
 directive_types:
   - health
