@@ -193,8 +193,15 @@ def _build_user_message(
     weekly_e1rm: dict,
     weekly_accessory: dict,
     lift_profiles: list[dict],
+    athlete_measurements: dict | None = None,
+    caloric_status: str | None = None,
+    bodyweight_trend: dict | None = None,
+    weeks_to_primary_comp: float | None = None,
 ) -> str:
     lines = [f"## Analysis window: Last {weeks} weeks (from {window_start})\n"]
+
+    if weeks_to_primary_comp is not None:
+        lines.append(f"**Weeks to primary competition:** {weeks_to_primary_comp:.1f}\n")
 
     # Lift profiles
     if lift_profiles:
@@ -211,6 +218,25 @@ def _build_user_message(
             if p.get("volume_tolerance"):
                 lines.append(f"  Volume tolerance: {p['volume_tolerance']}")
         lines.append("")
+
+    # Athlete measurements
+    if athlete_measurements and any(v for v in athlete_measurements.values()):
+        lines.append("## Athlete Measurements\n")
+        for k, v in athlete_measurements.items():
+            if v is not None:
+                lines.append(f"  {k.replace('_', ' ')}: {v}")
+        lines.append("")
+
+    # Caloric / body weight context
+    if caloric_status:
+        lines.append(f"**Caloric status:** {caloric_status}\n")
+    if bodyweight_trend:
+        direction = bodyweight_trend.get("direction", "unclear")
+        change = bodyweight_trend.get("change")
+        latest = bodyweight_trend.get("latest")
+        if latest is not None:
+            change_str = f" ({'+' if change and change > 0 else ''}{change} kg over window)" if change is not None else ""
+            lines.append(f"**Body weight trend:** {latest} kg, {direction}{change_str}\n")
 
     # Weekly e1RM table
     all_weeks = sorted(set(list(weekly_e1rm.keys()) + list(weekly_accessory.keys())))
@@ -264,6 +290,7 @@ async def generate_correlation_report(
     lift_profiles: list[dict],
     weeks: int,
     window_start: str,
+    program: dict | None = None,
 ) -> dict[str, Any]:
     """Call LLM to generate correlation findings for the given session window."""
     weekly_e1rm = _build_weekly_e1rm(sessions, window_start)
@@ -278,7 +305,39 @@ async def generate_correlation_report(
             "insufficient_data_reason": f"Only {distinct_weeks} weeks of data found. Need at least 4.",
         }
 
-    user_msg = _build_user_message(weeks, window_start, weekly_e1rm, weekly_accessory, lift_profiles)
+    # Build enriched context
+    meta = program.get("meta", {}) if program else {}
+    athlete_measurements = {
+        "height_cm": meta.get("height_cm"),
+        "arm_wingspan_cm": meta.get("arm_wingspan_cm"),
+        "leg_length_cm": meta.get("leg_length_cm"),
+        "weight_class_kg": meta.get("weight_class_kg"),
+        "current_body_weight_kg": meta.get("current_body_weight_kg"),
+    }
+
+    # Weeks to primary comp
+    try:
+        from health.prompt_context import summarize_competitions, summarize_bodyweight_trend, summarize_diet_context
+        comp_summary = summarize_competitions(program)
+        primary = comp_summary.get("primary_competition") or {}
+        weeks_to_primary_comp = primary.get("weeks_to_comp")
+
+        bw_trend = summarize_bodyweight_trend(program.get("sessions", []))
+        caloric_context = summarize_diet_context(program, bodyweight_trend=bw_trend)
+        caloric_status = caloric_context.get("status", "unclear")
+        bodyweight_trend = bw_trend
+    except Exception:
+        weeks_to_primary_comp = None
+        caloric_status = None
+        bodyweight_trend = None
+
+    user_msg = _build_user_message(
+        weeks, window_start, weekly_e1rm, weekly_accessory, lift_profiles,
+        athlete_measurements=athlete_measurements,
+        caloric_status=caloric_status,
+        bodyweight_trend=bodyweight_trend,
+        weeks_to_primary_comp=weeks_to_primary_comp,
+    )
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -295,7 +354,7 @@ async def generate_correlation_report(
                         {"role": "user", "content": user_msg},
                     ],
                     "tools": [_TOOL_SCHEMA],
-                    "tool_choice": {"type": "function", "function": {"name": "report_correlation_findings"}},
+                    "tool_choice": "required",
                 },
             )
             resp.raise_for_status()

@@ -122,3 +122,45 @@ export async function fetchCorrelationReport(weeks: number, block = 'current'): 
   if (body.error) throw new Error(body.error)
   return body.data
 }
+
+export interface ProgramEvaluationSmallChange {
+  change: string
+  why: string
+  risk: string
+  priority: 'low' | 'moderate' | 'high'
+}
+
+export interface ProgramEvaluationCompAlignment {
+  competition: string
+  role: 'primary' | 'practice'
+  weeks_to_comp?: number | null
+  alignment: 'good' | 'mixed' | 'poor'
+  reason: string
+}
+
+export interface ProgramEvaluationReport {
+  stance: 'continue' | 'monitor' | 'adjust' | 'critical'
+  summary: string
+  what_is_working: string[]
+  what_is_not_working: string[]
+  competition_alignment: ProgramEvaluationCompAlignment[]
+  small_changes: ProgramEvaluationSmallChange[]
+  monitoring_focus: string[]
+  conclusion: string
+  insufficient_data?: boolean
+  insufficient_data_reason?: string
+  generated_at: string
+  window_start: string
+  weeks: number
+  cached: boolean
+}
+
+export async function fetchProgramEvaluation(refresh = false): Promise<ProgramEvaluationReport> {
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '/fitness/api'
+  const res = await fetch(`${apiBase}/analytics/program-evaluation?refresh=${refresh}`, {
+    headers: { 'Content-Type': 'application/json' },
+  })
+  const body = await res.json()
+  if (body.error) throw new Error(body.error)
+  return body.data
+}

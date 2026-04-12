@@ -9,12 +9,13 @@ description: >
   supplement protocol, and IPF rulebook RAG search. Also provides unit conversions
   (kg/lb), weight class lookups, percentage-of-max calculations, attempt weight
   calculators, date math, weekly training analysis, exercise ROI correlation analysis,
-  and fatigue profile estimation.
+  fatigue profile estimation, and full-block program evaluation by sports scientist AI.
 
   Use for: exercise selection guidance, volume/intensity analysis, periodization
   questions, competition readiness assessment, peaking strategy, deload timing,
   attempt selection, RPE interpretation, weak point analysis, training history
-  review, and any "should I..." or "what's my..." training question.
+  review, full-block program evaluation, and any "should I..." or "what's my..."
+  training question.
 
   Do NOT use for program mutations — hand off to health_write when a write is
   needed (logging a session, updating body weight, recording RPE, changing attempt
@@ -45,6 +46,7 @@ tools:
   - weekly_analysis
   - correlation_analysis
   - fatigue_profile_estimate
+  - program_evaluation
 mcp_servers: []
 directive_types:
   - health

@@ -71,3 +71,14 @@ analyticsRouter.post('/fatigue-profile/estimate', async (req, res) => {
     res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
   }
 })
+
+// GET /api/analytics/program-evaluation?refresh=bool
+analyticsRouter.get('/program-evaluation', async (req, res) => {
+  try {
+    const refresh = req.query.refresh === 'true'
+    const data = await invokeToolDirect('program_evaluation', { refresh })
+    res.json({ data, error: null })
+  } catch (err) {
+    res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
+  }
+})

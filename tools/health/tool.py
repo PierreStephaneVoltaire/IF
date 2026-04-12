@@ -1558,6 +1558,7 @@ class CorrelationAnalysisExecutor(ToolExecutor[CorrelationAnalysisAction, Correl
             lift_profiles=lift_profiles,
             weeks=action.weeks,
             window_start=window_start_str,
+            program=program,
         ))
 
         generated_at = datetime.utcnow().isoformat() + "Z"
@@ -1630,6 +1631,43 @@ register_tool("CorrelationAnalysisTool", CorrelationAnalysisTool)
 register_tool("FatigueProfileEstimateTool", FatigueProfileEstimateTool)
 
 
+# --- program_evaluation ---
+
+class ProgramEvaluationAction(Action):
+    refresh: bool = Field(default=False, description="Force regeneration, ignore cache")
+
+
+class ProgramEvaluationObservation(Observation):
+    pass
+
+
+class ProgramEvaluationExecutor(ToolExecutor[ProgramEvaluationAction, ProgramEvaluationObservation]):
+    def __call__(self, action: ProgramEvaluationAction, conversation=None) -> ProgramEvaluationObservation:
+        from core import health_program_evaluation
+        result = _run_async(health_program_evaluation(refresh=action.refresh))
+        return ProgramEvaluationObservation.from_text(_format_result(result))
+
+
+class ProgramEvaluationTool(ToolDefinition[ProgramEvaluationAction, ProgramEvaluationObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["ProgramEvaluationTool"]:
+        return [cls(
+            description=(
+                "Full-block program evaluation by an AI sports scientist. "
+                "Evaluates the current training block against competition goals, identifies what is working, "
+                "what is not, and suggests small targeted changes. "
+                "Only available for the full block (requires >= 4 completed weeks). "
+                "Results are cached weekly in DynamoDB. Use refresh=true to force regeneration."
+            ),
+            action_type=ProgramEvaluationAction,
+            observation_type=ProgramEvaluationObservation,
+            executor=ProgramEvaluationExecutor(),
+        )]
+
+
+register_tool("ProgramEvaluationTool", ProgramEvaluationTool)
+
+
 # =============================================================================
 # Plugin contract: get_tools()
 # =============================================================================
@@ -1681,6 +1719,7 @@ def get_tools() -> List[Tool]:
         Tool(name="WeeklyAnalysisTool"),
         Tool(name="CorrelationAnalysisTool"),
         Tool(name="FatigueProfileEstimateTool"),
+        Tool(name="ProgramEvaluationTool"),
     ]
 
 
@@ -2132,6 +2171,22 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "required": ["exercise"],
             },
         },
+        "program_evaluation": {
+            "name": "program_evaluation",
+            "description": (
+                "Full-block AI program evaluation by a sports scientist. "
+                "Evaluates the current block against competition goals, identifies what is working and not, "
+                "and suggests small targeted changes. "
+                "Requires >= 4 completed weeks. Cached weekly. Use refresh=true to force regeneration."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "refresh": {"type": "boolean", "description": "Force regeneration, ignore cache", "default": False},
+                },
+                "required": [],
+            },
+        },
     }
 
 
@@ -2241,6 +2296,7 @@ def _do_correlation_analysis(args):
         lift_profiles=lift_profiles,
         weeks=weeks,
         window_start=window_start_str,
+        program=program,
     ))
 
     generated_at = datetime.utcnow().isoformat() + "Z"
@@ -2264,6 +2320,11 @@ def _do_correlation_analysis(args):
 def _do_fatigue_profile_estimate(args):
     from health.fatigue_ai import estimate_fatigue_profile
     return _run_async(estimate_fatigue_profile(args["exercise"]))
+
+
+def _do_program_evaluation(args):
+    from core import health_program_evaluation
+    return _run_async(health_program_evaluation(refresh=args.get("refresh", False)))
 
 
 # =============================================================================
@@ -2348,6 +2409,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "weekly_analysis": lambda: _do_weekly_analysis(args),
         "correlation_analysis": lambda: _do_correlation_analysis(args),
         "fatigue_profile_estimate": lambda: _do_fatigue_profile_estimate(args),
+        "program_evaluation": lambda: _do_program_evaluation(args),
     }
 
     handler = ROUTES.get(name)

@@ -1298,3 +1298,72 @@ async def health_update_current_maxes(
 
     await store._write_new_version(new_program, minor=True)
     return maxes
+
+
+async def health_program_evaluation(refresh: bool = False) -> dict:
+    """Generate a conservative full-block program evaluation.
+
+    This tool is intentionally gated to the current block / full report and is
+    cached on a weekly cadence so it does not re-run on every request.
+    """
+    import boto3
+
+    from config import IF_HEALTH_TABLE_NAME, AWS_REGION
+    from health.program_evaluation_ai import generate_program_evaluation_report
+
+    store = _get_store()
+    program = await store.get_program()
+    sessions = [s for s in program.get("sessions", []) if (s.get("block") or "current") == "current"]
+
+    completed_weeks = sorted({
+        int(s.get("week_number"))
+        for s in sessions
+        if s.get("completed") and s.get("week_number") is not None
+    })
+    if len(completed_weeks) < 4:
+        return {
+            "insufficient_data": True,
+            "insufficient_data_reason": "At least 4 completed weeks are required for a useful full-block evaluation.",
+            "cached": False,
+            "generated_at": "",
+            "window_start": "",
+            "weeks": len(completed_weeks),
+        }
+
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    window_start = week_start.isoformat()
+    cache_sk = f"program_eval#{window_start}"
+
+    dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
+    table = dynamodb.Table(IF_HEALTH_TABLE_NAME)
+
+    if not refresh:
+        cached = table.get_item(Key={"pk": "operator", "sk": cache_sk}).get("Item")
+        if cached and cached.get("report"):
+            report = cached["report"]
+            if isinstance(report, dict):
+                report["cached"] = True
+                report["generated_at"] = cached.get("generated_at", "")
+                report["window_start"] = window_start
+                report["weeks"] = len(completed_weeks)
+                return report
+
+    report = await generate_program_evaluation_report(program)
+    generated_at = datetime.utcnow().isoformat() + "Z"
+    report["cached"] = False
+    report["generated_at"] = generated_at
+    report["window_start"] = window_start
+    report["weeks"] = len(completed_weeks)
+
+    if not (report.get("insufficient_data") and str(report.get("insufficient_data_reason", "")).startswith("AI evaluation failed")):
+        table.put_item(Item={
+            "pk": "operator",
+            "sk": cache_sk,
+            "report": report,
+            "generated_at": generated_at,
+            "window_start": window_start,
+            "weeks": len(completed_weeks),
+        })
+
+    return report

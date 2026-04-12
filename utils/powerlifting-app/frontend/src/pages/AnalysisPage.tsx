@@ -7,8 +7,8 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import {
-  fetchWeeklyAnalysis, fetchCorrelationReport,
-  type WeeklyAnalysis, type CorrelationReport,
+  fetchWeeklyAnalysis, fetchCorrelationReport, fetchProgramEvaluation,
+  type WeeklyAnalysis, type CorrelationReport, type ProgramEvaluationReport,
 } from '@/api/analytics'
 import { useProgramStore } from '@/store/programStore'
 import { fetchWeightLog, fetchGlossary } from '@/api/client'
@@ -111,6 +111,9 @@ export default function AnalysisPage() {
   const [glossary, setGlossary] = useState<GlossaryExercise[]>([])
   const [viewMode, setViewMode] = useState<'raw' | 'graph'>('raw')
   const [expandedLifts, setExpandedLifts] = useState<Set<string>>(new Set())
+  // Attempt % stored as raw strings so users can freely edit
+  const [attemptPctRaw, setAttemptPctRaw] = useState({ opener: '0.90', second: '0.955', third: '1.00' })
+  const [attemptPctErrors, setAttemptPctErrors] = useState<{ opener: string | null; second: string | null; third: string | null }>({ opener: null, second: null, third: null })
   const [attemptPct, setAttemptPct] = useState({ opener: 0.90, second: 0.955, third: 1.00 })
   const [savingAttempt, setSavingAttempt] = useState(false)
 
@@ -118,6 +121,11 @@ export default function AnalysisPage() {
   const [corrReport, setCorrReport] = useState<CorrelationReport | null>(null)
   const [corrLoading, setCorrLoading] = useState(false)
   const [corrError, setCorrError] = useState<string | null>(null)
+
+  // Program evaluation state (full block only)
+  const [evalReport, setEvalReport] = useState<ProgramEvaluationReport | null>(null)
+  const [evalLoading, setEvalLoading] = useState(false)
+  const [evalError, setEvalError] = useState<string | null>(null)
 
   // Compute effective weeks from program start when in block mode
   const effectiveWeeks = useMemo(() => {
@@ -152,6 +160,7 @@ export default function AnalysisPage() {
     const metaPct = program?.meta?.attempt_pct
     if (metaPct) {
       setAttemptPct({ opener: metaPct.opener, second: metaPct.second, third: metaPct.third })
+      setAttemptPctRaw({ opener: String(metaPct.opener), second: String(metaPct.second), third: String(metaPct.third) })
     }
   }, [program?.meta?.attempt_pct])
 
@@ -168,6 +177,70 @@ export default function AnalysisPage() {
       .catch((e) => setCorrError(e.message))
       .finally(() => setCorrLoading(false))
   }, [effectiveWeeks])
+
+  // Debounced attempt pct validation, save, and re-fetch of attempt selection
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const keys: Array<'opener' | 'second' | 'third'> = ['opener', 'second', 'third']
+      const newErrors = { opener: null as string | null, second: null as string | null, third: null as string | null }
+      const newNums = { ...attemptPct }
+      let allValid = true
+      for (const key of keys) {
+        const raw = attemptPctRaw[key]
+        const v = parseFloat(raw)
+        if (raw === '' || isNaN(v) || v < 0 || v > 1) {
+          newErrors[key] = 'Enter a value between 0 and 1 (e.g. 0.90)'
+          allValid = false
+        } else {
+          newErrors[key] = null
+          newNums[key] = v
+        }
+      }
+      setAttemptPctErrors(newErrors)
+      if (allValid) {
+        setAttemptPct(newNums)
+        setSavingAttempt(true)
+        updateMetaField(version, 'attempt_pct', newNums)
+          .then(() => {
+            // Re-fetch weekly analysis so attempt_selection reflects new percentages
+            return fetchWeeklyAnalysis(effectiveWeeks, 'current').then(setData)
+          })
+          .finally(() => setSavingAttempt(false))
+      }
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [attemptPctRaw])
+
+  // Program evaluation — fetch when in Full Block mode
+  useEffect(() => {
+    if (weeksMode !== 'block') {
+      setEvalReport(null)
+      setEvalError(null)
+      return
+    }
+    const completedCount = program?.sessions?.filter(s => (s.block ?? 'current') === 'current' && s.completed).length ?? 0
+    if (completedCount < 4) {
+      setEvalReport(null)
+      return
+    }
+    setEvalLoading(true)
+    setEvalError(null)
+    fetchProgramEvaluation(false)
+      .then(setEvalReport)
+      .catch((e) => setEvalError(e.message))
+      .finally(() => setEvalLoading(false))
+  }, [weeksMode, program?.meta?.program_start])
+
+  const refreshEvaluation = () => {
+    if (weeksMode !== 'block') return
+    setEvalLoading(true)
+    setEvalError(null)
+    setEvalReport(null)
+    fetchProgramEvaluation(true)
+      .then(setEvalReport)
+      .catch((e) => setEvalError(e.message))
+      .finally(() => setEvalLoading(false))
+  }
 
   const refreshCorrelation = () => {
     if (effectiveWeeks < 4) return
@@ -542,7 +615,7 @@ export default function AnalysisPage() {
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Dumbbell className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Current Maxes</h3>
+                <h3 className="font-medium">Estimated 1 Rep Maxes</h3>
               </div>
               {data.current_maxes ? (
                 <>
@@ -1427,30 +1500,24 @@ export default function AnalysisPage() {
               <p className="text-xs text-muted-foreground mb-3">Based on projected competition maxes. Enter as decimal (e.g. 0.90 for 90%).</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
-                  { key: 'opener' as const, label: 'Opener', default: 0.90, hint: 'Should feel easy under worst conditions' },
-                  { key: 'second' as const, label: 'Second', default: 0.955, hint: 'A confident single, builds momentum' },
-                  { key: 'third' as const, label: 'Third', default: 1.00, hint: 'Your projected max — go for it' },
-                ].map(({ key, label, default: def, hint }) => (
+                  { key: 'opener' as const, label: 'Opener', hint: 'Should feel easy under worst conditions' },
+                  { key: 'second' as const, label: 'Second', hint: 'A confident single, builds momentum' },
+                  { key: 'third' as const, label: 'Third', hint: 'Your projected max — go for it' },
+                ].map(({ key, label, hint }) => (
                   <div key={key}>
-                    <label className="text-xs text-muted-foreground">{label}</label>
+                    <label htmlFor={`attempt-pct-${key}`} className="text-xs font-medium text-foreground block mb-1">{label}</label>
                     <input
+                      id={`attempt-pct-${key}`}
                       type="text"
-                      
-                      value={attemptPct[key]}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value)
-                        if (!isNaN(v) && v >= 0 && v <= 1) setAttemptPct(p => ({ ...p, [key]: v }))
-                      }}
-                      onBlur={(e) => {
-                        const v = parseFloat(e.target.value)
-                        const valid = !isNaN(v) && v >= 0 && v <= 1
-                        if (!valid) setAttemptPct(p => ({ ...p, [key]: def }))
-                        setSavingAttempt(true)
-                        updateMetaField(version, 'attempt_pct', attemptPct).finally(() => setSavingAttempt(false))
-                      }}
-                      className="w-full mt-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                      value={attemptPctRaw[key]}
+                      onChange={(e) => setAttemptPctRaw(p => ({ ...p, [key]: e.target.value }))}
+                      className={`w-full px-2 py-1 border rounded bg-background text-sm ${attemptPctErrors[key] ? 'border-red-500' : 'border-border'}`}
                     />
-                    <p className="text-xs text-muted-foreground mt-1">{hint}</p>
+                    {attemptPctErrors[key] ? (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">{attemptPctErrors[key]}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-1">{hint}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1474,6 +1541,151 @@ export default function AnalysisPage() {
               </div>
             </div>
           )}
+
+          {/* ─── Program Evaluation (Full Block only) ──────────────────────────── */}
+          {weeksMode === 'block' && (() => {
+            const completedCount = program?.sessions?.filter(s => (s.block ?? 'current') === 'current' && s.completed).length ?? 0
+            const STANCE_COLORS: Record<string, string> = {
+              continue: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+              monitor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+              adjust: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+              critical: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+            }
+            const ALIGN_COLORS: Record<string, string> = {
+              good: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+              mixed: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+              poor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+            }
+            const PRIORITY_COLORS: Record<string, string> = {
+              low: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+              moderate: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+              high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+            }
+            return (
+              <div className="bg-card border border-border rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Trophy className="w-5 h-5 text-primary" />
+                    <h3 className="font-medium">Program Evaluation</h3>
+                    {evalReport && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${evalReport.cached ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                        {evalReport.cached ? `Cached ${evalReport.generated_at ? new Date(evalReport.generated_at).toLocaleDateString() : ''}` : 'Just generated'}
+                      </span>
+                    )}
+                    {evalReport?.stance && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STANCE_COLORS[evalReport.stance] || 'bg-gray-100 text-gray-600'}`}>
+                        {evalReport.stance}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={refreshEvaluation}
+                    disabled={evalLoading || completedCount < 4}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-border rounded hover:bg-accent disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${evalLoading ? 'animate-spin' : ''}`} />
+                    Regenerate
+                  </button>
+                </div>
+
+                {completedCount < 4 ? (
+                  <p className="text-sm text-muted-foreground">Program evaluation requires at least 4 completed sessions in the current block. Complete more sessions and return here.</p>
+                ) : evalLoading ? (
+                  <div className="flex items-center gap-2 py-4 text-muted-foreground">
+                    <div className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full" />
+                    <span className="text-sm">Evaluating your training block with AI sports scientist...</span>
+                  </div>
+                ) : evalError ? (
+                  <p className="text-sm text-red-600 dark:text-red-400">{evalError}</p>
+                ) : evalReport ? (
+                  <>
+                    {evalReport.insufficient_data ? (
+                      <p className="text-sm text-muted-foreground">{evalReport.insufficient_data_reason || 'Insufficient data for program evaluation.'}</p>
+                    ) : (
+                      <div className="space-y-4">
+                        {evalReport.summary && (
+                          <p className="text-sm text-muted-foreground p-3 bg-secondary/30 rounded italic">{evalReport.summary}</p>
+                        )}
+
+                        {evalReport.competition_alignment.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium mb-2">Competition Alignment</h4>
+                            <div className="space-y-2">
+                              {evalReport.competition_alignment.map((ca, i) => (
+                                <div key={i} className="flex items-start gap-3 p-2 bg-secondary/20 rounded">
+                                  <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize mt-0.5 ${ALIGN_COLORS[ca.alignment] || ''}`}>{ca.alignment}</span>
+                                  <div>
+                                    <p className="text-sm font-medium">{ca.competition} <span className="text-xs text-muted-foreground">({ca.role}{ca.weeks_to_comp != null ? `, ${ca.weeks_to_comp.toFixed(1)} wks out` : ''})</span></p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{ca.reason}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {evalReport.what_is_working.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium mb-2 text-green-700 dark:text-green-400">What's Working</h4>
+                              <ul className="space-y-1">
+                                {evalReport.what_is_working.map((item, i) => (
+                                  <li key={i} className="text-xs flex items-start gap-1.5"><span className="text-green-500 mt-0.5">✓</span>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {evalReport.what_is_not_working.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-medium mb-2 text-red-700 dark:text-red-400">Needs Attention</h4>
+                              <ul className="space-y-1">
+                                {evalReport.what_is_not_working.map((item, i) => (
+                                  <li key={i} className="text-xs flex items-start gap-1.5"><span className="text-red-500 mt-0.5">✗</span>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+
+                        {evalReport.small_changes.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium mb-2">Suggested Adjustments</h4>
+                            <div className="space-y-2">
+                              {evalReport.small_changes.map((sc, i) => (
+                                <div key={i} className="p-3 bg-secondary/20 rounded border border-border/50">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize ${PRIORITY_COLORS[sc.priority] || ''}`}>{sc.priority}</span>
+                                    <p className="text-sm font-medium">{sc.change}</p>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">{sc.why}</p>
+                                  {sc.risk && <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Risk: {sc.risk}</p>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {evalReport.monitoring_focus.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium mb-2">Monitor Closely</h4>
+                            <div className="flex flex-wrap gap-2">
+                              {evalReport.monitoring_focus.map((item, i) => (
+                                <span key={i} className="text-xs px-2.5 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-full">{item}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {evalReport.conclusion && (
+                          <p className="text-sm font-medium border-t border-border pt-3 mt-2">{evalReport.conclusion}</p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            )
+          })()}
 
           {/* Formula Reference */}
           <div className="mt-8">

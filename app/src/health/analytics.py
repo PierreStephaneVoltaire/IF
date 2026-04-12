@@ -959,7 +959,11 @@ def meet_projection(
     if not program_start:
         program_start = _infer_program_start(sessions)
 
-    maxes = _estimate_maxes_from_sessions(sessions)
+    # Prefer the most recent completed competition results when available.
+    # Fall back to session-derived estimates when no competition data exists.
+    comp_maxes = _estimate_maxes_from_comps(program.get("competitions", []))
+    session_maxes = _estimate_maxes_from_sessions(sessions)
+    maxes = comp_maxes or session_maxes
     if not maxes:
         return {**INSUFFICIENT_DATA, "reason": "No session data to estimate maxes from"}
 
@@ -1419,8 +1423,11 @@ def weekly_analysis(
         ))
         lifts_report[ex_name] = lift_data
 
-    # Maxes estimated from full block history (wider lookback = more qualifying sets)
-    current_maxes_raw = _estimate_maxes_from_sessions(sessions)
+    # Maxes are estimated from the latest completed competition when possible,
+    # otherwise from the 90th percentile of qualifying session e1RMs.
+    comp_maxes_raw = _estimate_maxes_from_comps(program.get("competitions", []))
+    session_maxes_raw = _estimate_maxes_from_sessions(sessions)
+    current_maxes_raw = comp_maxes_raw or session_maxes_raw
 
     # Fatigue index uses windowed sessions (days = weeks * 7)
     fatigue = fatigue_index(sessions, days=weeks * 7, glossary=glossary,
@@ -1447,7 +1454,7 @@ def weekly_analysis(
     }
 
     # Current maxes output
-    maxes_method = "session_estimated" if current_maxes_raw else "none"
+    maxes_method = "comp_results" if comp_maxes_raw else ("session_estimated" if session_maxes_raw else "none")
     current_maxes_out: dict[str, Any] = {}
     if current_maxes_raw:
         for lk in ("squat", "bench", "deadlift"):
