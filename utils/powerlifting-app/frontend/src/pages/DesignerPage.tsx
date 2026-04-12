@@ -1,26 +1,24 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Edit2, Trash2, X, ChevronRight, Save } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Plus, Trash2, X, Save } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useProgramStore } from '@/store/programStore'
 import { useUiStore } from '@/store/uiStore'
 import * as api from '@/api/client'
-import type { Phase, Session, PlannedExercise, GlossaryExercise } from '@powerlifting/types'
+import type { Session, PlannedExercise, GlossaryExercise } from '@powerlifting/types'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 export default function DesignerPage() {
-  const { program, version, createSession, updatePhases } = useProgramStore()
+  const { program, version, createSession } = useProgramStore()
   const { pushToast } = useUiStore()
+  const [searchParams] = useSearchParams()
 
   const [block, setBlock] = useState('current')
-  const [selectedPhaseIndex, setSelectedPhaseIndex] = useState(0)
   const [selectedWeek, setSelectedWeek] = useState(1)
   const [editingSession, setEditingSession] = useState<Session | null>(null)
   const [editingSessionGlobalIndex, setEditingSessionGlobalIndex] = useState<number>(-1)
   const [editingSessionDate, setEditingSessionDate] = useState<string>('')
-  const [editingPhase, setEditingPhase] = useState<Phase | null>(null)
-  const [editingPhaseIndex, setEditingPhaseIndex] = useState<number>(-1)
-  const [isNewPhase, setIsNewPhase] = useState(false)
   const [isSessionEditorOpen, setIsSessionEditorOpen] = useState(false)
   const [glossary, setGlossary] = useState<GlossaryExercise[]>([])
   const [exerciseSearch, setExerciseSearch] = useState('')
@@ -32,24 +30,22 @@ export default function DesignerPage() {
   const [sessionPhase, setSessionPhase] = useState('')
   const [plannedExercises, setPlannedExercises] = useState<PlannedExercise[]>([])
 
-  // Phase form state
-  const [phaseForm, setPhaseForm] = useState<Partial<Phase>>({
-    name: '',
-    intent: '',
-    start_week: 1,
-    end_week: 4,
-    target_rpe_min: 6,
-    target_rpe_max: 8,
-    days_per_week: 4,
-    notes: '',
-  })
+  const phases = program?.phases || []
 
   useEffect(() => {
     api.fetchGlossary().then(setGlossary).catch(console.error)
   }, [])
 
-  const phases = program?.phases || []
-  const selectedPhase = phases[selectedPhaseIndex] || null
+  // Read week from URL query params
+  useEffect(() => {
+    const weekParam = searchParams.get('week')
+    if (weekParam) {
+      const week = parseInt(weekParam, 10)
+      if (!isNaN(week) && week > 0) {
+        setSelectedWeek(week)
+      }
+    }
+  }, [searchParams])
 
   const totalWeeks = useMemo(() => {
     if (!phases.length) return 12
@@ -71,13 +67,6 @@ export default function DesignerPage() {
       .filter(s => s.week_number === selectedWeek)
       .filter(s => (s.block ?? 'current') === block)
   }, [program?.sessions, selectedWeek, block])
-
-  // Set selected week to match selected phase
-  useEffect(() => {
-    if (selectedPhase) {
-      setSelectedWeek(selectedPhase.start_week)
-    }
-  }, [selectedPhaseIndex])
 
   function openSessionEditor(session?: Session, date?: string, index?: number) {
     if (session) {
@@ -101,7 +90,9 @@ export default function DesignerPage() {
       setSessionDate(new Date().toISOString().slice(0, 10))
       setSessionDay(dayName)
       setSessionWeek(`W${selectedWeek}`)
-      setSessionPhase(selectedPhase?.name || '')
+      // Use phase from URL if provided, otherwise first phase
+      const phaseParam = searchParams.get('phase')
+      setSessionPhase(phaseParam || phases[0]?.name || '')
       setPlannedExercises([])
     }
     setIsSessionEditorOpen(true)
@@ -164,78 +155,6 @@ export default function DesignerPage() {
     setPlannedExercises(prev => prev.filter((_, i) => i !== index))
   }
 
-  function openPhaseEditor(phase?: Phase, index?: number) {
-    if (phase && index !== undefined) {
-      setEditingPhase(phase)
-      setEditingPhaseIndex(index)
-      setIsNewPhase(false)
-      setPhaseForm({ ...phase })
-    } else {
-      setEditingPhase(null)
-      setEditingPhaseIndex(-1)
-      setIsNewPhase(true)
-      setPhaseForm({
-        name: '',
-        intent: '',
-        start_week: totalWeeks + 1,
-        end_week: totalWeeks + 4,
-        target_rpe_min: 6,
-        target_rpe_max: 8,
-        days_per_week: 4,
-        notes: '',
-      })
-    }
-  }
-
-  function closePhaseEditor() {
-    setEditingPhase(null)
-    setEditingPhaseIndex(-1)
-    setIsNewPhase(false)
-  }
-
-  async function savePhase() {
-    const updatedPhases = [...phases]
-    const phaseData: Phase = {
-      name: phaseForm.name || 'Unnamed',
-      intent: phaseForm.intent || '',
-      start_week: phaseForm.start_week || 1,
-      end_week: phaseForm.end_week || 4,
-      target_rpe_min: phaseForm.target_rpe_min,
-      target_rpe_max: phaseForm.target_rpe_max,
-      days_per_week: phaseForm.days_per_week,
-      notes: phaseForm.notes,
-    }
-
-    const overlaps = updatedPhases.some((phase, idx) => {
-      if (idx === editingPhaseIndex) return false
-      return !(phaseData.end_week < phase.start_week || phaseData.start_week > phase.end_week)
-    })
-
-    if (overlaps) {
-      pushToast({ message: 'Phase weeks overlap another phase', type: 'error' })
-      return
-    }
-
-    if (editingPhaseIndex >= 0) {
-      updatedPhases[editingPhaseIndex] = phaseData
-    } else {
-      updatedPhases.push(phaseData)
-    }
-
-    updatedPhases.sort((a, b) => a.start_week - b.start_week)
-
-    await updatePhases(updatedPhases)
-    const newIdx = updatedPhases.findIndex(p => p.name === phaseData.name)
-    if (newIdx >= 0) setSelectedPhaseIndex(newIdx)
-    closePhaseEditor()
-  }
-
-  async function deletePhase(name: string) {
-    if (!confirm(`Delete phase "${name}"?`)) return
-    const updatedPhases = phases.filter(p => p.name !== name)
-    await updatePhases(updatedPhases)
-  }
-
   const filteredGlossary = useMemo(() => {
     if (!exerciseSearch.trim()) return glossary.slice(0, 10)
     const q = exerciseSearch.toLowerCase()
@@ -243,156 +162,95 @@ export default function DesignerPage() {
   }, [glossary, exerciseSearch])
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] gap-0">
-      {/* Left sidebar — Phase list */}
-      <div className="w-full md:w-64 md:border-r border-b md:border-b-0 border-border flex flex-col shrink-0">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-semibold">Phases</h2>
-          <button
-            onClick={() => openPhaseEditor()}
-            className="p-1 hover:bg-accent rounded"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Link to="/designer" className="text-muted-foreground hover:text-foreground text-sm">Designer</Link>
+          <span className="text-muted-foreground">/</span>
+          <h1 className="text-2xl font-bold">Session Design</h1>
         </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {phases.map((phase, i) => (
-            <button
-              key={phase.name}
-              onClick={() => setSelectedPhaseIndex(i)}
-              className={clsx(
-                'w-full text-left px-4 py-3 border-b border-border/50 hover:bg-accent/50',
-                i === selectedPhaseIndex && 'bg-accent'
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-sm">{phase.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    W{phase.start_week} - W{phase.end_week}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openPhaseEditor(phase, i) }}
-                    className="p-1 hover:bg-accent rounded"
-                  >
-                    <Edit2 className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deletePhase(phase.name) }}
-                    className="p-1 hover:bg-accent rounded text-destructive"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-            </button>
-          ))}
-          {phases.length === 0 && (
-            <p className="text-sm text-muted-foreground p-4">No phases defined. Click + to add one.</p>
-          )}
-        </div>
-      </div>
-
-      {/* Main area */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <h1 className="text-2xl font-bold">Program Designer</h1>
-          <div className="flex flex-wrap items-center gap-3">
-            {blocks.length > 1 && (
-              <select
-                value={block}
-                onChange={(e) => setBlock(e.target.value)}
-                className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
-              >
-                {blocks.map(b => (
-                  <option key={b} value={b}>{b === 'current' ? 'Current Block' : b}</option>
-                ))}
-              </select>
-            )}
+        <div className="flex flex-wrap items-center gap-3">
+          {blocks.length > 1 && (
             <select
-              value={selectedWeek}
-              onChange={(e) => setSelectedWeek(Number(e.target.value))}
+              value={block}
+              onChange={(e) => setBlock(e.target.value)}
               className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
             >
-              {weekOptions.map(w => (
-                <option key={w} value={w}>Week {w}</option>
+              {blocks.map(b => (
+                <option key={b} value={b}>{b === 'current' ? 'Current Block' : b}</option>
               ))}
             </select>
-            <button
-              onClick={() => openSessionEditor()}
-              className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add Session
-            </button>
-          </div>
-        </div>
-
-        {selectedPhase && (
-          <p className="text-sm text-muted-foreground">
-            {selectedPhase.name} &middot; W{selectedPhase.start_week}-W{selectedPhase.end_week}
-            {selectedPhase.target_rpe_min && selectedPhase.target_rpe_max && (
-              <> &middot; RPE {selectedPhase.target_rpe_min}-{selectedPhase.target_rpe_max}</>
-            )}
-            {selectedPhase.days_per_week && <> &middot; {selectedPhase.days_per_week}x/week</>}
-          </p>
-        )}
-
-        {/* Session cards */}
-        {weekSessions.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {weekSessions.map((session, i) => (
-              <div
-                key={`${session.date}-${i}`}
-                className="bg-card border border-border rounded-lg p-4 cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => openSessionEditor(session, session.date, i)}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">{session.day}</span>
-                  <span className={clsx(
-                    'text-xs px-2 py-0.5 rounded',
-                    session.status === 'planned' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-                    session.status === 'completed' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                    session.status === 'logged' && 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-                    session.status === 'skipped' && 'bg-gray-100 text-gray-500',
-                  )}>
-                    {session.status || 'planned'}
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground mb-3">{session.date}</p>
-
-                {(session.planned_exercises || []).length > 0 ? (
-                  <div className="space-y-1">
-                    {session.planned_exercises!.map((ex, j) => (
-                      <div key={j} className="flex items-center justify-between text-sm">
-                        <span>{ex.name}</span>
-                        <span className="text-muted-foreground">
-                          {ex.sets}x{ex.reps}{ex.kg ? ` @${ex.kg}kg` : ''}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No exercises planned</p>
-                )}
-
-                {session.exercises?.length > 0 && (
-                  <p className="text-xs text-muted-foreground mt-2 border-t border-border/50 pt-2">
-                    {session.exercises.length} exercises logged
-                  </p>
-                )}
-              </div>
+          )}
+          <select
+            value={selectedWeek}
+            onChange={(e) => setSelectedWeek(Number(e.target.value))}
+            className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
+          >
+            {weekOptions.map(w => (
+              <option key={w} value={w}>Week {w}</option>
             ))}
-          </div>
-        ) : (
-          <div className="flex items-center justify-center py-12">
-            <p className="text-muted-foreground">No sessions for Week {selectedWeek}. Click "Add Session" to plan one.</p>
-          </div>
-        )}
+          </select>
+          <button
+            onClick={() => openSessionEditor()}
+            className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Add Session
+          </button>
+        </div>
       </div>
+
+      {/* Session cards */}
+      {weekSessions.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {weekSessions.map((session, i) => (
+            <div
+              key={`${session.date}-${i}`}
+              className="bg-card border border-border rounded-lg p-4 cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => openSessionEditor(session, session.date, i)}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium">{session.day}</span>
+                <span className={clsx(
+                  'text-xs px-2 py-0.5 rounded',
+                  session.status === 'planned' && 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                  session.status === 'completed' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+                  session.status === 'logged' && 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+                  session.status === 'skipped' && 'bg-gray-100 text-gray-500',
+                )}>
+                  {session.status || 'planned'}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">{session.date}</p>
+
+              {(session.planned_exercises || []).length > 0 ? (
+                <div className="space-y-1">
+                  {session.planned_exercises!.map((ex, j) => (
+                    <div key={j} className="flex items-center justify-between text-sm">
+                      <span>{ex.name}</span>
+                      <span className="text-muted-foreground">
+                        {ex.sets}x{ex.reps}{ex.kg ? ` @${ex.kg}kg` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No exercises planned</p>
+              )}
+
+              {session.exercises?.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-2 border-t border-border/50 pt-2">
+                  {session.exercises.length} exercises logged
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center justify-center py-12">
+          <p className="text-muted-foreground">No sessions for Week {selectedWeek}. Click "Add Session" to plan one.</p>
+        </div>
+      )}
 
       {/* Session Editor Modal */}
       {isSessionEditorOpen ? (
@@ -529,111 +387,6 @@ export default function DesignerPage() {
               <button onClick={saveSession} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium">
                 <Save className="w-4 h-4" />
                 {editingSession ? 'Update' : 'Create'} Session
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Phase Editor Modal */}
-      {editingPhase || isNewPhase ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closePhaseEditor}>
-          <div className="bg-card border border-border rounded-lg w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">{isNewPhase ? 'Add Phase' : 'Edit Phase'}</h3>
-              <button onClick={closePhaseEditor} className="p-1 hover:bg-accent rounded">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground">Name</label>
-              <input
-                type="text"
-                value={phaseForm.name || ''}
-                onChange={(e) => setPhaseForm(p => ({ ...p, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-muted-foreground">Start Week</label>
-                <input
-                  type="number"
-                  value={phaseForm.start_week || 1}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, start_week: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground">End Week</label>
-                <input
-                  type="number"
-                  value={phaseForm.end_week || 4}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, end_week: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground">Intent</label>
-              <textarea
-                value={phaseForm.intent || ''}
-                onChange={(e) => setPhaseForm(p => ({ ...p, intent: e.target.value }))}
-                rows={2}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm resize-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm text-muted-foreground">RPE Min</label>
-                <input
-                  type="number"
-                  value={phaseForm.target_rpe_min ?? ''}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, target_rpe_min: e.target.value ? Number(e.target.value) : undefined }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground">RPE Max</label>
-                <input
-                  type="number"
-                  value={phaseForm.target_rpe_max ?? ''}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, target_rpe_max: e.target.value ? Number(e.target.value) : undefined }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground">Days/Wk</label>
-                <input
-                  type="number"
-                  value={phaseForm.days_per_week ?? ''}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, days_per_week: e.target.value ? Number(e.target.value) : undefined }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground">Notes</label>
-              <textarea
-                value={phaseForm.notes || ''}
-                onChange={(e) => setPhaseForm(p => ({ ...p, notes: e.target.value }))}
-                rows={2}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm resize-none"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button onClick={closePhaseEditor} className="px-4 py-2 bg-secondary rounded-md text-sm">
-                Cancel
-              </button>
-              <button onClick={savePhase} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium">
-                <Save className="w-4 h-4" />
-                {isNewPhase ? 'Add' : 'Update'} Phase
               </button>
             </div>
           </div>

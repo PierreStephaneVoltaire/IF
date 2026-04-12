@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Plus, X, Trash2, Edit2, Save, ChevronDown, ChevronUp } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useProgramStore } from '@/store/programStore'
@@ -13,6 +13,28 @@ export default function SupplementsPage() {
   const [expandedPhase, setExpandedPhase] = useState<number | null>(null)
   const [editingPhase, setEditingPhase] = useState<number | null>(null)
   const [editingItem, setEditingItem] = useState<{ phaseIndex: number; itemIndex: number } | null>(null)
+  const [block, setBlock] = useState('current')
+
+  const availableBlocks = useMemo(() => {
+    if (!program) return ['current']
+    const blocks = new Set<string>()
+    for (const s of program.sessions) blocks.add(s.block ?? 'current')
+    return Array.from(blocks).sort()
+  }, [program])
+
+  const blockWeeks = useMemo(() => {
+    if (!program) return []
+    const weeks = new Set<number>()
+    for (const s of program.sessions) {
+      if ((s.block ?? 'current') === block) weeks.add(s.week_number)
+    }
+    return Array.from(weeks).sort((a, b) => a - b)
+  }, [program, block])
+
+  const filteredPhases = useMemo(
+    () => phases.filter(p => (p.block ?? 'current') === block),
+    [phases, block]
+  )
 
   useEffect(() => {
     if (program?.supplement_phases) {
@@ -69,6 +91,7 @@ export default function SupplementsPage() {
         phase_name: `Phase ${maxPhase + 1}`,
         notes: '',
         items: [],
+        block: block,
       },
     ])
     setHasChanges(true)
@@ -129,6 +152,17 @@ export default function SupplementsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <select
+            value={block}
+            onChange={(e) => setBlock(e.target.value)}
+            className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
+          >
+            {availableBlocks.map((b) => (
+              <option key={b} value={b}>
+                {b === 'current' ? 'Current Block' : b}
+              </option>
+            ))}
+          </select>
           {hasChanges && (
             <button
               onClick={handleSave}
@@ -150,7 +184,7 @@ export default function SupplementsPage() {
 
       {/* Phase Cards */}
       <div className="space-y-4">
-        {phases
+        {filteredPhases
           .sort((a, b) => a.phase - b.phase)
           .map((phase, phaseIndex) => {
             const originalIndex = phases.findIndex((p) => p.phase === phase.phase)
@@ -196,6 +230,11 @@ export default function SupplementsPage() {
                     <span className="text-xs px-2 py-0.5 bg-secondary rounded">
                       {phase.items.length} items
                     </span>
+                    {(phase.start_week != null || phase.end_week != null) && (
+                      <span className="text-xs px-2 py-0.5 bg-secondary rounded">
+                        W{phase.start_week ?? '?'}–W{phase.end_week ?? '?'}
+                      </span>
+                    )}
                   </div>
                   {isExpanded ? (
                     <ChevronUp className="w-4 h-4 text-muted-foreground" />
@@ -206,6 +245,41 @@ export default function SupplementsPage() {
 
                 {isExpanded && (
                   <div className="px-4 pb-4 pt-2 border-t border-border space-y-4">
+                    {/* Week Range */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-muted-foreground">Start Week</label>
+                        <select
+                          value={phase.start_week ?? ''}
+                          onChange={(e) => updatePhase(originalIndex, {
+                            start_week: e.target.value ? Number(e.target.value) : undefined
+                          })}
+                          className="px-2 py-1 border border-border rounded bg-background text-sm"
+                        >
+                          <option value="">—</option>
+                          {blockWeeks.map(w => (
+                            <option key={w} value={w}>W{w}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <span className="text-muted-foreground">→</span>
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-muted-foreground">End Week</label>
+                        <select
+                          value={phase.end_week ?? ''}
+                          onChange={(e) => updatePhase(originalIndex, {
+                            end_week: e.target.value ? Number(e.target.value) : undefined
+                          })}
+                          className="px-2 py-1 border border-border rounded bg-background text-sm"
+                        >
+                          <option value="">—</option>
+                          {blockWeeks.map(w => (
+                            <option key={w} value={w}>W{w}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
                     {/* Phase Notes */}
                     <div>
                       <label className="text-sm text-muted-foreground">Phase Notes</label>
@@ -409,7 +483,7 @@ export default function SupplementsPage() {
           })}
       </div>
 
-      {phases.length === 0 && (
+      {filteredPhases.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No supplement phases defined. Click "Add Phase" to get started.
         </div>

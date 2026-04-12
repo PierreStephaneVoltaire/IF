@@ -177,17 +177,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Legacy memory store initialization failed: {e}")
 
-    # External tool plugin initialization
+    # Health module initialization (MUST run before tool registry to avoid
+    # namespace collision — tool_registry registers tools.health as a module,
+    # which blocks `from tools.health.core import init_tools`)
     try:
-        from agent.tool_registry import init_tool_registry
-        registry = init_tool_registry()
-        logger.info(f"Tool registry: {len(registry.list_tools())} external tools loaded")
-    except Exception as e:
-        logger.warning(f"Tool registry initialization failed: {e}")
+        import sys as _sys
+        _tools_dir = os.environ.get("EXTERNAL_TOOLS_PATH", str(Path(__file__).parent.parent.parent / "tools"))
+        _health_plugin_dir = str(Path(_tools_dir) / "health")
+        if _health_plugin_dir not in _sys.path:
+            _sys.path.insert(0, _health_plugin_dir)
 
-    # Health module initialization
-    try:
-        from tools.health.core import init_tools
+        from core import init_tools
         from health import ProgramStore, HealthDocsRAG, ProgramNotFoundError
 
         program_store = ProgramStore(
@@ -227,7 +227,15 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Health module not available: {e}")
     except Exception as e:
         logger.warning(f"Health module initialization failed: {e}")
-    
+
+    # External tool plugin initialization
+    try:
+        from agent.tool_registry import init_tool_registry
+        registry = init_tool_registry()
+        logger.info(f"Tool registry: {len(registry.list_tools())} external tools loaded")
+    except Exception as e:
+        logger.warning(f"Tool registry initialization failed: {e}")
+
     try:
         import nltk
         nltk.data.find("corpora/stopwords")

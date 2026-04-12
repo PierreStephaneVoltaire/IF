@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useMemo } from 'react'
+import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -38,6 +38,15 @@ export default function SessionDrawer({
   const [showVideoUpload, setShowVideoUpload] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [glossaryNames, setGlossaryNames] = useState<string[]>([])
+  const notesRef = useRef<HTMLTextAreaElement>(null)
+
+  const autoResizeNotes = useCallback(() => {
+    const el = notesRef.current
+    if (el) {
+      el.style.height = 'auto'
+      el.style.height = el.scrollHeight + 'px'
+    }
+  }, [])
 
   useEffect(() => {
     fetchGlossary()
@@ -69,6 +78,8 @@ export default function SessionDrawer({
       setLocalSession(clone)
       setOriginalDate(session.date)
       setHasChanges(false)
+      // Auto-resize notes textarea after state update
+      requestAnimationFrame(() => autoResizeNotes())
     }
   }, [session])
 
@@ -252,47 +263,49 @@ export default function SessionDrawer({
                 <Dialog.Panel className="pointer-events-auto w-screen max-w-full sm:max-w-md">
                   <div className="flex h-full flex-col bg-background shadow-xl">
                     {/* Header */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: phaseColorValue }}
-                        />
-                        <div>
-                          <p className="font-medium">{localSession.week}</p>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-muted-foreground" />
-                            <input
-                              type="date"
-                              value={localSession.date}
-                              onChange={(e) => updateDate(e.target.value)}
-                              className="text-sm bg-secondary px-2 py-1 rounded border border-border focus:outline-none focus:ring-2 focus:ring-primary"
-                            />
-                            <span className="text-xs text-muted-foreground">{localSession.day}</span>
+                    <div className="px-4 py-3 border-b border-border">
+                      <div className="flex items-start sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-3 h-3 rounded-full mt-1 sm:mt-0"
+                            style={{ backgroundColor: phaseColorValue }}
+                          />
+                          <div>
+                            <p className="font-medium">{localSession.week}</p>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4 text-muted-foreground" />
+                              <input
+                                type="date"
+                                value={localSession.date}
+                                onChange={(e) => updateDate(e.target.value)}
+                                className="w-full sm:w-auto text-sm bg-secondary px-2 py-1 rounded border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
+                              <span className="text-xs text-muted-foreground">{localSession.day}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={toggleComplete}
-                          className={clsx(
-                            'px-3 py-1 rounded-md text-sm font-medium transition-colors',
-                            localSession.completed
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-secondary text-secondary-foreground'
-                          )}
-                        >
-                          {localSession.completed ? (
-                            <Check className="w-4 h-4 inline mr-1" />
-                          ) : null}
-                          {localSession.completed ? 'Done' : 'Mark Done'}
-                        </button>
-                        <button
-                          onClick={handleCloseWithCheck}
-                          className="p-2 rounded-md hover:bg-accent"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={toggleComplete}
+                            className={clsx(
+                              'px-3 py-1 rounded-md text-sm font-medium transition-colors',
+                              localSession.completed
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-secondary text-secondary-foreground'
+                            )}
+                          >
+                            {localSession.completed ? (
+                              <Check className="w-4 h-4 inline mr-1" />
+                            ) : null}
+                            {localSession.completed ? 'Done' : 'Mark Done'}
+                          </button>
+                          <button
+                            onClick={handleCloseWithCheck}
+                            className="p-2 rounded-md hover:bg-accent"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -359,7 +372,7 @@ export default function SessionDrawer({
                                     <th className="text-left py-1 px-1 w-12">Sets</th>
                                     <th className="text-left py-1 px-1 w-12">Reps</th>
                                     <th className="text-left py-1 px-1 w-16">{unit}</th>
-                                    <th className="text-left py-1 px-1">Failed</th>
+                                    <th className="text-left py-1 px-1">Failed Set</th>
                                     <th className="text-left py-1 px-1">Notes</th>
                                     <th className="w-8" />
                                   </tr>
@@ -421,14 +434,14 @@ export default function SessionDrawer({
                                     <label className="text-xs text-muted-foreground">{unit}</label>
                                     <input type="number" step="any" value={group.entries[0].exercise.kg !== null && group.entries[0].exercise.kg !== undefined ? toDisplayUnit(group.entries[0].exercise.kg, unit) : ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'kg', e.target.value ? fromDisplayUnit(Number(e.target.value), unit) : null)} className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
                                   </div>
-                                  <div>
+                                  <div className="col-span-3 sm:col-span-1">
                                     <label className="text-xs text-muted-foreground">Notes</label>
                                     <input type="text" value={group.entries[0].exercise.notes || ''} onChange={(e) => updateExercise(group.entries[0].originalIndex, 'notes', e.target.value)} placeholder="Notes" className="w-full px-2 py-1 border border-border rounded bg-background text-sm" />
                                   </div>
                                 </div>
                                 {(group.entries[0].exercise.failed_sets || []).length > 0 && (
                                   <div className="mt-1.5 flex items-center gap-1.5">
-                                    <span className="text-xs text-muted-foreground">Failed:</span>
+                                    <span className="text-xs text-muted-foreground">Failed Set:</span>
                                     <div className="flex gap-0.5">
                                       {(group.entries[0].exercise.failed_sets || []).map((f, si) => (
                                         <button
@@ -534,11 +547,13 @@ export default function SessionDrawer({
                       <div>
                         <label className="text-xs text-muted-foreground">Session Notes</label>
                         <textarea
+                          ref={notesRef}
                           value={localSession.session_notes || ''}
+                          onInput={autoResizeNotes}
                           onChange={(e) => updateNotes(e.target.value)}
                           placeholder="How did the session feel?"
                           rows={2}
-                          className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm resize-none"
+                          className="w-full px-2 py-2 sm:py-1 border border-border rounded bg-background text-sm resize-none min-h-[3.5rem]"
                         />
                       </div>
 

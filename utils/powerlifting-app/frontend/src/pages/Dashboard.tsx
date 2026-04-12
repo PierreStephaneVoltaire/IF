@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
-import { fetchWeightLog } from '@/api/client'
+import { fetchWeightLog, updateMetaField } from '@/api/client'
 import { daysUntil, formatDateShort, sessionsThisCalendarWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
-import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2, Download, Dumbbell } from 'lucide-react'
+import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2, Download, Dumbbell, Ruler } from 'lucide-react'
 import type { Phase, WeightEntry, LiftProfile } from '@powerlifting/types'
 
 const LIFT_LABELS: Record<LiftProfile['lift'], string> = {
@@ -49,6 +49,10 @@ export default function Dashboard() {
   const [localPhases, setLocalPhases] = useState<Phase[]>([])
   const [localLiftProfiles, setLocalLiftProfiles] = useState<LiftProfile[]>([])
   const [weightLog, setWeightLog] = useState<WeightEntry[]>([])
+  const [editingMeasurements, setEditingMeasurements] = useState(false)
+  const [localHeight, setLocalHeight] = useState<number | ''>('')
+  const [localWingspan, setLocalWingspan] = useState<number | ''>('')
+  const [localLegLength, setLocalLegLength] = useState<number | ''>('')
 
   useEffect(() => {
     if (version) {
@@ -131,6 +135,28 @@ export default function Dashboard() {
       setEditingWeight(false)
     } catch (err) {
       pushToast({ message: 'Failed to update weight', type: 'error' })
+    }
+  }
+
+  const startEditingMeasurements = () => {
+    setLocalHeight(meta.height_cm ?? '')
+    setLocalWingspan(meta.arm_wingspan_cm ?? '')
+    setLocalLegLength(meta.leg_length_cm ?? '')
+    setEditingMeasurements(true)
+  }
+
+  const saveMeasurements = async () => {
+    try {
+      await Promise.all([
+        updateMetaField(version, 'height_cm', localHeight === '' ? null : localHeight),
+        updateMetaField(version, 'arm_wingspan_cm', localWingspan === '' ? null : localWingspan),
+        updateMetaField(version, 'leg_length_cm', localLegLength === '' ? null : localLegLength),
+      ])
+      await useProgramStore.getState().loadProgram(version)
+      pushToast({ message: 'Measurements updated', type: 'success' })
+      setEditingMeasurements(false)
+    } catch (err) {
+      pushToast({ message: 'Failed to update measurements', type: 'error' })
     }
   }
 
@@ -356,6 +382,79 @@ export default function Dashboard() {
           <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
             <div className="h-full bg-primary transition-all" style={{ width: `${Math.min(100, (latestWeightKg / meta.weight_class_kg) * 100)}%` }} />
           </div>
+        </div>
+
+        {/* Anthropometrics */}
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Ruler className="w-5 h-5 text-primary" />
+              <h3 className="font-medium">Anthropometrics</h3>
+            </div>
+            {editingMeasurements ? (
+              <div className="flex gap-1">
+                <button onClick={saveMeasurements} className="p-1 hover:bg-accent rounded text-primary"><Save className="w-4 h-4" /></button>
+                <button onClick={() => setEditingMeasurements(false)} className="p-1 hover:bg-accent rounded"><X className="w-4 h-4" /></button>
+              </div>
+            ) : (
+              <button onClick={startEditingMeasurements} className="p-1 hover:bg-accent rounded"><Edit2 className="w-4 h-4 text-muted-foreground" /></button>
+            )}
+          </div>
+          {editingMeasurements ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="w-24 text-sm">Height</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={localHeight}
+                  onChange={(e) => setLocalHeight(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="—"
+                  className="flex-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                />
+                <span className="text-xs text-muted-foreground">cm</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-24 text-sm">Arm Wingspan</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={localWingspan}
+                  onChange={(e) => setLocalWingspan(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="—"
+                  className="flex-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                />
+                <span className="text-xs text-muted-foreground">cm</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-24 text-sm">Leg Length</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={localLegLength}
+                  onChange={(e) => setLocalLegLength(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="—"
+                  className="flex-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                />
+                <span className="text-xs text-muted-foreground">cm</span>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span>Height</span>
+                <span className="font-medium">{meta.height_cm ? `${meta.height_cm} cm` : 'Not set'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Arm Wingspan</span>
+                <span className="font-medium">{meta.arm_wingspan_cm ? `${meta.arm_wingspan_cm} cm` : 'Not set'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Leg Length</span>
+                <span className="font-medium">{meta.leg_length_cm ? `${meta.leg_length_cm} cm` : 'Not set'}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* This Week */}

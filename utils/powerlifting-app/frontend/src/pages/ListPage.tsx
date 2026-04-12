@@ -100,32 +100,44 @@ export default function ListPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Sessions by Week</h1>
-        <div className="flex items-center gap-2">
-          {availableBlocks.length > 1 && (
-            <select
-              value={block}
-              onChange={(e) => setBlock(e.target.value)}
-              className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
+    <div className="space-y-4 relative">
+      {/* Sticky header */}
+      <div className="sticky top-0 z-10 bg-background py-2 -mx-1 px-1 border-b border-border/50 sm:border-b-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h1 className="text-2xl font-bold">Sessions by Week</h1>
+          <div className="flex items-center gap-2">
+            {availableBlocks.length > 1 && (
+              <select
+                value={block}
+                onChange={(e) => setBlock(e.target.value)}
+                className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
+              >
+                {availableBlocks.map((b) => (
+                  <option key={b} value={b}>
+                    {b === 'current' ? 'Current Block' : b}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm"
             >
-              {availableBlocks.map((b) => (
-                <option key={b} value={b}>
-                  {b === 'current' ? 'Current Block' : b}
-                </option>
-              ))}
-            </select>
-          )}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Session
-          </button>
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add Session</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Floating action button (mobile only) */}
+      <button
+        onClick={() => setShowAddModal(true)}
+        className="fixed bottom-6 right-6 z-40 sm:hidden flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 hover:bg-primary/90 active:scale-95 transition-all"
+        aria-label="Add Session"
+      >
+        <Plus className="w-6 h-6" />
+      </button>
 
       {/* Add Session Modal */}
       {showAddModal && (

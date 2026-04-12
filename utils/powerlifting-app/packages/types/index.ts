@@ -24,6 +24,9 @@ export interface ProgramMeta {
   change_log: ChangeLogEntry[]
   updated_at: string
   last_comp: LastComp
+  height_cm?: number
+  arm_wingspan_cm?: number
+  leg_length_cm?: number
 }
 
 export interface ChangeLogEntry {
@@ -227,6 +230,9 @@ export interface SupplementPhase {
   notes: string
   items: (Supplement & { notes?: string })[]
   peak_week_protocol?: Record<string, string>  // Dynamic key-value pairs (caffeine, creatine_timing, etc.)
+  block?: string          // Training block identifier. Default: "current"
+  start_week?: number     // Week range start (from block's sessions)
+  end_week?: number       // Week range end (from block's sessions)
 }
 
 // ─── Max History ─────────────────────────────────────────────────────────────

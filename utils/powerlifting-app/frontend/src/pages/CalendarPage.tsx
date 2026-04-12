@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Calendar, dateFnsLocalizer, Views, View } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay, endOfDay, startOfDay } from 'date-fns'
 import { enUS } from 'date-fns/locale/en-US'
@@ -36,6 +36,20 @@ export default function CalendarPage() {
   const { program, isLoading } = useProgramStore()
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [view, setView] = useState<View>(Views.AGENDA)
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false
+  )
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 639px)')
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mql.addEventListener('change', handler)
+    return () => mql.removeEventListener('change', handler)
+  }, [])
+
+  useEffect(() => {
+    if (isMobile && view === Views.WEEK) setView(Views.AGENDA)
+  }, [isMobile, view])
 
   const events: CalendarEvent[] = useMemo(() => {
     if (!program) return []
@@ -94,32 +108,32 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-220px)] md:h-[calc(100dvh-140px)]">
+    <div className="flex flex-col h-[calc(100dvh-200px)] md:h-[calc(100dvh-140px)] -mx-2 md:mx-0">
       <div className="flex items-center justify-between mb-2 shrink-0">
         <h1 className="text-2xl font-bold">Calendar</h1>
 
         {/* Phase Legend */}
-        <div className="flex gap-3 overflow-x-auto">
+        <div className="flex gap-1.5 sm:gap-3 overflow-x-auto">
           {program.phases.map((phase, idx) => (
             <div key={idx} className="flex items-center gap-1 shrink-0">
               <div
-                className="w-2 h-2 rounded-full"
+                className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full"
                 style={{ backgroundColor: phaseColor(phase, program.phases) }}
               />
-              <span className="text-xs">{phase.name}</span>
+              <span className="text-[10px] sm:text-xs">{phase.name}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-lg p-2 sm:p-4 flex-1 min-h-0 overflow-hidden">
+      <div className="bg-card border border-border rounded-lg p-1 sm:p-4 flex-1 min-h-0 overflow-hidden">
         <Calendar
           localizer={localizer}
           events={events}
           startAccessor="start"
           endAccessor="end"
           style={{ height: '100%' }}
-          views={[Views.AGENDA, Views.WEEK]}
+          views={isMobile ? [Views.AGENDA] : [Views.AGENDA, Views.WEEK]}
           view={view}
           onView={setView}
           length={30}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import {
   Activity, Download, AlertTriangle, CheckCircle, TrendingUp, Dumbbell, Trophy,
-  Scale, Table as TableIcon, BarChart3, Utensils, Moon, Beef, Brain, RefreshCw,
+  Scale, Table as TableIcon, BarChart3, Utensils, Moon, Beef, Brain, RefreshCw, Ruler,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -975,6 +975,37 @@ export default function AnalysisPage() {
           )}
 
           {/* ─── Lift Profiles (from Dashboard) ────────────────────────────────── */}
+          {/* Athlete Measurements */}
+          {(program?.meta?.height_cm || program?.meta?.arm_wingspan_cm || program?.meta?.leg_length_cm) && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Ruler className="w-5 h-5 text-primary" />
+                <h3 className="font-medium">Athlete Measurements</h3>
+                <span className="text-xs text-muted-foreground ml-auto">Edit on Dashboard</span>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                {program.meta.height_cm && (
+                  <div className="text-center p-2 bg-secondary/30 rounded">
+                    <p className="text-xs text-muted-foreground">Height</p>
+                    <p className="text-lg font-bold">{program.meta.height_cm} cm</p>
+                  </div>
+                )}
+                {program.meta.arm_wingspan_cm && (
+                  <div className="text-center p-2 bg-secondary/30 rounded">
+                    <p className="text-xs text-muted-foreground">Arm Wingspan</p>
+                    <p className="text-lg font-bold">{program.meta.arm_wingspan_cm} cm</p>
+                  </div>
+                )}
+                {program.meta.leg_length_cm && (
+                  <div className="text-center p-2 bg-secondary/30 rounded">
+                    <p className="text-xs text-muted-foreground">Leg Length</p>
+                    <p className="text-lg font-bold">{program.meta.leg_length_cm} cm</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {program?.lift_profiles && program.lift_profiles.length > 0 && (
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -1404,15 +1435,15 @@ export default function AnalysisPage() {
                     <label className="text-xs text-muted-foreground">{label}</label>
                     <input
                       type="text"
-                      inputMode="decimal"
+                      
                       value={attemptPct[key]}
                       onChange={(e) => {
                         const v = parseFloat(e.target.value)
-                        if (!isNaN(v) && v >= 0.70 && v <= 1.10) setAttemptPct(p => ({ ...p, [key]: v }))
+                        if (!isNaN(v) && v >= 0 && v <= 1) setAttemptPct(p => ({ ...p, [key]: v }))
                       }}
                       onBlur={(e) => {
                         const v = parseFloat(e.target.value)
-                        const valid = !isNaN(v) && v >= 0.70 && v <= 1.10
+                        const valid = !isNaN(v) && v >= 0 && v <= 1
                         if (!valid) setAttemptPct(p => ({ ...p, [key]: def }))
                         setSavingAttempt(true)
                         updateMetaField(version, 'attempt_pct', attemptPct).finally(() => setSavingAttempt(false))

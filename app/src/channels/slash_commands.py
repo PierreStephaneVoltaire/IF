@@ -277,6 +277,22 @@ async def _send_chunked(interaction: discord.Interaction, text: str):
             await interaction.followup.send(text[i : i + 2000])
 
 
+def _make_proxy_command_handler(message_command: str, log_command: str):
+    """Build a Discord callback that proxies a command through the agent."""
+
+    async def proxy_handler(interaction: discord.Interaction, args: str = ""):
+        await interaction.response.defer()
+        try:
+            message_content = f"/{message_command} {args}".strip()
+            result = await _invoke_via_agent(message_content, interaction)
+            await _send_chunked(interaction, result)
+        except Exception as e:
+            logger.error(f"[SlashCmd] /{log_command} error: {e}")
+            await interaction.followup.send(f"Error: {e}")
+
+    return proxy_handler
+
+
 def _register_dynamic_commands(tree, channel_id, conversation_id):
     """Register tool and specialist slash commands from registries."""
     used_names = set(STATIC_COMMAND_NAMES)
@@ -309,22 +325,11 @@ def _register_tool_commands(tree, used_names: set[str]):
             used_names.add(discord_name)
             description = (schema.get("description") or tool_name)[:100]
 
-            @tree.command(name=discord_name, description=description)
-            @app_commands.describe(args="Optional JSON arguments e.g. {\"weeks\": 4}")
-            async def tool_handler(
-                interaction: discord.Interaction,
-                args: str = "",
-                _name=tool_name,
-                _command_name=discord_name,
-            ):
-                await interaction.response.defer()
-                try:
-                    message_content = f"/{_name} {args}".strip()
-                    result = await _invoke_via_agent(message_content, interaction)
-                    await _send_chunked(interaction, result)
-                except Exception as e:
-                    logger.error(f"[SlashCmd] /{_command_name} error: {e}")
-                    await interaction.followup.send(f"Error: {e}")
+            tool_handler = _make_proxy_command_handler(tool_name, discord_name)
+            tool_handler = app_commands.describe(
+                args="Optional JSON arguments e.g. {\"weeks\": 4}"
+            )(tool_handler)
+            tree.command(name=discord_name, description=description)(tool_handler)
 
 
 def _register_specialist_commands(tree, used_names: set[str]):
@@ -375,20 +380,8 @@ def _register_specialist_commands(tree, used_names: set[str]):
         used_names.add(discord_name)
         description = spec.description[:100]
 
-        @tree.command(name=discord_name, description=description)
-        @app_commands.describe(args="Task or question for the specialist")
-        async def specialist_handler(
-            interaction: discord.Interaction,
-            args: str = "",
-            _slash_name=command_name,
-            _slug=slug,
-            _command_name=discord_name,
-        ):
-            await interaction.response.defer()
-            try:
-                message_content = f"/{_slash_name} {args}".strip()
-                result = await _invoke_via_agent(message_content, interaction)
-                await _send_chunked(interaction, result)
-            except Exception as e:
-                logger.error(f"[SlashCmd] /{_command_name} error: {e}")
-                await interaction.followup.send(f"Error: {e}")
+        specialist_handler = _make_proxy_command_handler(command_name, discord_name)
+        specialist_handler = app_commands.describe(
+            args="Task or question for the specialist"
+        )(specialist_handler)
+        tree.command(name=discord_name, description=description)(specialist_handler)

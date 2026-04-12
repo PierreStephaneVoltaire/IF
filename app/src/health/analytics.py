@@ -1143,7 +1143,12 @@ def compute_acwr(
 def compute_attempt_selection(projected_maxes: dict, attempt_pct: dict | None = None) -> dict | None:
     if not projected_maxes:
         return None
-    pcts = attempt_pct or {"opener": 0.90, "second": 0.955, "third": 1.00}
+    defaults = {"opener": 0.90, "second": 0.955, "third": 1.00}
+    raw_pcts = attempt_pct or defaults
+    pcts = {
+        lift: _num(raw_pcts.get(lift, default))
+        for lift, default in defaults.items()
+    }
 
     def _round_to_2_5(val: float) -> float:
         return round(val / 2.5) * 2.5

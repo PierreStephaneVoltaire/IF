@@ -5,6 +5,8 @@ import AppShell from '@/components/layout/AppShell'
 import Dashboard from '@/pages/Dashboard'
 import CalendarPage from '@/pages/CalendarPage'
 import DesignerPage from '@/pages/DesignerPage'
+import DesignerLanding from '@/pages/DesignerLanding'
+import DesignerPhases from '@/pages/DesignerPhases'
 import ListPage from '@/pages/ListPage'
 import TimelinePage from '@/pages/TimelinePage'
 import ChartsPage from '@/pages/ChartsPage'
@@ -29,7 +31,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/designer" element={<DesignerPage />} />
+        <Route path="/designer" element={<DesignerLanding />} />
+        <Route path="/designer/phases" element={<DesignerPhases />} />
+        <Route path="/designer/sessions" element={<DesignerPage />} />
         <Route path="/list" element={<ListPage />} />
         <Route path="/timeline" element={<TimelinePage />} />
         <Route path="/charts" element={<ChartsPage />} />
