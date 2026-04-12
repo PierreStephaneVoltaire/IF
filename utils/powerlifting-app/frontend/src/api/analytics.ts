@@ -89,8 +89,35 @@ export interface WeeklyAnalysis {
   }> & { total?: number; attempt_pct_used?: { opener: number; second: number; third: number } }
 }
 
+export interface CorrelationFinding {
+  exercise: string
+  lift: 'squat' | 'bench' | 'deadlift'
+  correlation_direction: 'positive' | 'negative' | 'unclear'
+  strength: 'strong' | 'moderate' | 'weak'
+  reasoning: string
+  caveat: string
+}
+
+export interface CorrelationReport {
+  findings: CorrelationFinding[]
+  summary: string
+  generated_at: string
+  window_start: string
+  weeks: number
+  cached: boolean
+  insufficient_data?: boolean
+  insufficient_data_reason?: string
+}
+
 export async function fetchWeeklyAnalysis(weeks = 1, block = 'current'): Promise<WeeklyAnalysis> {
   const res = await api.get(`/analytics/analysis/weekly?weeks=${weeks}&block=${encodeURIComponent(block)}`)
+  const body = res.data
+  if (body.error) throw new Error(body.error)
+  return body.data
+}
+
+export async function fetchCorrelationReport(weeks: number, block = 'current'): Promise<CorrelationReport> {
+  const res = await api.get(`/analytics/correlation?weeks=${weeks}&block=${encodeURIComponent(block)}`)
   const body = res.data
   if (body.error) throw new Error(body.error)
   return body.data

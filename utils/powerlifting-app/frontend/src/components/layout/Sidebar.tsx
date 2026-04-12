@@ -36,7 +36,7 @@ const PRIMARY_NAV_ITEMS = [
 const SECONDARY_NAV_ITEMS = [
   { to: '/timeline', icon: GitBranch, label: 'Timeline' },
   { to: '/supplements', icon: Pill, label: 'Supplements' },
-  { to: '/diet', icon: Utensils, label: 'Diet Notes' },
+  { to: '/biometrics', icon: Utensils, label: 'Biometrics' },
   { to: '/competitions', icon: Trophy, label: 'Competitions' },
   { to: '/maxes', icon: TrendingUp, label: 'Maxes' },
   { to: '/glossary', icon: BookOpen, label: 'Glossary' },
@@ -52,7 +52,7 @@ const ALL_NAV_ITEMS = [
   { to: '/charts', icon: BarChart3, label: 'Charts' },
   { to: '/analysis', icon: Activity, label: 'Analysis' },
   { to: '/supplements', icon: Pill, label: 'Supplements' },
-  { to: '/diet', icon: Utensils, label: 'Diet Notes' },
+  { to: '/biometrics', icon: Utensils, label: 'Biometrics' },
   { to: '/competitions', icon: Trophy, label: 'Competitions' },
   { to: '/maxes', icon: TrendingUp, label: 'Maxes' },
   { to: '/glossary', icon: BookOpen, label: 'Glossary' },

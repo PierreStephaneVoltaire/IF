@@ -18,6 +18,7 @@ import type {
   VideoLibraryItem,
   VideoLibraryResponse,
   FatigueProfile,
+  LiftProfile,
 } from '@powerlifting/types'
 
 const api = axios.create({
@@ -338,6 +339,15 @@ export async function removeSessionVideo(
   videoId: string
 ): Promise<void> {
   await api.delete(`/videos/${version}/${sessionDate}/${videoId}`)
+}
+
+// ─── Lift Profiles ────────────────────────────────────────────────────────────
+
+export async function updateLiftProfiles(
+  version: string,
+  liftProfiles: LiftProfile[]
+): Promise<void> {
+  await api.put(`/programs/${version}/lift-profiles`, { liftProfiles })
 }
 
 // ─── Fatigue Profile ──────────────────────────────────────────────────────────

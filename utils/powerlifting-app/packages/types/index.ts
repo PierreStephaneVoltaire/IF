@@ -190,15 +190,30 @@ export interface Program {
   diet_notes: DietNote[]
   supplements: Supplement[]
   supplement_phases: SupplementPhase[]
+  lift_profiles?: LiftProfile[]
 }
 
 export interface DietNote {
   date: string
   notes: string
   avg_daily_calories?: number
+  avg_protein_g?: number
+  avg_carb_g?: number
+  avg_fat_g?: number
+  avg_sleep_hours?: number
   water_intake?: number
   water_unit?: 'litres' | 'cups'
   consistent?: boolean
+}
+
+// ─── Lift Profile ─────────────────────────────────────────────────────────────
+
+export interface LiftProfile {
+  lift: 'squat' | 'bench' | 'deadlift'
+  style_notes: string         // free-form technique/setup description
+  sticking_points: string     // where in the lift they struggle most
+  primary_muscle: string      // e.g. "quad dominant", "tricep dominant"
+  volume_tolerance: 'low' | 'moderate' | 'high'
 }
 
 export interface Supplement {

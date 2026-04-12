@@ -24,6 +24,29 @@ analyticsRouter.get('/analysis/weekly', async (req, res) => {
 })
 
 // POST /api/analytics/fatigue-profile/estimate
+// GET /api/analytics/correlation?weeks=N&block=X
+analyticsRouter.get('/correlation', async (req, res) => {
+  try {
+    const weeks = req.query.weeks || '4'
+    const block = req.query.block || 'current'
+    const refresh = req.query.refresh || ''
+    const upstream = await fetch(
+      `${IF_API_URL}/v1/health/analysis/correlation?weeks=${weeks}&block=${encodeURIComponent(block as string)}${refresh ? '&refresh=true' : ''}`
+    )
+
+    if (!upstream.ok) {
+      const text = await upstream.text()
+      return res.status(upstream.status).json({ data: null, error: text })
+    }
+
+    const data = await upstream.json()
+    res.json({ data, error: null })
+  } catch (err) {
+    res.status(502).json({ data: null, error: `Proxy error: ${err}` })
+  }
+})
+
+// POST /api/analytics/fatigue-profile/estimate
 analyticsRouter.post('/fatigue-profile/estimate', async (req, res) => {
   try {
     const upstream = await fetch(`${IF_API_URL}/v1/health/fatigue-profile/estimate`, {

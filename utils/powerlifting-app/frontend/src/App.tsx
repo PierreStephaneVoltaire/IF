@@ -12,7 +12,7 @@ import AnalysisPage from '@/pages/AnalysisPage'
 import GlossaryPage from '@/pages/GlossaryPage'
 import ToolsPage from '@/pages/ToolsPage'
 import SupplementsPage from '@/pages/SupplementsPage'
-import DietNotesPage from '@/pages/DietNotesPage'
+import BiometricsPage from '@/pages/BiometricsPage'
 import CompetitionsPage from '@/pages/CompetitionsPage'
 import MaxesPage from '@/pages/MaxesPage'
 import VideosPage from '@/pages/VideosPage'
@@ -35,7 +35,8 @@ export default function App() {
         <Route path="/charts" element={<ChartsPage />} />
         <Route path="/analysis" element={<AnalysisPage />} />
         <Route path="/supplements" element={<SupplementsPage />} />
-        <Route path="/diet" element={<DietNotesPage />} />
+        <Route path="/biometrics" element={<BiometricsPage />} />
+        <Route path="/diet" element={<BiometricsPage />} />
         <Route path="/competitions" element={<CompetitionsPage />} />
         <Route path="/glossary" element={<GlossaryPage />} />
         <Route path="/maxes" element={<MaxesPage />} />

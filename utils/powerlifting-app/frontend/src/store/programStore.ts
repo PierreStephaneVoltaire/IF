@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Program, Session, Exercise, Phase, MaxEntry, WeightEntry, ProgramListItem, SupplementPhase, DietNote, Competition, SessionVideo, LiftResults } from '@powerlifting/types'
+import type { Program, Session, Exercise, Phase, MaxEntry, WeightEntry, ProgramListItem, SupplementPhase, DietNote, Competition, SessionVideo, LiftResults, LiftProfile } from '@powerlifting/types'
 import * as api from '@/api/client'
 
 interface ProgramState {
@@ -49,6 +49,9 @@ interface ProgramState {
 
   // Supplements
   updateSupplementPhases: (phases: SupplementPhase[]) => Promise<void>
+
+  // Lift Profiles
+  updateLiftProfiles: (liftProfiles: LiftProfile[]) => Promise<void>
 
   // Diet Notes
   updateDietNotes: (dietNotes: DietNote[]) => Promise<void>
@@ -304,6 +307,22 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
         program: {
           ...state.program,
           supplement_phases: phases,
+        },
+      }
+    })
+  },
+
+  // Lift Profiles
+  updateLiftProfiles: async (liftProfiles: LiftProfile[]) => {
+    const { version } = get()
+    await api.updateLiftProfiles(version, liftProfiles)
+
+    set((state) => {
+      if (!state.program) return state
+      return {
+        program: {
+          ...state.program,
+          lift_profiles: liftProfiles,
         },
       }
     })

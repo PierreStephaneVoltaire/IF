@@ -189,10 +189,10 @@ TOKENIZER_MODEL = os.getenv("TOKENIZER_MODEL", "gpt-4")
 DIRECTIVE_REWRITE_MODEL = os.getenv("DIRECTIVE_REWRITE_MODEL", "openrouter/@preset/heavy")
 
 # Model for conversation condensation (summarizing long conversations)
-CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "openrouter/gpt-5-nano")
+CONDENSER_MODEL = os.getenv("CONDENSER_MODEL", "anthropic/claude-haiku-4.5")
 
 # Model for condensing user intent into specialist task prompts (cheap/fast)
-CONDENSE_INTENT_MODEL = os.getenv("CONDENSE_INTENT_MODEL", "openrouter/openai/gpt-5-nano")
+CONDENSE_INTENT_MODEL = os.getenv("CONDENSE_INTENT_MODEL", "anthropic/claude-haiku-4.5")
 
 # Fallback model for heartbeat pondering (when pondering preset unavailable)
 HEARTBEAT_FALLBACK_MODEL = os.getenv("HEARTBEAT_FALLBACK_MODEL", "openrouter/@preset/general")
@@ -334,7 +334,7 @@ SCRIPTS_PATH = os.getenv(
     str(Path(__file__).parent.parent.parent / "scripts")
 )
 
-MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "openai/gpt-5-nano")
+MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "anthropic/claude-haiku-4.5")
 MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() == "true"
 
 # Interval for refreshing per-provider latency/throughput from OpenRouter (seconds)

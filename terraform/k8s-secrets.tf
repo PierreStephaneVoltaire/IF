@@ -63,6 +63,7 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     EMBEDDING_MODEL = var.embedding_model
 
     DIRECTIVE_REWRITE_MODEL = var.directive_rewrite_model
+    MODEL_ROUTER_MODEL      = var.model_router_model
     CONDENSER_MODEL         = var.condenser_model
     REFLECTION_MODEL        = var.reflection_model
     RESEARCH_AGENT_MODEL    = var.research_agent_model

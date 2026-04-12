@@ -185,6 +185,12 @@ variable "directive_rewrite_model" {
   default     = "openrouter/@preset/heavy"
 }
 
+variable "model_router_model" {
+  description = "Fast model for subagent routing and health AI calls"
+  type        = string
+  default     = "anthropic/claude-haiku-4.5"
+}
+
 variable "condenser_model" {
   description = "Model for conversation condensation"
   type        = string

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import * as programController from '../controllers/programController'
-import type { PlannedExercise } from '@powerlifting/types'
+import type { PlannedExercise, LiftProfile } from '@powerlifting/types'
 
 export const programsRouter = Router()
 
@@ -128,6 +128,25 @@ programsRouter.post('/:version/designer/batch-week', async (req, res, next) => {
       phase_name || 'Unknown',
       exercises || []
     )
+    res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PUT /api/programs/:version/lift-profiles - Update lift profiles
+programsRouter.put('/:version/lift-profiles', async (req, res, next) => {
+  try {
+    const { liftProfiles } = req.body as { liftProfiles: LiftProfile[] }
+
+    if (!Array.isArray(liftProfiles)) {
+      return res.status(400).json({
+        data: null,
+        error: 'liftProfiles must be an array',
+      })
+    }
+
+    await programController.updateLiftProfiles(req.params.version, liftProfiles)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)

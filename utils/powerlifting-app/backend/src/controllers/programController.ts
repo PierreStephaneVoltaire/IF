@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { docClient, TABLE } from '../db/dynamo'
 import { transformProgram } from '../db/transforms'
 import { AppError } from '../middleware/errorHandler'
-import type { Program, ProgramListItem, Phase, Session, PlannedExercise } from '@powerlifting/types'
+import type { Program, ProgramListItem, Phase, Session, PlannedExercise, LiftProfile } from '@powerlifting/types'
 
 const PK = 'operator'
 
@@ -321,6 +321,34 @@ export async function batchCreateWeek(
   })
 
   await docClient.send(updateCommand)
+}
+
+/**
+ * Update lift profiles (squat/bench/deadlift style, sticking points, muscle dominance, volume tolerance).
+ */
+export async function updateLiftProfiles(
+  version: string,
+  liftProfiles: LiftProfile[]
+): Promise<void> {
+  const sk = await resolveVersionSk(version)
+
+  const command = new UpdateCommand({
+    TableName: TABLE,
+    Key: {
+      pk: PK,
+      sk,
+    },
+    UpdateExpression: 'SET lift_profiles = :profiles, #meta.updated_at = :now',
+    ExpressionAttributeNames: {
+      '#meta': 'meta',
+    },
+    ExpressionAttributeValues: {
+      ':profiles': liftProfiles,
+      ':now': new Date().toISOString(),
+    },
+  })
+
+  await docClient.send(command)
 }
 
 /**
