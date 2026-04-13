@@ -1,7 +1,23 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Search, Plus, X, ChevronDown, ChevronUp, Trash2, Edit2, RefreshCw } from 'lucide-react'
-import { clsx } from 'clsx'
-import * as Slider from '@radix-ui/react-slider'
+import { useState, useEffect, useMemo } from 'react'
+import { Search, Plus, X, Trash2, Edit2, RefreshCw } from 'lucide-react'
+import {
+  Stack,
+  Group,
+  Text,
+  TextInput,
+  Textarea,
+  Select,
+  Button,
+  Badge,
+  Modal,
+  Paper,
+  Accordion,
+  Slider,
+  ActionIcon,
+  Loader,
+  CloseButton,
+  SimpleGrid,
+} from '@mantine/core'
 import * as api from '@/api/client'
 import { useUiStore } from '@/store/uiStore'
 import type { GlossaryExercise, MuscleGroup, ExerciseCategory, Equipment, FatigueProfile, FatigueProfileSource } from '@powerlifting/types'
@@ -14,25 +30,19 @@ interface FatigueSliderProps {
 
 function FatigueSlider({ label, value, onChange }: FatigueSliderProps) {
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-mono text-xs tabular-nums">{(value / 100).toFixed(2)}</span>
-      </div>
-      <Slider.Root
-        className="relative flex items-center select-none touch-none w-full h-5"
-        value={[value]}
-        onValueChange={([v]) => onChange(v)}
+    <Stack gap={4}>
+      <Group justify="space-between">
+        <Text size="sm" c="dimmed">{label}</Text>
+        <Text size="xs" ff="monospace">{(value / 100).toFixed(2)}</Text>
+      </Group>
+      <Slider
         min={0}
         max={100}
         step={5}
-      >
-        <Slider.Track className="bg-secondary relative grow rounded-full h-2">
-          <Slider.Range className="absolute bg-primary rounded-full h-full" />
-        </Slider.Track>
-        <Slider.Thumb className="block w-4 h-4 bg-background border-2 border-primary rounded-full hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary" />
-      </Slider.Root>
-    </div>
+        value={value}
+        onChange={onChange}
+      />
+    </Stack>
   )
 }
 
@@ -312,22 +322,21 @@ export default function GlossaryPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-pulse text-muted-foreground">Loading exercises...</div>
-      </div>
+      <Group justify="center" py={48}>
+        <Loader />
+      </Group>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <Stack gap={24}>
+      <Group justify="space-between">
         <div>
-          <h1 className="text-2xl font-bold">Exercise Glossary</h1>
-          <p className="text-muted-foreground">
-            Browse and manage exercise definitions
-          </p>
+          <Text fz="h1" fw={700}>Exercise Glossary</Text>
+          <Text c="dimmed">Browse and manage exercise definitions</Text>
         </div>
-        <button
+        <Button
+          leftSection={<Plus size={16} />}
           onClick={() => {
             setShowAddForm(true)
             setIsEditing(null)
@@ -341,378 +350,308 @@ export default function GlossaryPage() {
               notes: '',
             })
           }}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium"
         >
-          <Plus className="w-4 h-4" />
           Add Exercise
-        </button>
-      </div>
+        </Button>
+      </Group>
 
       {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => handleSearch(e.target.value)}
-          placeholder="Search exercises..."
-          className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background"
-        />
-      </div>
+      <TextInput
+        leftSection={<Search size={16} />}
+        placeholder="Search exercises..."
+        value={searchQuery}
+        onChange={(e) => handleSearch(e.currentTarget.value)}
+      />
 
-      {/* Add/Edit Form */}
-      {showAddForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setShowAddForm(false); setIsEditing(null) }}>
-          <div className="bg-card border border-border rounded-lg w-full max-w-4xl max-h-[85vh] overflow-y-auto p-4 sm:p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium">{isEditing ? 'Edit Exercise' : 'Add New Exercise'}</h3>
-            <button
-              onClick={() => {
-                setShowAddForm(false)
-                setIsEditing(null)
-              }}
-              className="p-1 hover:bg-accent rounded"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Add/Edit Form Modal */}
+      <Modal
+        opened={showAddForm}
+        onClose={() => { setShowAddForm(false); setIsEditing(null) }}
+        title={isEditing ? 'Edit Exercise' : 'Add New Exercise'}
+        size="xl"
+      >
+        <Stack gap="md">
+          <SimpleGrid cols={2} spacing="md" breakpoints={[{ maxWidth: 'sm', cols: 1 }]}>
             <div>
-              <label className="text-sm text-muted-foreground">Name</label>
-              <input
-                type="text"
+              <Text size="sm" c="dimmed" mb={4}>Name</Text>
+              <TextInput
                 value={formData.name || ''}
-                onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background"
+                onChange={(e) => setFormData((p) => ({ ...p, name: e.currentTarget.value }))}
               />
             </div>
             <div>
-              <label className="text-sm text-muted-foreground">Category</label>
-              <select
+              <Text size="sm" c="dimmed" mb={4}>Category</Text>
+              <Select
                 value={formData.category || 'squat'}
-                onChange={(e) => setFormData((p) => ({ ...p, category: e.target.value as ExerciseCategory }))}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background"
-              >
-                {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
+                onChange={(v) => setFormData((p) => ({ ...p, category: (v || 'squat') as ExerciseCategory }))}
+                data={Object.entries(CATEGORY_LABELS).map(([value, label]) => ({ value, label }))}
+              />
             </div>
-          </div>
+          </SimpleGrid>
 
           <div>
-            <label className="text-sm text-muted-foreground">Equipment</label>
-            <select
+            <Text size="sm" c="dimmed" mb={4}>Equipment</Text>
+            <Select
               value={formData.equipment || 'barbell'}
-              onChange={(e) => setFormData((p) => ({ ...p, equipment: e.target.value as Equipment }))}
-              className="w-full px-3 py-2 border border-border rounded-md bg-background"
-            >
-              {Object.entries(EQUIPMENT_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
+              onChange={(v) => setFormData((p) => ({ ...p, equipment: (v || 'barbell') as Equipment }))}
+              data={Object.entries(EQUIPMENT_LABELS).map(([value, label]) => ({ value, label }))}
+            />
           </div>
 
           {/* Fatigue Profile Sliders */}
-          <div className="space-y-3 border border-border rounded-md p-4">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Fatigue Profile</label>
-              <div className="flex items-center gap-2">
+          <Paper withBorder p="md">
+            <Group justify="space-between" mb="sm">
+              <Text size="sm" fw={500}>Fatigue Profile</Text>
+              <Group gap="xs">
                 {fatigueSource && (
-                  <span className={clsx(
-                    'text-xs px-2 py-0.5 rounded-full',
-                    fatigueSource === 'ai_estimated'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                      : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                  )}>
+                  <Badge
+                    variant="light"
+                    color={fatigueSource === 'ai_estimated' ? 'blue' : 'green'}
+                  >
                     {fatigueSource === 'ai_estimated' ? 'AI estimated' : 'Manual override'}
-                  </span>
+                  </Badge>
                 )}
-                <button
-                  type="button"
+                <Button
+                  size="compact-xs"
+                  variant="default"
                   onClick={handleReEstimate}
                   disabled={isEstimating || !formData.name}
-                  className="flex items-center gap-1 px-2 py-1 text-xs bg-secondary rounded-md hover:bg-secondary/80 disabled:opacity-50"
+                  leftSection={isEstimating ? <Loader size={12} /> : <RefreshCw size={12} />}
                 >
-                  <RefreshCw className={clsx('w-3 h-3', isEstimating && 'animate-spin')} />
                   {isEstimating ? 'Estimating...' : 'Re-estimate'}
-                </button>
-              </div>
-            </div>
-            <FatigueSlider
-              label="Axial (spinal loading)"
-              value={Math.round((fatigueProfile?.axial ?? 0) * 100)}
-              onChange={(v) => handleFatigueSliderChange('axial', v)}
-            />
-            <FatigueSlider
-              label="Neural (CNS demand)"
-              value={Math.round((fatigueProfile?.neural ?? 0) * 100)}
-              onChange={(v) => handleFatigueSliderChange('neural', v)}
-            />
-            <FatigueSlider
-              label="Peripheral (muscle damage)"
-              value={Math.round((fatigueProfile?.peripheral ?? 0) * 100)}
-              onChange={(v) => handleFatigueSliderChange('peripheral', v)}
-            />
-            <FatigueSlider
-              label="Systemic (metabolic load)"
-              value={Math.round((fatigueProfile?.systemic ?? 0) * 100)}
-              onChange={(v) => handleFatigueSliderChange('systemic', v)}
-            />
+                </Button>
+              </Group>
+            </Group>
+            <Stack gap="sm">
+              <FatigueSlider
+                label="Axial (spinal loading)"
+                value={Math.round((fatigueProfile?.axial ?? 0) * 100)}
+                onChange={(v) => handleFatigueSliderChange('axial', v)}
+              />
+              <FatigueSlider
+                label="Neural (CNS demand)"
+                value={Math.round((fatigueProfile?.neural ?? 0) * 100)}
+                onChange={(v) => handleFatigueSliderChange('neural', v)}
+              />
+              <FatigueSlider
+                label="Peripheral (muscle damage)"
+                value={Math.round((fatigueProfile?.peripheral ?? 0) * 100)}
+                onChange={(v) => handleFatigueSliderChange('peripheral', v)}
+              />
+              <FatigueSlider
+                label="Systemic (metabolic load)"
+                value={Math.round((fatigueProfile?.systemic ?? 0) * 100)}
+                onChange={(v) => handleFatigueSliderChange('systemic', v)}
+              />
+            </Stack>
             {fatigueSource === 'ai_estimated' && fatigueReasoning && (
-              <p className="text-xs text-muted-foreground italic">{fatigueReasoning}</p>
+              <Text size="xs" c="dimmed" fs="italic" mt="xs">{fatigueReasoning}</Text>
             )}
-          </div>
+          </Paper>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SimpleGrid cols={2} spacing="md" breakpoints={[{ maxWidth: 'lg', cols: 1 }]}>
             <div>
-              <label className="text-sm text-muted-foreground">Primary Muscles</label>
-              <div className="flex flex-wrap gap-1 mt-1 max-h-56 overflow-y-auto">
+              <Text size="sm" c="dimmed" mb={4}>Primary Muscles</Text>
+              <Group gap={4} style={{ maxHeight: 224, overflowY: 'auto', flexWrap: 'wrap' }}>
                 {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
-                  <button
+                  <Button
                     key={value}
+                    size="compact-xs"
+                    variant={formData.primary_muscles?.includes(value as MuscleGroup) ? 'filled' : 'default'}
                     onClick={() => toggleMuscle(value as MuscleGroup, 'primary_muscles')}
-                    className={clsx(
-                      'px-2 py-1 text-xs rounded-md',
-                      formData.primary_muscles?.includes(value as MuscleGroup)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-secondary-foreground'
-                    )}
                   >
                     {label}
-                  </button>
+                  </Button>
                 ))}
-              </div>
+              </Group>
             </div>
             <div>
-              <label className="text-sm text-muted-foreground">Secondary Muscles</label>
-              <div className="flex flex-wrap gap-1 mt-1 max-h-56 overflow-y-auto">
+              <Text size="sm" c="dimmed" mb={4}>Secondary Muscles</Text>
+              <Group gap={4} style={{ maxHeight: 224, overflowY: 'auto', flexWrap: 'wrap' }}>
                 {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
-                  <button
+                  <Button
                     key={value}
+                    size="compact-xs"
+                    variant={formData.secondary_muscles?.includes(value as MuscleGroup) ? 'filled' : 'default'}
                     onClick={() => toggleMuscle(value as MuscleGroup, 'secondary_muscles')}
-                    className={clsx(
-                      'px-2 py-1 text-xs rounded-md',
-                      formData.secondary_muscles?.includes(value as MuscleGroup)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-secondary-foreground'
-                    )}
                   >
                     {label}
-                  </button>
+                  </Button>
                 ))}
-              </div>
+              </Group>
             </div>
-          </div>
+          </SimpleGrid>
 
           <div>
-            <label className="text-sm text-muted-foreground">Cues</label>
-            <div className="flex gap-2 mb-2">
-              <input
-                type="text"
-                value={cueInput}
-                onChange={(e) => setCueInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addCue()}
+            <Text size="sm" c="dimmed" mb={4}>Cues</Text>
+            <Group gap="xs" mb="xs">
+              <TextInput
                 placeholder="Add a cue..."
-                className="flex-1 px-3 py-2 border border-border rounded-md bg-background"
+                value={cueInput}
+                onChange={(e) => setCueInput(e.currentTarget.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addCue()}
+                style={{ flex: 1 }}
               />
-              <button
-                onClick={addCue}
-                className="px-3 py-2 bg-secondary rounded-md"
-              >
-                Add
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
+              <Button variant="default" onClick={addCue}>Add</Button>
+            </Group>
+            <Group gap="xs">
               {formData.cues?.map((cue, i) => (
-                <span
+                <Badge
                   key={i}
-                  className="flex items-center gap-1 px-2 py-1 bg-secondary rounded-md text-sm"
+                  variant="light"
+                  rightSection={
+                    <CloseButton
+                      size="xs"
+                      variant="transparent"
+                      onClick={() => removeCue(i)}
+                    />
+                  }
                 >
                   {cue}
-                  <button onClick={() => removeCue(i)} className="hover:text-destructive">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
+                </Badge>
               ))}
-            </div>
+            </Group>
           </div>
 
           <div>
-            <label className="text-sm text-muted-foreground">Notes</label>
-            <textarea
+            <Text size="sm" c="dimmed" mb={4}>Notes</Text>
+            <Textarea
+              autosize
+              minRows={3}
               value={formData.notes || ''}
-              onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))}
-              rows={3}
-              className="w-full px-3 py-2 border border-border rounded-md bg-background resize-none"
+              onChange={(e) => setFormData((p) => ({ ...p, notes: e.currentTarget.value }))}
             />
           </div>
 
-          <div className="flex justify-end gap-2 sticky bottom-0 bg-card pt-2">
-            <button
+          <Group justify="flex-end">
+            <Button
+              variant="default"
               onClick={() => {
                 setShowAddForm(false)
                 setIsEditing(null)
               }}
-              className="px-4 py-2 bg-secondary rounded-md"
             >
               Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium"
-            >
+            </Button>
+            <Button onClick={handleSave}>
               {isEditing ? 'Update' : 'Add'} Exercise
-            </button>
-          </div>
-          </div>
-        </div>
-      )}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       {/* Exercise List by Category */}
       {Object.entries(groupedExercises).map(([category, categoryExercises]) => {
         if (categoryExercises.length === 0) return null
 
         return (
-          <div key={category} className="space-y-2">
-            <h2 className="text-lg font-semibold">
-              {CATEGORY_LABELS[category as ExerciseCategory]}
-              <span className="text-sm font-normal text-muted-foreground ml-2">
-                ({categoryExercises.length})
-              </span>
-            </h2>
+          <Stack key={category} gap="xs">
+            <Group gap="xs">
+              <Text fz="h2" fw={600}>{CATEGORY_LABELS[category as ExerciseCategory]}</Text>
+              <Text size="sm" c="dimmed">({categoryExercises.length})</Text>
+            </Group>
 
-            <div className="space-y-2">
+            <Accordion
+              variant="contained"
+              chevronPosition="right"
+            >
               {categoryExercises.map((exercise) => (
-                <div
-                  key={exercise.id}
-                  className="bg-card border border-border rounded-lg overflow-hidden"
-                >
-                  <button
-                    onClick={() => setExpandedId(expandedId === exercise.id ? null : exercise.id)}
-                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-accent/50"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium">{exercise.name}</span>
-                      <span className="text-xs px-2 py-0.5 bg-secondary rounded">
+                <Accordion.Item key={exercise.id} value={exercise.id}>
+                  <Accordion.Control>
+                    <Group gap="sm" wrap="nowrap">
+                      <Text fw={500}>{exercise.name}</Text>
+                      <Badge variant="light" color="gray" size="sm">
                         {EQUIPMENT_LABELS[exercise.equipment]}
-                      </span>
+                      </Badge>
                       {exercise.fatigue_profile && (
-                        <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded">
-                          {(exercise.fatigue_profile_source === 'ai_estimated' ? 'AI' : 'Manual')}
-                        </span>
+                        <Badge variant="light" color="blue" size="sm">
+                          {exercise.fatigue_profile_source === 'ai_estimated' ? 'AI' : 'Manual'}
+                        </Badge>
                       )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-1">
-                        {exercise.primary_muscles.slice(0, 3).map((m) => (
-                          <span
-                            key={m}
-                            className="text-xs px-2 py-0.5 bg-primary/20 text-primary rounded"
-                          >
-                            {MUSCLE_LABELS[m]}
-                          </span>
-                        ))}
-                        {exercise.primary_muscles.length > 3 && (
-                          <span className="text-xs text-muted-foreground">
-                            +{exercise.primary_muscles.length - 3}
-                          </span>
-                        )}
-                      </div>
-                      {expandedId === exercise.id ? (
-                        <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                      )}
-                    </div>
-                  </button>
-
-                  {expandedId === exercise.id && (
-                    <div className="px-4 pb-4 pt-2 border-t border-border space-y-4">
+                    </Group>
+                  </Accordion.Control>
+                  <Accordion.Content>
+                    <Stack gap="md">
                       {/* Muscles */}
-                      <div className="grid grid-cols-2 gap-4">
+                      <SimpleGrid cols={2} spacing="md">
                         <div>
-                          <p className="text-xs text-muted-foreground mb-1">Primary Muscles</p>
-                          <div className="flex flex-wrap gap-1">
+                          <Text size="xs" c="dimmed" mb={4}>Primary Muscles</Text>
+                          <Group gap={4}>
                             {exercise.primary_muscles.map((m) => (
-                              <span
-                                key={m}
-                                className="text-xs px-2 py-0.5 bg-primary/20 text-primary rounded"
-                              >
+                              <Badge key={m} variant="light" size="sm">
                                 {MUSCLE_LABELS[m]}
-                              </span>
+                              </Badge>
                             ))}
-                          </div>
+                          </Group>
                         </div>
                         {exercise.secondary_muscles.length > 0 && (
                           <div>
-                            <p className="text-xs text-muted-foreground mb-1">Secondary Muscles</p>
-                            <div className="flex flex-wrap gap-1">
+                            <Text size="xs" c="dimmed" mb={4}>Secondary Muscles</Text>
+                            <Group gap={4}>
                               {exercise.secondary_muscles.map((m) => (
-                                <span
-                                  key={m}
-                                  className="text-xs px-2 py-0.5 bg-secondary rounded"
-                                >
+                                <Badge key={m} variant="outline" size="sm">
                                   {MUSCLE_LABELS[m]}
-                                </span>
+                                </Badge>
                               ))}
-                            </div>
+                            </Group>
                           </div>
                         )}
-                      </div>
+                      </SimpleGrid>
 
                       {/* Cues */}
                       {exercise.cues.length > 0 && (
                         <div>
-                          <p className="text-xs text-muted-foreground mb-1">Cues</p>
-                          <ul className="list-disc list-inside text-sm space-y-1">
+                          <Text size="xs" c="dimmed" mb={4}>Cues</Text>
+                          <Stack gap={4}>
                             {exercise.cues.map((cue, i) => (
-                              <li key={i}>{cue}</li>
+                              <Text key={i} size="sm">- {cue}</Text>
                             ))}
-                          </ul>
+                          </Stack>
                         </div>
                       )}
 
                       {/* Notes */}
                       {exercise.notes && (
                         <div>
-                          <p className="text-xs text-muted-foreground mb-1">Notes</p>
-                          <p className="text-sm">{exercise.notes}</p>
+                          <Text size="xs" c="dimmed" mb={4}>Notes</Text>
+                          <Text size="sm">{exercise.notes}</Text>
                         </div>
                       )}
 
                       {/* Actions */}
-                      <div className="flex gap-2 pt-2">
-                        <button
+                      <Group gap="xs">
+                        <Button
+                          size="compact-sm"
+                          variant="default"
+                          leftSection={<Edit2 size={12} />}
                           onClick={() => startEdit(exercise)}
-                          className="flex items-center gap-1 px-3 py-1 text-sm bg-secondary rounded-md hover:bg-secondary/80"
                         >
-                          <Edit2 className="w-3 h-3" />
                           Edit
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          size="compact-sm"
+                          variant="light"
+                          color="red"
+                          leftSection={<Trash2 size={12} />}
                           onClick={() => handleDelete(exercise.id)}
-                          className="flex items-center gap-1 px-3 py-1 text-sm bg-destructive/10 text-destructive rounded-md hover:bg-destructive/20"
                         >
-                          <Trash2 className="w-3 h-3" />
                           Delete
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Accordion.Content>
+                </Accordion.Item>
               ))}
-            </div>
-          </div>
+            </Accordion>
+          </Stack>
         )
       })}
 
       {filteredExercises.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
+        <Text ta="center" py={48} c="dimmed">
           {searchQuery ? 'No exercises found matching your search.' : 'No exercises in the glossary yet.'}
-        </div>
+        </Text>
       )}
-    </div>
+    </Stack>
   )
 }

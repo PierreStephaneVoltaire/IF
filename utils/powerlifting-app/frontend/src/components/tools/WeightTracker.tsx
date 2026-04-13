@@ -4,8 +4,21 @@ import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
 import { displayWeight, toDisplayUnit, fromDisplayUnit, kgToLb } from '@/utils/units'
 import { daysUntil, formatDateShort } from '@/utils/dates'
-import { clsx } from 'clsx'
-import { Plus, Trash2, TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import {
+  Paper,
+  Button,
+  Group,
+  Stack,
+  SimpleGrid,
+  NumberInput,
+  TextInput,
+  ActionIcon,
+  Progress,
+  Text,
+  Title,
+  Loader,
+} from '@mantine/core'
+import { Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react'
 import type { WeightEntry } from '@powerlifting/types'
 import * as api from '@/api/client'
 
@@ -116,167 +129,174 @@ export default function WeightTracker() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
-      </div>
+      <Group justify="center" py="xl">
+        <Loader size="sm" />
+      </Group>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <Stack gap="xl">
       <div>
-        <h2 className="text-xl font-bold mb-2">Weight Tracker</h2>
-        <p className="text-muted-foreground">
+        <Title order={2} mb="xs">Weight Tracker</Title>
+        <Text c="dimmed">
           Track body weight progress toward your weight class
-        </p>
+        </Text>
       </div>
 
       {/* Progress Card */}
-      <div className="bg-card border border-border rounded-lg p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">Current Weight</p>
-            <p className="text-3xl font-bold">{displayWeight(currentBW, unit)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-muted-foreground">Target Class</p>
-            <p className="text-3xl font-bold">{targetClass} kg</p>
-          </div>
-        </div>
+      <Paper withBorder p="lg" radius="md">
+        <Stack gap="md">
+          <Group justify="space-between" align="flex-start">
+            <div>
+              <Text size="sm" c="dimmed">Current Weight</Text>
+              <Text fz="h1" fw={700}>{displayWeight(currentBW, unit)}</Text>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <Text size="sm" c="dimmed">Target Class</Text>
+              <Text fz="h1" fw={700}>{targetClass} kg</Text>
+            </div>
+          </Group>
 
-        {/* Progress Bar */}
-        <div className="space-y-2">
-          <div className="h-4 bg-secondary rounded-full overflow-hidden">
-            <div
-              className={clsx(
-                'h-full transition-all',
-                currentBW <= targetClass ? 'bg-primary' : 'bg-destructive'
-              )}
-              style={{ width: `${Math.min(100, progressPct)}%` }}
+          {/* Progress Bar */}
+          <Stack gap={4}>
+            <Progress
+              value={Math.min(100, progressPct)}
+              color={currentBW <= targetClass ? 'blue' : 'red'}
+              size="lg"
+              radius="xl"
             />
-          </div>
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>0</span>
-            <span>{displayWeight(targetClass, unit)}</span>
-            <span>{displayWeight(targetClass * 1.1, unit)}</span>
-          </div>
-        </div>
+            <Group justify="space-between">
+              <Text size="xs" c="dimmed">0</Text>
+              <Text size="xs" c="dimmed">{displayWeight(targetClass, unit)}</Text>
+              <Text size="xs" c="dimmed">{displayWeight(targetClass * 1.1, unit)}</Text>
+            </Group>
+          </Stack>
 
-        {/* Delta */}
-        {weightDelta && (
-          <div className={clsx(
-            'flex items-center gap-2 p-3 rounded-md',
-            weightDelta.over ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
-          )}>
-            {weightDelta.over ? (
-              <TrendingUp className="w-5 h-5" />
-            ) : (
-              <TrendingDown className="w-5 h-5" />
-            )}
-            <span className="font-medium">
-              {weightDelta.over ? '+' : ''}{displayWeight(Math.abs(weightDelta.kg), unit)} {weightDelta.over ? 'over' : 'under'}
-            </span>
-          </div>
-        )}
+          {/* Delta */}
+          {weightDelta && (
+            <Paper
+              bg={weightDelta.over ? 'var(--mantine-color-red-light)' : 'var(--mantine-color-blue-light)'}
+              p="sm"
+              radius="md"
+            >
+              <Group gap="xs">
+                {weightDelta.over ? (
+                  <TrendingUp size={20} />
+                ) : (
+                  <TrendingDown size={20} />
+                )}
+                <Text fw={500}>
+                  {weightDelta.over ? '+' : ''}{displayWeight(Math.abs(weightDelta.kg), unit)} {weightDelta.over ? 'over' : 'under'}
+                </Text>
+              </Group>
+            </Paper>
+          )}
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-4 text-center pt-4 border-t border-border">
-          <div>
-            <p className="text-xs text-muted-foreground">Rate</p>
-            <p className={clsx(
-              'font-bold',
-              rateOfChange?.losing ? 'text-primary' : 'text-destructive'
-            )}>
-              {rateOfChange ? (
-                <>
-                  {rateOfChange.losing ? '-' : '+'}{Math.abs(rateOfChange.kgPerWeek).toFixed(2)} kg/wk
-                </>
-              ) : '—'}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Peak Week Est.</p>
-            <p className="font-bold">{peakWeekWeight ? displayWeight(peakWeekWeight, unit) : '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Days to Confirm</p>
-            <p className={clsx(
-              'font-bold',
-              daysToConfirm !== null && daysToConfirm < 14 ? 'text-destructive' : ''
-            )}>
-              {daysToConfirm !== null ? daysToConfirm : '—'}
-            </p>
-          </div>
-        </div>
-      </div>
+          {/* Stats Row */}
+          <SimpleGrid cols={3} spacing="md" ta="center" style={{ borderTop: '1px solid var(--mantine-color-default-border)', paddingTop: 'var(--mantine-spacing-md)' }}>
+            <div>
+              <Text size="xs" c="dimmed">Rate</Text>
+              <Text
+                fw={700}
+                c={rateOfChange?.losing ? 'blue' : 'red'}
+              >
+                {rateOfChange ? (
+                  <>
+                    {rateOfChange.losing ? '-' : '+'}{Math.abs(rateOfChange.kgPerWeek).toFixed(2)} kg/wk
+                  </>
+                ) : '\u2014'}
+              </Text>
+            </div>
+            <div>
+              <Text size="xs" c="dimmed">Peak Week Est.</Text>
+              <Text fw={700}>{peakWeekWeight ? displayWeight(peakWeekWeight, unit) : '\u2014'}</Text>
+            </div>
+            <div>
+              <Text size="xs" c="dimmed">Days to Confirm</Text>
+              <Text
+                fw={700}
+                c={daysToConfirm !== null && daysToConfirm < 14 ? 'red' : undefined}
+              >
+                {daysToConfirm !== null ? daysToConfirm : '\u2014'}
+              </Text>
+            </div>
+          </SimpleGrid>
+        </Stack>
+      </Paper>
 
       {/* Add Entry Form */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-3">Log Weight</h3>
-        <div className="flex gap-2">
-          <input
+      <Paper withBorder p="md" radius="md">
+        <Text fw={500} mb="sm">Log Weight</Text>
+        <Group gap="xs">
+          <TextInput
             type="date"
             value={newDate}
-            onChange={(e) => setNewDate(e.target.value)}
-            className="px-3 py-2 border border-border rounded-md bg-background"
+            onChange={(e) => setNewDate(e.currentTarget.value)}
           />
-          <input
-            type="number"
-            value={newWeight}
-            onChange={(e) => setNewWeight(e.target.value)}
-            placeholder={`${unit}`}
-            className="flex-1 px-3 py-2 border border-border rounded-md bg-background"
+          <NumberInput
+            flex={1}
+            value={newWeight || ''}
+            onChange={(val) => setNewWeight(typeof val === 'string' ? val : String(val ?? ''))}
+            placeholder={unit}
             step={unit === 'kg' ? 0.1 : 0.25}
+            hideControls
           />
-          <button
-            onClick={handleAddEntry}
+          <ActionIcon
+            variant="filled"
+            size="lg"
             disabled={!newWeight || !newDate}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium disabled:opacity-50"
+            onClick={handleAddEntry}
           >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+            <Plus size={16} />
+          </ActionIcon>
+        </Group>
+      </Paper>
 
       {/* Weight Log */}
       {entries.length > 0 && (
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-secondary">
-            <h3 className="font-medium text-sm">History</h3>
-          </div>
-          <div className="divide-y divide-border max-h-[300px] overflow-y-auto">
+        <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
+          <Paper bg="var(--mantine-color-default)" px="md" py="sm">
+            <Text size="sm" fw={500}>History</Text>
+          </Paper>
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
             {entries
               .sort((a, b) => b.date.localeCompare(a.date))
               .slice(0, 20)
               .map((entry) => (
-                <div
+                <Group
                   key={entry.date}
-                  className="flex items-center justify-between px-4 py-2 hover:bg-accent/50"
+                  justify="space-between"
+                  px="md"
+                  py="xs"
+                  style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}
                 >
                   <div>
-                    <p className="font-medium">{formatDateShort(entry.date)}</p>
-                    <p className="text-sm text-muted-foreground">{entry.date}</p>
+                    <Text fw={500}>{formatDateShort(entry.date)}</Text>
+                    <Text size="sm" c="dimmed">{entry.date}</Text>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold">{displayWeight(entry.kg, unit)}</span>
-                    <button
+                  <Group gap="sm">
+                    <Text fw={700}>{displayWeight(entry.kg, unit)}</Text>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      size="sm"
                       onClick={() => handleDeleteEntry(entry.date)}
-                      className="p-1 text-muted-foreground hover:text-destructive"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+                      <Trash2 size={14} />
+                    </ActionIcon>
+                  </Group>
+                </Group>
               ))}
           </div>
-        </div>
+        </Paper>
       )}
 
       {entries.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground">
+        <Text c="dimmed" ta="center" py="xl">
           No weight entries yet. Start logging to track progress.
-        </div>
+        </Text>
       )}
-    </div>
+    </Stack>
   )
 }

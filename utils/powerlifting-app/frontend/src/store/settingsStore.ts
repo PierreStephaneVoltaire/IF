@@ -20,18 +20,19 @@ interface SettingsState {
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement
-  if (theme === 'dark') {
+  const resolved = theme === 'system'
+    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : theme
+
+  // Toggle .dark class for Tailwind compatibility during migration
+  if (resolved === 'dark') {
     root.classList.add('dark')
-  } else if (theme === 'light') {
-    root.classList.remove('dark')
   } else {
-    // System preference
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
+    root.classList.remove('dark')
   }
+
+  // Set Mantine color scheme attribute
+  root.setAttribute('data-mantine-color-scheme', resolved)
 }
 
 export const useSettingsStore = create<SettingsState>()(

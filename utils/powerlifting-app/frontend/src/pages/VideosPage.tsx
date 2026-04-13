@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Filter, ArrowUpDown, Film, Calendar } from 'lucide-react'
+import { Film, Calendar } from 'lucide-react'
+import { Select, SimpleGrid, Loader, Paper, Stack, Text, Group, Button, Center, Box } from '@mantine/core'
 import { useProgramStore } from '@/store/programStore'
 import * as api from '@/api/client'
 import VideoCard from '@/components/videos/VideoCard'
@@ -10,7 +11,7 @@ export default function VideosPage() {
   const { version } = useProgramStore()
   const [videos, setVideos] = useState<VideoLibraryItem[]>([])
   const [exercises, setExercises] = useState<string[]>([])
-  const [exerciseFilter, setExerciseFilter] = useState('')
+  const [exerciseFilter, setExerciseFilter] = useState<string | null>(null)
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [isLoading, setIsLoading] = useState(true)
   const [selectedItem, setSelectedItem] = useState<VideoLibraryItem | null>(null)
@@ -33,73 +34,79 @@ export default function VideosPage() {
   }, [loadVideos])
 
   return (
-    <div className="p-4 max-w-2xl mx-auto space-y-4">
+    <Stack gap="md" maw={672} mx="auto" p="md">
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold flex items-center gap-2">
-          <Film className="w-5 h-5" />
-          Videos
-          {videos.length > 0 && (
-            <span className="text-sm font-normal text-muted-foreground">({videos.length})</span>
-          )}
-        </h1>
-      </div>
+      <Group gap="xs">
+        <Film size={20} />
+        <Text size="xl" fw={700}>Videos</Text>
+        {videos.length > 0 && (
+          <Text size="sm" c="dimmed">({videos.length})</Text>
+        )}
+      </Group>
 
       {/* Filters */}
       {exercises.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-muted-foreground" />
-          <select
+        <Group gap="xs">
+          <Select
             value={exerciseFilter}
-            onChange={(e) => setExerciseFilter(e.target.value)}
-            className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
-          >
-            <option value="">All exercises</option>
-            {exercises.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <button
+            onChange={setExerciseFilter}
+            data={[
+              { value: '', label: 'All exercises' },
+              ...exercises.map((name) => ({ value: name, label: name })),
+            ]}
+            clearable={false}
+            w={200}
+          />
+          <Button
+            variant="default"
+            size="xs"
             onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
-            className="flex items-center gap-1 px-3 py-1.5 border border-border rounded-md bg-background text-sm hover:bg-accent"
             title={sortOrder === 'newest' ? 'Show oldest first' : 'Show newest first'}
           >
-            <ArrowUpDown className="w-4 h-4" />
             {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
-          </button>
-        </div>
+          </Button>
+        </Group>
       )}
 
       {/* Loading */}
       {isLoading && (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          Loading videos...
-        </div>
+        <Center py={80}>
+          <Loader size="sm" />
+        </Center>
       )}
 
       {/* Empty State */}
       {!isLoading && videos.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-2">
-          <Film className="w-12 h-12" />
-          <p className="font-medium">No videos uploaded yet</p>
-          <a href="/calendar" className="text-sm text-primary hover:underline flex items-center gap-1">
-            <Calendar className="w-4 h-4" />
-            Go to Calendar
-          </a>
-        </div>
+        <Center py={80}>
+          <Stack align="center" gap="xs">
+            <Film size={48} />
+            <Text fw={500} c="dimmed">No videos uploaded yet</Text>
+            <Box
+              component="a"
+              href="/calendar"
+              style={{ textDecoration: 'none' }}
+            >
+              <Group gap={4}>
+                <Calendar size={14} />
+                <Text size="sm" c="blue">Go to Calendar</Text>
+              </Group>
+            </Box>
+          </Stack>
+        </Center>
       )}
 
       {/* Feed */}
       {!isLoading && videos.length > 0 && (
-        <div className="space-y-3">
+        <Stack gap="sm">
           {videos.map((item) => (
-            <VideoCard
-              key={item.video.video_id}
-              item={item}
-              onClick={() => setSelectedItem(item)}
-            />
+            <Paper key={item.video.video_id} withBorder>
+              <VideoCard
+                item={item}
+                onClick={() => setSelectedItem(item)}
+              />
+            </Paper>
           ))}
-        </div>
+        </Stack>
       )}
 
       {/* Player Modal */}
@@ -108,6 +115,6 @@ export default function VideosPage() {
         onClose={() => setSelectedItem(null)}
         onDeleted={loadVideos}
       />
-    </div>
+    </Stack>
   )
 }

@@ -1,49 +1,36 @@
-import { useState } from 'react'
-import { Calculator, Scale, Percent, ArrowLeftRight } from 'lucide-react'
-import clsx from 'clsx'
+import { Tabs } from '@mantine/core'
 import PlateCalculator from '@/components/tools/PlateCalculator'
 import DotsCalculator from '@/components/tools/DotsCalculator'
 import WeightTracker from '@/components/tools/WeightTracker'
 import PercentTable from '@/components/tools/PercentTable'
 import UnitConverter from '@/components/tools/UnitConverter'
 
-const tools = [
-  { id: 'plate', label: 'Plate Calculator', icon: Calculator },
-  { id: 'dots', label: 'DOTS Calculator', icon: Calculator },
-  { id: 'weight', label: 'Weight Tracker', icon: Scale },
-  { id: 'percent', label: '% of Max', icon: Percent },
-  { id: 'converter', label: 'kg/lb Converter', icon: ArrowLeftRight },
-] as const
-
 export default function ToolsPage() {
-  const [selectedTool, setSelectedTool] = useState<string>(tools[0].id)
-
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            onClick={() => setSelectedTool(tool.id)}
-            className={clsx(
-              'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-              selectedTool === tool.id
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted hover:bg-muted/80'
-            )}
-          >
-            {tool.label}
-          </button>
-        ))}
-      </div>
+    <Tabs defaultValue="plate">
+      <Tabs.List>
+        <Tabs.Tab value="plate">Plate Calculator</Tabs.Tab>
+        <Tabs.Tab value="dots">DOTS Calculator</Tabs.Tab>
+        <Tabs.Tab value="weight">Weight Tracker</Tabs.Tab>
+        <Tabs.Tab value="percent">% of Max</Tabs.Tab>
+        <Tabs.Tab value="converter">kg/lb Converter</Tabs.Tab>
+      </Tabs.List>
 
-      <div>
-        {selectedTool === 'plate' && <PlateCalculator />}
-        {selectedTool === 'dots' && <DotsCalculator />}
-        {selectedTool === 'weight' && <WeightTracker />}
-        {selectedTool === 'percent' && <PercentTable />}
-        {selectedTool === 'converter' && <UnitConverter />}
-      </div>
-    </div>
+      <Tabs.Panel value="plate">
+        <PlateCalculator />
+      </Tabs.Panel>
+      <Tabs.Panel value="dots">
+        <DotsCalculator />
+      </Tabs.Panel>
+      <Tabs.Panel value="weight">
+        <WeightTracker />
+      </Tabs.Panel>
+      <Tabs.Panel value="percent">
+        <PercentTable />
+      </Tabs.Panel>
+      <Tabs.Panel value="converter">
+        <UnitConverter />
+      </Tabs.Panel>
+    </Tabs>
   )
 }

@@ -9,9 +9,9 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts'
+import { Paper, Text, Group, Box } from '@mantine/core'
 import { useProgramStore } from '@/store/programStore'
 import { formatDateShort } from '@/utils/dates'
-import { clsx } from 'clsx'
 
 function rpeColor(rpe: number | null): string {
   if (rpe === null) return '#6b7280'
@@ -48,17 +48,17 @@ export default function RpeChart({ block }: { block?: string }) {
 
   if (!program || data.length === 0) {
     return (
-      <div className="bg-card border border-border rounded-lg p-4 h-full flex items-center justify-center min-h-0">
-        <p className="text-muted-foreground text-sm">
+      <Paper withBorder p="md" h="100%" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
+        <Text size="sm" c="dimmed">
           No sessions with RPE logged.
-        </p>
-      </div>
+        </Text>
+      </Paper>
     )
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="font-medium mb-2 text-sm">Session RPE (Last {data.length})</h3>
+    <Paper withBorder p="md">
+      <Text size="sm" fw={500} mb="sm">Session RPE (Last {data.length})</Text>
       <div>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data} barCategoryGap={4}>
@@ -88,19 +88,19 @@ export default function RpeChart({ block }: { block?: string }) {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-3 mt-2 shrink-0">
+      <Group gap="md" mt="sm" wrap="wrap" style={{ flexShrink: 0 }}>
         {[
-          { color: '#22c55e', label: '≤7 Easy' },
+          { color: '#22c55e', label: '\u22647 Easy' },
           { color: '#eab308', label: '8 Moderate' },
           { color: '#f97316', label: '9 Hard' },
           { color: '#ef4444', label: '10 Max' },
         ].map(({ color, label }) => (
-          <div key={label} className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: color }} />
-            <span className="text-xs text-muted-foreground">{label}</span>
-          </div>
+          <Group key={label} gap="xs">
+            <Box style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: color }} />
+            <Text size="xs" c="dimmed">{label}</Text>
+          </Group>
         ))}
-      </div>
-    </div>
+      </Group>
+    </Paper>
   )
 }

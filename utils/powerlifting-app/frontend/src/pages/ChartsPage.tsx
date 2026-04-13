@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
+import { Paper, Title, Text, Select, SimpleGrid, Stack, Group } from '@mantine/core'
 import type { GlossaryExercise } from '@powerlifting/types'
 import { fetchGlossary } from '@/api/client'
 import { useProgramStore } from '@/store/programStore'
@@ -85,56 +86,52 @@ export default function ChartsPage() {
   }, [weeklyMuscleData])
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <Stack gap="md">
+      <Group justify="space-between">
         <div>
-          <h1 className="text-2xl font-bold">Charts</h1>
-          <p className="text-muted-foreground text-sm">
+          <Title order={2}>Charts</Title>
+          <Text size="sm" c="dimmed">
             Visualize your training progress over time
-          </p>
+          </Text>
         </div>
         {availableBlocks.length > 1 && (
-          <select
+          <Select
             value={block}
-            onChange={(e) => setBlock(e.target.value)}
-            className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
-          >
-            {availableBlocks.map((b) => (
-              <option key={b} value={b}>
-                {b === 'current' ? 'Current Block' : b}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setBlock(v ?? 'current')}
+            data={availableBlocks.map((b) => ({
+              value: b,
+              label: b === 'current' ? 'Current Block' : b,
+            }))}
+            w={180}
+          />
         )}
-      </div>
+      </Group>
 
-      {/* Mobile: Stack all charts vertically with min height */}
-      {/* Desktop: 2x2 grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="min-h-[300px]">
+      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
+        <Paper style={{ minHeight: 300 }}>
           <StrengthProgressChart block={block} />
-        </div>
-        <div className="min-h-[300px]">
+        </Paper>
+        <Paper style={{ minHeight: 300 }}>
           <VolumeChart block={block} />
-        </div>
-        <div className="min-h-[300px]">
+        </Paper>
+        <Paper style={{ minHeight: 300 }}>
           <WeightChart />
-        </div>
-        <div className="min-h-[300px]">
+        </Paper>
+        <Paper style={{ minHeight: 300 }}>
           <IntensityChart block={block} />
-        </div>
-      </div>
+        </Paper>
+      </SimpleGrid>
 
-      <div className="min-h-[250px]">
+      <Paper style={{ minHeight: 250 }}>
         <RpeChart block={block} />
-      </div>
+      </Paper>
 
       {/* Muscle group charts */}
       {weeklyMuscleData.length > 0 && muscleKeys.length > 0 && (
         <>
           {/* Weekly Sets - stacked bar */}
-          <div className="bg-card border border-border rounded-lg p-4 min-h-[350px]">
-            <h3 className="font-medium mb-2">Weekly Sets per Muscle Group</h3>
+          <Paper withBorder p="md" style={{ minHeight: 350 }}>
+            <Text fw={500} mb="xs">Weekly Sets per Muscle Group</Text>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={weeklyMuscleData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -153,15 +150,15 @@ export default function ChartsPage() {
                 ))}
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </Paper>
 
           {/* Weekly Volume per Muscle Group - individual line charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
             {muscleKeys.map((key) => (
-              <div key={key} className="bg-card border border-border rounded-lg p-4 min-h-[250px]">
-                <h3 className="font-medium mb-2">
+              <Paper key={key} withBorder p="md" style={{ minHeight: 250 }}>
+                <Text fw={500} mb="xs">
                   {MUSCLE_DISPLAY_NAMES[key as keyof typeof MUSCLE_DISPLAY_NAMES] ?? key} — Weekly Volume
-                </h3>
+                </Text>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={weeklyMuscleVolumeData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -177,11 +174,11 @@ export default function ChartsPage() {
                     />
                   </LineChart>
                 </ResponsiveContainer>
-              </div>
+              </Paper>
             ))}
-          </div>
+          </SimpleGrid>
         </>
       )}
-    </div>
+    </Stack>
   )
 }

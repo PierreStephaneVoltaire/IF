@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom'
 import { Plus, Edit2, Trash2, X, Save, ExternalLink } from 'lucide-react'
 import { useProgramStore } from '@/store/programStore'
 import { useUiStore } from '@/store/uiStore'
+import {
+  Paper, Title, Text, Group, Stack, SimpleGrid, Button, ActionIcon,
+  NumberInput, TextInput, Textarea, Modal, Box,
+} from '@mantine/core'
 import type { Phase } from '@powerlifting/types'
 
 export default function DesignerPhases() {
@@ -101,175 +105,174 @@ export default function DesignerPhases() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Link to="/designer" className="text-muted-foreground hover:text-foreground text-sm">Designer</Link>
-          <span className="text-muted-foreground">/</span>
-          <h1 className="text-2xl font-bold">Phase Design</h1>
-        </div>
-        <button
+    <Stack gap="lg">
+      <Group justify="space-between">
+        <Group gap="xs">
+          <Text component={Link} to="/designer" size="sm" c="dimmed" style={{ textDecoration: 'none' }}>
+            Designer
+          </Text>
+          <Text c="dimmed">/</Text>
+          <Title order={2}>Phase Design</Title>
+        </Group>
+        <Button
+          size="sm"
+          leftSection={<Plus size={16} />}
           onClick={() => openPhaseEditor()}
-          className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm"
         >
-          <Plus className="w-4 h-4" />
           Add Phase
-        </button>
-      </div>
+        </Button>
+      </Group>
 
       {phases.length > 0 ? (
-        <div className="space-y-3">
+        <Stack gap="sm">
           {phases.map((phase, i) => (
-            <div key={phase.name} className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium">{phase.name}</h3>
-                  <p className="text-sm text-muted-foreground">
+            <Paper key={phase.name} withBorder p="md">
+              <Group justify="space-between" wrap="nowrap">
+                <Box style={{ flex: 1, minWidth: 0 }}>
+                  <Text fw={500}>{phase.name}</Text>
+                  <Text size="sm" c="dimmed">
                     W{phase.start_week} - W{phase.end_week}
                     {phase.target_rpe_min && phase.target_rpe_max && (
                       <> &middot; RPE {phase.target_rpe_min}-{phase.target_rpe_max}</>
                     )}
                     {phase.days_per_week && <> &middot; {phase.days_per_week}x/week</>}
-                  </p>
+                  </Text>
                   {phase.intent && (
-                    <p className="text-sm text-muted-foreground mt-1">{phase.intent}</p>
+                    <Text size="sm" c="dimmed" mt={4}>{phase.intent}</Text>
                   )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
+                </Box>
+                <Group gap="xs" wrap="nowrap">
+                  <Button
+                    component={Link}
                     to={`/designer/sessions?week=${phase.start_week}`}
-                    className="flex items-center gap-1 px-2 py-1 text-xs bg-secondary rounded-md hover:bg-accent transition-colors"
+                    variant="light"
+                    size="xs"
+                    leftSection={<ExternalLink size={12} />}
                   >
-                    <ExternalLink className="w-3 h-3" />
                     Sessions
-                  </Link>
-                  <button
+                  </Button>
+                  <ActionIcon
+                    variant="subtle"
                     onClick={() => openPhaseEditor(phase, i)}
-                    className="p-1.5 hover:bg-accent rounded"
                   >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
+                    <Edit2 size={16} />
+                  </ActionIcon>
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
                     onClick={() => deletePhase(phase.name)}
-                    className="p-1.5 hover:bg-accent rounded text-destructive"
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
+                    <Trash2 size={16} />
+                  </ActionIcon>
+                </Group>
+              </Group>
+            </Paper>
           ))}
-        </div>
+        </Stack>
       ) : (
-        <div className="flex items-center justify-center py-12">
-          <p className="text-muted-foreground">No phases defined. Click "Add Phase" to get started.</p>
-        </div>
+        <Box ta="center" py={48}>
+          <Text c="dimmed">No phases defined. Click &quot;Add Phase&quot; to get started.</Text>
+        </Box>
       )}
 
       {/* Phase Editor Modal */}
-      {editingPhase || isNewPhase ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closePhaseEditor}>
-          <div className="bg-card border border-border rounded-lg w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">{isNewPhase ? 'Add Phase' : 'Edit Phase'}</h3>
-              <button onClick={closePhaseEditor} className="p-1 hover:bg-accent rounded">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <Modal
+        opened={editingPhase !== null || isNewPhase}
+        onClose={closePhaseEditor}
+        title={isNewPhase ? 'Add Phase' : 'Edit Phase'}
+        centered
+      >
+        <Stack gap="md">
+          <Box>
+            <Text size="sm" c="dimmed" mb={4}>Name</Text>
+            <TextInput
+              value={phaseForm.name || ''}
+              onChange={(e) => setPhaseForm(p => ({ ...p, name: e.currentTarget.value }))}
+              size="sm"
+            />
+          </Box>
 
-            <div>
-              <label className="text-sm text-muted-foreground">Name</label>
-              <input
-                type="text"
-                value={phaseForm.name || ''}
-                onChange={(e) => setPhaseForm(p => ({ ...p, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
+          <SimpleGrid cols={2} spacing="md">
+            <Box>
+              <Text size="sm" c="dimmed" mb={4}>Start Week</Text>
+              <NumberInput
+                value={phaseForm.start_week || 1}
+                onChange={(v) => setPhaseForm(p => ({ ...p, start_week: Number(v) }))}
+                size="sm"
               />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-muted-foreground">Start Week</label>
-                <input
-                  type="number"
-                  value={phaseForm.start_week || 1}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, start_week: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground">End Week</label>
-                <input
-                  type="number"
-                  value={phaseForm.end_week || 4}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, end_week: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-muted-foreground">Intent</label>
-              <textarea
-                value={phaseForm.intent || ''}
-                onChange={(e) => setPhaseForm(p => ({ ...p, intent: e.target.value }))}
-                rows={2}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm resize-none"
+            </Box>
+            <Box>
+              <Text size="sm" c="dimmed" mb={4}>End Week</Text>
+              <NumberInput
+                value={phaseForm.end_week || 4}
+                onChange={(v) => setPhaseForm(p => ({ ...p, end_week: Number(v) }))}
+                size="sm"
               />
-            </div>
+            </Box>
+          </SimpleGrid>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm text-muted-foreground">RPE Min</label>
-                <input
-                  type="number"
-                  value={phaseForm.target_rpe_min ?? ''}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, target_rpe_min: e.target.value ? Number(e.target.value) : undefined }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground">RPE Max</label>
-                <input
-                  type="number"
-                  value={phaseForm.target_rpe_max ?? ''}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, target_rpe_max: e.target.value ? Number(e.target.value) : undefined }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground">Days/Wk</label>
-                <input
-                  type="number"
-                  value={phaseForm.days_per_week ?? ''}
-                  onChange={(e) => setPhaseForm(p => ({ ...p, days_per_week: e.target.value ? Number(e.target.value) : undefined }))}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"
-                />
-              </div>
-            </div>
+          <Box>
+            <Text size="sm" c="dimmed" mb={4}>Intent</Text>
+            <Textarea
+              value={phaseForm.intent || ''}
+              onChange={(e) => setPhaseForm(p => ({ ...p, intent: e.currentTarget.value }))}
+              autosize
+              minRows={2}
+              size="sm"
+            />
+          </Box>
 
-            <div>
-              <label className="text-sm text-muted-foreground">Notes</label>
-              <textarea
-                value={phaseForm.notes || ''}
-                onChange={(e) => setPhaseForm(p => ({ ...p, notes: e.target.value }))}
-                rows={2}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm resize-none"
+          <SimpleGrid cols={3} spacing="md">
+            <Box>
+              <Text size="sm" c="dimmed" mb={4}>RPE Min</Text>
+              <NumberInput
+                value={phaseForm.target_rpe_min ?? ''}
+                onChange={(v) => setPhaseForm(p => ({ ...p, target_rpe_min: v === '' ? undefined : Number(v) }))}
+                size="sm"
               />
-            </div>
+            </Box>
+            <Box>
+              <Text size="sm" c="dimmed" mb={4}>RPE Max</Text>
+              <NumberInput
+                value={phaseForm.target_rpe_max ?? ''}
+                onChange={(v) => setPhaseForm(p => ({ ...p, target_rpe_max: v === '' ? undefined : Number(v) }))}
+                size="sm"
+              />
+            </Box>
+            <Box>
+              <Text size="sm" c="dimmed" mb={4}>Days/Wk</Text>
+              <NumberInput
+                value={phaseForm.days_per_week ?? ''}
+                onChange={(v) => setPhaseForm(p => ({ ...p, days_per_week: v === '' ? undefined : Number(v) }))}
+                size="sm"
+              />
+            </Box>
+          </SimpleGrid>
 
-            <div className="flex justify-end gap-2">
-              <button onClick={closePhaseEditor} className="px-4 py-2 bg-secondary rounded-md text-sm">
-                Cancel
-              </button>
-              <button onClick={savePhase} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium">
-                <Save className="w-4 h-4" />
-                {isNewPhase ? 'Add' : 'Update'} Phase
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
+          <Box>
+            <Text size="sm" c="dimmed" mb={4}>Notes</Text>
+            <Textarea
+              value={phaseForm.notes || ''}
+              onChange={(e) => setPhaseForm(p => ({ ...p, notes: e.currentTarget.value }))}
+              autosize
+              minRows={2}
+              size="sm"
+            />
+          </Box>
+
+          <Group justify="flex-end" gap="xs">
+            <Button variant="default" onClick={closePhaseEditor}>
+              Cancel
+            </Button>
+            <Button
+              leftSection={<Save size={16} />}
+              onClick={savePhase}
+            >
+              {isNewPhase ? 'Add' : 'Update'} Phase
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </Stack>
   )
 }

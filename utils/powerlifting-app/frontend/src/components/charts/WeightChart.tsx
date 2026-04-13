@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   ReferenceLine
 } from 'recharts'
+import { Paper, Text } from '@mantine/core'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { displayWeight } from '@/utils/units'
@@ -48,17 +49,17 @@ export default function WeightChart() {
 
   if (entries.length === 0) {
     return (
-      <div className="bg-card border border-border rounded-lg p-4 flex items-center justify-center min-h-0 flex-1">
-        <p className="text-muted-foreground text-sm">
+      <Paper withBorder p="md" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0, flex: 1 }}>
+        <Text size="sm" c="dimmed">
           No weight entries logged. Use the Weight Tracker to add entries.
-        </p>
-      </div>
+        </Text>
+      </Paper>
     )
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="font-medium mb-2">Body Weight Trend</h3>
+    <Paper withBorder p="md">
+      <Text fw={500} mb="sm">Body Weight Trend</Text>
       <div>
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={data}>
@@ -93,10 +94,10 @@ export default function WeightChart() {
       </div>
 
       {weightClassCeiling && data && data.length > 0 && (
-        <div className="mt-1 text-xs text-muted-foreground shrink-0">
-          Current: {displayWeight(data[data.length - 1].kg, unit)} • Target: {weightClassCeiling}kg class
-        </div>
+        <Text size="xs" c="dimmed" mt="xs" style={{ flexShrink: 0 }}>
+          Current: {displayWeight(data[data.length - 1].kg, unit)} &bull; Target: {weightClassCeiling}kg class
+        </Text>
       )}
-    </div>
+    </Paper>
   )
 }

@@ -2,7 +2,26 @@ import { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, Calendar, Droplets, Flame, CheckCircle, XCircle } from 'lucide-react'
 import { useProgramStore } from '@/store/programStore'
 import { useUiStore } from '@/store/uiStore'
+import {
+  Paper, Title, Text, Group, Stack, SimpleGrid, Button, ActionIcon,
+  NumberInput, Textarea, Select, SegmentedControl, Box,
+} from '@mantine/core'
+import { DatePickerInput } from '@mantine/dates'
 import type { DietNote } from '@powerlifting/types'
+
+function parseDateString(ds: string): Date | null {
+  if (!ds) return null
+  const parts = ds.split('-')
+  if (parts.length !== 3) return null
+  return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+}
+
+function toDateString(d: Date): string {
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
 
 export default function DietNotesPage() {
   const { program, updateDietNotes } = useProgramStore()
@@ -57,163 +76,166 @@ export default function DietNotesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Diet Notes</h1>
-          <p className="text-muted-foreground">
+    <Stack gap="lg">
+      <Group justify="space-between">
+        <Box>
+          <Title order={2}>Diet Notes</Title>
+          <Text size="sm" c="dimmed">
             Track daily nutrition and diet observations
-          </p>
-        </div>
-        <div className="flex gap-2">
+          </Text>
+        </Box>
+        <Group gap="xs">
           {hasChanges && (
-            <button
-              onClick={handleSave}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium"
-            >
-              <Save className="w-4 h-4" />
+            <Button leftSection={<Save size={16} />} onClick={handleSave}>
               Save
-            </button>
+            </Button>
           )}
-          <button
-            onClick={addNote}
-            className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md font-medium"
-          >
-            <Plus className="w-4 h-4" />
+          <Button variant="light" leftSection={<Plus size={16} />} onClick={addNote}>
             Add Entry
-          </button>
-        </div>
-      </div>
+          </Button>
+        </Group>
+      </Group>
 
       {/* Notes List */}
-      <div className="space-y-4">
+      <Stack gap="md">
         {notes.map((note) => (
-          <div
-            key={note.date}
-            className="bg-card border border-border rounded-lg p-4 space-y-3"
-          >
-            {/* Date Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-muted-foreground" />
-                <input
-                  type="date"
-                  value={note.date}
-                  onChange={(e) => {
-                    const newDate = e.target.value
-                    if (notes.some((n) => n.date === newDate && n.date !== note.date)) {
-                      pushToast({ message: 'A note for this date already exists', type: 'error' })
-                      return
-                    }
-                    updateNote(note.date, { date: newDate })
-                  }}
-                  className="px-2 py-1 border border-border rounded bg-background text-sm"
-                />
-              </div>
-              <button
-                onClick={() => removeNote(note.date)}
-                className="p-1 text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Nutrition Fields */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Avg Daily Calories */}
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Flame className="w-3 h-3" />
-                  Avg Daily Calories
-                </label>
-                <input
-                  type="number"
-                  value={note.avg_daily_calories ?? ''}
-                  onChange={(e) => updateNote(note.date, {
-                    avg_daily_calories: e.target.value ? Number(e.target.value) : undefined,
-                  })}
-                  className="w-full px-2 py-1.5 border border-border rounded bg-background text-sm"
-                  placeholder="e.g. 2500"
-                />
-              </div>
-
-              {/* Water Intake */}
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Droplets className="w-3 h-3" />
-                  Water Intake
-                </label>
-                <div className="flex gap-1">
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={note.water_intake ?? ''}
-                    onChange={(e) => updateNote(note.date, {
-                      water_intake: e.target.value ? Number(e.target.value) : undefined,
-                    })}
-                    className="flex-1 px-2 py-1.5 border border-border rounded bg-background text-sm"
-                    placeholder="e.g. 2.5"
+          <Paper key={note.date} withBorder p="md">
+            <Stack gap="sm">
+              {/* Date Header */}
+              <Group justify="space-between">
+                <Group gap="xs">
+                  <Calendar size={16} style={{ opacity: 0.6 }} />
+                  <DatePickerInput
+                    value={parseDateString(note.date)}
+                    valueFormat="YYYY-MM-DD"
+                    onChange={(d) => {
+                      if (d) {
+                        const newDate = toDateString(d)
+                        if (notes.some((n) => n.date === newDate && n.date !== note.date)) {
+                          pushToast({ message: 'A note for this date already exists', type: 'error' })
+                          return
+                        }
+                        updateNote(note.date, { date: newDate })
+                      }
+                    }}
+                    size="xs"
+                    style={{ width: 'auto' }}
                   />
-                  <select
-                    value={note.water_unit || 'litres'}
-                    onChange={(e) => updateNote(note.date, {
-                      water_unit: e.target.value as 'litres' | 'cups',
+                </Group>
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  onClick={() => removeNote(note.date)}
+                >
+                  <Trash2 size={16} />
+                </ActionIcon>
+              </Group>
+
+              {/* Nutrition Fields */}
+              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                <Box>
+                  <Text size="xs" c="dimmed" style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <Flame size={12} />
+                    Avg Daily Calories
+                  </Text>
+                  <NumberInput
+                    value={note.avg_daily_calories ?? ''}
+                    onChange={(v) => updateNote(note.date, {
+                      avg_daily_calories: v === '' ? undefined : Number(v),
                     })}
-                    className="px-2 py-1.5 border border-border rounded bg-background text-sm"
-                  >
-                    <option value="litres">L</option>
-                    <option value="cups">cups</option>
-                  </select>
-                </div>
-              </div>
+                    placeholder="e.g. 2500"
+                    size="xs"
+                  />
+                </Box>
 
-              {/* Consistency */}
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Consistency</label>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => updateNote(note.date, { consistent: true })}
-                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium border ${
-                      note.consistent
-                        ? 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800'
-                        : 'bg-background text-muted-foreground border-border'
-                    }`}
-                  >
-                    <CheckCircle className="w-3 h-3" />
-                    Consistent
-                  </button>
-                  <button
-                    onClick={() => updateNote(note.date, { consistent: false })}
-                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium border ${
-                      note.consistent === false
-                        ? 'bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800'
-                        : 'bg-background text-muted-foreground border-border'
-                    }`}
-                  >
-                    <XCircle className="w-3 h-3" />
-                    On & Off
-                  </button>
-                </div>
-              </div>
-            </div>
+                <Box>
+                  <Text size="xs" c="dimmed" style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <Droplets size={12} />
+                    Water Intake
+                  </Text>
+                  <Group gap="xs" wrap="nowrap">
+                    <NumberInput
+                      value={note.water_intake ?? ''}
+                      onChange={(v) => updateNote(note.date, {
+                        water_intake: v === '' ? undefined : Number(v),
+                      })}
+                      placeholder="e.g. 2.5"
+                      step={0.1}
+                      style={{ flex: 1 }}
+                      size="xs"
+                    />
+                    <Select
+                      value={note.water_unit || 'litres'}
+                      onChange={(v) => updateNote(note.date, {
+                        water_unit: (v || 'litres') as 'litres' | 'cups',
+                      })}
+                      data={[
+                        { value: 'litres', label: 'L' },
+                        { value: 'cups', label: 'cups' },
+                      ]}
+                      size="xs"
+                      style={{ width: 80 }}
+                    />
+                  </Group>
+                </Box>
 
-            {/* Notes Textarea */}
-            <textarea
-              value={note.notes}
-              onChange={(e) => updateNote(note.date, { notes: e.target.value })}
-              rows={3}
-              className="w-full px-3 py-2 border border-border rounded-md bg-background resize-none text-sm"
-              placeholder="Diet notes, meals, observations..."
-            />
-          </div>
+                <Box>
+                  <Text size="xs" c="dimmed" style={{ marginBottom: 4 }}>Consistency</Text>
+                  <SegmentedControl
+                    fullWidth
+                    size="xs"
+                    value={
+                      note.consistent === true ? 'consistent'
+                      : note.consistent === false ? 'on_off'
+                      : ''
+                    }
+                    onChange={(v) => {
+                      if (v === 'consistent') updateNote(note.date, { consistent: true })
+                      else if (v === 'on_off') updateNote(note.date, { consistent: false })
+                    }}
+                    data={[
+                      {
+                        value: 'consistent',
+                        label: (
+                          <Group gap={4} wrap="nowrap">
+                            <CheckCircle size={12} />
+                            <Text size="xs">Consistent</Text>
+                          </Group>
+                        ),
+                      },
+                      {
+                        value: 'on_off',
+                        label: (
+                          <Group gap={4} wrap="nowrap">
+                            <XCircle size={12} />
+                            <Text size="xs">On & Off</Text>
+                          </Group>
+                        ),
+                      },
+                    ]}
+                  />
+                </Box>
+              </SimpleGrid>
+
+              {/* Notes Textarea */}
+              <Textarea
+                value={note.notes}
+                onChange={(e) => updateNote(note.date, { notes: e.currentTarget.value })}
+                autosize
+                minRows={3}
+                placeholder="Diet notes, meals, observations..."
+                size="xs"
+              />
+            </Stack>
+          </Paper>
         ))}
-      </div>
+      </Stack>
 
       {notes.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          No diet notes yet. Click "Add Entry" to get started.
-        </div>
+        <Text ta="center" py={48} c="dimmed">
+          No diet notes yet. Click &quot;Add Entry&quot; to get started.
+        </Text>
       )}
-    </div>
+    </Stack>
   )
 }

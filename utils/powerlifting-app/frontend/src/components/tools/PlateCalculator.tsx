@@ -4,7 +4,19 @@ import { useProgramStore } from '@/store/programStore'
 import { getPlateLoadout, closestLbLoadout, compAttempts, getPlateColor } from '@/utils/plates'
 import { BAR_WEIGHTS_KG, type BarPreset } from '@/constants/plates'
 import { displayWeight, kgToLb, toDisplayUnit } from '@/utils/units'
-import { clsx } from 'clsx'
+import {
+  Paper,
+  Button,
+  Group,
+  Stack,
+  SimpleGrid,
+  NumberInput,
+  Select,
+  Table,
+  Text,
+  Title,
+  SegmentedControl,
+} from '@mantine/core'
 
 type PlateMode = 'kg' | 'lb' | 'both'
 
@@ -56,249 +68,257 @@ export default function PlateCalculator() {
   }, [program])
 
   return (
-    <div className="space-y-6">
+    <Stack gap="xl">
       <div>
-        <h2 className="text-xl font-bold mb-4">Plate Calculator</h2>
-        <p className="text-muted-foreground">
+        <Title order={2} mb="sm">Plate Calculator</Title>
+        <Text c="dimmed">
           Calculate how to load the barbell for your target weight
-        </p>
+        </Text>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
         {/* Target Weight Input */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Target Weight</label>
-          <div className="flex gap-2">
-            <input
-              type="number"
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>Target Weight</Text>
+          <Group gap="xs">
+            <NumberInput
+              flex={1}
               value={targetWeight || ''}
-              onChange={(e) => setTargetWeight(Number(e.target.value) || 0)}
-              className="flex-1 px-3 py-2 border border-border rounded-md bg-background"
+              onChange={(val) => setTargetWeight(typeof val === 'number' ? val : 0)}
               placeholder={unit === 'kg' ? 'kg' : 'lb'}
               step={unit === 'kg' ? 2.5 : 5}
+              min={0}
+              hideControls
             />
-            <span className="px-3 py-2 bg-secondary rounded-md text-sm">
-              {unit.toUpperCase()}
-            </span>
-          </div>
-        </div>
+            <Paper bg="var(--mantine-color-default)" px="sm" py="xs" radius="sm">
+              <Text size="sm">{unit.toUpperCase()}</Text>
+            </Paper>
+          </Group>
+        </Stack>
 
         {/* Bar Preset */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Bar Weight</label>
-          <select
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>Bar Weight</Text>
+          <Select
+            data={[
+              { value: 'standard', label: 'Standard (20kg)' },
+              { value: 'womens', label: "Women's (15kg)" },
+              { value: 'deadlift', label: 'Deadlift (25kg)' },
+              { value: 'custom', label: 'Custom' },
+            ]}
             value={barPreset}
-            onChange={(e) => setBarPreset(e.target.value as BarPreset)}
-            className="w-full px-3 py-2 border border-border rounded-md bg-background"
-          >
-            <option value="standard">Standard (20kg)</option>
-            <option value="womens">Women's (15kg)</option>
-            <option value="deadlift">Deadlift (25kg)</option>
-            <option value="custom">Custom</option>
-          </select>
+            onChange={(val) => setBarPreset((val ?? 'standard') as BarPreset)}
+          />
           {barPreset === 'custom' && (
-            <input
-              type="number"
+            <NumberInput
               value={barWeightKg || ''}
-              onChange={(e) => setBarWeight(Number(e.target.value) || 20)}
-              className="w-full px-3 py-2 border border-border rounded-md bg-background"
+              onChange={(val) => setBarWeight(typeof val === 'number' ? val : 20)}
               placeholder="kg"
+              min={0}
+              step={0.5}
+              hideControls
             />
           )}
-        </div>
+        </Stack>
 
         {/* Plate Mode */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Plate Mode</label>
-          <div className="flex gap-2">
-            {(['kg', 'lb', 'both'] as PlateMode[]).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setPlateMode(mode)}
-                className={clsx(
-                  'flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                  plateMode === mode
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-secondary-foreground hover:bg-accent'
-                )}
-              >
-                {mode === 'kg' ? 'KG Plates' : mode === 'lb' ? 'LB Plates' : 'Both'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>Plate Mode</Text>
+          <SegmentedControl
+            fullWidth
+            data={[
+              { label: 'KG Plates', value: 'kg' },
+              { label: 'LB Plates', value: 'lb' },
+              { label: 'Both', value: 'both' },
+            ]}
+            value={plateMode}
+            onChange={(val) => setPlateMode(val as PlateMode)}
+          />
+        </Stack>
+      </SimpleGrid>
 
       {/* Quick Presets */}
       {quickPresets && quickPresets.length > 0 && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Quick Presets</label>
-          <div className="flex flex-wrap gap-2">
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>Quick Presets</Text>
+          <Group gap="xs">
             {quickPresets.map((preset) => (
-              <button
+              <Button
                 key={preset.label}
+                variant="default"
+                size="xs"
                 onClick={() => {
                   setTargetWeight(unit === 'kg' ? preset.kg : kgToLb(preset.kg))
                 }}
-                className="px-3 py-1 bg-secondary rounded-md text-sm hover:bg-accent transition-colors"
               >
                 {preset.label} ({displayWeight(preset.kg, unit)})
-              </button>
+              </Button>
             ))}
-          </div>
-        </div>
+          </Group>
+        </Stack>
       )}
 
       {/* Results */}
       {loadout && (
-        <div className="bg-card border border-border rounded-lg p-6 space-y-6">
-          {/* Summary */}
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-sm text-muted-foreground">Target</p>
-              <p className="text-2xl font-bold">{displayWeight(targetKg, unit)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Achievable</p>
-              <p className={clsx(
-                'text-2xl font-bold',
-                loadout.achievable ? 'text-primary' : 'text-destructive'
-              )}>
-                {displayWeight(loadout.totalKg, unit)}
-              </p>
-            </div>
-          </div>
-
-          {!loadout.achievable && (
-            <p className="text-sm text-destructive">
-              Cannot achieve exact weight. Remainder: {loadout.remainder.toFixed(2)} kg
-            </p>
-          )}
-
-          {/* Plate Visualization */}
-          <div className="flex items-center justify-center gap-4 py-6">
-            {/* Left plates - smallest at edge, largest closest to bar */}
-            <div className="flex items-center gap-1">
-              {[...loadout.plates].reverse().map((plate, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-sm flex items-center justify-center text-xs font-bold"
-                  style={{
-                    width: `${Math.min(40 + plate * 2, 80)}px`,
-                    height: `${Math.min(20 + plate, 40)}px`,
-                    backgroundColor: getPlateColor(plate, plateMode === 'lb' ? 'lb' : 'kg'),
-                    color: plate >= 5 ? '#fff' : '#000',
-                  }}
+        <Paper withBorder p="lg" radius="md">
+          <Stack gap="xl">
+            {/* Summary */}
+            <Group justify="space-between" align="flex-start">
+              <div>
+                <Text size="sm" c="dimmed">Target</Text>
+                <Text fz="h2" fw={700}>{displayWeight(targetKg, unit)}</Text>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <Text size="sm" c="dimmed">Achievable</Text>
+                <Text
+                  fz="h2"
+                  fw={700}
+                  c={loadout.achievable ? 'var(--mantine-color-blue-filled)' : 'var(--mantine-color-error)'}
                 >
-                  {plate}
-                </div>
-              ))}
-            </div>
+                  {displayWeight(loadout.totalKg, unit)}
+                </Text>
+              </div>
+            </Group>
 
-            {/* Bar */}
-            <div className="w-4 h-8 bg-gray-400 rounded-sm" />
+            {!loadout.achievable && (
+              <Text size="sm" c="error">
+                Cannot achieve exact weight. Remainder: {loadout.remainder.toFixed(2)} kg
+              </Text>
+            )}
 
-            {/* Right plates - largest closest to bar, smallest at edge */}
-            <div className="flex items-center gap-1">
-              {loadout.plates.map((plate, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-sm flex items-center justify-center text-xs font-bold"
-                  style={{
-                    width: `${Math.min(40 + plate * 2, 80)}px`,
-                    height: `${Math.min(20 + plate, 40)}px`,
-                    backgroundColor: getPlateColor(plate, plateMode === 'lb' ? 'lb' : 'kg'),
-                    color: plate >= 5 ? '#fff' : '#000',
-                  }}
-                >
-                  {plate}
-                </div>
-              ))}
-            </div>
-          </div>
+            {/* Plate Visualization */}
+            <Group justify="center" gap="sm" py="xl">
+              {/* Left plates - smallest at edge, largest closest to bar */}
+              <Group gap={4}>
+                {[...loadout.plates].reverse().map((plate, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 2,
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      width: `${Math.min(40 + plate * 2, 80)}px`,
+                      height: `${Math.min(20 + plate, 40)}px`,
+                      backgroundColor: getPlateColor(plate, plateMode === 'lb' ? 'lb' : 'kg'),
+                      color: plate >= 5 ? '#fff' : '#000',
+                    }}
+                  >
+                    {plate}
+                  </div>
+                ))}
+              </Group>
 
-          {/* Plate Table */}
-          <div className="space-y-2">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-2">Plates (per side)</th>
-                  <th className="text-right py-2">kg</th>
-                  <th className="text-right py-2">lb</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from(new Set(loadout.plates)).sort((a, b) => b - a).map((plate) => {
-                  const count = loadout.plates.filter((p) => p === plate).length
-                  return (
-                    <tr key={plate} className="border-b border-border">
-                      <td className="py-2">
-                        {count}x {plate}kg
-                      </td>
-                      <td className="text-right py-2">{plate.toFixed(1)} kg</td>
-                      <td className="text-right py-2">{kgToLb(plate).toFixed(1)} lb</td>
-                    </tr>
-                  )
-                })}
-                <tr className="font-medium">
-                  <td className="py-2">Per side total</td>
-                  <td className="text-right py-2">{loadout.perSideKg.toFixed(1)} kg</td>
-                  <td className="text-right py-2">{kgToLb(loadout.perSideKg).toFixed(1)} lb</td>
-                </tr>
-                <tr className="font-medium border-t-2 border-border">
-                  <td className="py-2">Bar</td>
-                  <td className="text-right py-2">{actualBarWeight.toFixed(1)} kg</td>
-                  <td className="text-right py-2">{kgToLb(actualBarWeight).toFixed(1)} lb</td>
-                </tr>
-                <tr className="font-bold bg-primary/10">
-                  <td className="py-2">Grand Total</td>
-                  <td className="text-right py-2">{loadout.totalKg.toFixed(1)} kg</td>
-                  <td className="text-right py-2">{kgToLb(loadout.totalKg).toFixed(1)} lb</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+              {/* Bar */}
+              <div style={{ width: 16, height: 32, backgroundColor: '#9ca3af', borderRadius: 2 }} />
 
-          {/* LB Mode Comparison */}
-          {(plateMode === 'lb' || plateMode === 'both') && lbLoadout && (
-            <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-md">
-              <p className="text-sm">
-                <span className="font-medium">With LB plates:</span>{' '}
-                {displayWeight(lbLoadout.achievedKg, unit)}
-                {Math.abs(lbLoadout.deltaKg) > 0.1 && (
-                  <span className="text-amber-600 ml-2">
-                    (delta: {lbLoadout.deltaKg > 0 ? '+' : ''}{lbLoadout.deltaKg} kg)
-                  </span>
-                )}
-              </p>
-            </div>
-          )}
-        </div>
+              {/* Right plates - largest closest to bar, smallest at edge */}
+              <Group gap={4}>
+                {loadout.plates.map((plate, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 2,
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      width: `${Math.min(40 + plate * 2, 80)}px`,
+                      height: `${Math.min(20 + plate, 40)}px`,
+                      backgroundColor: getPlateColor(plate, plateMode === 'lb' ? 'lb' : 'kg'),
+                      color: plate >= 5 ? '#fff' : '#000',
+                    }}
+                  >
+                    {plate}
+                  </div>
+                ))}
+              </Group>
+            </Group>
+
+            {/* Plate Table */}
+            <Stack gap="xs">
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Plates (per side)</Table.Th>
+                    <Table.Th ta="right">kg</Table.Th>
+                    <Table.Th ta="right">lb</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {Array.from(new Set(loadout.plates)).sort((a, b) => b - a).map((plate) => {
+                    const count = loadout.plates.filter((p) => p === plate).length
+                    return (
+                      <Table.Tr key={plate}>
+                        <Table.Td>{count}x {plate}kg</Table.Td>
+                        <Table.Td ta="right">{plate.toFixed(1)} kg</Table.Td>
+                        <Table.Td ta="right">{kgToLb(plate).toFixed(1)} lb</Table.Td>
+                      </Table.Tr>
+                    )
+                  })}
+                  <Table.Tr fw={500}>
+                    <Table.Td>Per side total</Table.Td>
+                    <Table.Td ta="right">{loadout.perSideKg.toFixed(1)} kg</Table.Td>
+                    <Table.Td ta="right">{kgToLb(loadout.perSideKg).toFixed(1)} lb</Table.Td>
+                  </Table.Tr>
+                  <Table.Tr fw={500} style={{ borderTopWidth: 2 }}>
+                    <Table.Td>Bar</Table.Td>
+                    <Table.Td ta="right">{actualBarWeight.toFixed(1)} kg</Table.Td>
+                    <Table.Td ta="right">{kgToLb(actualBarWeight).toFixed(1)} lb</Table.Td>
+                  </Table.Tr>
+                  <Table.Tr fw={700} bg="var(--mantine-color-blue-light)">
+                    <Table.Td>Grand Total</Table.Td>
+                    <Table.Td ta="right">{loadout.totalKg.toFixed(1)} kg</Table.Td>
+                    <Table.Td ta="right">{kgToLb(loadout.totalKg).toFixed(1)} lb</Table.Td>
+                  </Table.Tr>
+                </Table.Tbody>
+              </Table>
+            </Stack>
+
+            {/* LB Mode Comparison */}
+            {(plateMode === 'lb' || plateMode === 'both') && lbLoadout && (
+              <Paper bg="var(--mantine-color-yellow-light)" p="md" radius="md">
+                <Text size="sm">
+                  <Text span fw={500}>With LB plates:</Text>{' '}
+                  {displayWeight(lbLoadout.achievedKg, unit)}
+                  {Math.abs(lbLoadout.deltaKg) > 0.1 && (
+                    <Text span c="var(--mantine-color-yellow-7)" ml="xs">
+                      (delta: {lbLoadout.deltaKg > 0 ? '+' : ''}{lbLoadout.deltaKg} kg)
+                    </Text>
+                  )}
+                </Text>
+              </Paper>
+            )}
+          </Stack>
+        </Paper>
       )}
 
       {/* Competition Attempts */}
       {attempts && (
-        <div className="bg-card border border-border rounded-lg p-6">
-          <h3 className="font-medium mb-4">Competition Attempts</h3>
-          <p className="text-sm text-muted-foreground mb-4">
+        <Paper withBorder p="lg" radius="md">
+          <Text fw={500} mb="md">Competition Attempts</Text>
+          <Text size="sm" c="dimmed" mb="md">
             Suggested attempts based on your target total ({displayWeight(program!.meta.target_total_kg, unit)})
-          </p>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center p-4 bg-secondary rounded-lg">
-              <p className="text-sm text-muted-foreground">Opener (85%)</p>
-              <p className="text-xl font-bold">{displayWeight(attempts.opener, unit)}</p>
-            </div>
-            <div className="text-center p-4 bg-secondary rounded-lg">
-              <p className="text-sm text-muted-foreground">Second (95%)</p>
-              <p className="text-xl font-bold">{displayWeight(attempts.second, unit)}</p>
-            </div>
-            <div className="text-center p-4 bg-primary/10 rounded-lg">
-              <p className="text-sm text-muted-foreground">Third (100%)</p>
-              <p className="text-xl font-bold text-primary">{displayWeight(attempts.third, unit)}</p>
-            </div>
-          </div>
-        </div>
+          </Text>
+          <SimpleGrid cols={3} spacing="md">
+            <Paper bg="var(--mantine-color-default)" p="md" radius="md" ta="center">
+              <Text size="sm" c="dimmed">Opener (85%)</Text>
+              <Text fz="xl" fw={700}>{displayWeight(attempts.opener, unit)}</Text>
+            </Paper>
+            <Paper bg="var(--mantine-color-default)" p="md" radius="md" ta="center">
+              <Text size="sm" c="dimmed">Second (95%)</Text>
+              <Text fz="xl" fw={700}>{displayWeight(attempts.second, unit)}</Text>
+            </Paper>
+            <Paper bg="var(--mantine-color-blue-light)" p="md" radius="md" ta="center">
+              <Text size="sm" c="dimmed">Third (100%)</Text>
+              <Text fz="xl" fw={700} c="blue">{displayWeight(attempts.third, unit)}</Text>
+            </Paper>
+          </SimpleGrid>
+        </Paper>
       )}
-    </div>
+    </Stack>
   )
 }

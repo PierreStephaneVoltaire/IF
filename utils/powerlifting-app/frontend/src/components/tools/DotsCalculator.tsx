@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
-import { useSettingsStore } from '@/store/settingsStore'
+import { useMemo, useState } from 'react'
 import { useProgramStore } from '@/store/programStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import {
   calculateDots,
   calculateDotsFromLifts,
@@ -9,7 +9,18 @@ import {
   getDotsLevel,
 } from '@/utils/dots'
 import { displayWeight, kgToLb, toDisplayUnit } from '@/utils/units'
-import { clsx } from 'clsx'
+import {
+  Paper,
+  Button,
+  Group,
+  Stack,
+  SimpleGrid,
+  NumberInput,
+  Table,
+  Text,
+  Title,
+  SegmentedControl,
+} from '@mantine/core'
 import type { Sex } from '@powerlifting/types'
 
 export default function DotsCalculator() {
@@ -58,188 +69,182 @@ export default function DotsCalculator() {
   }, [result, sex])
 
   return (
-    <div className="space-y-6">
+    <Stack gap="xl">
       <div>
-        <h2 className="text-xl font-bold mb-4">DOTS Calculator</h2>
-        <p className="text-muted-foreground">
+        <Title order={2} mb="sm">DOTS Calculator</Title>
+        <Text c="dimmed">
           Calculate your DOTS score based on your lifts and bodyweight
-        </p>
+        </Text>
       </div>
 
       {/* Sex Toggle */}
-      <div className="flex gap-2">
-        {(['male', 'female'] as Sex[]).map((s) => (
-          <button
-            key={s}
-            onClick={() => useSettingsStore.getState().setSex(s)}
-            className={clsx(
-              'flex-1 px-4 py-2 rounded-md font-medium transition-colors',
-              sex === s
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-secondary-foreground hover:bg-accent'
-            )}
-          >
-            {s.charAt(0).toUpperCase() + s.slice(1)}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        fullWidth
+        data={[
+          { label: 'Male', value: 'male' },
+          { label: 'Female', value: 'female' },
+        ]}
+        value={sex}
+        onChange={(val) => useSettingsStore.getState().setSex(val as Sex)}
+      />
 
       {/* Input Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Body Weight ({unit})</label>
-          <input
-            type="number"
+      <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md">
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>Body Weight ({unit})</Text>
+          <NumberInput
             value={toDisplayUnit(bodyweightKg, unit) || ''}
-            onChange={(e) => setBodyweightKg(Number(e.target.value) / (unit === 'lb' ? 2.20462 : 1) || 0)}
-            className="w-full px-3 py-2 border border-border rounded-md bg-background"
+            onChange={(val) => setBodyweightKg(typeof val === 'number' ? val / (unit === 'lb' ? 2.20462 : 1) : 0)}
+            hideControls
           />
-        </div>
+        </Stack>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Squat ({unit})</label>
-          <input
-            type="number"
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>Squat ({unit})</Text>
+          <NumberInput
             value={toDisplayUnit(squatKg, unit) || ''}
-            onChange={(e) => setSquatKg(Number(e.target.value) / (unit === 'lb' ? 2.20462 : 1) || 0)}
-            className="w-full px-3 py-2 border border-border rounded-md bg-background"
+            onChange={(val) => setSquatKg(typeof val === 'number' ? val / (unit === 'lb' ? 2.20462 : 1) : 0)}
+            hideControls
           />
-        </div>
+        </Stack>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Bench ({unit})</label>
-          <input
-            type="number"
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>Bench ({unit})</Text>
+          <NumberInput
             value={toDisplayUnit(benchKg, unit) || ''}
-            onChange={(e) => setBenchKg(Number(e.target.value) / (unit === 'lb' ? 2.20462 : 1) || 0)}
-            className="w-full px-3 py-2 border border-border rounded-md bg-background"
+            onChange={(val) => setBenchKg(typeof val === 'number' ? val / (unit === 'lb' ? 2.20462 : 1) : 0)}
+            hideControls
           />
-        </div>
+        </Stack>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Deadlift ({unit})</label>
-          <input
-            type="number"
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>Deadlift ({unit})</Text>
+          <NumberInput
             value={toDisplayUnit(deadliftKg, unit) || ''}
-            onChange={(e) => setDeadliftKg(Number(e.target.value) / (unit === 'lb' ? 2.20462 : 1) || 0)}
-            className="w-full px-3 py-2 border border-border rounded-md bg-background"
+            onChange={(val) => setDeadliftKg(typeof val === 'number' ? val / (unit === 'lb' ? 2.20462 : 1) : 0)}
+            hideControls
           />
-        </div>
-      </div>
+        </Stack>
+      </SimpleGrid>
 
       {/* Result */}
       {result && (
-        <div className="bg-card border border-border rounded-lg p-6 space-y-6">
-          {/* Main Score */}
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground">DOTS Score</p>
-            <p className="text-5xl font-bold text-primary">{result.dots}</p>
-          </div>
+        <Paper withBorder p="lg" radius="md">
+          <Stack gap="xl">
+            {/* Main Score */}
+            <div style={{ textAlign: 'center' }}>
+              <Text size="sm" c="dimmed">DOTS Score</Text>
+              <Text fz={48} fw={700} c="blue">{result.dots}</Text>
+            </div>
 
-          {/* Stats Row */}
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <p className="text-sm text-muted-foreground">Total</p>
-              <p className="text-xl font-bold">{displayWeight(result.total_kg, unit)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Body Weight</p>
-              <p className="text-xl font-bold">{displayWeight(result.bodyweight_kg, unit)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Level</p>
-              <p className={clsx(
-                'text-xl font-bold',
-                level?.name === 'World-class' ? 'text-primary' :
-                level?.name === 'Elite' ? 'text-primary' :
-                level?.name === 'Advanced' ? 'text-primary' : ''
-              )}>
-                {level?.name || 'N/A'}
-              </p>
-            </div>
-          </div>
+            {/* Stats Row */}
+            <SimpleGrid cols={3} spacing="md" ta="center">
+              <div>
+                <Text size="sm" c="dimmed">Total</Text>
+                <Text fz="xl" fw={700}>{displayWeight(result.total_kg, unit)}</Text>
+              </div>
+              <div>
+                <Text size="sm" c="dimmed">Body Weight</Text>
+                <Text fz="xl" fw={700}>{displayWeight(result.bodyweight_kg, unit)}</Text>
+              </div>
+              <div>
+                <Text size="sm" c="dimmed">Level</Text>
+                <Text
+                  fz="xl"
+                  fw={700}
+                  c={
+                    level?.name === 'World-class' ? 'blue' :
+                    level?.name === 'Elite' ? 'blue' :
+                    level?.name === 'Advanced' ? 'blue' : undefined
+                  }
+                >
+                  {level?.name || 'N/A'}
+                </Text>
+              </div>
+            </SimpleGrid>
 
-          {/* Performance Context */}
-          {level && (
-            <p className="text-center text-sm text-muted-foreground">
-              {level.context}
-            </p>
-          )}
-        </div>
+            {/* Performance Context */}
+            {level && (
+              <Text size="sm" c="dimmed" ta="center">
+                {level.context}
+              </Text>
+            )}
+          </Stack>
+        </Paper>
       )}
 
       {/* Reverse Calculator */}
-      <div className="bg-card border border-border rounded-lg p-6 space-y-4">
-        <h3 className="font-medium">Target DOTS Calculator</h3>
-        <p className="text-sm text-muted-foreground">
-          What total do you need to hit a target DOTS score?
-        </p>
+      <Paper withBorder p="lg" radius="md">
+        <Stack gap="md">
+          <Text fw={500}>Target DOTS Calculator</Text>
+          <Text size="sm" c="dimmed">
+            What total do you need to hit a target DOTS score?
+          </Text>
 
-        <div className="flex gap-4 items-end">
-          <div className="flex-1">
-            <label className="text-sm font-medium">Target DOTS</label>
-            <input
-              type="number"
-              value={targetDots || ''}
-              onChange={(e) => setTargetDots(Number(e.target.value) || 0)}
-              className="w-full px-3 py-2 border border-border rounded-md bg-background"
-              step={5}
-            />
-          </div>
-          {totalNeeded && (
-            <div className="flex-1 text-center">
-              <p className="text-sm text-muted-foreground">Required Total</p>
-              <p className="text-2xl font-bold text-primary">
-                {displayWeight(totalNeeded, unit)}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
+          <Group align="flex-end" gap="md">
+            <Stack gap="xs" flex={1}>
+              <Text size="sm" fw={500}>Target DOTS</Text>
+              <NumberInput
+                value={targetDots || ''}
+                onChange={(val) => setTargetDots(typeof val === 'number' ? val : 0)}
+                step={5}
+                hideControls
+              />
+            </Stack>
+            {totalNeeded && (
+              <div flex={1} style={{ textAlign: 'center', flex: 1 }}>
+                <Text size="sm" c="dimmed">Required Total</Text>
+                <Text fz="h3" fw={700} c="blue">
+                  {displayWeight(totalNeeded, unit)}
+                </Text>
+              </div>
+            )}
+          </Group>
+        </Stack>
+      </Paper>
 
       {/* Weight Class Optimizer */}
       {weightClassScenarios && (
-        <div className="bg-card border border-border rounded-lg p-6 space-y-4">
-          <h3 className="font-medium">DOTS at Different Body Weights</h3>
-          <p className="text-sm text-muted-foreground">
-            See how your DOTS changes across weight classes
-          </p>
+        <Paper withBorder p="lg" radius="md">
+          <Stack gap="md">
+            <Text fw={500}>DOTS at Different Body Weights</Text>
+            <Text size="sm" c="dimmed">
+              See how your DOTS changes across weight classes
+            </Text>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-2">Body Weight</th>
-                  <th className="text-right py-2">DOTS</th>
-                  <th className="text-right py-2">vs Current</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Body Weight</Table.Th>
+                  <Table.Th ta="right">DOTS</Table.Th>
+                  <Table.Th ta="right">vs Current</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
                 {weightClassScenarios.map((scenario) => (
-                  <tr
+                  <Table.Tr
                     key={scenario.bodyweightKg}
-                    className={clsx(
-                      'border-b border-border',
-                      scenario.bodyweightKg === bodyweightKg && 'bg-primary/10'
-                    )}
+                    bg={scenario.bodyweightKg === bodyweightKg ? 'var(--mantine-color-blue-light)' : undefined}
                   >
-                    <td className="py-2">{scenario.bodyweightKg} kg</td>
-                    <td className="text-right py-2 font-medium">{scenario.dots}</td>
-                    <td className={clsx(
-                      'text-right py-2',
-                      scenario.dots > (result?.dots || 0) ? 'text-primary' :
-                      scenario.dots < (result?.dots || 0) ? 'text-destructive' : ''
-                    )}>
+                    <Table.Td>{scenario.bodyweightKg} kg</Table.Td>
+                    <Table.Td ta="right" fw={500}>{scenario.dots}</Table.Td>
+                    <Table.Td
+                      ta="right"
+                      c={
+                        scenario.dots > (result?.dots || 0) ? 'blue' :
+                        scenario.dots < (result?.dots || 0) ? 'red' : undefined
+                      }
+                    >
                       {scenario.dots > (result?.dots || 0) ? '+' : ''}
                       {(scenario.dots - (result?.dots || 0)).toFixed(1)}
-                    </td>
-                  </tr>
+                    </Table.Td>
+                  </Table.Tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </Table.Tbody>
+            </Table>
+          </Stack>
+        </Paper>
       )}
-    </div>
+    </Stack>
   )
 }

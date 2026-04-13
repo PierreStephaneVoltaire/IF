@@ -1,6 +1,15 @@
 import { useState } from 'react'
+import {
+  SimpleGrid,
+  Card,
+  ActionIcon,
+  LoadingOverlay,
+  Center,
+  Text,
+  Modal,
+  Box,
+} from '@mantine/core'
 import { Play, Trash2, X, Loader2, Film, AlertCircle } from 'lucide-react'
-import { clsx } from 'clsx'
 import { useUiStore } from '@/store/uiStore'
 import { useProgramStore } from '@/store/programStore'
 import * as api from '@/api/client'
@@ -25,12 +34,8 @@ export default function VideoGrid({ session }: VideoGridProps) {
     setDeletingId(video.video_id)
 
     try {
-      // Delete via backend API (handles S3 + DynamoDB)
       await api.removeSessionVideo(version, session.date, video.video_id)
-
-      // Update local store
       removeSessionVideo(session.date, video.video_id)
-
       pushToast({ message: 'Video deleted', type: 'success' })
     } catch (err) {
       console.error('Failed to delete video:', err)
@@ -46,108 +51,129 @@ export default function VideoGrid({ session }: VideoGridProps) {
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+      <SimpleGrid cols={{ base: 2, md: 3, lg: 4 }} spacing="sm">
         {videos.map((video) => (
-          <div
+          <Card
             key={video.video_id}
-            className="group relative bg-card border border-border rounded-lg overflow-hidden"
+            withBorder
+            shadow="sm"
+            padding={0}
+            style={{ overflow: 'hidden' }}
           >
             {/* Thumbnail / Play Button */}
-            <button
+            <Box
+              component="button"
               onClick={() => setPlayingVideo(video)}
-              className="relative w-full aspect-video bg-muted"
+              style={{
+                position: 'relative',
+                width: '100%',
+                aspectRatio: '16 / 9',
+                background: 'var(--mantine-color-gray-1)',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+              }}
             >
               {video.thumbnail_status === 'pending' ? (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />
-                </div>
+                <Center pos="absolute" inset={0}>
+                  <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
+                </Center>
               ) : video.thumbnail_status === 'failed' ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-destructive/10">
-                  <AlertCircle className="w-6 h-6 text-destructive" />
-                </div>
+                <Center
+                  pos="absolute"
+                  inset={0}
+                  bg="var(--mantine-color-red-0)"
+                >
+                  <AlertCircle size={24} color="var(--mantine-color-red-6)" />
+                </Center>
               ) : video.thumbnail_url ? (
-                <img
+                <Box
+                  component="img"
                   src={video.thumbnail_url}
                   alt={video.exercise_name || 'Video thumbnail'}
-                  className="w-full h-full object-cover"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Film className="w-6 h-6 text-muted-foreground" />
-                </div>
+                <Center pos="absolute" inset={0}>
+                  <Film size={24} color="var(--mantine-color-gray-6)" />
+                </Center>
               )}
 
               {/* Play Overlay */}
-              <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
-                <Play className="w-8 h-8 text-white" />
-              </div>
-            </button>
+              <Center
+                pos="absolute"
+                inset={0}
+                bg="rgba(0, 0, 0, 0.3)"
+                style={{ pointerEvents: 'none' }}
+              >
+                <Play size={32} color="white" />
+              </Center>
+            </Box>
 
             {/* Info */}
-            <div className="p-2">
-              <p className="text-sm font-medium truncate">
+            <Box p={8}>
+              <Text size="sm" fw={500} truncate>
                 {video.exercise_name || 'Video'}
-              </p>
-              <div className="flex items-center justify-between">
+              </Text>
+              <Box style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 {video.set_number && (
-                  <span className="text-xs text-muted-foreground">
+                  <Text size="xs" c="dimmed">
                     Set {video.set_number}
-                  </span>
+                  </Text>
                 )}
-                <button
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  size="sm"
                   onClick={(e) => {
                     e.stopPropagation()
                     handleDelete(video)
                   }}
+                  loading={deletingId === video.video_id}
                   disabled={deletingId === video.video_id}
-                  className={clsx(
-                    'p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity',
-                    'hover:bg-destructive/10 hover:text-destructive',
-                    deletingId === video.video_id && 'opacity-100'
-                  )}
                 >
-                  {deletingId === video.video_id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
+                  <Trash2 size={16} />
+                </ActionIcon>
+              </Box>
+            </Box>
+          </Card>
         ))}
-      </div>
+      </SimpleGrid>
 
       {/* Video Player Modal */}
-      {playingVideo && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="relative max-w-4xl w-full">
-            <button
-              onClick={() => setPlayingVideo(null)}
-              className="absolute -top-10 right-0 p-2 text-white hover:bg-white/20 rounded"
-            >
-              <X className="w-6 h-6" />
-            </button>
-
+      <Modal
+        opened={playingVideo !== null}
+        onClose={() => setPlayingVideo(null)}
+        size="xl"
+        withCloseButton
+        overlayProps={{ backgroundOpacity: 0.8, color: '#000' }}
+        styles={{
+          content: { background: 'transparent', boxShadow: 'none' },
+          body: { padding: 0 },
+        }}
+      >
+        {playingVideo && (
+          <Box>
             <VideoPlayer
               src={playingVideo.video_url}
               thumbnailUrl={playingVideo.thumbnail_url}
-              className="w-full"
             />
 
             {/* Video Info */}
-            <div className="mt-2 text-white">
-              <p className="font-medium">
+            <Box mt={8}>
+              <Text fw={500} c="white">
                 {playingVideo.exercise_name || 'Video'}
                 {playingVideo.set_number && ` - Set ${playingVideo.set_number}`}
-              </p>
+              </Text>
               {playingVideo.notes && (
-                <p className="text-sm text-white/70">{playingVideo.notes}</p>
+                <Text size="sm" c="rgba(255, 255, 255, 0.7)">
+                  {playingVideo.notes}
+                </Text>
               )}
-            </div>
-          </div>
-        </div>
-      )}
+            </Box>
+          </Box>
+        )}
+      </Modal>
     </>
   )
 }

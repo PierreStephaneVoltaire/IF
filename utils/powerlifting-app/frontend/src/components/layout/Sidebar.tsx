@@ -1,5 +1,13 @@
-import { useState, useRef, useEffect } from 'react'
-import { NavLink } from 'react-router-dom'
+import { useLocation, NavLink as RouterNavLink } from 'react-router-dom'
+import {
+  NavLink,
+  Menu,
+  Stack,
+  Group,
+  ScrollArea,
+  ActionIcon,
+  Text,
+} from '@mantine/core'
 import {
   LayoutDashboard,
   Calendar,
@@ -17,13 +25,18 @@ import {
   MoreHorizontal,
   ClipboardList,
 } from 'lucide-react'
-import { clsx } from 'clsx'
 
 interface SidebarProps {
   mobile?: boolean
 }
 
-const PRIMARY_NAV_ITEMS = [
+interface NavItem {
+  to: string
+  icon: React.ComponentType<{ size?: number }>
+  label: string
+}
+
+const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/designer', icon: ClipboardList, label: 'Designer' },
@@ -33,7 +46,7 @@ const PRIMARY_NAV_ITEMS = [
   { to: '/tools', icon: Wrench, label: 'Tools' },
 ]
 
-const SECONDARY_NAV_ITEMS = [
+const SECONDARY_NAV_ITEMS: NavItem[] = [
   { to: '/timeline', icon: GitBranch, label: 'Timeline' },
   { to: '/supplements', icon: Pill, label: 'Supplements' },
   { to: '/biometrics', icon: Utensils, label: 'Biometrics' },
@@ -43,7 +56,7 @@ const SECONDARY_NAV_ITEMS = [
   { to: '/videos', icon: Film, label: 'Videos' },
 ]
 
-const ALL_NAV_ITEMS = [
+const ALL_NAV_ITEMS: NavItem[] = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/designer', icon: ClipboardList, label: 'Designer' },
@@ -60,109 +73,127 @@ const ALL_NAV_ITEMS = [
   { to: '/videos', icon: Film, label: 'Videos' },
 ]
 
-function MoreMenu() {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+function DesktopSidebar() {
+  const location = useLocation()
 
   return (
-    <div ref={ref} className="relative flex flex-col items-center">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={clsx(
-          'flex flex-col items-center gap-1 min-h-[44px] px-2 py-1 rounded-md transition-colors',
-          open
-            ? 'bg-accent text-accent-foreground'
-            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-        )}
-      >
-        <MoreHorizontal className="w-5 h-5" />
-        <span className="text-[10px] leading-tight">More</span>
-      </button>
+    <ScrollArea h="100%" offsetScrollbars>
+      <Stack gap={4} p="md">
+        {ALL_NAV_ITEMS.map(({ to, icon: Icon, label }) => {
+          const isActive =
+            to === '/'
+              ? location.pathname === '/'
+              : location.pathname.startsWith(to)
 
-      {open && (
-        <div className="absolute bottom-full mb-2 right-0 bg-card border border-border rounded-lg shadow-lg py-1 z-[60] min-w-[140px]">
-          {SECONDARY_NAV_ITEMS.map(({ to, icon: Icon, label }) => (
+          return (
             <NavLink
               key={to}
+              component={RouterNavLink}
               to={to}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                clsx(
-                  'flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
-                  isActive
-                    ? 'text-primary bg-primary/10'
-                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
-                )
-              }
+              end={to === '/'}
+              label={label}
+              leftSection={<Icon size={20} />}
+              active={isActive}
+              variant="light"
+              color="blue"
+              style={{ borderRadius: 'var(--mantine-radius-md)' }}
+            />
+          )
+        })}
+      </Stack>
+    </ScrollArea>
+  )
+}
+
+function MobileMoreMenu() {
+  const location = useLocation()
+
+  return (
+    <Menu shadow="md" position="top-end" withArrow offset={8}>
+      <Menu.Target>
+        <ActionIcon
+          variant="subtle"
+          size="lg"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+            height: 'auto',
+            width: 'auto',
+            padding: '4px 8px',
+          }}
+        >
+          <MoreHorizontal size={20} />
+          <Text size={10} lh={1}>More</Text>
+        </ActionIcon>
+      </Menu.Target>
+
+      <Menu.Dropdown>
+        {SECONDARY_NAV_ITEMS.map(({ to, icon: Icon, label }) => {
+          const isActive =
+            to === '/'
+              ? location.pathname === '/'
+              : location.pathname.startsWith(to)
+
+          return (
+            <Menu.Item
+              key={to}
+              component={RouterNavLink}
+              to={to}
+              leftSection={<Icon size={16} />}
+              color={isActive ? 'blue' : undefined}
             >
-              <Icon className="w-4 h-4" />
               {label}
-            </NavLink>
-          ))}
-        </div>
-      )}
-    </div>
+            </Menu.Item>
+          )
+        })}
+      </Menu.Dropdown>
+    </Menu>
+  )
+}
+
+function MobileSidebar() {
+  const location = useLocation()
+
+  return (
+    <Group justify="space-around" wrap="nowrap" p="xs">
+      {PRIMARY_NAV_ITEMS.map(({ to, icon: Icon, label }) => {
+        const isActive =
+          to === '/'
+            ? location.pathname === '/'
+            : location.pathname.startsWith(to)
+
+        return (
+          <ActionIcon
+            key={to}
+            component={RouterNavLink}
+            to={to}
+            end={to === '/'}
+            variant={isActive ? 'filled' : 'subtle'}
+            color={isActive ? 'blue' : 'gray'}
+            size="lg"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+              height: 'auto',
+              width: 'auto',
+              padding: '4px 8px',
+              minHeight: 44,
+            }}
+          >
+            <Icon size={20} />
+            <Text size={10} lh={1}>{label}</Text>
+          </ActionIcon>
+        )
+      })}
+      <MobileMoreMenu />
+    </Group>
   )
 }
 
 export default function Sidebar({ mobile = false }: SidebarProps) {
-  if (mobile) {
-    return (
-      <nav className="flex gap-1 flex-row justify-around p-2">
-        {PRIMARY_NAV_ITEMS.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) =>
-              clsx(
-                'flex flex-col items-center gap-1 min-h-[44px] px-2 py-1 rounded-md transition-colors',
-                isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              )
-            }
-          >
-            <Icon className="w-5 h-5" />
-            <span className="text-[10px] leading-tight">{label}</span>
-          </NavLink>
-        ))}
-        <MoreMenu />
-      </nav>
-    )
-  }
-
-  return (
-    <nav className="flex gap-1 flex-col p-4">
-      {ALL_NAV_ITEMS.map(({ to, icon: Icon, label }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={to === '/'}
-          className={({ isActive }) =>
-            clsx(
-              'flex items-center gap-3 px-3 py-2 rounded-md transition-colors',
-              isActive
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-            )
-          }
-        >
-          <Icon className="w-5 h-5" />
-          <span className="text-sm">{label}</span>
-        </NavLink>
-      ))}
-    </nav>
-  )
+  return mobile ? <MobileSidebar /> : <DesktopSidebar />
 }

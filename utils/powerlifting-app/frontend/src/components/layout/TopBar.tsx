@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
+import { Menu, Button, Group } from '@mantine/core'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
@@ -8,23 +9,8 @@ export default function TopBar() {
   const { program, version, versions, isLoading, forkVersion, loadVersions, loadProgram } = useProgramStore()
   const { unit, toggleUnit } = useSettingsStore()
   const { openDrawer } = useUiStore()
-  const [showVersionMenu, setShowVersionMenu] = useState(false)
   const [forking, setForking] = useState(false)
-  const versionMenuRef = useRef<HTMLDivElement>(null)
 
-  // Close version menu on outside click
-  useEffect(() => {
-    if (!showVersionMenu) return
-    const handler = (e: MouseEvent) => {
-      if (versionMenuRef.current && !versionMenuRef.current.contains(e.target as Node)) {
-        setShowVersionMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showVersionMenu])
-
-  // Load versions on mount
   useEffect(() => {
     loadVersions()
   }, [loadVersions])
@@ -34,8 +20,7 @@ export default function TopBar() {
     setForking(true)
     try {
       await forkVersion()
-      await loadVersions() // Refresh the list
-      setShowVersionMenu(false)
+      await loadVersions()
     } catch (err) {
       console.error('Fork failed:', err)
     } finally {
@@ -44,87 +29,68 @@ export default function TopBar() {
   }
 
   const handleSelectVersion = async (newVersion: string) => {
-    if (newVersion === version) {
-      setShowVersionMenu(false)
-      return
-    }
+    if (newVersion === version) return
     await loadProgram(newVersion)
-    setShowVersionMenu(false)
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-card/80 backdrop-blur-sm">
-      <div className="flex items-center justify-between px-4 py-3">
-        {/* Left: Version selector */}
-        <div className="relative" ref={versionMenuRef}>
-          <button
-            onClick={() => setShowVersionMenu(!showVersionMenu)}
-            className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent transition-colors"
-            disabled={isLoading}
+    <Group justify="space-between" h="100%" px="md">
+      {/* Left: Version selector */}
+      <Menu shadow="md" width={220} position="bottom-start">
+        <Menu.Target>
+          <Button
+            variant="subtle"
+            rightSection={<ChevronDown size={16} />}
+            loading={isLoading}
           >
-            <span className="font-medium">
-              {program?.meta?.version_label || version}
-            </span>
-            <ChevronDown className="w-4 h-4" />
-          </button>
+            {program?.meta?.version_label || version}
+          </Button>
+        </Menu.Target>
 
-          {showVersionMenu && (
-            <div className="absolute top-full left-0 mt-1 w-56 bg-card border border-border rounded-md shadow-lg z-50 max-h-80 overflow-y-auto">
-              {/* Version list */}
-              <div className="p-1 border-b border-border">
-                {versions.map((v) => (
-                  <button
-                    key={v.version}
-                    onClick={() => handleSelectVersion(v.version)}
-                    className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm rounded hover:bg-accent ${
-                      v.version === 'current' ? 'font-semibold' : ''
-                    }`}
-                  >
-                    <span>{v.version_label || v.version}</span>
-                    {v.version === version && (
-                      <Check className="w-4 h-4 text-primary" />
-                    )}
-                  </button>
-                ))}
-                {versions.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">
-                    No versions found
-                  </div>
-                )}
-              </div>
+        <Menu.Dropdown>
+          {versions.map((v) => (
+            <Menu.Item
+              key={v.version}
+              onClick={() => handleSelectVersion(v.version)}
+              fw={v.version === 'current' ? 600 : 400}
+              rightSection={
+                v.version === version ? <Check size={16} /> : null
+              }
+            >
+              {v.version_label || v.version}
+            </Menu.Item>
+          ))}
 
-              {/* Fork button */}
-              <div className="p-1">
-                <button
-                  onClick={handleFork}
-                  disabled={forking}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm rounded hover:bg-accent"
-                >
-                  <Copy className="w-4 h-4" />
-                  {forking ? 'Forking...' : 'Fork this version'}
-                </button>
-              </div>
-            </div>
+          {versions.length === 0 && (
+            <Menu.Item disabled>No versions found</Menu.Item>
           )}
-        </div>
 
-        {/* Right: Unit toggle + Settings */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleUnit}
-            className="px-3 py-2 text-sm font-medium rounded-md hover:bg-accent transition-colors"
-          >
-            {unit.toUpperCase()}
-          </button>
+          <Menu.Divider />
 
-          <button
-            onClick={() => openDrawer('settings')}
-            className="p-2 rounded-md hover:bg-accent transition-colors"
+          <Menu.Item
+            onClick={handleFork}
+            disabled={forking}
+            leftSection={<Copy size={16} />}
           >
-            <Settings className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-    </header>
+            {forking ? 'Forking...' : 'Fork this version'}
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+
+      {/* Right: Unit toggle + Settings */}
+      <Group gap="xs">
+        <Button variant="subtle" size="sm" onClick={toggleUnit}>
+          {unit.toUpperCase()}
+        </Button>
+
+        <Button
+          variant="subtle"
+          size="sm"
+          onClick={() => openDrawer('settings')}
+        >
+          <Settings size={20} />
+        </Button>
+      </Group>
+    </Group>
   )
 }

@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts'
+import { Paper, Text } from '@mantine/core'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 
@@ -57,15 +58,15 @@ export default function IntensityChart({ block }: { block?: string }) {
 
   if (!program || data.length === 0) {
     return (
-      <div className="bg-card border border-border rounded-lg p-4 flex items-center justify-center min-h-0 flex-1">
-        <p className="text-muted-foreground text-sm">No completed sessions with weights logged.</p>
-      </div>
+      <Paper withBorder p="md" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0, flex: 1 }}>
+        <Text size="sm" c="dimmed">No completed sessions with weights logged.</Text>
+      </Paper>
     )
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="font-medium mb-2">Intensity (% of Target Max)</h3>
+    <Paper withBorder p="md">
+      <Text fw={500} mb="sm">Intensity (% of Target Max)</Text>
       <div>
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={data}>
@@ -104,6 +105,6 @@ export default function IntensityChart({ block }: { block?: string }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </Paper>
   )
 }

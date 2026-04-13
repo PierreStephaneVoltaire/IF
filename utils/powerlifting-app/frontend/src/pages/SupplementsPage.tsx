@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, X, Trash2, Edit2, Save, ChevronDown, ChevronUp } from 'lucide-react'
-import { clsx } from 'clsx'
+import { Plus, X, Trash2, Edit2, Save } from 'lucide-react'
+import {
+  Stack, Group, Text, Button, Paper, Badge, SimpleGrid,
+  TextInput, Textarea, Select, ActionIcon, Accordion, Table,
+} from '@mantine/core'
 import { useProgramStore } from '@/store/programStore'
 import { useUiStore } from '@/store/uiStore'
 import type { SupplementPhase, Supplement } from '@powerlifting/types'
@@ -12,7 +15,6 @@ export default function SupplementsPage() {
   const [hasChanges, setHasChanges] = useState(false)
   const [expandedPhase, setExpandedPhase] = useState<number | null>(null)
   const [editingPhase, setEditingPhase] = useState<number | null>(null)
-  const [editingItem, setEditingItem] = useState<{ phaseIndex: number; itemIndex: number } | null>(null)
   const [block, setBlock] = useState('current')
 
   const availableBlocks = useMemo(() => {
@@ -132,7 +134,6 @@ export default function SupplementsPage() {
 
   async function handleSave() {
     try {
-      // Sort phases by phase number
       const sortedPhases = [...phases].sort((a, b) => a.phase - b.phase)
       await updateSupplementPhases(sortedPhases)
       setHasChanges(false)
@@ -142,352 +143,283 @@ export default function SupplementsPage() {
     }
   }
 
+  const weekSelectData = [
+    { value: '', label: '\u2014' },
+    ...blockWeeks.map(w => ({ value: String(w), label: `W${w}` })),
+  ]
+
+  const sortedFilteredPhases = [...filteredPhases].sort((a, b) => a.phase - b.phase)
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Supplements</h1>
-          <p className="text-muted-foreground">
+    <Stack gap="md">
+      <Group justify="space-between">
+        <Stack gap={0}>
+          <Text fw={700} size="xl">Supplements</Text>
+          <Text c="dimmed" size="sm">
             Manage supplement phases and peak week protocols
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <select
+          </Text>
+        </Stack>
+        <Group gap="sm">
+          <Select
             value={block}
-            onChange={(e) => setBlock(e.target.value)}
-            className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
-          >
-            {availableBlocks.map((b) => (
-              <option key={b} value={b}>
-                {b === 'current' ? 'Current Block' : b}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setBlock(v ?? 'current')}
+            data={availableBlocks.map((b) => ({
+              value: b,
+              label: b === 'current' ? 'Current Block' : b,
+            }))}
+            size="sm"
+            w={160}
+          />
           {hasChanges && (
-            <button
+            <Button
+              leftSection={<Save size={16} />}
               onClick={handleSave}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium"
             >
-              <Save className="w-4 h-4" />
               Save
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="default"
+            leftSection={<Plus size={16} />}
             onClick={addPhase}
-            className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md font-medium"
           >
-            <Plus className="w-4 h-4" />
             Add Phase
-          </button>
-        </div>
-      </div>
+          </Button>
+        </Group>
+      </Group>
 
       {/* Phase Cards */}
-      <div className="space-y-4">
-        {filteredPhases
-          .sort((a, b) => a.phase - b.phase)
-          .map((phase, phaseIndex) => {
+      {sortedFilteredPhases.length > 0 ? (
+        <Accordion variant="separated">
+          {sortedFilteredPhases.map((phase) => {
             const originalIndex = phases.findIndex((p) => p.phase === phase.phase)
-            const isExpanded = expandedPhase === phase.phase
 
             return (
-              <div
-                key={phase.phase}
-                className="bg-card border border-border rounded-lg overflow-hidden"
-              >
-                {/* Phase Header */}
-                <button
-                  onClick={() => setExpandedPhase(isExpanded ? null : phase.phase)}
-                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-accent/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-muted-foreground">
+              <Accordion.Item key={phase.phase} value={`phase-${phase.phase}`}>
+                <Accordion.Control>
+                  <Group gap="sm" wrap="nowrap">
+                    <Text size="sm" c="dimmed" fw={500}>
                       Phase {phase.phase}
-                    </span>
+                    </Text>
                     {editingPhase === phase.phase ? (
-                      <input
-                        type="text"
+                      <TextInput
                         value={phase.phase_name}
-                        onChange={(e) => updatePhase(originalIndex, { phase_name: e.target.value })}
+                        onChange={(e) => updatePhase(originalIndex, { phase_name: e.currentTarget.value })}
                         onBlur={() => setEditingPhase(null)}
                         onKeyDown={(e) => e.key === 'Enter' && setEditingPhase(null)}
-                        className="px-2 py-1 border border-border rounded bg-background"
-                        autoFocus
+                        size="sm"
+                        w={200}
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <span
-                        className="font-medium"
+                      <Group
+                        gap={4}
                         onClick={(e) => {
                           e.stopPropagation()
                           setEditingPhase(phase.phase)
                         }}
+                        style={{ cursor: 'text' }}
                       >
-                        {phase.phase_name}
-                        <Edit2 className="w-3 h-3 ml-2 inline text-muted-foreground" />
-                      </span>
+                        <Text fw={500}>{phase.phase_name}</Text>
+                        <Edit2 size={12} style={{ color: 'var(--mantine-color-dimmed)' }} />
+                      </Group>
                     )}
-                    <span className="text-xs px-2 py-0.5 bg-secondary rounded">
+                    <Badge variant="light" size="sm">
                       {phase.items.length} items
-                    </span>
+                    </Badge>
                     {(phase.start_week != null || phase.end_week != null) && (
-                      <span className="text-xs px-2 py-0.5 bg-secondary rounded">
-                        W{phase.start_week ?? '?'}–W{phase.end_week ?? '?'}
-                      </span>
+                      <Badge variant="light" size="sm">
+                        {`W${phase.start_week ?? '?'}\u2013W${phase.end_week ?? '?'}`}
+                      </Badge>
                     )}
-                  </div>
-                  {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                  )}
-                </button>
+                  </Group>
+                </Accordion.Control>
 
-                {isExpanded && (
-                  <div className="px-4 pb-4 pt-2 border-t border-border space-y-4">
+                <Accordion.Panel>
+                  <Stack gap="md">
                     {/* Week Range */}
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm text-muted-foreground">Start Week</label>
-                        <select
-                          value={phase.start_week ?? ''}
-                          onChange={(e) => updatePhase(originalIndex, {
-                            start_week: e.target.value ? Number(e.target.value) : undefined
+                    <Group gap="md">
+                      <Group gap="sm">
+                        <Text size="sm" c="dimmed">Start Week</Text>
+                        <Select
+                          value={phase.start_week != null ? String(phase.start_week) : ''}
+                          onChange={(v) => updatePhase(originalIndex, {
+                            start_week: v ? Number(v) : undefined,
                           })}
-                          className="px-2 py-1 border border-border rounded bg-background text-sm"
-                        >
-                          <option value="">—</option>
-                          {blockWeeks.map(w => (
-                            <option key={w} value={w}>W{w}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <span className="text-muted-foreground">→</span>
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm text-muted-foreground">End Week</label>
-                        <select
-                          value={phase.end_week ?? ''}
-                          onChange={(e) => updatePhase(originalIndex, {
-                            end_week: e.target.value ? Number(e.target.value) : undefined
+                          data={weekSelectData}
+                          size="sm"
+                          w={100}
+                        />
+                      </Group>
+                      <Text c="dimmed">{'\u2192'}</Text>
+                      <Group gap="sm">
+                        <Text size="sm" c="dimmed">End Week</Text>
+                        <Select
+                          value={phase.end_week != null ? String(phase.end_week) : ''}
+                          onChange={(v) => updatePhase(originalIndex, {
+                            end_week: v ? Number(v) : undefined,
                           })}
-                          className="px-2 py-1 border border-border rounded bg-background text-sm"
-                        >
-                          <option value="">—</option>
-                          {blockWeeks.map(w => (
-                            <option key={w} value={w}>W{w}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
+                          data={weekSelectData}
+                          size="sm"
+                          w={100}
+                        />
+                      </Group>
+                    </Group>
 
                     {/* Phase Notes */}
-                    <div>
-                      <label className="text-sm text-muted-foreground">Phase Notes</label>
-                      <textarea
-                        value={phase.notes}
-                        onChange={(e) => updatePhase(originalIndex, { notes: e.target.value })}
-                        rows={Math.max(2, (phase.notes || '').split('\n').length)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background resize-none overflow-hidden"
-                        placeholder="Notes about this phase..."
-                        onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
-                        ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
-                      />
-                    </div>
+                    <Textarea
+                      label="Phase Notes"
+                      value={phase.notes}
+                      onChange={(e) => updatePhase(originalIndex, { notes: e.currentTarget.value })}
+                      minRows={2}
+                      autosize
+                      placeholder="Notes about this phase..."
+                    />
 
                     {/* Supplements Table */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm text-muted-foreground">Supplements</label>
-                        <button
+                    <Stack gap="xs">
+                      <Group justify="space-between">
+                        <Text size="sm" c="dimmed">Supplements</Text>
+                        <Button
+                          variant="default"
+                          size="xs"
+                          leftSection={<Plus size={12} />}
                           onClick={() => addItem(originalIndex)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs bg-secondary rounded hover:bg-secondary/80"
                         >
-                          <Plus className="w-3 h-3" />
                           Add Item
-                        </button>
-                      </div>
+                        </Button>
+                      </Group>
 
                       {phase.items.length > 0 ? (
-                        <div className="border border-border rounded-lg overflow-hidden">
-                          {/* Mobile: card per row */}
-                          <div className="sm:hidden divide-y divide-border">
+                        <Table striped highlightOnHover>
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th w="40%">Name</Table.Th>
+                              <Table.Th w="20%">Dose</Table.Th>
+                              <Table.Th>Notes</Table.Th>
+                              <Table.Th w={40} />
+                            </Table.Tr>
+                          </Table.Thead>
+                          <Table.Tbody>
                             {phase.items.map((item, itemIndex) => (
-                              <div key={itemIndex} className="p-3 space-y-2">
-                                <div className="flex gap-2">
-                                  <div className="flex-1">
-                                    <label className="text-xs text-muted-foreground">Name</label>
-                                    <input
-                                      type="text"
-                                      value={item.name}
-                                      onChange={(e) =>
-                                        updateItem(originalIndex, itemIndex, { name: e.target.value })
-                                      }
-                                      className="w-full px-2 py-2 border border-border rounded bg-background text-sm"
-                                    />
-                                  </div>
-                                  <div className="flex-1">
-                                    <label className="text-xs text-muted-foreground">Dose</label>
-                                    <input
-                                      type="text"
-                                      value={item.dose}
-                                      onChange={(e) =>
-                                        updateItem(originalIndex, itemIndex, { dose: e.target.value })
-                                      }
-                                      className="w-full px-2 py-2 border border-border rounded bg-background text-sm"
-                                    />
-                                  </div>
-                                  <div className="flex items-end pb-0.5">
-                                    <button
-                                      onClick={() => removeItem(originalIndex, itemIndex)}
-                                      className="p-2 text-muted-foreground hover:text-destructive"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                </div>
-                                <textarea
-                                  value={item.notes || ''}
-                                  onChange={(e) =>
-                                    updateItem(originalIndex, itemIndex, { notes: e.target.value })
-                                  }
-                                  className="w-full px-2 py-2 border border-border rounded bg-background resize-none overflow-hidden text-sm"
-                                  placeholder="Notes (optional)"
-                                  rows={Math.max(1, (item.notes || '').split('\n').length)}
-                                  onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
-                                  ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
-                                />
-                              </div>
+                              <Table.Tr key={itemIndex}>
+                                <Table.Td>
+                                  <TextInput
+                                    value={item.name}
+                                    onChange={(e) =>
+                                      updateItem(originalIndex, itemIndex, { name: e.currentTarget.value })
+                                    }
+                                    size="xs"
+                                  />
+                                </Table.Td>
+                                <Table.Td>
+                                  <TextInput
+                                    value={item.dose}
+                                    onChange={(e) =>
+                                      updateItem(originalIndex, itemIndex, { dose: e.currentTarget.value })
+                                    }
+                                    size="xs"
+                                  />
+                                </Table.Td>
+                                <Table.Td>
+                                  <Textarea
+                                    value={item.notes || ''}
+                                    onChange={(e) =>
+                                      updateItem(originalIndex, itemIndex, { notes: e.currentTarget.value })
+                                    }
+                                    placeholder="Optional"
+                                    minRows={1}
+                                    autosize
+                                    size="xs"
+                                  />
+                                </Table.Td>
+                                <Table.Td>
+                                  <ActionIcon
+                                    variant="subtle"
+                                    color="red"
+                                    size="sm"
+                                    onClick={() => removeItem(originalIndex, itemIndex)}
+                                  >
+                                    <Trash2 size={14} />
+                                  </ActionIcon>
+                                </Table.Td>
+                              </Table.Tr>
                             ))}
-                          </div>
-
-                          {/* Desktop: table */}
-                          <table className="hidden sm:table w-full text-sm">
-                            <thead>
-                              <tr className="bg-muted/50">
-                                <th className="text-left px-3 py-2 font-medium w-2/5">Name</th>
-                                <th className="text-left px-3 py-2 font-medium w-1/5">Dose</th>
-                                <th className="text-left px-3 py-2 font-medium">Notes</th>
-                                <th className="w-10"></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {phase.items.map((item, itemIndex) => (
-                                <tr key={itemIndex} className="border-t border-border">
-                                  <td className="px-3 py-2">
-                                    <input
-                                      type="text"
-                                      value={item.name}
-                                      onChange={(e) =>
-                                        updateItem(originalIndex, itemIndex, { name: e.target.value })
-                                      }
-                                      className="w-full px-2 py-1 border border-border rounded bg-background"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      type="text"
-                                      value={item.dose}
-                                      onChange={(e) =>
-                                        updateItem(originalIndex, itemIndex, { dose: e.target.value })
-                                      }
-                                      className="w-full px-2 py-1 border border-border rounded bg-background"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <textarea
-                                      value={item.notes || ''}
-                                      onChange={(e) =>
-                                        updateItem(originalIndex, itemIndex, { notes: e.target.value })
-                                      }
-                                      className="w-full px-2 py-1 border border-border rounded bg-background resize-none overflow-hidden"
-                                      placeholder="Optional"
-                                      rows={Math.max(2, (item.notes || '').split('\n').length)}
-                                      onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
-                                      ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <button
-                                      onClick={() => removeItem(originalIndex, itemIndex)}
-                                      className="p-1 text-muted-foreground hover:text-destructive"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                          </Table.Tbody>
+                        </Table>
                       ) : (
-                        <p className="text-sm text-muted-foreground py-4 text-center">
+                        <Text size="sm" c="dimmed" ta="center" py="md">
                           No supplements in this phase
-                        </p>
+                        </Text>
                       )}
-                    </div>
+                    </Stack>
 
                     {/* Peak Week Protocol */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm text-muted-foreground">Peak Week Protocol</label>
-                        <button
+                    <Stack gap="xs">
+                      <Group justify="space-between">
+                        <Text size="sm" c="dimmed">Peak Week Protocol</Text>
+                        <Button
+                          variant="default"
+                          size="xs"
+                          leftSection={<Plus size={12} />}
                           onClick={() => addProtocolKey(originalIndex)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs bg-secondary rounded hover:bg-secondary/80"
                         >
-                          <Plus className="w-3 h-3" />
                           Add Field
-                        </button>
-                      </div>
+                        </Button>
+                      </Group>
 
                       {phase.peak_week_protocol && Object.keys(phase.peak_week_protocol).length > 0 ? (
-                        <div className="space-y-2">
+                        <Stack gap="xs">
                           {Object.entries(phase.peak_week_protocol).map(([key, value]) => (
-                            <div key={key} className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground w-32">{key}:</span>
-                              <input
-                                type="text"
+                            <Group key={key} gap="sm">
+                              <Text size="sm" c="dimmed" w={130}>{key}:</Text>
+                              <TextInput
                                 value={value}
-                                onChange={(e) => updateProtocolKey(originalIndex, key, e.target.value)}
-                                className="flex-1 px-2 py-1 border border-border rounded bg-background"
+                                onChange={(e) => updateProtocolKey(originalIndex, key, e.currentTarget.value)}
+                                style={{ flex: 1 }}
+                                size="sm"
                               />
-                              <button
+                              <ActionIcon
+                                variant="subtle"
+                                color="red"
+                                size="sm"
                                 onClick={() => removeProtocolKey(originalIndex, key)}
-                                className="p-1 text-muted-foreground hover:text-destructive"
                               >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
+                                <X size={14} />
+                              </ActionIcon>
+                            </Group>
                           ))}
-                        </div>
+                        </Stack>
                       ) : (
-                        <p className="text-sm text-muted-foreground py-2">
+                        <Text size="sm" c="dimmed" py="xs">
                           No peak week protocol defined
-                        </p>
+                        </Text>
                       )}
-                    </div>
+                    </Stack>
 
                     {/* Delete Phase */}
-                    <div className="flex justify-end pt-2">
-                      <button
+                    <Group justify="flex-end" pt="sm">
+                      <Button
+                        variant="light"
+                        color="red"
+                        size="sm"
+                        leftSection={<Trash2 size={14} />}
                         onClick={() => removePhase(originalIndex)}
-                        className="flex items-center gap-1 px-3 py-1 text-sm bg-destructive/10 text-destructive rounded-md hover:bg-destructive/20"
                       >
-                        <Trash2 className="w-3 h-3" />
                         Delete Phase
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                      </Button>
+                    </Group>
+                  </Stack>
+                </Accordion.Panel>
+              </Accordion.Item>
             )
           })}
-      </div>
-
-      {filteredPhases.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          No supplement phases defined. Click "Add Phase" to get started.
-        </div>
+        </Accordion>
+      ) : (
+        <Group justify="center" py={48}>
+          <Text c="dimmed">No supplement phases defined. Click "Add Phase" to get started.</Text>
+        </Group>
       )}
-    </div>
+    </Stack>
   )
 }

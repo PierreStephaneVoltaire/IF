@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { Paper, Title, Text, Select, SimpleGrid, Stack, Group, Table } from '@mantine/core'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { allTimeMaxByExercise, maxByCategoryInWindow, categorizeExercise } from '@/utils/volume'
@@ -31,7 +32,7 @@ function big3PieData(maxes: Record<string, number>) {
 
 function Big3Pie({ maxes }: { maxes: Record<string, number> }) {
   const data = big3PieData(maxes)
-  if (data.length === 0) return <p className="text-muted-foreground text-sm">No data.</p>
+  if (data.length === 0) return <Text size="sm" c="dimmed">No data.</Text>
 
   return (
     <ResponsiveContainer width="100%" height={250}>
@@ -112,92 +113,88 @@ export default function MaxesPage() {
   }, [program, upcomingComps, block])
 
   if (!program) {
-    return <p className="text-muted-foreground">Loading...</p>
+    return <Text c="dimmed">Loading...</Text>
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <Stack gap="md">
+      <Group justify="space-between">
         <div>
-          <h1 className="text-2xl font-bold">Maxes</h1>
-          <p className="text-muted-foreground text-sm">
+          <Title order={2}>Maxes</Title>
+          <Text size="sm" c="dimmed">
             Heaviest weight per exercise and big 3 strength distribution
-          </p>
+          </Text>
         </div>
         {availableBlocks.length > 1 && (
-          <select
+          <Select
             value={block}
-            onChange={(e) => setBlock(e.target.value)}
-            className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
-          >
-            {availableBlocks.map((b) => (
-              <option key={b} value={b}>
-                {b === 'current' ? 'Current Block' : b}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setBlock(v ?? 'current')}
+            data={availableBlocks.map((b) => ({
+              value: b,
+              label: b === 'current' ? 'Current Block' : b,
+            }))}
+            w={180}
+          />
         )}
-      </div>
+      </Group>
 
       {/* All-Time Max Table */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-2">All-Time Maxes</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-1 px-2 font-medium text-muted-foreground">Exercise</th>
-                <th className="text-right py-1 px-2 font-medium text-muted-foreground">Max</th>
-              </tr>
-            </thead>
-            <tbody>
-              {maxTableRows.map(([, { kg, displayName }]) => (
-                <tr key={displayName} className="border-b border-border/50">
-                  <td className="py-1 px-2">{displayName}</td>
-                  <td className="text-right py-1 px-2 font-mono">{displayWeight(kg, unit)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <Paper withBorder p="md">
+        <Text fw={500} mb="xs">All-Time Maxes</Text>
+        <Table>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Exercise</Table.Th>
+              <Table.Th style={{ textAlign: 'right' }}>Max</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {maxTableRows.map(([, { kg, displayName }]) => (
+              <Table.Tr key={displayName}>
+                <Table.Td>{displayName}</Table.Td>
+                <Table.Td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{displayWeight(kg, unit)}</Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Paper>
 
       {/* Big 3 Pie — All Time */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <h3 className="font-medium mb-2">Big 3 Distribution (All Time)</h3>
+      <Paper withBorder p="md">
+        <Text fw={500} mb="xs">Big 3 Distribution (All Time)</Text>
         <Big3Pie maxes={allTimeBig3} />
-      </div>
+      </Paper>
 
       {/* Per-Competition Goal Pies */}
       {compWindows.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="font-medium">Competition Goals</h3>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Stack gap="md">
+          <Text fw={500}>Competition Goals</Text>
+          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
             {compWindows.map(({ comp, maxes, targets }) => (
-              <div key={comp.date} className="bg-card border border-border rounded-lg p-4">
-                <div className="mb-2">
-                  <p className="font-medium">{comp.name}</p>
-                  <p className="text-sm text-muted-foreground">
+              <Paper key={comp.date} withBorder p="md">
+                <Stack gap="xs" mb="xs">
+                  <Text fw={500}>{comp.name}</Text>
+                  <Text size="sm" c="dimmed">
                     {comp.date} &middot; {comp.federation} &middot; {comp.weight_class_kg}kg
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+                  </Text>
+                </Stack>
+                <SimpleGrid cols={2} spacing="md">
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Current Max</p>
+                    <Text size="xs" c="dimmed" mb={4}>Current Max</Text>
                     <Big3Pie maxes={maxes} />
                   </div>
                   {targets && (
                     <div>
-                      <p className="text-xs text-muted-foreground mb-1">Target</p>
+                      <Text size="xs" c="dimmed" mb={4}>Target</Text>
                       <Big3Pie maxes={targets} />
                     </div>
                   )}
-                </div>
-              </div>
+                </SimpleGrid>
+              </Paper>
             ))}
-          </div>
-        </div>
+          </SimpleGrid>
+        </Stack>
       )}
-    </div>
+    </Stack>
   )
 }

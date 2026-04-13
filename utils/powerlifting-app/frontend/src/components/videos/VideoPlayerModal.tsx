@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Modal, Group, Button, ActionIcon, Text, Box, Stack } from '@mantine/core'
 import { X, Trash2 } from 'lucide-react'
 import { useUiStore } from '@/store/uiStore'
 import { useProgramStore } from '@/store/programStore'
@@ -33,71 +34,73 @@ export default function VideoPlayerModal({ item, onClose, onDeleted }: VideoPlay
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100]"
-      onClick={onClose}
+    <Modal
+      opened={item !== null}
+      onClose={onClose}
+      size="xl"
+      withCloseButton
+      title={
+        <Box>
+          <Text fw={600}>{video.exercise_name}</Text>
+          <Text size="xs" c="dimmed">
+            {session_date} · {day} · W{week_number} · {phase_name}
+          </Text>
+        </Box>
+      }
+      styles={{
+        body: { padding: 0 },
+      }}
     >
-      <div
-        className="bg-card border border-border rounded-lg shadow-xl max-w-2xl w-full mx-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div>
-            <h3 className="font-semibold">{video.exercise_name}</h3>
-            <p className="text-xs text-muted-foreground">
-              {session_date} · {day} · W{week_number} · {phase_name}
-            </p>
-          </div>
-          <button onClick={onClose} className="p-1 hover:bg-accent rounded">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+      {/* Video */}
+      <Box bg="black">
+        <Box
+          component="video"
+          src={video.video_url}
+          controls
+          autoPlay
+          style={{ width: '100%', maxHeight: '70vh', display: 'block' }}
+        />
+      </Box>
 
-        {/* Video */}
-        <div className="bg-black">
-          <video
-            src={video.video_url}
-            controls
-            autoPlay
-            className="w-full max-h-[70vh]"
-          />
-        </div>
-
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-border space-y-2">
+      {/* Footer */}
+      <Box p={16}>
+        <Stack gap={8}>
           {video.notes && (
-            <p className="text-sm italic text-muted-foreground">{video.notes}</p>
+            <Text size="sm" fs="italic" c="dimmed">{video.notes}</Text>
           )}
-          <div className="flex justify-end">
+          <Group justify="flex-end">
             {showConfirm ? (
-              <div className="flex items-center gap-2">
-                <button
+              <Group gap={8}>
+                <Button
+                  variant="default"
+                  size="compact-sm"
                   onClick={() => setShowConfirm(false)}
-                  className="px-3 py-1.5 text-sm bg-secondary rounded-md"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  color="red"
+                  size="compact-sm"
+                  leftSection={<Trash2 size={14} />}
                   onClick={handleDelete}
-                  className="flex items-center gap-1 px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
                   Confirm Delete
-                </button>
-              </div>
+                </Button>
+              </Group>
             ) : (
-              <button
+              <Button
+                variant="subtle"
+                color="red"
+                size="compact-sm"
+                leftSection={<Trash2 size={14} />}
                 onClick={() => setShowConfirm(true)}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 rounded-md"
               >
-                <Trash2 className="w-3.5 h-3.5" />
                 Delete Video
-              </button>
+              </Button>
             )}
-          </div>
-        </div>
-      </div>
-    </div>
+          </Group>
+        </Stack>
+      </Box>
+    </Modal>
   )
 }

@@ -6,8 +6,27 @@ import { groupSessionsByWeek, formatDateShort, getDayOfWeek } from '@/utils/date
 import { displayWeight } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
 import SessionDrawer from '@/components/sessions/SessionDrawer'
-import { Check, ChevronDown, ChevronRight, Dumbbell, Plus, Trash2 } from 'lucide-react'
+import { Check, Dumbbell, Plus, Trash2 } from 'lucide-react'
+import {
+  Paper, Title, Text, Group, Stack, Button, ActionIcon, Badge,
+  Select, Modal, Loader, Center, Box, Accordion,
+} from '@mantine/core'
+import { DatePickerInput } from '@mantine/dates'
 import type { Session } from '@powerlifting/types'
+
+function parseDateString(ds: string): Date | null {
+  if (!ds) return null
+  const parts = ds.split('-')
+  if (parts.length !== 3) return null
+  return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+}
+
+function toDateString(d: Date): string {
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
 
 export default function ListPage() {
   const { program, isLoading, createSession, deleteSession } = useProgramStore()
@@ -74,9 +93,9 @@ export default function ListPage() {
 
   if (isLoading || !program) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
-      </div>
+      <Center mih="50vh">
+        <Loader />
+      </Center>
     )
   }
 
@@ -100,186 +119,268 @@ export default function ListPage() {
   }
 
   return (
-    <div className="space-y-4 relative">
+    <Stack gap="md" style={{ position: 'relative' }}>
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-background py-2 -mx-1 px-1 border-b border-border/50 sm:border-b-0">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <h1 className="text-2xl font-bold">Sessions by Week</h1>
-          <div className="flex items-center gap-2">
+      <Box
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          borderBottom: '1px solid var(--mantine-color-default-border)',
+          paddingBottom: 8,
+          marginBottom: 0,
+        }}
+      >
+        <Group justify="space-between" wrap="nowrap">
+          <Title order={2}>Sessions by Week</Title>
+          <Group gap="xs" wrap="nowrap">
             {availableBlocks.length > 1 && (
-              <select
+              <Select
                 value={block}
-                onChange={(e) => setBlock(e.target.value)}
-                className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
-              >
-                {availableBlocks.map((b) => (
-                  <option key={b} value={b}>
-                    {b === 'current' ? 'Current Block' : b}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setBlock(v || 'current')}
+                data={availableBlocks.map((b) => ({
+                  value: b,
+                  label: b === 'current' ? 'Current Block' : b,
+                }))}
+                size="sm"
+                style={{ width: 160 }}
+              />
             )}
-            <button
+            <Button
+              size="sm"
+              leftSection={<Plus size={16} />}
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm"
+              visibleFrom="sm"
             >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Add Session</span>
-            </button>
-          </div>
-        </div>
-      </div>
+              Add Session
+            </Button>
+          </Group>
+        </Group>
+      </Box>
 
       {/* Floating action button (mobile only) */}
-      <button
+      <ActionIcon
+        size="xl"
+        radius="xl"
+        variant="filled"
+        hiddenFrom="sm"
         onClick={() => setShowAddModal(true)}
-        className="fixed bottom-6 right-6 z-40 sm:hidden flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 hover:bg-primary/90 active:scale-95 transition-all"
         aria-label="Add Session"
+        style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 40,
+          width: 56,
+          height: 56,
+        }}
       >
-        <Plus className="w-6 h-6" />
-      </button>
+        <Plus size={24} />
+      </ActionIcon>
 
       {/* Add Session Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-lg font-bold mb-4">Add New Session</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm text-muted-foreground">Date</label>
-                <input
-                  type="date"
-                  value={newDate}
-                  onChange={(e) => setNewDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-border rounded bg-background mt-1"
-                />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => {
-                    setShowAddModal(false)
-                    setNewDate('')
-                  }}
-                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddSession}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-                >
-                  Create Session
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        opened={showAddModal}
+        onClose={() => {
+          setShowAddModal(false)
+          setNewDate('')
+        }}
+        title="Add New Session"
+        centered
+      >
+        <Stack gap="md">
+          <Box>
+            <Text size="sm" c="dimmed" mb={4}>Date</Text>
+            <DatePickerInput
+              value={newDate ? parseDateString(newDate) : null}
+              valueFormat="YYYY-MM-DD"
+              onChange={(d) => {
+                if (d) setNewDate(toDateString(d))
+                else setNewDate('')
+              }}
+            />
+          </Box>
+          <Group justify="flex-end" gap="xs">
+            <Button
+              variant="default"
+              onClick={() => {
+                setShowAddModal(false)
+                setNewDate('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleAddSession}>
+              Create Session
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
-      <div className="space-y-2">
+      <Stack gap="xs">
         {Array.from(sessionsByWeek.entries()).map(([week, sessions]) => {
           const firstSession = sessions[0]
           const phase = firstSession?.phase
           const isExpanded = expandedWeeks.has(week)
+          const completedCount = sessions.filter((s) => s.completed).length
+          const phaseColorValue = phase ? phaseColor(phase, program.phases) : undefined
 
           return (
-            <div key={week} className="border border-border rounded-lg overflow-hidden">
+            <Paper key={week} withBorder>
               {/* Week Header */}
-              <button
+              <Box
+                component="button"
                 onClick={() => toggleWeek(week)}
-                className="w-full flex items-center gap-3 p-4 bg-card hover:bg-accent transition-colors"
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: 16,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
               >
-                {isExpanded ? (
-                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                )}
+                <Text
+                  fw={500}
+                  style={{
+                    transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                    transition: 'transform 150ms ease',
+                    lineHeight: 1,
+                  }}
+                >
+                  &#9662;
+                </Text>
 
                 {phase && (
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: phaseColor(phase, program.phases) }}
+                  <Box
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      backgroundColor: phaseColorValue,
+                      flexShrink: 0,
+                    }}
                   />
                 )}
 
-                <span className="font-medium">Week {week}</span>
-                <span className="text-sm text-muted-foreground">
+                <Text fw={500}>Week {week}</Text>
+                <Text size="sm" c="dimmed">
                   {phase?.name}
-                </span>
+                </Text>
 
-                <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>
-                    {sessions.filter((s) => s.completed).length}/{sessions.length} completed
-                  </span>
-                </div>
-              </button>
+                <Box style={{ marginLeft: 'auto' }}>
+                  <Text size="sm" c="dimmed">
+                    {completedCount}/{sessions.length} completed
+                  </Text>
+                </Box>
+              </Box>
 
               {/* Session List */}
               {isExpanded && (
-                <div className="border-t border-border">
+                <Box
+                  style={{
+                    borderTop: '1px solid var(--mantine-color-default-border)',
+                  }}
+                >
                   {sessions.map((session, arrayIdx) => {
                     const previewExercises = session.exercises.length > 0 ? session.exercises : session.planned_exercises || []
                     const isPlanned = session.exercises.length === 0 && (session.planned_exercises?.length ?? 0) > 0
                     return (
-                    <button
+                    <Box
                       key={`${session.date}-${arrayIdx}`}
+                      component="button"
                       onClick={() => handleSessionClick(session.date, program.sessions.indexOf(session))}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-accent/50 transition-colors border-b border-border last:border-b-0"
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: 12,
+                        background: 'none',
+                        border: 'none',
+                        borderBottom: '1px solid var(--mantine-color-default-border)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                      sx={(theme) => ({
+                        '&:hover': {
+                          backgroundColor: theme.colorScheme === 'dark'
+                            ? 'rgba(255,255,255,0.03)'
+                            : 'rgba(0,0,0,0.03)',
+                        },
+                        '&:last-child': {
+                          borderBottom: 'none',
+                        },
+                      })}
                     >
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-secondary">
+                      <Box
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: 'var(--mantine-color-default)',
+                          flexShrink: 0,
+                        }}
+                      >
                         {session.completed ? (
-                          <Check className="w-4 h-4 text-primary" />
+                          <Check size={16} style={{ color: 'var(--mantine-color-primary-filled)' }} />
                         ) : (
-                          <Dumbbell className="w-4 h-4 text-muted-foreground" />
+                          <Dumbbell size={16} style={{ opacity: 0.6 }} />
                         )}
-                      </div>
+                      </Box>
 
-                      <div className="flex-1 text-left">
-                        <div className="font-medium">{session.day}</div>
-                        <div className="text-sm text-muted-foreground">
+                      <Box style={{ flex: 1 }}>
+                        <Text fw={500}>{session.day}</Text>
+                        <Text size="sm" c="dimmed">
                           {formatDateShort(session.date)}
-                        </div>
-                      </div>
+                        </Text>
+                      </Box>
 
-                      <div className="flex-1 text-right">
-                        <div className="text-sm">
+                      <Box style={{ flex: 1, textAlign: 'right' }}>
+                        <Text size="sm">
                           {session.exercises.length > 0
                             ? `${session.exercises.length} exercise${session.exercises.length !== 1 ? 's' : ''}`
                             : isPlanned
                               ? `${session.planned_exercises!.length} planned`
                               : 'No exercises'}
-                        </div>
+                        </Text>
                         {session.session_rpe !== null && (
-                          <div className="text-xs text-muted-foreground">
+                          <Text size="xs" c="dimmed">
                             RPE {session.session_rpe}
-                          </div>
+                          </Text>
                         )}
-                      </div>
+                      </Box>
 
                       {/* Quick exercise preview */}
-                      <div className="hidden lg:block flex-1 text-right text-sm text-muted-foreground">
+                      <Box style={{ flex: 1, textAlign: 'right' }} visibleFrom="lg">
                         {previewExercises.slice(0, 3).map((ex, idx) => (
-                          <span key={idx}>
+                          <Text key={idx} size="sm" c="dimmed" component="span">
                             {ex.name}
                             {ex.kg !== null && ` @ ${displayWeight(ex.kg, unit)}`}
                             {idx < Math.min(previewExercises.length, 3) - 1 && ', '}
-                          </span>
+                          </Text>
                         ))}
                         {previewExercises.length > 3 && (
-                          <span className="text-muted-foreground">
+                          <Text size="sm" c="dimmed" component="span">
                             {' '}+{previewExercises.length - 3} more
-                          </span>
+                          </Text>
                         )}
-                      </div>
-                    </button>
+                      </Box>
+                    </Box>
                     )
                   })}
-                </div>
+                </Box>
               )}
-            </div>
+            </Paper>
           )
         })}
-      </div>
+      </Stack>
 
       {/* Session Drawer */}
       <SessionDrawer
@@ -289,6 +390,6 @@ export default function ListPage() {
         sessionIndex={selectedSessionIndex}
         sessionArrayIndex={drawerArrayIndex ?? 0}
       />
-    </div>
+    </Stack>
   )
 }

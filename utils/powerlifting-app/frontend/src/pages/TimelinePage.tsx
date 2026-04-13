@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Paper, Title, Group, Badge, Text, Stack, Loader, Center } from '@mantine/core'
 import { useProgramStore } from '@/store/programStore'
 import { parseISO, differenceInDays, format } from 'date-fns'
 import { phaseColor } from '@/utils/phases'
@@ -35,38 +36,37 @@ export default function TimelinePage() {
 
   if (isLoading || !program || !timelineData) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
-      </div>
+      <Center mih="50vh">
+        <Loader />
+      </Center>
     )
   }
 
   const width = Math.max(800, timelineData.totalDays * 3)
 
   return (
-    <div className="flex flex-col h-[calc(100vh-180px)] md:h-[calc(100vh-140px)]">
-      <div className="flex items-center justify-between mb-2 shrink-0">
-        <h1 className="text-2xl font-bold">Program Timeline</h1>
+    <Stack gap="xs" style={{ height: 'calc(100vh - 180px)' }}>
+      <Group justify="space-between" wrap="wrap">
+        <Title order={2}>Program Timeline</Title>
 
         {/* Phase Legend */}
-        <div className="flex flex-wrap gap-3">
+        <Group gap="sm" wrap="wrap">
           {program.phases.map((phase, idx) => (
-            <div key={idx} className="flex items-center gap-1">
-              <div
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: phaseColor(phase, program.phases) }}
-              />
-              <span className="text-xs">
-                {phase.name} (W{phase.start_week}-W{phase.end_week})
-              </span>
-            </div>
+            <Badge
+              key={idx}
+              variant="dot"
+              color={phaseColor(phase, program.phases)}
+              size="sm"
+            >
+              {phase.name} (W{phase.start_week}-W{phase.end_week})
+            </Badge>
           ))}
-        </div>
-      </div>
+        </Group>
+      </Group>
 
       {/* Timeline SVG */}
-      <div className="flex-1 overflow-auto border border-border rounded-lg min-h-0">
-        <svg viewBox={`0 0 ${width} 300`} preserveAspectRatio="xMidYMid meet" className="bg-card w-full h-full" style={{ minHeight: '180px' }}>
+      <Paper withBorder style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        <svg viewBox={`0 0 ${width} 300`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%', minHeight: '180px' }}>
           {/* Phase bands */}
           {timelineData.phases.map((phase, idx) => {
             const x1 = (phase.startOffset / timelineData.totalDays) * width
@@ -159,12 +159,12 @@ export default function TimelinePage() {
             )
           })}
         </svg>
-      </div>
+      </Paper>
 
       {/* Info */}
-      <div className="text-xs text-muted-foreground shrink-0 mt-1">
+      <Text size="xs" c="dimmed">
         {format(timelineData.startDate, 'MMM d, yyyy')} → {format(timelineData.compDate, 'MMM d, yyyy')} ({timelineData.totalDays} days, {Math.ceil(timelineData.totalDays / 7)} weeks)
-      </div>
-    </div>
+      </Text>
+    </Stack>
   )
 }

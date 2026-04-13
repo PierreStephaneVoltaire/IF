@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
+import { Paper, ActionIcon, Center, Box } from '@mantine/core'
 import { Play, Pause, Maximize, Loader2 } from 'lucide-react'
-import { clsx } from 'clsx'
 
 interface VideoPlayerProps {
   src: string
@@ -69,25 +69,38 @@ export default function VideoPlayer({
   }
 
   return (
-    <div
-      className={clsx('relative group bg-black rounded-lg overflow-hidden', className)}
+    <Paper
+      bg="black"
+      radius="md"
+      style={{ position: 'relative', overflow: 'hidden' }}
+      className={className}
       onMouseEnter={() => setShowControls(true)}
       onMouseLeave={() => setShowControls(true)}
     >
       {/* Loading Overlay */}
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-          <Loader2 className="w-8 h-8 text-white animate-spin" />
-        </div>
+        <Center
+          pos="absolute"
+          inset={0}
+          bg="rgba(0, 0, 0, 0.5)"
+          style={{ zIndex: 10 }}
+        >
+          <Loader2
+            size={32}
+            color="white"
+            style={{ animation: 'spin 1s linear infinite' }}
+          />
+        </Center>
       )}
 
       {/* Video Element */}
-      <video
+      <Box
+        component="video"
         ref={videoRef}
         src={src}
         poster={thumbnailUrl}
         playsInline
-        className="w-full aspect-video"
+        style={{ width: '100%', aspectRatio: '16 / 9', display: 'block' }}
         onLoadedData={handleLoadedData}
         onWaiting={handleWaiting}
         onCanPlay={handleCanPlay}
@@ -97,44 +110,67 @@ export default function VideoPlayer({
       />
 
       {/* Controls Overlay */}
-      <div
-        className={clsx(
-          'absolute bottom-0 left-0 right-0 p-3',
-          'bg-gradient-to-t from-black/80 to-transparent',
-          'transition-opacity duration-200',
-          showControls ? 'opacity-100' : 'opacity-0'
-        )}
+      <Box
+        pos="absolute"
+        bottom={0}
+        left={0}
+        right={0}
+        p={12}
+        style={{
+          background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
+          transition: 'opacity 200ms',
+          opacity: showControls ? 1 : 0,
+        }}
       >
-        <div className="flex items-center justify-between gap-3">
+        <Box style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           {/* Play/Pause */}
-          <button
+          <ActionIcon
+            variant="default"
+            size="lg"
+            radius="xl"
             onClick={togglePlay}
-            className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
+            style={{ background: 'rgba(255,255,255,0.2)', border: 'none' }}
           >
             {isPlaying ? (
-              <Pause className="w-5 h-5 text-white" />
+              <Pause size={20} color="white" />
             ) : (
-              <Play className="w-5 h-5 text-white" />
+              <Play size={20} color="white" />
             )}
-          </button>
+          </ActionIcon>
 
           {/* Playback Speed */}
-          <button
+          <ActionIcon
+            variant="default"
+            size="lg"
+            radius="md"
             onClick={handleSpeedChange}
-            className="px-2 py-1 bg-white/20 rounded text-white text-sm font-mono hover:bg-white/30 transition-colors"
+            style={{ background: 'rgba(255,255,255,0.2)', border: 'none' }}
           >
-            {playbackSpeed}x
-          </button>
+            <Box
+              component="span"
+              style={{
+                color: 'white',
+                fontSize: 12,
+                fontFamily: 'monospace',
+                fontWeight: 700,
+              }}
+            >
+              {playbackSpeed}x
+            </Box>
+          </ActionIcon>
 
           {/* Fullscreen */}
-          <button
+          <ActionIcon
+            variant="default"
+            size="lg"
+            radius="xl"
             onClick={handleFullscreen}
-            className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
+            style={{ background: 'rgba(255,255,255,0.2)', border: 'none' }}
           >
-            <Maximize className="w-5 h-5 text-white" />
-          </button>
-        </div>
-      </div>
-    </div>
+            <Maximize size={20} color="white" />
+          </ActionIcon>
+        </Box>
+      </Box>
+    </Paper>
   )
 }

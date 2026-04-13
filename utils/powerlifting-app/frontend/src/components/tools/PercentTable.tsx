@@ -2,7 +2,17 @@ import { useMemo, useState } from 'react'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { displayWeight, toDisplayUnit, roundToNearest } from '@/utils/units'
-import { clsx } from 'clsx'
+import {
+  Paper,
+  Button,
+  Group,
+  Stack,
+  SimpleGrid,
+  NumberInput,
+  Table,
+  Text,
+  Title,
+} from '@mantine/core'
 import { Edit3, Check } from 'lucide-react'
 
 interface PercentRow {
@@ -60,135 +70,133 @@ export default function PercentTable() {
   const highlightPcts = [65, 70, 75, 80, 85, 90, 95, 100]
 
   return (
-    <div className="space-y-6">
+    <Stack gap="xl">
       <div>
-        <h2 className="text-xl font-bold mb-2">% of Max Table</h2>
-        <p className="text-muted-foreground">
+        <Title order={2} mb="xs">% of Max Table</Title>
+        <Text c="dimmed">
           Calculate weights at different percentages of your maxes
-        </p>
+        </Text>
       </div>
 
       {/* Max Inputs */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-medium">Current Maxes ({unit})</h3>
-          <button
+      <Paper withBorder p="md" radius="md">
+        <Group justify="space-between" align="center" mb="md">
+          <Text fw={500}>Current Maxes ({unit})</Text>
+          <Button
+            size="xs"
+            variant={isEditing ? 'filled' : 'default'}
             onClick={() => setIsEditing(!isEditing)}
-            className={clsx(
-              'px-3 py-1 rounded-md text-sm font-medium transition-colors',
-              isEditing
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary text-secondary-foreground hover:bg-accent'
-            )}
+            leftSection={isEditing ? <Check size={14} /> : <Edit3 size={14} />}
           >
-            {isEditing ? <Check className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
-            {isEditing ? ' Done' : ' Edit'}
-          </button>
-        </div>
+            {isEditing ? 'Done' : 'Edit'}
+          </Button>
+        </Group>
 
-        <div className="grid grid-cols-3 gap-4">
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Squat</label>
+        <SimpleGrid cols={3} spacing="md">
+          <Stack gap={4}>
+            <Text size="xs" c="dimmed">Squat</Text>
             {isEditing ? (
-              <input
-                type="number"
+              <NumberInput
                 value={toDisplayUnit(editValues.squat, unit) || ''}
-                onChange={(e) => setEditValues((v) => ({
+                onChange={(val) => setEditValues((v) => ({
                   ...v,
-                  squat: Number(e.target.value) / (unit === 'lb' ? 2.20462 : 1) || 0
+                  squat: typeof val === 'number' ? val / (unit === 'lb' ? 2.20462 : 1) : 0
                 }))}
-                className="w-full px-2 py-1 border border-border rounded bg-background text-lg font-bold"
                 step={unit === 'kg' ? 2.5 : 5}
+                size="md"
+                fw={700}
+                hideControls
               />
             ) : (
-              <p className="text-lg font-bold">{displayWeight(maxes.squat, unit)}</p>
+              <Text fz="lg" fw={700}>{displayWeight(maxes.squat, unit)}</Text>
             )}
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Bench</label>
+          </Stack>
+          <Stack gap={4}>
+            <Text size="xs" c="dimmed">Bench</Text>
             {isEditing ? (
-              <input
-                type="number"
+              <NumberInput
                 value={toDisplayUnit(editValues.bench, unit) || ''}
-                onChange={(e) => setEditValues((v) => ({
+                onChange={(val) => setEditValues((v) => ({
                   ...v,
-                  bench: Number(e.target.value) / (unit === 'lb' ? 2.20462 : 1) || 0
+                  bench: typeof val === 'number' ? val / (unit === 'lb' ? 2.20462 : 1) : 0
                 }))}
-                className="w-full px-2 py-1 border border-border rounded bg-background text-lg font-bold"
                 step={unit === 'kg' ? 2.5 : 5}
+                size="md"
+                fw={700}
+                hideControls
               />
             ) : (
-              <p className="text-lg font-bold">{displayWeight(maxes.bench, unit)}</p>
+              <Text fz="lg" fw={700}>{displayWeight(maxes.bench, unit)}</Text>
             )}
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Deadlift</label>
+          </Stack>
+          <Stack gap={4}>
+            <Text size="xs" c="dimmed">Deadlift</Text>
             {isEditing ? (
-              <input
-                type="number"
+              <NumberInput
                 value={toDisplayUnit(editValues.deadlift, unit) || ''}
-                onChange={(e) => setEditValues((v) => ({
+                onChange={(val) => setEditValues((v) => ({
                   ...v,
-                  deadlift: Number(e.target.value) / (unit === 'lb' ? 2.20462 : 1) || 0
+                  deadlift: typeof val === 'number' ? val / (unit === 'lb' ? 2.20462 : 1) : 0
                 }))}
-                className="w-full px-2 py-1 border border-border rounded bg-background text-lg font-bold"
                 step={unit === 'kg' ? 2.5 : 5}
+                size="md"
+                fw={700}
+                hideControls
               />
             ) : (
-              <p className="text-lg font-bold">{displayWeight(maxes.deadlift, unit)}</p>
+              <Text fz="lg" fw={700}>{displayWeight(maxes.deadlift, unit)}</Text>
             )}
-          </div>
-        </div>
+          </Stack>
+        </SimpleGrid>
 
         {isEditing && (
-          <p className="text-xs text-muted-foreground mt-2">
+          <Text size="xs" c="dimmed" mt="sm">
             Editing changes the table below. Save to program to persist.
-          </p>
+          </Text>
         )}
-      </div>
+      </Paper>
 
       {/* Percent Table */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-secondary">
-                <th className="px-3 py-2 text-left font-medium">%</th>
-                <th className="px-3 py-2 text-right font-medium">Squat</th>
-                <th className="px-3 py-2 text-right font-medium">Bench</th>
-                <th className="px-3 py-2 text-right font-medium">Deadlift</th>
-                <th className="px-3 py-2 text-right font-medium">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {table.map((row) => (
-                <tr
-                  key={row.pct}
-                  className={clsx(
-                    'border-t border-border',
-                    highlightPcts.includes(row.pct) && 'bg-primary/5',
-                    row.pct === 100 && 'font-bold bg-primary/10'
-                  )}
+      <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
+        <Table>
+          <Table.Thead>
+            <Table.Tr bg="var(--mantine-color-default)">
+              <Table.Th>%</Table.Th>
+              <Table.Th ta="right">Squat</Table.Th>
+              <Table.Th ta="right">Bench</Table.Th>
+              <Table.Th ta="right">Deadlift</Table.Th>
+              <Table.Th ta="right">Total</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {table.map((row) => (
+              <Table.Tr
+                key={row.pct}
+                bg={
+                  row.pct === 100 ? 'var(--mantine-color-blue-light)' :
+                  highlightPcts.includes(row.pct) ? 'var(--mantine-color-blue-light-hover)' :
+                  undefined
+                }
+                fw={row.pct === 100 ? 700 : undefined}
+              >
+                <Table.Td
+                  fw={highlightPcts.includes(row.pct) ? 500 : undefined}
+                  c={highlightPcts.includes(row.pct) ? 'blue' : undefined}
                 >
-                  <td className={clsx(
-                    'px-3 py-1.5',
-                    highlightPcts.includes(row.pct) && 'font-medium text-primary'
-                  )}>
-                    {row.pct}%
-                  </td>
-                  <td className="px-3 py-1.5 text-right">{displayWeight(row.squat, unit)}</td>
-                  <td className="px-3 py-1.5 text-right">{displayWeight(row.bench, unit)}</td>
-                  <td className="px-3 py-1.5 text-right">{displayWeight(row.deadlift, unit)}</td>
-                  <td className="px-3 py-1.5 text-right font-medium">{displayWeight(row.total, unit)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                  {row.pct}%
+                </Table.Td>
+                <Table.Td ta="right">{displayWeight(row.squat, unit)}</Table.Td>
+                <Table.Td ta="right">{displayWeight(row.bench, unit)}</Table.Td>
+                <Table.Td ta="right">{displayWeight(row.deadlift, unit)}</Table.Td>
+                <Table.Td ta="right" fw={500}>{displayWeight(row.total, unit)}</Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Paper>
 
       {/* Quick Reference */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <SimpleGrid cols={{ base: 2, md: 4 }} spacing="sm">
         {[
           { label: 'Warmup', pct: 50 },
           { label: 'Working', pct: 70 },
@@ -198,14 +206,14 @@ export default function PercentTable() {
           const row = table.find((r) => r.pct === pct)
           if (!row) return null
           return (
-            <div key={pct} className="bg-secondary rounded-lg p-3 text-center">
-              <p className="text-xs text-muted-foreground mb-1">{label} ({pct}%)</p>
-              <p className="font-bold">{displayWeight(row.total, unit)}</p>
-              <p className="text-xs text-muted-foreground">total</p>
-            </div>
+            <Paper key={pct} bg="var(--mantine-color-default)" p="sm" radius="md" ta="center">
+              <Text size="xs" c="dimmed" mb={4}>{label} ({pct}%)</Text>
+              <Text fw={700}>{displayWeight(row.total, unit)}</Text>
+              <Text size="xs" c="dimmed">total</Text>
+            </Paper>
           )
         })}
-      </div>
-    </div>
+      </SimpleGrid>
+    </Stack>
   )
 }

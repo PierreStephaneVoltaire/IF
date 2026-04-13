@@ -3,10 +3,27 @@ import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
 import { fetchWeightLog, updateMetaField } from '@/api/client'
-import { daysUntil, formatDateShort, sessionsThisCalendarWeek } from '@/utils/dates'
+import { daysUntil, sessionsThisCalendarWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
 import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2, Download, Dumbbell, Ruler } from 'lucide-react'
+import {
+  Stack,
+  Group,
+  Text,
+  Paper,
+  SimpleGrid,
+  Button,
+  ActionIcon,
+  NumberInput,
+  TextInput,
+  Textarea,
+  SegmentedControl,
+  Progress,
+  Badge,
+  Loader,
+  Box,
+} from '@mantine/core'
 import type { Phase, WeightEntry, LiftProfile } from '@powerlifting/types'
 
 const LIFT_LABELS: Record<LiftProfile['lift'], string> = {
@@ -23,7 +40,7 @@ const LIFT_STYLE_PLACEHOLDERS: Record<LiftProfile['lift'], string> = {
 
 const STICKING_PLACEHOLDERS: Record<LiftProfile['lift'], string> = {
   squat: 'e.g. Out of the hole just below parallel, hamstring activation drops',
-  bench: 'e.g. Off the chest – initial drive phase, first 2-3 inches',
+  bench: 'e.g. Off the chest - initial drive phase, first 2-3 inches',
   deadlift: 'e.g. Below the knee transitioning off the floor, hip-hinge not engaged early enough',
 }
 
@@ -77,9 +94,9 @@ export default function Dashboard() {
 
   if (isLoading || !program) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
-      </div>
+      <Group justify="center" mih="50vh">
+        <Loader />
+      </Group>
     )
   }
 
@@ -222,445 +239,458 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <a
+    <Stack gap={24}>
+      <Group justify="space-between">
+        <Text fz="h1" fw={700}>Dashboard</Text>
+        <Button
+          component="a"
           href="/api/export/xlsx"
           download="program_history.xlsx"
-          className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90 transition-opacity"
+          leftSection={<Download size={16} />}
+          size="sm"
         >
-          <Download className="w-4 h-4" />
           Export Excel
-        </a>
-      </div>
+        </Button>
+      </Group>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="md">
         {/* Upcoming Competitions */}
         {upcomingComps.length > 0 && (
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Trophy className="w-5 h-5 text-primary" />
-              <h3 className="font-medium">Upcoming Competitions</h3>
-            </div>
-            <div className="space-y-2">
+          <Paper withBorder p="md">
+            <Group gap="xs" mb="sm">
+              <Trophy size={20} />
+              <Text fw={500}>Upcoming Competitions</Text>
+            </Group>
+            <Stack gap="xs">
               {upcomingComps.map((comp) => (
-                <div key={comp.date} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded-full ${
-                      comp.status === 'confirmed'
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                        : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                    }`}>
+                <Group key={comp.date} justify="space-between">
+                  <Group gap="xs" style={{ minWidth: 0 }}>
+                    <Badge
+                      variant="light"
+                      color={comp.status === 'confirmed' ? 'green' : 'yellow'}
+                      size="sm"
+                    >
                       {comp.status}
-                    </span>
-                    <span className="text-sm truncate">{comp.name}</span>
-                  </div>
-                  <span className="text-sm font-medium shrink-0 ml-2">{daysUntil(comp.date)}d</span>
-                </div>
+                    </Badge>
+                    <Text size="sm" truncate>{comp.name}</Text>
+                  </Group>
+                  <Text size="sm" fw={500} ml="xs">{daysUntil(comp.date)}d</Text>
+                </Group>
               ))}
-            </div>
-          </div>
+            </Stack>
+          </Paper>
         )}
 
         {/* Target Maxes */}
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-primary" />
-              <h3 className="font-medium">Target Maxes</h3>
-            </div>
+        <Paper withBorder p="md">
+          <Group justify="space-between" mb="sm">
+            <Group gap="xs">
+              <Target size={20} />
+              <Text fw={500}>Target Maxes</Text>
+            </Group>
             {editingMaxes ? (
-              <div className="flex gap-1">
-                <button onClick={saveMaxes} className="p-1 hover:bg-accent rounded text-primary"><Save className="w-4 h-4" /></button>
-                <button onClick={() => setEditingMaxes(false)} className="p-1 hover:bg-accent rounded"><X className="w-4 h-4" /></button>
-              </div>
+              <Group gap={4}>
+                <ActionIcon variant="subtle" color="blue" onClick={saveMaxes}><Save size={16} /></ActionIcon>
+                <ActionIcon variant="subtle" onClick={() => setEditingMaxes(false)}><X size={16} /></ActionIcon>
+              </Group>
             ) : (
-              <button onClick={startEditingMaxes} className="p-1 hover:bg-accent rounded"><Edit2 className="w-4 h-4 text-muted-foreground" /></button>
+              <ActionIcon variant="subtle" onClick={startEditingMaxes}><Edit2 size={16} /></ActionIcon>
             )}
-          </div>
+          </Group>
           {editingMaxes ? (
-            <div className="space-y-2">
+            <Stack gap="xs">
               {(['squat', 'bench', 'deadlift'] as const).map((lift) => (
-                <div key={lift} className="flex items-center gap-2">
-                  <span className="w-16 text-sm capitalize">{lift}</span>
-                  <input
-                    type="number"
+                <Group key={lift} gap="xs">
+                  <Text size="sm" w={64} tt="capitalize">{lift}</Text>
+                  <NumberInput
+                    style={{ flex: 1 }}
                     value={toDisplayUnit(localMaxes[lift], unit)}
-                    onChange={(e) => setLocalMaxes(prev => ({ ...prev, [lift]: fromDisplayUnit(Number(e.target.value), unit) }))}
-                    className="flex-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                    onChange={(v) => setLocalMaxes(prev => ({ ...prev, [lift]: fromDisplayUnit(typeof v === 'number' ? v : 0, unit) }))}
+                    decimalScale={1}
+                    size="sm"
                   />
-                  <span className="text-xs text-muted-foreground">{unit}</span>
-                </div>
+                  <Text size="xs" c="dimmed">{unit}</Text>
+                </Group>
               ))}
-              <div className="flex justify-between border-t border-border pt-1 mt-1">
-                <span className="font-medium text-sm">Total</span>
-                <span className="font-bold text-sm">{displayWeight(localMaxes.squat + localMaxes.bench + localMaxes.deadlift, unit)}</span>
-              </div>
-            </div>
+              <Group justify="space-between" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }} pt={4} mt={4}>
+                <Text size="sm" fw={500}>Total</Text>
+                <Text size="sm" fw={700}>{displayWeight(localMaxes.squat + localMaxes.bench + localMaxes.deadlift, unit)}</Text>
+              </Group>
+            </Stack>
           ) : (
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between"><span>Squat</span><span className="font-medium">{displayWeight(meta.target_squat_kg, unit)}</span></div>
-              <div className="flex justify-between"><span>Bench</span><span className="font-medium">{displayWeight(meta.target_bench_kg, unit)}</span></div>
-              <div className="flex justify-between"><span>Deadlift</span><span className="font-medium">{displayWeight(meta.target_dl_kg, unit)}</span></div>
-              <div className="flex justify-between border-t border-border pt-1 mt-1">
-                <span className="font-medium">Total</span>
-                <span className="font-bold">{displayWeight(meta.target_total_kg, unit)}</span>
-              </div>
-            </div>
+            <Stack gap={4}>
+              <Group justify="space-between"><Text size="sm">Squat</Text><Text size="sm" fw={500}>{displayWeight(meta.target_squat_kg, unit)}</Text></Group>
+              <Group justify="space-between"><Text size="sm">Bench</Text><Text size="sm" fw={500}>{displayWeight(meta.target_bench_kg, unit)}</Text></Group>
+              <Group justify="space-between"><Text size="sm">Deadlift</Text><Text size="sm" fw={500}>{displayWeight(meta.target_dl_kg, unit)}</Text></Group>
+              <Group justify="space-between" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }} pt={4} mt={4}>
+                <Text size="sm" fw={500}>Total</Text>
+                <Text size="sm" fw={700}>{displayWeight(meta.target_total_kg, unit)}</Text>
+              </Group>
+            </Stack>
           )}
-        </div>
+        </Paper>
 
         {/* Actual Maxes */}
         {(actualMaxes.squat > 0 || actualMaxes.bench > 0 || actualMaxes.deadlift > 0) && (
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              <h3 className="font-medium">Actual Maxes</h3>
-            </div>
-            <div className="space-y-2 text-sm">
+          <Paper withBorder p="md">
+            <Group gap="xs" mb="sm">
+              <TrendingUp size={20} />
+              <Text fw={500}>Actual Maxes</Text>
+            </Group>
+            <Stack gap="xs">
               {[
                 { label: 'Squat', actual: actualMaxes.squat, target: meta.target_squat_kg },
                 { label: 'Bench', actual: actualMaxes.bench, target: meta.target_bench_kg },
                 { label: 'Deadlift', actual: actualMaxes.deadlift, target: meta.target_dl_kg },
               ].map(({ label, actual, target }) =>
                 actual > 0 ? (
-                  <div key={label}>
-                    <div className="flex justify-between mb-0.5">
-                      <span>{label}: {displayWeight(actual, unit)}</span>
-                      <span className="text-muted-foreground">Target: {displayWeight(target, unit)}</span>
-                    </div>
-                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${actual >= target ? 'bg-green-500' : 'bg-primary'}`}
-                        style={{ width: `${Math.min(100, (actual / target) * 100)}%` }} />
-                    </div>
-                  </div>
+                  <Box key={label}>
+                    <Group justify="space-between" mb={2}>
+                      <Text size="sm">{label}: {displayWeight(actual, unit)}</Text>
+                      <Text size="sm" c="dimmed">Target: {displayWeight(target, unit)}</Text>
+                    </Group>
+                    <Progress
+                      value={Math.min(100, (actual / target) * 100)}
+                      color={actual >= target ? 'green' : 'blue'}
+                      size="sm"
+                    />
+                  </Box>
                 ) : null
               )}
               {(actualMaxes.squat > 0 || actualMaxes.bench > 0 || actualMaxes.deadlift > 0) && (
-                <div className="flex justify-between border-t border-border pt-1 mt-1">
-                  <span className="font-medium">Total</span>
-                  <span className="font-bold">{displayWeight(actualMaxes.squat + actualMaxes.bench + actualMaxes.deadlift, unit)}</span>
-                </div>
+                <Group justify="space-between" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }} pt={4} mt={4}>
+                  <Text size="sm" fw={500}>Total</Text>
+                  <Text size="sm" fw={700}>{displayWeight(actualMaxes.squat + actualMaxes.bench + actualMaxes.deadlift, unit)}</Text>
+                </Group>
               )}
-            </div>
-          </div>
+            </Stack>
+          </Paper>
         )}
 
         {/* Body Weight */}
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Scale className="w-5 h-5 text-primary" />
-              <h3 className="font-medium">Body Weight</h3>
-            </div>
+        <Paper withBorder p="md">
+          <Group justify="space-between" mb="sm">
+            <Group gap="xs">
+              <Scale size={20} />
+              <Text fw={500}>Body Weight</Text>
+            </Group>
             {editingWeight ? (
-              <div className="flex gap-1">
-                <button onClick={saveWeight} className="p-1 hover:bg-accent rounded text-primary"><Save className="w-4 h-4" /></button>
-                <button onClick={() => setEditingWeight(false)} className="p-1 hover:bg-accent rounded"><X className="w-4 h-4" /></button>
-              </div>
+              <Group gap={4}>
+                <ActionIcon variant="subtle" color="blue" onClick={saveWeight}><Save size={16} /></ActionIcon>
+                <ActionIcon variant="subtle" onClick={() => setEditingWeight(false)}><X size={16} /></ActionIcon>
+              </Group>
             ) : (
-              <button onClick={startEditingWeight} className="p-1 hover:bg-accent rounded"><Edit2 className="w-4 h-4 text-muted-foreground" /></button>
+              <ActionIcon variant="subtle" onClick={startEditingWeight}><Edit2 size={16} /></ActionIcon>
             )}
-          </div>
+          </Group>
           {editingWeight ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                step="0.1"
+            <Group gap="xs">
+              <NumberInput
+                style={{ flex: 1 }}
                 value={toDisplayUnit(localWeight, unit)}
-                onChange={(e) => setLocalWeight(fromDisplayUnit(Number(e.target.value), unit))}
-                className="flex-1 px-2 py-1 border border-border rounded bg-background text-2xl font-bold"
+                onChange={(v) => setLocalWeight(fromDisplayUnit(typeof v === 'number' ? v : 0, unit))}
+                decimalScale={1}
+                size="lg"
+                fw={700}
               />
-              <span className="text-sm text-muted-foreground">{unit}</span>
-            </div>
+              <Text size="sm" c="dimmed">{unit}</Text>
+            </Group>
           ) : (
-            <p className="text-3xl font-bold">{displayWeight(latestWeightKg, unit)}</p>
+            <Text fz="h1" fw={700}>{displayWeight(latestWeightKg, unit)}</Text>
           )}
-          <p className="text-sm text-muted-foreground">Target: {meta.weight_class_kg} kg class</p>
-          <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
-            <div className="h-full bg-primary transition-all" style={{ width: `${Math.min(100, (latestWeightKg / meta.weight_class_kg) * 100)}%` }} />
-          </div>
-        </div>
+          <Text size="sm" c="dimmed">Target: {meta.weight_class_kg} kg class</Text>
+          <Progress
+            value={Math.min(100, (latestWeightKg / meta.weight_class_kg) * 100)}
+            mt="sm"
+            size="md"
+          />
+        </Paper>
 
         {/* Anthropometrics */}
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Ruler className="w-5 h-5 text-primary" />
-              <h3 className="font-medium">Anthropometrics</h3>
-            </div>
+        <Paper withBorder p="md">
+          <Group justify="space-between" mb="sm">
+            <Group gap="xs">
+              <Ruler size={20} />
+              <Text fw={500}>Anthropometrics</Text>
+            </Group>
             {editingMeasurements ? (
-              <div className="flex gap-1">
-                <button onClick={saveMeasurements} className="p-1 hover:bg-accent rounded text-primary"><Save className="w-4 h-4" /></button>
-                <button onClick={() => setEditingMeasurements(false)} className="p-1 hover:bg-accent rounded"><X className="w-4 h-4" /></button>
-              </div>
+              <Group gap={4}>
+                <ActionIcon variant="subtle" color="blue" onClick={saveMeasurements}><Save size={16} /></ActionIcon>
+                <ActionIcon variant="subtle" onClick={() => setEditingMeasurements(false)}><X size={16} /></ActionIcon>
+              </Group>
             ) : (
-              <button onClick={startEditingMeasurements} className="p-1 hover:bg-accent rounded"><Edit2 className="w-4 h-4 text-muted-foreground" /></button>
+              <ActionIcon variant="subtle" onClick={startEditingMeasurements}><Edit2 size={16} /></ActionIcon>
             )}
-          </div>
+          </Group>
           {editingMeasurements ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="w-24 text-sm">Height</span>
-                <input
-                  type="number"
-                  step="0.1"
+            <Stack gap="xs">
+              <Group gap="xs">
+                <Text size="sm" w={96}>Height</Text>
+                <NumberInput
+                  style={{ flex: 1 }}
                   value={localHeight}
-                  onChange={(e) => setLocalHeight(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="—"
-                  className="flex-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                  onChange={(v) => setLocalHeight(typeof v === 'number' ? v : '')}
+                  decimalScale={1}
+                  placeholder="--"
+                  size="sm"
                 />
-                <span className="text-xs text-muted-foreground">cm</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-24 text-sm">Arm Wingspan</span>
-                <input
-                  type="number"
-                  step="0.1"
+                <Text size="xs" c="dimmed">cm</Text>
+              </Group>
+              <Group gap="xs">
+                <Text size="sm" w={96}>Arm Wingspan</Text>
+                <NumberInput
+                  style={{ flex: 1 }}
                   value={localWingspan}
-                  onChange={(e) => setLocalWingspan(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="—"
-                  className="flex-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                  onChange={(v) => setLocalWingspan(typeof v === 'number' ? v : '')}
+                  decimalScale={1}
+                  placeholder="--"
+                  size="sm"
                 />
-                <span className="text-xs text-muted-foreground">cm</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-24 text-sm">Leg Length</span>
-                <input
-                  type="number"
-                  step="0.1"
+                <Text size="xs" c="dimmed">cm</Text>
+              </Group>
+              <Group gap="xs">
+                <Text size="sm" w={96}>Leg Length</Text>
+                <NumberInput
+                  style={{ flex: 1 }}
                   value={localLegLength}
-                  onChange={(e) => setLocalLegLength(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="—"
-                  className="flex-1 px-2 py-1 border border-border rounded bg-background text-sm"
+                  onChange={(v) => setLocalLegLength(typeof v === 'number' ? v : '')}
+                  decimalScale={1}
+                  placeholder="--"
+                  size="sm"
                 />
-                <span className="text-xs text-muted-foreground">cm</span>
-              </div>
-            </div>
+                <Text size="xs" c="dimmed">cm</Text>
+              </Group>
+            </Stack>
           ) : (
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span>Height</span>
-                <span className="font-medium">{meta.height_cm ? `${meta.height_cm} cm` : 'Not set'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Arm Wingspan</span>
-                <span className="font-medium">{meta.arm_wingspan_cm ? `${meta.arm_wingspan_cm} cm` : 'Not set'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Leg Length</span>
-                <span className="font-medium">{meta.leg_length_cm ? `${meta.leg_length_cm} cm` : 'Not set'}</span>
-              </div>
-            </div>
+            <Stack gap={4}>
+              <Group justify="space-between">
+                <Text size="sm">Height</Text>
+                <Text size="sm" fw={500}>{meta.height_cm ? `${meta.height_cm} cm` : 'Not set'}</Text>
+              </Group>
+              <Group justify="space-between">
+                <Text size="sm">Arm Wingspan</Text>
+                <Text size="sm" fw={500}>{meta.arm_wingspan_cm ? `${meta.arm_wingspan_cm} cm` : 'Not set'}</Text>
+              </Group>
+              <Group justify="space-between">
+                <Text size="sm">Leg Length</Text>
+                <Text size="sm" fw={500}>{meta.leg_length_cm ? `${meta.leg_length_cm} cm` : 'Not set'}</Text>
+              </Group>
+            </Stack>
           )}
-        </div>
+        </Paper>
 
         {/* This Week */}
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <CalendarDays className="w-5 h-5 text-primary" />
-            <h3 className="font-medium">This Week</h3>
-          </div>
-          <p className="text-3xl font-bold">{completedThisWeek}/{thisWeekSessions.length}</p>
-          <p className="text-sm text-muted-foreground">sessions completed</p>
-        </div>
+        <Paper withBorder p="md">
+          <Group gap="xs" mb="sm">
+            <CalendarDays size={20} />
+            <Text fw={500}>This Week</Text>
+          </Group>
+          <Text fz="h1" fw={700}>{completedThisWeek}/{thisWeekSessions.length}</Text>
+          <Text size="sm" c="dimmed">sessions completed</Text>
+        </Paper>
 
         {/* Current Phase */}
         {currentPhase && (
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              <h3 className="font-medium">Current Phase</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: phaseColor(currentPhase, phases) }} />
-              <span className="font-medium">{currentPhase.name}</span>
-            </div>
-            <p className="text-sm text-muted-foreground mt-1">{currentPhase.intent}</p>
-          </div>
+          <Paper withBorder p="md">
+            <Group gap="xs" mb="sm">
+              <TrendingUp size={20} />
+              <Text fw={500}>Current Phase</Text>
+            </Group>
+            <Group gap="xs">
+              <Box w={12} h={12} style={{ borderRadius: '50%', backgroundColor: phaseColor(currentPhase, phases) }} />
+              <Text fw={500}>{currentPhase.name}</Text>
+            </Group>
+            <Text size="sm" c="dimmed" mt={4}>{currentPhase.intent}</Text>
+          </Paper>
         )}
 
         {/* Program Phases */}
-        <div className="bg-card border border-border rounded-lg p-4 col-span-1 md:col-span-2 lg:col-span-1">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              <h3 className="font-medium">Program Phases</h3>
-            </div>
+        <Paper withBorder p="md">
+          <Group justify="space-between" mb="sm">
+            <Group gap="xs">
+              <TrendingUp size={20} />
+              <Text fw={500}>Program Phases</Text>
+            </Group>
             {editingPhases ? (
-              <div className="flex gap-1">
-                <button onClick={addPhase} className="p-1 hover:bg-accent rounded text-primary"><Plus className="w-4 h-4" /></button>
-                <button onClick={savePhases} className="p-1 hover:bg-accent rounded text-primary"><Save className="w-4 h-4" /></button>
-                <button onClick={() => setEditingPhases(false)} className="p-1 hover:bg-accent rounded"><X className="w-4 h-4" /></button>
-              </div>
+              <Group gap={4}>
+                <ActionIcon variant="subtle" color="blue" onClick={addPhase}><Plus size={16} /></ActionIcon>
+                <ActionIcon variant="subtle" color="blue" onClick={savePhases}><Save size={16} /></ActionIcon>
+                <ActionIcon variant="subtle" onClick={() => setEditingPhases(false)}><X size={16} /></ActionIcon>
+              </Group>
             ) : (
-              <button onClick={startEditingPhases} className="p-1 hover:bg-accent rounded"><Edit2 className="w-4 h-4 text-muted-foreground" /></button>
+              <ActionIcon variant="subtle" onClick={startEditingPhases}><Edit2 size={16} /></ActionIcon>
             )}
-          </div>
+          </Group>
           {editingPhases ? (
-            <div className="space-y-2">
+            <Stack gap="xs">
               {localPhases.map((phase, idx) => (
-                <div key={idx} className="flex items-center gap-2 p-2 bg-secondary/50 rounded">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: phaseColor(phase, localPhases) }} />
-                  <input type="text" value={phase.name} onChange={(e) => updatePhase(idx, 'name', e.target.value)}
-                    placeholder="Phase name" className="flex-1 px-2 py-1 border border-border rounded bg-background text-xs" />
-                  <input type="number" value={phase.start_week} onChange={(e) => updatePhase(idx, 'start_week', Number(e.target.value))}
-                    className="w-12 px-1 py-1 border border-border rounded bg-background text-xs text-center" />
-                  <span className="text-xs">-</span>
-                  <input type="number" value={phase.end_week} onChange={(e) => updatePhase(idx, 'end_week', Number(e.target.value))}
-                    className="w-12 px-1 py-1 border border-border rounded bg-background text-xs text-center" />
-                  <button onClick={() => removePhase(idx)} className="p-1 text-destructive hover:bg-destructive/10 rounded"><Trash2 className="w-3 h-3" /></button>
-                </div>
+                <Group key={idx} gap="xs" p="xs" style={{ backgroundColor: 'var(--mantine-color-default)', borderRadius: 'var(--mantine-radius-sm)' }}>
+                  <Box w={12} h={12} style={{ borderRadius: '50%', backgroundColor: phaseColor(phase, localPhases) }} />
+                  <TextInput
+                    style={{ flex: 1 }}
+                    value={phase.name}
+                    onChange={(e) => updatePhase(idx, 'name', e.currentTarget.value)}
+                    placeholder="Phase name"
+                    size="xs"
+                  />
+                  <NumberInput
+                    w={48}
+                    value={phase.start_week}
+                    onChange={(v) => updatePhase(idx, 'start_week', typeof v === 'number' ? v : 0)}
+                    size="xs"
+                    ta="center"
+                    hideControls
+                  />
+                  <Text size="xs">-</Text>
+                  <NumberInput
+                    w={48}
+                    value={phase.end_week}
+                    onChange={(v) => updatePhase(idx, 'end_week', typeof v === 'number' ? v : 0)}
+                    size="xs"
+                    ta="center"
+                    hideControls
+                  />
+                  <ActionIcon variant="subtle" color="red" onClick={() => removePhase(idx)}><Trash2 size={12} /></ActionIcon>
+                </Group>
               ))}
-            </div>
+            </Stack>
           ) : (
-            <div className="space-y-1">
+            <Stack gap={4}>
               {phases.map((phase, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: phaseColor(phase, phases) }} />
-                  <span className="text-sm">W{phase.start_week}-W{phase.end_week}: {phase.name}</span>
-                </div>
+                <Group key={idx} gap="xs">
+                  <Box w={12} h={12} style={{ borderRadius: '50%', backgroundColor: phaseColor(phase, phases) }} />
+                  <Text size="sm">W{phase.start_week}-W{phase.end_week}: {phase.name}</Text>
+                </Group>
               ))}
-            </div>
+            </Stack>
           )}
-        </div>
-      </div>
+        </Paper>
+      </SimpleGrid>
 
       {/* Lift Profiles Section */}
-      <div className="bg-card border border-border rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Dumbbell className="w-5 h-5 text-primary" />
-            <h3 className="font-medium">Lift Style Profiles</h3>
-          </div>
+      <Paper withBorder p="md">
+        <Group justify="space-between" mb="md">
+          <Group gap="xs">
+            <Dumbbell size={20} />
+            <Text fw={500}>Lift Style Profiles</Text>
+          </Group>
           {editingLiftProfiles ? (
-            <div className="flex gap-1">
-              <button onClick={saveLiftProfiles} className="p-1 hover:bg-accent rounded text-primary"><Save className="w-4 h-4" /></button>
-              <button onClick={() => setEditingLiftProfiles(false)} className="p-1 hover:bg-accent rounded"><X className="w-4 h-4" /></button>
-            </div>
+            <Group gap={4}>
+              <ActionIcon variant="subtle" color="blue" onClick={saveLiftProfiles}><Save size={16} /></ActionIcon>
+              <ActionIcon variant="subtle" onClick={() => setEditingLiftProfiles(false)}><X size={16} /></ActionIcon>
+            </Group>
           ) : (
-            <button onClick={startEditingLiftProfiles} className="p-1 hover:bg-accent rounded"><Edit2 className="w-4 h-4 text-muted-foreground" /></button>
+            <ActionIcon variant="subtle" onClick={startEditingLiftProfiles}><Edit2 size={16} /></ActionIcon>
           )}
-        </div>
+        </Group>
 
         {editingLiftProfiles ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="lg">
             {localLiftProfiles.map((profile) => (
-              <div key={profile.lift} className="space-y-3">
-                <h4 className="font-medium text-sm capitalize border-b border-border pb-1">{LIFT_LABELS[profile.lift]}</h4>
+              <Stack key={profile.lift} gap="sm">
+                <Text size="sm" fw={500} tt="capitalize" style={{ borderBottom: '1px solid var(--mantine-color-default-border)', paddingBottom: 4 }}>{LIFT_LABELS[profile.lift]}</Text>
 
                 {/* Style Notes */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Style & Setup</label>
-                  <textarea
+                <Stack gap={4}>
+                  <Text size="xs" c="dimmed">Style & Setup</Text>
+                  <Textarea
+                    autosize
+                    minRows={3}
                     value={profile.style_notes}
-                    onChange={(e) => updateLocalProfile(profile.lift, { style_notes: e.target.value })}
-                    rows={3}
-                    className="w-full px-2 py-1.5 border border-border rounded bg-background text-xs resize-none"
+                    onChange={(e) => updateLocalProfile(profile.lift, { style_notes: e.currentTarget.value })}
                     placeholder={LIFT_STYLE_PLACEHOLDERS[profile.lift]}
+                    size="xs"
                   />
-                </div>
+                </Stack>
 
                 {/* Sticking Points */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Sticking Points</label>
-                  <textarea
+                <Stack gap={4}>
+                  <Text size="xs" c="dimmed">Sticking Points</Text>
+                  <Textarea
+                    autosize
+                    minRows={2}
                     value={profile.sticking_points}
-                    onChange={(e) => updateLocalProfile(profile.lift, { sticking_points: e.target.value })}
-                    rows={2}
-                    className="w-full px-2 py-1.5 border border-border rounded bg-background text-xs resize-none"
+                    onChange={(e) => updateLocalProfile(profile.lift, { sticking_points: e.currentTarget.value })}
                     placeholder={STICKING_PLACEHOLDERS[profile.lift]}
+                    size="xs"
                   />
-                </div>
+                </Stack>
 
                 {/* Primary Muscle */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Primary Muscle Driving the Lift</label>
-                  <input
-                    type="text"
+                <Stack gap={4}>
+                  <Text size="xs" c="dimmed">Primary Muscle Driving the Lift</Text>
+                  <TextInput
                     value={profile.primary_muscle}
-                    onChange={(e) => updateLocalProfile(profile.lift, { primary_muscle: e.target.value })}
-                    className="w-full px-2 py-1.5 border border-border rounded bg-background text-xs"
+                    onChange={(e) => updateLocalProfile(profile.lift, { primary_muscle: e.currentTarget.value })}
                     placeholder={profile.lift === 'squat' ? 'e.g. Quad dominant' : profile.lift === 'bench' ? 'e.g. Tricep dominant' : 'e.g. Glute dominant'}
+                    size="xs"
                   />
-                </div>
+                </Stack>
 
                 {/* Volume Tolerance */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Volume Recovery Tolerance</label>
-                  <div className="flex gap-2">
-                    {(['low', 'moderate', 'high'] as const).map((level) => (
-                      <button
-                        key={level}
-                        onClick={() => updateLocalProfile(profile.lift, { volume_tolerance: level })}
-                        className={`flex-1 py-1.5 rounded text-xs font-medium capitalize border transition-colors ${
-                          profile.volume_tolerance === level
-                            ? level === 'low'
-                              ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800'
-                              : level === 'moderate'
-                                ? 'bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800'
-                                : 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800'
-                            : 'bg-background text-muted-foreground border-border hover:bg-accent'
-                        }`}
-                      >
-                        {level}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+                <Stack gap={4}>
+                  <Text size="xs" c="dimmed">Volume Recovery Tolerance</Text>
+                  <SegmentedControl
+                    fullWidth
+                    size="xs"
+                    data={[
+                      { label: 'Low', value: 'low' },
+                      { label: 'Moderate', value: 'moderate' },
+                      { label: 'High', value: 'high' },
+                    ]}
+                    value={profile.volume_tolerance}
+                    onChange={(v) => updateLocalProfile(profile.lift, { volume_tolerance: v as 'low' | 'moderate' | 'high' })}
+                  />
+                </Stack>
+              </Stack>
             ))}
-          </div>
+          </SimpleGrid>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="md">
             {displayProfiles.map((profile) => {
               const hasData = profile.style_notes || profile.sticking_points || profile.primary_muscle
               return (
-                <div key={profile.lift} className="space-y-2">
-                  <h4 className="font-medium text-sm capitalize border-b border-border pb-1">{LIFT_LABELS[profile.lift]}</h4>
+                <Stack key={profile.lift} gap="xs">
+                  <Text size="sm" fw={500} tt="capitalize" style={{ borderBottom: '1px solid var(--mantine-color-default-border)', paddingBottom: 4 }}>{LIFT_LABELS[profile.lift]}</Text>
                   {hasData ? (
                     <>
                       {profile.style_notes && (
                         <div>
-                          <p className="text-xs text-muted-foreground mb-0.5">Style</p>
-                          <p className="text-xs leading-relaxed">{profile.style_notes}</p>
+                          <Text size="xs" c="dimmed" mb={2}>Style</Text>
+                          <Text size="xs" style={{ lineHeight: 1.6 }}>{profile.style_notes}</Text>
                         </div>
                       )}
                       {profile.sticking_points && (
                         <div>
-                          <p className="text-xs text-muted-foreground mb-0.5">Sticking Points</p>
-                          <p className="text-xs leading-relaxed text-orange-600 dark:text-orange-400">{profile.sticking_points}</p>
+                          <Text size="xs" c="dimmed" mb={2}>Sticking Points</Text>
+                          <Text size="xs" c="orange" style={{ lineHeight: 1.6 }}>{profile.sticking_points}</Text>
                         </div>
                       )}
                       {profile.primary_muscle && (
                         <div>
-                          <p className="text-xs text-muted-foreground mb-0.5">Primary Driver</p>
-                          <p className="text-xs font-medium">{profile.primary_muscle}</p>
+                          <Text size="xs" c="dimmed" mb={2}>Primary Driver</Text>
+                          <Text size="xs" fw={500}>{profile.primary_muscle}</Text>
                         </div>
                       )}
-                      <div>
-                        <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
-                          profile.volume_tolerance === 'low'
-                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                            : profile.volume_tolerance === 'moderate'
-                              ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                              : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                        }`}>
-                          {profile.volume_tolerance} volume tolerance
-                        </span>
-                      </div>
+                      <Badge
+                        variant="light"
+                        color={profile.volume_tolerance === 'low' ? 'red' : profile.volume_tolerance === 'moderate' ? 'yellow' : 'green'}
+                        size="sm"
+                        tt="capitalize"
+                      >
+                        {profile.volume_tolerance} volume tolerance
+                      </Badge>
                     </>
                   ) : (
-                    <p className="text-xs text-muted-foreground italic">No profile yet — click edit to add</p>
+                    <Text size="xs" c="dimmed" fs="italic">No profile yet - click edit to add</Text>
                   )}
-                </div>
+                </Stack>
               )
             })}
-          </div>
+          </SimpleGrid>
         )}
-      </div>
-    </div>
+      </Paper>
+    </Stack>
   )
 }
