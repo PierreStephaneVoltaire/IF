@@ -8,7 +8,6 @@ import DesignerPage from '@/pages/DesignerPage'
 import DesignerLanding from '@/pages/DesignerLanding'
 import DesignerPhases from '@/pages/DesignerPhases'
 import ListPage from '@/pages/ListPage'
-import ChartsPage from '@/pages/ChartsPage'
 import AnalysisPage from '@/pages/AnalysisPage'
 import GlossaryPage from '@/pages/GlossaryPage'
 import ToolsPage from '@/pages/ToolsPage'
@@ -17,6 +16,7 @@ import BiometricsPage from '@/pages/BiometricsPage'
 import CompetitionsPage from '@/pages/CompetitionsPage'
 import MaxesPage from '@/pages/MaxesPage'
 import VideosPage from '@/pages/VideosPage'
+import AboutPage from '@/pages/AboutPage'
 
 // Tool Components
 import PlateCalculator from '@/components/tools/PlateCalculator'
@@ -42,7 +42,6 @@ export default function App() {
         <Route path="/designer/phases" element={<DesignerPhases />} />
         <Route path="/designer/sessions" element={<DesignerPage />} />
         <Route path="/list" element={<ListPage />} />
-        <Route path="/charts" element={<ChartsPage />} />
         <Route path="/analysis" element={<AnalysisPage />} />
         <Route path="/supplements" element={<SupplementsPage />} />
         <Route path="/biometrics" element={<BiometricsPage />} />
@@ -58,6 +57,7 @@ export default function App() {
         <Route path="/tools/converter" element={<UnitConverter />} />
         <Route path="/tools/attempts" element={<AttemptSelector />} />
         <Route path="/videos" element={<VideosPage />} />
+        <Route path="/about" element={<AboutPage />} />
       </Routes>
     </AppShell>
   )

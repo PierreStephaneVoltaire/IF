@@ -31,7 +31,6 @@ export default function SessionDrawer({
   const { program, updateSession, saveSession, rescheduleSession, deleteSession } = useProgramStore()
   const { unit } = useSettingsStore()
   const { pushToast } = useUiStore()
-
   const [localSession, setLocalSession] = useState<Session | null>(null)
   const [originalDate, setOriginalDate] = useState<string>('')
   const [hasChanges, setHasChanges] = useState(false)
@@ -643,14 +642,18 @@ export default function SessionDrawer({
         isOpen={showVideoUpload}
         onClose={() => setShowVideoUpload(false)}
         onUploaded={(video: SessionVideo) => {
-          // Reload session to get updated videos
+          // Update local state and the store for persistence
           setLocalSession((prev) => {
             if (!prev) return prev
-            return {
+            const updated = {
               ...prev,
               videos: [...(prev.videos || []), video],
             }
+            // Update store so it's not lost on navigation
+            updateSession(prev.date, sessionArrayIndex, updated)
+            return updated
           })
+          setShowVideoUpload(false)
         }}
       />
     </>

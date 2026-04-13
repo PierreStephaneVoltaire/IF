@@ -22,6 +22,7 @@ import {
   TrendingUp,
   Activity,
   Film,
+  Info,
   MoreHorizontal,
   ClipboardList,
 } from 'lucide-react'
@@ -61,7 +62,6 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/designer', icon: ClipboardList, label: 'Designer' },
   { to: '/list', icon: List, label: 'List' },
-  { to: '/charts', icon: BarChart3, label: 'Charts' },
   { to: '/analysis', icon: Activity, label: 'Analysis' },
   { to: '/supplements', icon: Pill, label: 'Supplements' },
   { to: '/biometrics', icon: Utensils, label: 'Biometrics' },
@@ -70,6 +70,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { to: '/glossary', icon: BookOpen, label: 'Glossary' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
   { to: '/videos', icon: Film, label: 'Videos' },
+  { to: '/about', icon: Info, label: 'About' },
 ]
 
 function DesktopSidebar() {

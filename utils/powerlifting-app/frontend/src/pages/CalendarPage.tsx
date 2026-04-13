@@ -57,9 +57,9 @@ export default function CalendarPage() {
     if (!program) return []
     const groups = new Map<string, typeof program['sessions']>()
 
-    const sorted = [...program.sessions].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    )
+    const sorted = [...program.sessions]
+      .filter(s => (s.block ?? 'current') === 'current')
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
     for (const session of sorted) {
       const weekStart = format(startOfWeek(new Date(session.date), { weekStartsOn: 0 }), 'yyyy-MM-dd')

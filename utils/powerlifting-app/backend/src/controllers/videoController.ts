@@ -1,8 +1,10 @@
+import { v4 as uuidv4 } from 'uuid'
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { Upload } from '@aws-sdk/lib-storage'
 import { docClient, TABLE } from '../db/dynamo'
 import { AppError } from '../middleware/errorHandler'
+import { transformProgram } from '../db/transforms'
 import type { Session, SessionVideo, VideoLibraryItem } from '@powerlifting/types'
 
 const PK = 'operator'
@@ -10,7 +12,15 @@ const PK = 'operator'
 const S3_BUCKET = process.env.VIDEOS_BUCKET || 'powerlifting-session-videos'
 const S3_REGION = process.env.AWS_REGION || 'ca-central-1'
 
-const s3Client = new S3Client({ region: S3_REGION })
+const s3Client = new S3Client({
+  region: S3_REGION,
+  credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+    ? {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      }
+    : undefined,
+})
 
 function stripUndefined(obj: any): any {
   if (obj === null || typeof obj !== 'object') return obj
@@ -54,7 +64,7 @@ export async function uploadSessionVideo(
   const sk = await resolveVersionSk(version)
 
   // Generate video ID
-  const videoId = generateVideoId()
+  const videoId = uuidv4()
   const s3Key = `videos/${sessionDate}/${videoId}.mp4`
 
   // Upload to S3 with metadata for Lambda
@@ -93,7 +103,6 @@ export async function uploadSessionVideo(
   const getCommand = new GetCommand({
     TableName: TABLE,
     Key: { pk: PK, sk },
-    ProjectionExpression: 'sessions',
   })
 
   const result = await docClient.send(getCommand)
@@ -116,6 +125,7 @@ export async function uploadSessionVideo(
 
   sessions[sessionIndex].videos!.push(video)
 
+  // Safely update both sessions and metadata
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
     Key: { pk: PK, sk },
@@ -146,7 +156,6 @@ export async function removeSessionVideo(
   const getCommand = new GetCommand({
     TableName: TABLE,
     Key: { pk: PK, sk },
-    ProjectionExpression: 'sessions',
   })
 
   const result = await docClient.send(getCommand)
@@ -223,7 +232,6 @@ export async function updateVideoThumbnail(
   const getCommand = new GetCommand({
     TableName: TABLE,
     Key: { pk: PK, sk },
-    ProjectionExpression: 'sessions',
   })
 
   const result = await docClient.send(getCommand)
@@ -272,14 +280,6 @@ export async function updateVideoThumbnail(
   await docClient.send(updateCommand)
 }
 
-function generateVideoId(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
-}
-
 export async function getVideoLibrary(
   version: string,
   exercise?: string,
@@ -290,7 +290,6 @@ export async function getVideoLibrary(
   const command = new GetCommand({
     TableName: TABLE,
     Key: { pk: PK, sk },
-    ProjectionExpression: 'sessions',
   })
 
   const result = await docClient.send(command)
@@ -298,7 +297,9 @@ export async function getVideoLibrary(
     return { videos: [], exercises: [] }
   }
 
-  const sessions = (result.Item.sessions ?? []) as Session[]
+  // Transform program to get derived week_number and phase_name
+  const program = transformProgram(result.Item)
+  const sessions = program.sessions
   const items: VideoLibraryItem[] = []
   const exerciseSet = new Set<string>()
 
@@ -332,17 +333,9 @@ export async function getVideoLibrary(
     return sort === 'newest' ? -cmp : cmp
   })
 
-  if (!exercise) {
-    for (const session of sessions) {
-      if (!session.videos) continue
-      for (const v of session.videos) {
-        if (v.exercise_name) exerciseSet.add(v.exercise_name)
-      }
-    }
-  }
-
   return {
     videos: stripUndefined(items),
     exercises: Array.from(exerciseSet).sort(),
   }
 }
+
