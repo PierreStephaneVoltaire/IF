@@ -16,6 +16,11 @@ import { normalizeExerciseName } from '@/utils/volume'
 import { FORMULA_DESCRIPTIONS } from '@/constants/formulaDescriptions'
 import { updateMetaField } from '@/api/client'
 import type { WeightEntry, GlossaryExercise, Competition, ExerciseCategory, LiftProfile } from '@powerlifting/types'
+import {
+  Stack, Group, Paper, SimpleGrid, Text, Title, Badge, Table,
+  Button, ActionIcon, NumberInput, Divider, Loader, Box, Center,
+  Select, Progress, Accordion, SegmentedControl, TextInput,
+} from '@mantine/core'
 
 // ─── DOTS calculation (male coefficients) ─────────────────────────────────────
 const DOTS_A = -307.75076, DOTS_B = 24.0900756, DOTS_C = -0.1918759221
@@ -36,11 +41,11 @@ function epleyE1rm(kg: number, reps: number): number {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fatigueColor(score: number | null): string {
-  if (score === null) return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-  if (score >= 0.6) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-  if (score >= 0.3) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-  return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+function fatigueBadgeColor(score: number | null): string {
+  if (score === null) return 'gray'
+  if (score >= 0.6) return 'red'
+  if (score >= 0.3) return 'yellow'
+  return 'green'
 }
 
 function fatigueLabel(score: number | null): string {
@@ -50,32 +55,28 @@ function fatigueLabel(score: number | null): string {
   return 'Low'
 }
 
-function complianceColor(pct: number | null): string {
-  if (pct === null) return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-  if (pct >= 80) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-  if (pct >= 50) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-  return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+function complianceBadgeColor(pct: number | null): string {
+  if (pct === null) return 'gray'
+  if (pct >= 80) return 'green'
+  if (pct >= 50) return 'yellow'
+  return 'red'
 }
 
 function rpeTrendIcon(trend?: string) {
   if (!trend) return null
-  if (trend === 'up') return <span className="text-red-500 text-xs font-medium">&#9650; rising</span>
-  if (trend === 'down') return <span className="text-green-500 text-xs font-medium">&#9660; improving</span>
-  return <span className="text-gray-500 text-xs font-medium">&#9644; stable</span>
+  if (trend === 'up') return <Text span size="xs" fw={500} c="red">&#9650; rising</Text>
+  if (trend === 'down') return <Text span size="xs" fw={500} c="green">&#9660; improving</Text>
+  return <Text span size="xs" fw={500} c="dimmed">&#9644; stable</Text>
 }
 
 function compStatusBadge(status: string) {
-  const styles: Record<string, string> = {
-    confirmed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    optional: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    completed: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-    skipped: 'bg-gray-100 text-gray-400',
+  const colors: Record<string, string> = {
+    confirmed: 'green',
+    optional: 'blue',
+    completed: 'gray',
+    skipped: 'gray',
   }
-  return (
-    <span className={`text-xs px-2 py-0.5 rounded ${styles[status] || 'bg-gray-100 text-gray-500'}`}>
-      {status}
-    </span>
-  )
+  return <Badge variant="light" color={colors[status] || 'gray'} size="sm">{status}</Badge>
 }
 
 const CHART_COLORS = [
@@ -84,15 +85,15 @@ const CHART_COLORS = [
 ]
 
 const CORR_DIR_BADGE: Record<string, string> = {
-  positive: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  negative: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  unclear: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  positive: 'green',
+  negative: 'red',
+  unclear: 'gray',
 }
 
 const CORR_STRENGTH_BADGE: Record<string, string> = {
-  strong: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-  moderate: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  weak: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  strong: 'violet',
+  moderate: 'blue',
+  weak: 'gray',
 }
 
 const LIFT_LABELS: Record<string, string> = { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' }
@@ -553,746 +554,730 @@ export default function AnalysisPage() {
   }, [nutritionTrend])
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Weekly Analysis</h1>
-        <div className="flex items-center gap-3">
-          <select
-            value={weeksMode}
-            onChange={(e) => setWeeksMode(e.target.value === 'block' ? 'block' : Number(e.target.value))}
-            className="px-3 py-1.5 border border-border rounded-md bg-background text-sm"
-          >
-            <option value={1}>Last 1 week</option>
-            <option value={2}>Last 2 weeks</option>
-            <option value={4}>Last 4 weeks</option>
-            <option value={8}>Last 8 weeks</option>
-            <option value="block">Full Block (W1 → now)</option>
-          </select>
-          <div className="flex border border-border rounded-md overflow-hidden">
-            <button
-              onClick={() => setViewMode('raw')}
-              className={`px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 ${viewMode === 'raw' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
-            >
-              <TableIcon className="w-3.5 h-3.5" />
-              Table
-            </button>
-            <button
-              onClick={() => setViewMode('graph')}
-              className={`px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 ${viewMode === 'graph' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              Charts
-            </button>
-          </div>
-          <a
+    <Stack gap="lg">
+      <Group justify="space-between" wrap="wrap">
+        <Title order={2}>Weekly Analysis</Title>
+        <Group gap="sm" wrap="wrap">
+          <Select
+            size="sm"
+            value={String(weeksMode)}
+            onChange={(val) => val && setWeeksMode(val === 'block' ? 'block' : Number(val))}
+            data={[
+              { value: '1', label: 'Last 1 week' },
+              { value: '2', label: 'Last 2 weeks' },
+              { value: '4', label: 'Last 4 weeks' },
+              { value: '8', label: 'Last 8 weeks' },
+              { value: 'block', label: 'Full Block (W1 → now)' },
+            ]}
+            w={200}
+          />
+          <SegmentedControl
+            size="xs"
+            value={viewMode}
+            onChange={(v) => setViewMode(v as 'raw' | 'graph')}
+            data={[
+              { value: 'raw', label: 'Table' },
+              { value: 'graph', label: 'Charts' },
+            ]}
+          />
+          <Button
+            component="a"
             href="/fitness/api/export/xlsx"
             download="program_history.xlsx"
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90 transition-opacity"
+            size="sm"
+            leftSection={<Download size={16} />}
           >
-            <Download className="w-4 h-4" />
             Export Excel
-          </a>
-        </div>
-      </div>
+          </Button>
+        </Group>
+      </Group>
 
-      {loading && (
-        <div className="flex items-center justify-center min-h-[20vh]">
-          <div className="animate-pulse text-muted-foreground">Loading analysis...</div>
-        </div>
-      )}
+      {loading && <Center mih="20vh"><Loader /></Center>}
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-700 dark:text-red-400">
-          {error}
-        </div>
+        <Paper withBorder p="md" style={{ borderColor: 'var(--mantine-color-red-4)' }}>
+          <Text c="red">{error}</Text>
+        </Paper>
       )}
 
       {data && !loading && (
         <>
           {/* Top summary cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {/* Current Maxes */}
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Dumbbell className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Estimated 1 Rep Maxes</h3>
-              </div>
+          <SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }} spacing="md">
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="xs">
+                <Dumbbell size={18} />
+                <Text fw={500}>Estimated 1 Rep Maxes</Text>
+              </Group>
               {data.current_maxes ? (
-                <>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div><p className="text-xs text-muted-foreground">Squat</p><p className="text-lg font-bold">{data.current_maxes.squat?.toFixed(1) ?? '--'}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Bench</p><p className="text-lg font-bold">{data.current_maxes.bench?.toFixed(1) ?? '--'}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Deadlift</p><p className="text-lg font-bold">{data.current_maxes.deadlift?.toFixed(1) ?? '--'}</p></div>
-                  </div>
+                <Stack gap="xs">
+                  <SimpleGrid cols={3}>
+                    <Stack gap={2} ta="center">
+                      <Text fz="xs" c="dimmed">Squat</Text>
+                      <Text fz="lg" fw={700}>{data.current_maxes.squat?.toFixed(1) ?? '--'}</Text>
+                    </Stack>
+                    <Stack gap={2} ta="center">
+                      <Text fz="xs" c="dimmed">Bench</Text>
+                      <Text fz="lg" fw={700}>{data.current_maxes.bench?.toFixed(1) ?? '--'}</Text>
+                    </Stack>
+                    <Stack gap={2} ta="center">
+                      <Text fz="xs" c="dimmed">Deadlift</Text>
+                      <Text fz="lg" fw={700}>{data.current_maxes.deadlift?.toFixed(1) ?? '--'}</Text>
+                    </Stack>
+                  </SimpleGrid>
                   {data.estimated_dots !== null && (
-                    <p className="text-sm text-muted-foreground mt-1">Est. DOTS: <span className="font-medium text-foreground">{data.estimated_dots.toFixed(2)}</span></p>
+                    <Text fz="sm" c="dimmed">Est. DOTS: <Text span fw={500} c="var(--mantine-color-text)">{data.estimated_dots.toFixed(2)}</Text></Text>
                   )}
                   {data.current_maxes.method && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <Text fz="xs" c="dimmed">
                       via {data.current_maxes.method === 'comp_results' ? 'competition' : data.current_maxes.method === 'session_estimated' ? 'session data' : data.current_maxes.method}
-                    </p>
+                    </Text>
                   )}
-                </>
+                </Stack>
               ) : (
-                <p className="text-sm text-muted-foreground">No max data available</p>
+                <Text fz="sm" c="dimmed">No max data available</Text>
               )}
-            </div>
+            </Paper>
 
-            {/* Compliance */}
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Compliance</h3>
-              </div>
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="xs">
+                <CheckCircle size={18} />
+                <Text fw={500}>Compliance</Text>
+              </Group>
               {data.compliance ? (
-                <>
-                  <p className={`text-3xl font-bold px-2 py-1 rounded inline-block ${complianceColor(data.compliance.pct)}`}>{data.compliance.pct.toFixed(0)}%</p>
-                  <p className="text-sm text-muted-foreground mt-1">{data.compliance.completed}/{data.compliance.planned} sessions</p>
-                  <p className="text-xs text-muted-foreground">{data.compliance.phase} block</p>
-                  {avgSessionsPerWeek !== null && <p className="text-xs text-muted-foreground mt-1">Avg {avgSessionsPerWeek} sessions/wk</p>}
-                </>
-              ) : <p className="text-sm text-muted-foreground">No compliance data</p>}
-            </div>
+                <Stack gap={2}>
+                  <Text fz="2rem" fw={700} c={complianceBadgeColor(data.compliance.pct)}>{data.compliance.pct.toFixed(0)}%</Text>
+                  <Text fz="sm" c="dimmed">{data.compliance.completed}/{data.compliance.planned} sessions</Text>
+                  <Text fz="xs" c="dimmed">{data.compliance.phase} block</Text>
+                  {avgSessionsPerWeek !== null && <Text fz="xs" c="dimmed">Avg {avgSessionsPerWeek} sessions/wk</Text>}
+                </Stack>
+              ) : <Text fz="sm" c="dimmed">No compliance data</Text>}
+            </Paper>
 
-            {/* Fatigue Signal */}
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Activity className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Fatigue Signal</h3>
-              </div>
-              <p className={`text-3xl font-bold px-2 py-1 rounded inline-block ${fatigueColor(data.fatigue_index)}`}>
-                {data.fatigue_index !== null ? (data.fatigue_index * 100).toFixed(0) + '%' : 'N/A'}
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">{fatigueLabel(data.fatigue_index)} risk</p>
-              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                Failed compounds: {((data.fatigue_components?.failed_compound_ratio ?? 0) * 100).toFixed(0)}%
-                &middot; Fatigue spike: {((data.fatigue_components?.composite_spike ?? 0) * 100).toFixed(0)}%
-                &middot; RPE stress: {((data.fatigue_components?.rpe_stress ?? 0) * 100).toFixed(0)}%
-              </p>
-            </div>
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="xs">
+                <Activity size={18} />
+                <Text fw={500}>Fatigue Signal</Text>
+              </Group>
+              <Stack gap={2}>
+                <Text fz="2rem" fw={700} c={fatigueBadgeColor(data.fatigue_index)}>
+                  {data.fatigue_index !== null ? (data.fatigue_index * 100).toFixed(0) + '%' : 'N/A'}
+                </Text>
+                <Text fz="sm" c="dimmed">{fatigueLabel(data.fatigue_index)} risk</Text>
+                <Text fz="xs" c="dimmed" lh="lg">
+                  Failed compounds: {((data.fatigue_components?.failed_compound_ratio ?? 0) * 100).toFixed(0)}%
+                  &middot; Fatigue spike: {((data.fatigue_components?.composite_spike ?? 0) * 100).toFixed(0)}%
+                  &middot; RPE stress: {((data.fatigue_components?.rpe_stress ?? 0) * 100).toFixed(0)}%
+                </Text>
+              </Stack>
+            </Paper>
 
-            {/* Readiness Score */}
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Activity className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Readiness</h3>
-              </div>
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="xs">
+                <Activity size={18} />
+                <Text fw={500}>Readiness</Text>
+              </Group>
               {data.readiness_score ? (
-                <>
-                  <p className={`text-3xl font-bold px-2 py-1 rounded inline-block ${
-                    data.readiness_score.zone === 'green' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : data.readiness_score.zone === 'yellow' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                  }`}>{data.readiness_score.score.toFixed(0)}</p>
-                  <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                <Stack gap={2}>
+                  <Text fz="2rem" fw={700}>{data.readiness_score.score.toFixed(0)}</Text>
+                  <Text fz="xs" c="dimmed" lh="lg">
                     Fatigue: {((data.readiness_score.components.fatigue_norm ?? 0) * 100).toFixed(0)}%
                     &middot; RPE drift: {((data.readiness_score.components.rpe_drift ?? 0) * 100).toFixed(0)}%
                     &middot; BW stability: {((data.readiness_score.components.bw_stability ?? 0) * 100).toFixed(0)}%
                     &middot; Miss rate: {((data.readiness_score.components.miss_rate ?? 0) * 100).toFixed(0)}%
-                  </p>
-                </>
-              ) : <p className="text-sm text-muted-foreground">N/A</p>}
-            </div>
-          </div>
+                  </Text>
+                </Stack>
+              ) : <Text fz="sm" c="dimmed">N/A</Text>}
+            </Paper>
+          </SimpleGrid>
 
           {/* INOL */}
           {data.inol && data.inol.avg_inol && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">INOL (Window Average)</h3>
-              <div className="grid grid-cols-3 gap-4 mb-3">
+            <Paper withBorder p="md">
+              <Text fw={500} mb="sm">INOL (Window Average)</Text>
+              <SimpleGrid cols={3} mb="sm">
                 {Object.entries(data.inol.avg_inol).map(([lift, val]) => (
-                  <div key={lift} className="text-center p-3 bg-secondary/50 rounded">
-                    <p className="text-xs text-muted-foreground capitalize">{lift}</p>
-                    <p className={`text-2xl font-bold ${val > 4.0 ? 'text-red-600' : val < 2.0 ? 'text-yellow-600' : 'text-green-600'}`}>{val.toFixed(2)}</p>
-                    <p className="text-xs text-muted-foreground">{val > 4.0 ? 'Overreaching' : val < 2.0 ? 'Low stimulus' : 'Productive'}</p>
-                  </div>
+                  <Stack key={lift} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${val > 4.0 ? 'red' : val < 2.0 ? 'yellow' : 'green'}-light)` }}>
+                    <Text fz="xs" c="dimmed" tt="capitalize">{lift}</Text>
+                    <Text fz="xl" fw={700} c={val > 4.0 ? 'red' : val < 2.0 ? 'yellow' : 'green'}>{val.toFixed(2)}</Text>
+                    <Text fz="xs" c="dimmed">{val > 4.0 ? 'Overreaching' : val < 2.0 ? 'Low stimulus' : 'Productive'}</Text>
+                  </Stack>
                 ))}
-              </div>
+              </SimpleGrid>
               {data.inol.flags.length > 0 && (
-                <div className="flex flex-wrap gap-2">
+                <Group gap="xs" wrap="wrap">
                   {data.inol.flags.map(flag => (
-                    <span key={flag} className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">{flag}</span>
+                    <Badge key={flag} color="yellow" variant="light">{flag}</Badge>
                   ))}
-                </div>
+                </Group>
               )}
-            </div>
+            </Paper>
           )}
 
           {/* ACWR */}
           {data.acwr && !('status' in data.acwr) && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-medium">ACWR (Acute:Chronic Workload Ratio)</h3>
-                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                  (data.acwr as any).composite_zone === 'optimal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : (data.acwr as any).composite_zone === 'caution' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                  : (data.acwr as any).composite_zone === 'danger' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                }`}>
+            <Paper withBorder p="md">
+              <Group justify="space-between" mb="sm">
+                <Text fw={500}>ACWR (Acute:Chronic Workload Ratio)</Text>
+                <Badge
+                  color={(data.acwr as any).composite_zone === 'optimal' ? 'green' : (data.acwr as any).composite_zone === 'caution' ? 'yellow' : (data.acwr as any).composite_zone === 'danger' ? 'red' : 'gray'}
+                  variant="light"
+                >
                   Composite: {(data.acwr as any).composite?.toFixed(2) ?? 'N/A'} ({(data.acwr as any).composite_zone})
-                </span>
-              </div>
-              <div className="grid grid-cols-4 gap-4">
+                </Badge>
+              </Group>
+              <SimpleGrid cols={4} spacing="md">
                 {Object.entries((data.acwr as any).dimensions).map(([dim, info]: [string, any]) => {
-                  const zoneColor = info.zone === 'optimal' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : info.zone === 'caution' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                    : info.zone === 'danger' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                    : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                  const zoneColor = info.zone === 'optimal' ? 'green' : info.zone === 'caution' ? 'yellow' : info.zone === 'danger' ? 'red' : 'gray'
                   return (
-                    <div key={dim} className={`text-center p-3 rounded ${zoneColor}`}>
-                      <p className="text-xs capitalize">{dim}</p>
-                      <p className="text-xl font-bold">{info.value?.toFixed(2) ?? '--'}</p>
-                      <p className="text-xs capitalize">{info.zone}</p>
-                    </div>
+                    <Stack key={dim} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${zoneColor}-light)` }}>
+                      <Text fz="xs" tt="capitalize">{dim}</Text>
+                      <Text fz="xl" fw={700}>{info.value?.toFixed(2) ?? '--'}</Text>
+                      <Text fz="xs" tt="capitalize">{info.zone}</Text>
+                    </Stack>
                   )
                 })}
-              </div>
-            </div>
+              </SimpleGrid>
+            </Paper>
           )}
           {data.acwr && 'status' in data.acwr && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-2">ACWR (Acute:Chronic Workload Ratio)</h3>
-              <p className="text-sm text-muted-foreground">{(data.acwr as any).reason ?? 'Not enough data yet. Keep logging sessions.'}</p>
-            </div>
+            <Paper withBorder p="md">
+              <Text fw={500} mb="xs">ACWR (Acute:Chronic Workload Ratio)</Text>
+              <Text fz="sm" c="dimmed">{(data.acwr as any).reason ?? 'Not enough data yet. Keep logging sessions.'}</Text>
+            </Paper>
           )}
 
           {/* RI Distribution */}
           {data.ri_distribution && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Relative Intensity Distribution</h3>
-              <div className="grid grid-cols-3 gap-4 mb-4">
+            <Paper withBorder p="md">
+              <Text fw={500} mb="sm">Relative Intensity Distribution</Text>
+              <SimpleGrid cols={3} mb="md">
                 {(['heavy', 'moderate', 'light'] as const).map(bucket => {
                   const info = data.ri_distribution!.overall[bucket]
-                  const color = bucket === 'heavy' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                    : bucket === 'moderate' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                  const color = bucket === 'heavy' ? 'red' : bucket === 'moderate' ? 'green' : 'blue'
                   return (
-                    <div key={bucket} className={`text-center p-3 rounded ${color}`}>
-                      <p className="text-xs capitalize">{bucket}</p>
-                      <p className="text-2xl font-bold">{info.pct.toFixed(0)}%</p>
-                      <p className="text-xs">{info.count} sets</p>
-                    </div>
+                    <Stack key={bucket} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${color}-light)` }}>
+                      <Text fz="xs" tt="capitalize">{bucket}</Text>
+                      <Text fz="xl" fw={700}>{info.pct.toFixed(0)}%</Text>
+                      <Text fz="xs">{info.count} sets</Text>
+                    </Stack>
                   )
                 })}
-              </div>
+              </SimpleGrid>
               {Object.keys(data.ri_distribution.per_lift).length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-border"><th className="text-left py-2 pr-4">Lift</th><th className="text-right py-2 px-4">Heavy %</th><th className="text-right py-2 px-4">Moderate %</th><th className="text-right py-2 pl-4">Light %</th></tr></thead>
-                    <tbody>
+                <Box style={{ overflowX: 'auto' }}>
+                  <Table fz="sm">
+                    <Table.Thead><Table.Tr><Table.Th>Lift</Table.Th><Table.Th ta="right">Heavy %</Table.Th><Table.Th ta="right">Moderate %</Table.Th><Table.Th ta="right">Light %</Table.Th></Table.Tr></Table.Thead>
+                    <Table.Tbody>
                       {Object.entries(data.ri_distribution.per_lift).map(([lift, buckets]) => (
-                        <tr key={lift} className="border-b border-border/50">
-                          <td className="py-2 pr-4 font-medium capitalize">{lift}</td>
-                          <td className="text-right py-2 px-4 text-red-600">{buckets.heavy.pct.toFixed(0)}%</td>
-                          <td className="text-right py-2 px-4 text-green-600">{buckets.moderate.pct.toFixed(0)}%</td>
-                          <td className="text-right py-2 pl-4 text-blue-600">{buckets.light.pct.toFixed(0)}%</td>
-                        </tr>
+                        <Table.Tr key={lift}>
+                          <Table.Td fw={500}>{lift}</Table.Td>
+                          <Table.Td ta="right" c="red">{buckets.heavy.pct.toFixed(0)}%</Table.Td>
+                          <Table.Td ta="right" c="green">{buckets.moderate.pct.toFixed(0)}%</Table.Td>
+                          <Table.Td ta="right" c="blue">{buckets.light.pct.toFixed(0)}%</Table.Td>
+                        </Table.Tr>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </Table.Tbody>
+                  </Table>
+                </Box>
               )}
-            </div>
+            </Paper>
           )}
 
           {/* Specificity Ratio */}
           {data.specificity_ratio && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Specificity Ratio</h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Narrow (SBD only)</p>
-                  <div className="w-full bg-secondary rounded-full h-4 overflow-hidden">
-                    <div className="bg-primary h-4 rounded-full transition-all" style={{ width: `${Math.min(data.specificity_ratio.narrow * 100, 100)}%` }} />
-                  </div>
-                  <p className="text-sm font-medium mt-1">{(data.specificity_ratio.narrow * 100).toFixed(1)}%</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Broad (SBD + secondary)</p>
-                  <div className="w-full bg-secondary rounded-full h-4 overflow-hidden">
-                    <div className="bg-primary/70 h-4 rounded-full transition-all" style={{ width: `${Math.min(data.specificity_ratio.broad * 100, 100)}%` }} />
-                  </div>
-                  <p className="text-sm font-medium mt-1">{(data.specificity_ratio.broad * 100).toFixed(1)}%</p>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">{data.specificity_ratio.sbd_sets} SBD sets / {data.specificity_ratio.total_sets} total sets</p>
-            </div>
+            <Paper withBorder p="md">
+              <Text fw={500} mb="sm">Specificity Ratio</Text>
+              <SimpleGrid cols={2} spacing="md">
+                <Stack gap="xs">
+                  <Text fz="xs" c="dimmed">Narrow (SBD only)</Text>
+                  <Progress value={Math.min(data.specificity_ratio.narrow * 100, 100)} />
+                  <Text fz="sm" fw={500}>{(data.specificity_ratio.narrow * 100).toFixed(1)}%</Text>
+                </Stack>
+                <Stack gap="xs">
+                  <Text fz="xs" c="dimmed">Broad (SBD + secondary)</Text>
+                  <Progress value={Math.min(data.specificity_ratio.broad * 100, 100)} color="blue" />
+                  <Text fz="sm" fw={500}>{(data.specificity_ratio.broad * 100).toFixed(1)}%</Text>
+                </Stack>
+              </SimpleGrid>
+              <Text fz="xs" c="dimmed" mt="sm">{data.specificity_ratio.sbd_sets} SBD sets / {data.specificity_ratio.total_sets} total sets</Text>
+            </Paper>
           )}
 
           {/* Fatigue Dimensions */}
           {data.fatigue_dimensions && Object.keys(data.fatigue_dimensions.weekly).length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Fatigue Dimensions (Weekly)</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-border"><th className="text-left py-2 pr-4">Week</th><th className="text-right py-2 px-4">Axial</th><th className="text-right py-2 px-4">Neural</th><th className="text-right py-2 px-4">Peripheral</th><th className="text-right py-2 pl-4">Systemic</th></tr></thead>
-                  <tbody>
+            <Paper withBorder p="md">
+              <Text fw={500} mb="sm">Fatigue Dimensions (Weekly)</Text>
+              <Box style={{ overflowX: 'auto' }}>
+                <Table fz="sm">
+                  <Table.Thead><Table.Tr><Table.Th>Week</Table.Th><Table.Th ta="right">Axial</Table.Th><Table.Th ta="right">Neural</Table.Th><Table.Th ta="right">Peripheral</Table.Th><Table.Th ta="right">Systemic</Table.Th></Table.Tr></Table.Thead>
+                  <Table.Tbody>
                     {Object.entries(data.fatigue_dimensions.weekly)
                       .sort(([a], [b]) => Number(a) - Number(b)).slice(-8)
                       .map(([week, dims]) => (
-                        <tr key={week} className="border-b border-border/50">
-                          <td className="py-2 pr-4 font-medium">W{week}</td>
-                          <td className="text-right py-2 px-4">{dims.axial.toFixed(1)}</td>
-                          <td className="text-right py-2 px-4">{dims.neural.toFixed(1)}</td>
-                          <td className="text-right py-2 px-4">{dims.peripheral.toFixed(1)}</td>
-                          <td className="text-right py-2 pl-4">{dims.systemic.toFixed(1)}</td>
-                        </tr>
+                        <Table.Tr key={week}>
+                          <Table.Td fw={500}>W{week}</Table.Td>
+                          <Table.Td ta="right">{dims.axial.toFixed(1)}</Table.Td>
+                          <Table.Td ta="right">{dims.neural.toFixed(1)}</Table.Td>
+                          <Table.Td ta="right">{dims.peripheral.toFixed(1)}</Table.Td>
+                          <Table.Td ta="right">{dims.systemic.toFixed(1)}</Table.Td>
+                        </Table.Tr>
                       ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  </Table.Tbody>
+                </Table>
+              </Box>
+            </Paper>
           )}
 
           {/* Projections */}
           {data.projections.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
               {data.projections.map((proj, i) => (
-                <div key={i} className="bg-card border border-border rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-5 h-5 text-primary" />
-                    <h3 className="font-medium">{proj.comp_name || 'Projected Total'}</h3>
-                  </div>
-                  <p className="text-3xl font-bold">{proj.total.toFixed(1)} kg</p>
-                  <p className="text-sm text-muted-foreground mt-1">
+                <Paper key={i} withBorder p="md">
+                  <Group gap="xs" mb="xs">
+                    <TrendingUp size={18} />
+                    <Text fw={500}>{proj.comp_name || 'Projected Total'}</Text>
+                  </Group>
+                  <Text fz="2rem" fw={700}>{proj.total.toFixed(1)} kg</Text>
+                  <Text fz="sm" c="dimmed" mt="xs">
                     Confidence: {(proj.confidence * 100).toFixed(0)}%
                     {proj.weeks_to_comp !== undefined && ` (${proj.weeks_to_comp.toFixed(1)} wks out)`}
-                  </p>
-                  {proj.method && <p className="text-xs text-muted-foreground">via {proj.method === 'session_estimated' ? 'session e1RM' : proj.method}</p>}
-                </div>
+                  </Text>
+                  {proj.method && <Text fz="xs" c="dimmed">via {proj.method === 'session_estimated' ? 'session e1RM' : proj.method}</Text>}
+                </Paper>
               ))}
-            </div>
+            </SimpleGrid>
           ) : (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Projected Total</h3>
-              </div>
-              <p className="text-lg text-muted-foreground">{data.projection_reason || 'No competition date set'}</p>
-            </div>
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="xs">
+                <TrendingUp size={18} />
+                <Text fw={500}>Projected Total</Text>
+              </Group>
+              <Text fz="lg" c="dimmed">{data.projection_reason || 'No competition date set'}</Text>
+            </Paper>
           )}
 
-          {/* ─── DOTS & e1RM Trend ──────────────────────────────────────────────── */}
+          {/* DOTS & e1RM Trend */}
           {dotsTrend && dotsTrend.rows.length >= 2 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">e1RM Progression &amp; DOTS Trend</h3>
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="sm">
+                <TrendingUp size={18} />
+                <Text fw={500}>e1RM Progression &amp; DOTS Trend</Text>
                 {dotsTrend.dotsChange !== null && (
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ml-auto ${dotsTrend.dotsChange >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                  <Badge color={dotsTrend.dotsChange >= 0 ? 'green' : 'red'} variant="light" ml="auto">
                     {dotsTrend.dotsChange >= 0 ? '+' : ''}{dotsTrend.dotsChange} DOTS/wk
-                  </span>
+                  </Badge>
                 )}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-2 pr-4">Week</th>
-                      <th className="text-right py-2 px-3">Squat e1RM</th>
-                      <th className="text-right py-2 px-3">Bench e1RM</th>
-                      <th className="text-right py-2 px-3">DL e1RM</th>
-                      <th className="text-right py-2 px-3">Total</th>
-                      <th className="text-right py-2 pl-3">DOTS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              </Group>
+              <Box style={{ overflowX: 'auto' }}>
+                <Table fz="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Week</Table.Th>
+                      <Table.Th ta="right">Squat e1RM</Table.Th>
+                      <Table.Th ta="right">Bench e1RM</Table.Th>
+                      <Table.Th ta="right">DL e1RM</Table.Th>
+                      <Table.Th ta="right">Total</Table.Th>
+                      <Table.Th ta="right">DOTS</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
                     {dotsTrend.rows.map(r => (
-                      <tr key={r.week} className="border-b border-border/50">
-                        <td className="py-2 pr-4 font-medium">W{r.week}</td>
-                        <td className="text-right py-2 px-3">{r.squat?.toFixed(1) ?? '--'}</td>
-                        <td className="text-right py-2 px-3">{r.bench?.toFixed(1) ?? '--'}</td>
-                        <td className="text-right py-2 px-3">{r.deadlift?.toFixed(1) ?? '--'}</td>
-                        <td className="text-right py-2 px-3 font-medium">{r.total?.toFixed(1) ?? '--'}</td>
-                        <td className="text-right py-2 pl-3 font-bold text-primary">{r.dots?.toFixed(2) ?? '--'}</td>
-                      </tr>
+                      <Table.Tr key={r.week}>
+                        <Table.Td fw={500}>W{r.week}</Table.Td>
+                        <Table.Td ta="right">{r.squat?.toFixed(1) ?? '--'}</Table.Td>
+                        <Table.Td ta="right">{r.bench?.toFixed(1) ?? '--'}</Table.Td>
+                        <Table.Td ta="right">{r.deadlift?.toFixed(1) ?? '--'}</Table.Td>
+                        <Table.Td ta="right" fw={500}>{r.total?.toFixed(1) ?? '--'}</Table.Td>
+                        <Table.Td ta="right" fw={700} c="blue">{r.dots?.toFixed(2) ?? '--'}</Table.Td>
+                      </Table.Tr>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">DOTS calculated from estimated 1RM (Epley) and nearest bodyweight. Male coefficients used.</p>
-            </div>
+                  </Table.Tbody>
+                </Table>
+              </Box>
+              <Text fz="xs" c="dimmed" mt="xs">DOTS calculated from estimated 1RM (Epley) and nearest bodyweight. Male coefficients used.</Text>
+            </Paper>
           )}
 
-          {/* ─── Body Weight Trend ─────────────────────────────────────────────── */}
+          {/* Body Weight Trend */}
           {weightTrend && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Scale className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Body Weight Trend</h3>
-              </div>
-              <div className="flex items-baseline gap-4">
-                <p className="text-2xl font-bold">{weightTrend.latest.toFixed(1)} kg</p>
-                <p className={`text-sm font-medium ${weightTrend.change >= 0 ? 'text-yellow-600' : 'text-green-600'}`}>
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="sm">
+                <Scale size={18} />
+                <Text fw={500}>Body Weight Trend</Text>
+              </Group>
+              <Group align="baseline" gap="md">
+                <Text fz="2rem" fw={700}>{weightTrend.latest.toFixed(1)} kg</Text>
+                <Text fz="sm" fw={500} c={weightTrend.change >= 0 ? 'yellow' : 'green'}>
                   {weightTrend.change >= 0 ? '+' : ''}{weightTrend.change.toFixed(1)} kg over {effectiveWeeks} wk{effectiveWeeks !== 1 ? 's' : ''}
-                </p>
-              </div>
-              <div className="mt-3 grid grid-cols-4 md:grid-cols-8 gap-2">
+                </Text>
+              </Group>
+              <SimpleGrid cols={{ base: 4, md: 8 }} mt="sm">
                 {weightTrend.entries.map(e => (
-                  <div key={e.date} className="text-center">
-                    <p className="text-xs text-muted-foreground">{e.date.slice(5)}</p>
-                    <p className="text-sm font-medium">{e.kg.toFixed(1)}</p>
-                  </div>
+                  <Stack key={e.date} gap={2} ta="center">
+                    <Text fz="xs" c="dimmed">{e.date.slice(5)}</Text>
+                    <Text fz="sm" fw={500}>{e.kg.toFixed(1)}</Text>
+                  </Stack>
                 ))}
-              </div>
-            </div>
+              </SimpleGrid>
+            </Paper>
           )}
 
-          {/* ─── Sleep Trend ──────────────────────────────────────────────────── */}
+          {/* Sleep Trend */}
           {sleepTrend && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Moon className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Sleep Trend</h3>
-              </div>
-              <div className="flex items-baseline gap-4 mb-3">
-                {sleepTrend.avg !== null && (
-                  <p className="text-2xl font-bold">{sleepTrend.avg} hrs/night avg</p>
-                )}
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="sm">
+                <Moon size={18} />
+                <Text fw={500}>Sleep Trend</Text>
+              </Group>
+              <Group align="baseline" gap="md" mb="sm">
+                {sleepTrend.avg !== null && <Text fz="2rem" fw={700}>{sleepTrend.avg} hrs/night avg</Text>}
                 {sleepTrend.delta !== null && (
-                  <p className={`text-sm font-medium ${sleepTrend.delta >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <Text fz="sm" fw={500} c={sleepTrend.delta >= 0 ? 'green' : 'red'}>
                     {sleepTrend.delta >= 0 ? '+' : ''}{sleepTrend.delta} hrs/wk
-                  </p>
+                  </Text>
                 )}
-              </div>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              </Group>
+              <SimpleGrid cols={{ base: 3, sm: 6 }}>
                 {sleepTrend.weekly.filter(w => w.sleep != null).map(w => (
-                  <div key={w.week} className="text-center p-2 bg-secondary/30 rounded">
-                    <p className="text-xs text-muted-foreground">{w.week.slice(5)}</p>
-                    <p className={`text-sm font-bold ${(w.sleep as number) >= 7 ? 'text-green-600' : (w.sleep as number) >= 6 ? 'text-yellow-600' : 'text-red-600'}`}>
+                  <Stack key={w.week} gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                    <Text fz="xs" c="dimmed">{w.week.slice(5)}</Text>
+                    <Text fz="sm" fw={700} c={(w.sleep as number) >= 7 ? 'green' : (w.sleep as number) >= 6 ? 'yellow' : 'red'}>
                       {(w.sleep as number).toFixed(1)}h
-                    </p>
-                  </div>
+                    </Text>
+                  </Stack>
                 ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
+              </SimpleGrid>
+              <Text fz="xs" c="dimmed" mt="xs">
                 {sleepTrend.avg !== null && sleepTrend.avg >= 7 ? '✓ Meeting 7hr+ target' : '⚠ Below 7hr target — may impact recovery'}
-              </p>
-            </div>
+              </Text>
+            </Paper>
           )}
 
-          {/* ─── Nutrition Trend ──────────────────────────────────────────────── */}
+          {/* Nutrition Trend */}
           {nutritionTrend && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Utensils className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Nutrition Trend</h3>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-3">
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="sm">
+                <Utensils size={18} />
+                <Text fw={500}>Nutrition Trend</Text>
+              </Group>
+              <SimpleGrid cols={{ base: 2, md: 4, lg: 6 }} mb="sm">
                 {nutritionTrend.avgCalories !== null && (
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Avg Calories</p>
-                    <p className="text-lg font-bold">{nutritionTrend.avgCalories.toLocaleString()}</p>
+                  <Stack gap={2} ta="center">
+                    <Text fz="xs" c="dimmed">Avg Calories</Text>
+                    <Text fz="lg" fw={700}>{nutritionTrend.avgCalories.toLocaleString()}</Text>
                     {nutritionTrend.caloriesChangePerWeek !== null && (
-                      <p className={`text-xs font-medium ${nutritionTrend.caloriesChangePerWeek >= 0 ? 'text-yellow-600' : 'text-green-600'}`}>
+                      <Text fz="xs" fw={500} c={nutritionTrend.caloriesChangePerWeek >= 0 ? 'yellow' : 'green'}>
                         {nutritionTrend.caloriesChangePerWeek >= 0 ? '+' : ''}{nutritionTrend.caloriesChangePerWeek}/wk
-                      </p>
+                      </Text>
                     )}
-                  </div>
+                  </Stack>
                 )}
-                {/* Macros */}
                 {nutritionTrend.avgProtein !== null && (
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground flex items-center justify-center gap-1"><Beef className="w-3 h-3" /> Avg Protein</p>
-                    <p className="text-lg font-bold">{nutritionTrend.avgProtein}g</p>
+                  <Stack gap={2} ta="center">
+                    <Group gap={4} justify="center">
+                      <Beef size={12} />
+                      <Text fz="xs" c="dimmed">Avg Protein</Text>
+                    </Group>
+                    <Text fz="lg" fw={700}>{nutritionTrend.avgProtein}g</Text>
                     {nutritionTrend.proteinChangePerWeek !== null && (
-                      <p className={`text-xs font-medium ${nutritionTrend.proteinChangePerWeek >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <Text fz="xs" fw={500} c={nutritionTrend.proteinChangePerWeek >= 0 ? 'green' : 'red'}>
                         {nutritionTrend.proteinChangePerWeek >= 0 ? '+' : ''}{nutritionTrend.proteinChangePerWeek}g/wk
-                      </p>
+                      </Text>
                     )}
-                  </div>
+                  </Stack>
                 )}
                 {nutritionTrend.avgCarb !== null && (
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Avg Carbs</p>
-                    <p className="text-lg font-bold">{nutritionTrend.avgCarb}g</p>
+                  <Stack gap={2} ta="center">
+                    <Text fz="xs" c="dimmed">Avg Carbs</Text>
+                    <Text fz="lg" fw={700}>{nutritionTrend.avgCarb}g</Text>
                     {nutritionTrend.carbChangePerWeek !== null && (
-                      <p className={`text-xs font-medium ${nutritionTrend.carbChangePerWeek >= 0 ? 'text-yellow-600' : 'text-orange-600'}`}>
+                      <Text fz="xs" fw={500} c={nutritionTrend.carbChangePerWeek >= 0 ? 'yellow' : 'orange'}>
                         {nutritionTrend.carbChangePerWeek >= 0 ? '+' : ''}{nutritionTrend.carbChangePerWeek}g/wk
-                      </p>
+                      </Text>
                     )}
-                  </div>
+                  </Stack>
                 )}
                 {nutritionTrend.avgFat !== null && (
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Avg Fat</p>
-                    <p className="text-lg font-bold">{nutritionTrend.avgFat}g</p>
+                  <Stack gap={2} ta="center">
+                    <Text fz="xs" c="dimmed">Avg Fat</Text>
+                    <Text fz="lg" fw={700}>{nutritionTrend.avgFat}g</Text>
                     {nutritionTrend.fatChangePerWeek !== null && (
-                      <p className={`text-xs font-medium ${nutritionTrend.fatChangePerWeek >= 0 ? 'text-yellow-600' : 'text-green-600'}`}>
+                      <Text fz="xs" fw={500} c={nutritionTrend.fatChangePerWeek >= 0 ? 'yellow' : 'green'}>
                         {nutritionTrend.fatChangePerWeek >= 0 ? '+' : ''}{nutritionTrend.fatChangePerWeek}g/wk
-                      </p>
+                      </Text>
                     )}
-                  </div>
+                  </Stack>
                 )}
                 {nutritionTrend.avgWater !== null && (
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Avg Water</p>
-                    <p className="text-lg font-bold">{nutritionTrend.avgWater} {nutritionTrend.waterUnit === 'litres' ? 'L' : 'cups'}</p>
+                  <Stack gap={2} ta="center">
+                    <Text fz="xs" c="dimmed">Avg Water</Text>
+                    <Text fz="lg" fw={700}>{nutritionTrend.avgWater} {nutritionTrend.waterUnit === 'litres' ? 'L' : 'cups'}</Text>
                     {nutritionTrend.waterChangePerWeek !== null && (
-                      <p className={`text-xs font-medium ${nutritionTrend.waterChangePerWeek >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                      <Text fz="xs" fw={500} c={nutritionTrend.waterChangePerWeek >= 0 ? 'blue' : 'orange'}>
                         {nutritionTrend.waterChangePerWeek >= 0 ? '+' : ''}{nutritionTrend.waterChangePerWeek}/wk
-                      </p>
+                      </Text>
                     )}
-                  </div>
+                  </Stack>
                 )}
                 {nutritionTrend.consistencyPct !== null && (
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Consistency</p>
-                    <p className={`text-lg font-bold ${nutritionTrend.consistencyPct >= 80 ? 'text-green-600' : nutritionTrend.consistencyPct >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                  <Stack gap={2} ta="center">
+                    <Text fz="xs" c="dimmed">Consistency</Text>
+                    <Text fz="lg" fw={700} c={nutritionTrend.consistencyPct >= 80 ? 'green' : nutritionTrend.consistencyPct >= 50 ? 'yellow' : 'red'}>
                       {nutritionTrend.consistencyPct}%
-                    </p>
-                  </div>
+                    </Text>
+                  </Stack>
                 )}
-              </div>
-            </div>
+              </SimpleGrid>
+            </Paper>
           )}
 
-          {/* ─── Lift Profiles (from Dashboard) ────────────────────────────────── */}
           {/* Athlete Measurements */}
           {(program?.meta?.height_cm || program?.meta?.arm_wingspan_cm || program?.meta?.leg_length_cm) && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Ruler className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Athlete Measurements</h3>
-                <span className="text-xs text-muted-foreground ml-auto">Edit on Dashboard</span>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="sm">
+                <Ruler size={18} />
+                <Text fw={500}>Athlete Measurements</Text>
+                <Text fz="xs" c="dimmed" ml="auto">Edit on Dashboard</Text>
+              </Group>
+              <SimpleGrid cols={3} spacing="md">
                 {program.meta.height_cm && (
-                  <div className="text-center p-2 bg-secondary/30 rounded">
-                    <p className="text-xs text-muted-foreground">Height</p>
-                    <p className="text-lg font-bold">{program.meta.height_cm} cm</p>
-                  </div>
+                  <Stack gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                    <Text fz="xs" c="dimmed">Height</Text>
+                    <Text fz="lg" fw={700}>{program.meta.height_cm} cm</Text>
+                  </Stack>
                 )}
                 {program.meta.arm_wingspan_cm && (
-                  <div className="text-center p-2 bg-secondary/30 rounded">
-                    <p className="text-xs text-muted-foreground">Arm Wingspan</p>
-                    <p className="text-lg font-bold">{program.meta.arm_wingspan_cm} cm</p>
-                  </div>
+                  <Stack gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                    <Text fz="xs" c="dimmed">Arm Wingspan</Text>
+                    <Text fz="lg" fw={700}>{program.meta.arm_wingspan_cm} cm</Text>
+                  </Stack>
                 )}
                 {program.meta.leg_length_cm && (
-                  <div className="text-center p-2 bg-secondary/30 rounded">
-                    <p className="text-xs text-muted-foreground">Leg Length</p>
-                    <p className="text-lg font-bold">{program.meta.leg_length_cm} cm</p>
-                  </div>
+                  <Stack gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                    <Text fz="xs" c="dimmed">Leg Length</Text>
+                    <Text fz="lg" fw={700}>{program.meta.leg_length_cm} cm</Text>
+                  </Stack>
                 )}
-              </div>
-            </div>
+              </SimpleGrid>
+            </Paper>
           )}
 
           {program?.lift_profiles && program.lift_profiles.length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Dumbbell className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Lift Style Profiles</h3>
-                <span className="text-xs text-muted-foreground ml-auto">Edit on Dashboard</span>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="sm">
+                <Dumbbell size={18} />
+                <Text fw={500}>Lift Style Profiles</Text>
+                <Text fz="xs" c="dimmed" ml="auto">Edit on Dashboard</Text>
+              </Group>
+              <SimpleGrid cols={{ base: 1, lg: 3 }}>
                 {program.lift_profiles.map((profile) => (
-                  <div key={profile.lift} className="space-y-2 p-3 bg-secondary/30 rounded-lg">
-                    <h4 className="font-medium text-sm capitalize border-b border-border pb-1">{LIFT_LABELS[profile.lift] || profile.lift}</h4>
+                  <Stack key={profile.lift} gap="xs" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                    <Text fw={500} fz="sm" tt="capitalize" pb="xs" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+                      {LIFT_LABELS[profile.lift] || profile.lift}
+                    </Text>
                     {profile.style_notes && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Style & Setup</p>
-                        <p className="text-xs leading-relaxed">{profile.style_notes}</p>
-                      </div>
+                      <Stack gap={2}>
+                        <Text fz="xs" c="dimmed">Style &amp; Setup</Text>
+                        <Text fz="xs" lh="lg">{profile.style_notes}</Text>
+                      </Stack>
                     )}
                     {profile.sticking_points && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Sticking Points</p>
-                        <p className="text-xs leading-relaxed text-orange-600 dark:text-orange-400">{profile.sticking_points}</p>
-                      </div>
+                      <Stack gap={2}>
+                        <Text fz="xs" c="dimmed">Sticking Points</Text>
+                        <Text fz="xs" lh="lg" c="orange">{profile.sticking_points}</Text>
+                      </Stack>
                     )}
                     {profile.primary_muscle && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Primary Driver</p>
-                        <p className="text-xs font-medium">{profile.primary_muscle}</p>
-                      </div>
+                      <Stack gap={2}>
+                        <Text fz="xs" c="dimmed">Primary Driver</Text>
+                        <Text fz="xs" fw={500}>{profile.primary_muscle}</Text>
+                      </Stack>
                     )}
-                    <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
-                      profile.volume_tolerance === 'low'
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                        : profile.volume_tolerance === 'moderate'
-                          ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                          : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    }`}>
+                    <Badge
+                      color={profile.volume_tolerance === 'low' ? 'red' : profile.volume_tolerance === 'moderate' ? 'yellow' : 'green'}
+                      variant="light"
+                      tt="capitalize"
+                    >
                       {profile.volume_tolerance} volume tolerance
-                    </span>
-                  </div>
+                    </Badge>
+                  </Stack>
                 ))}
-              </div>
-            </div>
+              </SimpleGrid>
+            </Paper>
           )}
 
           {/* Competitions */}
           {competitions.length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Trophy className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Competitions</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-2 pr-4">Name</th>
-                      <th className="text-left py-2 px-4">Date</th>
-                      <th className="text-left py-2 px-4">Status</th>
-                      <th className="text-right py-2 px-4">Squat</th>
-                      <th className="text-right py-2 px-4">Bench</th>
-                      <th className="text-right py-2 px-4">Deadlift</th>
-                      <th className="text-right py-2 pl-4">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="sm">
+                <Trophy size={18} />
+                <Text fw={500}>Competitions</Text>
+              </Group>
+              <Box style={{ overflowX: 'auto' }}>
+                <Table fz="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Name</Table.Th>
+                      <Table.Th>Date</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th ta="right">Squat</Table.Th>
+                      <Table.Th ta="right">Bench</Table.Th>
+                      <Table.Th ta="right">Deadlift</Table.Th>
+                      <Table.Th ta="right">Total</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
                     {competitions.map(c => (
-                      <tr key={c.date + c.name} className="border-b border-border/50">
-                        <td className="py-2 pr-4 font-medium">{c.name}</td>
-                        <td className="py-2 px-4 text-muted-foreground">{c.date}</td>
-                        <td className="py-2 px-4">{compStatusBadge(c.status)}</td>
+                      <Table.Tr key={c.date + c.name}>
+                        <Table.Td fw={500}>{c.name}</Table.Td>
+                        <Table.Td c="dimmed">{c.date}</Table.Td>
+                        <Table.Td>{compStatusBadge(c.status)}</Table.Td>
                         {c.results ? (
                           <>
-                            <td className="text-right py-2 px-4">{c.results.squat_kg.toFixed(1)}</td>
-                            <td className="text-right py-2 px-4">{c.results.bench_kg.toFixed(1)}</td>
-                            <td className="text-right py-2 px-4">{c.results.deadlift_kg.toFixed(1)}</td>
-                            <td className="text-right py-2 pl-4 font-bold">{c.results.total_kg.toFixed(1)}</td>
+                            <Table.Td ta="right">{c.results.squat_kg.toFixed(1)}</Table.Td>
+                            <Table.Td ta="right">{c.results.bench_kg.toFixed(1)}</Table.Td>
+                            <Table.Td ta="right">{c.results.deadlift_kg.toFixed(1)}</Table.Td>
+                            <Table.Td ta="right" fw={700}>{c.results.total_kg.toFixed(1)}</Table.Td>
                           </>
                         ) : (
-                          <td className="text-right py-2 pl-4 text-muted-foreground" colSpan={4}>--</td>
+                          <Table.Td ta="right" c="dimmed" colSpan={4}>--</Table.Td>
                         )}
-                      </tr>
+                      </Table.Tr>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  </Table.Tbody>
+                </Table>
+              </Box>
+            </Paper>
           )}
 
           {/* Per-lift breakdown */}
           {Object.keys(data.lifts).length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Per-Lift Breakdown</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-2 pr-4">Exercise</th>
-                      <th className="text-right py-2 px-4">Freq</th>
-                      <th className="text-right py-2 px-4">Sets</th>
-                      <th className="text-right py-2 px-4">Progression</th>
-                      <th className="text-right py-2 px-4">R&sup2;</th>
-                      <th className="text-right py-2 px-4">Volume %</th>
-                      <th className="text-right py-2 px-4">Intensity %</th>
-                      <th className="text-right py-2 px-4">Failed</th>
-                      <th className="text-right py-2 pl-4">RPE Trend</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+            <Paper withBorder p="md">
+              <Text fw={500} mb="sm">Per-Lift Breakdown</Text>
+              <Box style={{ overflowX: 'auto' }}>
+                <Table fz="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Exercise</Table.Th>
+                      <Table.Th ta="right">Freq</Table.Th>
+                      <Table.Th ta="right">Sets</Table.Th>
+                      <Table.Th ta="right">Progression</Table.Th>
+                      <Table.Th ta="right">R&sup2;</Table.Th>
+                      <Table.Th ta="right">Volume %</Table.Th>
+                      <Table.Th ta="right">Intensity %</Table.Th>
+                      <Table.Th ta="right">Failed</Table.Th>
+                      <Table.Th ta="right">RPE Trend</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
                     {Object.entries(data.lifts).map(([name, lift]) => {
                       const liftKey = name.toLowerCase().replace(' press', '')
                       const details = perLiftDetails[liftKey]
                       const isExpanded = expandedLifts.has(name)
                       return (
                         <Fragment key={name}>
-                          <tr className="border-b border-border/50">
-                            <td className="py-2 pr-4 font-medium capitalize">
-                              <div className="flex items-center gap-2">
+                          <Table.Tr>
+                            <Table.Td fw={500}>
+                              <Group gap="xs">
                                 {name}
                                 {details && details.accessories.length > 0 && (
-                                  <button
+                                  <Button
+                                    variant="subtle"
+                                    size="compact-xs"
+                                    color="gray"
                                     onClick={() => setExpandedLifts(prev => {
                                       const next = new Set(prev)
                                       if (next.has(name)) next.delete(name); else next.add(name)
                                       return next
                                     })}
-                                    className="text-xs text-muted-foreground hover:text-foreground"
                                   >
                                     {isExpanded ? '▼' : '▶'} {details.accessories.length} acc
-                                  </button>
+                                  </Button>
                                 )}
-                              </div>
-                            </td>
-                            <td className="text-right py-2 px-4">{details ? <span>{details.frequency}/wk</span> : <span className="text-muted-foreground">--</span>}</td>
-                            <td className="text-right py-2 px-4">{details ? <span>{details.raw_sets}</span> : <span className="text-muted-foreground">--</span>}</td>
-                            <td className="text-right py-2 px-4">
+                              </Group>
+                            </Table.Td>
+                            <Table.Td ta="right">{details ? <Text span fz="sm">{details.frequency}/wk</Text> : <Text span fz="sm" c="dimmed">--</Text>}</Table.Td>
+                            <Table.Td ta="right">{details ? <Text span fz="sm">{details.raw_sets}</Text> : <Text span fz="sm" c="dimmed">--</Text>}</Table.Td>
+                            <Table.Td ta="right">
                               {lift.progression_rate_kg_per_week !== undefined && lift.progression_rate_kg_per_week !== null
-                                ? <span className={lift.progression_rate_kg_per_week >= 0 ? 'text-green-600' : 'text-red-600'}>{lift.progression_rate_kg_per_week >= 0 ? '+' : ''}{lift.progression_rate_kg_per_week.toFixed(1)} kg/wk</span>
-                                : <span className="text-muted-foreground">--</span>}
-                            </td>
-                            <td className="text-right py-2 px-4">
+                                ? <Text span fz="sm" c={lift.progression_rate_kg_per_week >= 0 ? 'green' : 'red'}>{lift.progression_rate_kg_per_week >= 0 ? '+' : ''}{lift.progression_rate_kg_per_week.toFixed(1)} kg/wk</Text>
+                                : <Text span fz="sm" c="dimmed">--</Text>}
+                            </Table.Td>
+                            <Table.Td ta="right">
                               {lift.r2 !== undefined && lift.r2 !== null
-                                ? <span className="text-muted-foreground">{(lift.r2 * 100).toFixed(0)}%</span>
-                                : <span className="text-muted-foreground">--</span>}
-                            </td>
-                            <td className="text-right py-2 px-4">
+                                ? <Text span fz="sm" c="dimmed">{(lift.r2 * 100).toFixed(0)}%</Text>
+                                : <Text span fz="sm" c="dimmed">--</Text>}
+                            </Table.Td>
+                            <Table.Td ta="right">
                               {lift.volume_change_pct !== undefined
-                                ? <span className={lift.volume_change_pct >= 0 ? 'text-green-600' : 'text-red-600'}>{lift.volume_change_pct >= 0 ? '+' : ''}{lift.volume_change_pct.toFixed(0)}%</span>
-                                : <span className="text-muted-foreground">--</span>}
-                            </td>
-                            <td className="text-right py-2 px-4">
+                                ? <Text span fz="sm" c={lift.volume_change_pct >= 0 ? 'green' : 'red'}>{lift.volume_change_pct >= 0 ? '+' : ''}{lift.volume_change_pct.toFixed(0)}%</Text>
+                                : <Text span fz="sm" c="dimmed">--</Text>}
+                            </Table.Td>
+                            <Table.Td ta="right">
                               {lift.intensity_change_pct !== undefined
-                                ? <span className={lift.intensity_change_pct >= 0 ? 'text-green-600' : 'text-red-600'}>{lift.intensity_change_pct >= 0 ? '+' : ''}{lift.intensity_change_pct.toFixed(0)}%</span>
-                                : <span className="text-muted-foreground">--</span>}
-                            </td>
-                            <td className="text-right py-2 px-4">
+                                ? <Text span fz="sm" c={lift.intensity_change_pct >= 0 ? 'green' : 'red'}>{lift.intensity_change_pct >= 0 ? '+' : ''}{lift.intensity_change_pct.toFixed(0)}%</Text>
+                                : <Text span fz="sm" c="dimmed">--</Text>}
+                            </Table.Td>
+                            <Table.Td ta="right">
                               {lift.failed_sets !== undefined && lift.failed_sets > 0
-                                ? <span className="text-red-600 font-medium">{lift.failed_sets}</span>
-                                : <span className="text-muted-foreground">0</span>}
-                            </td>
-                            <td className="text-right py-2 pl-4">{rpeTrendIcon(lift.rpe_trend) || <span className="text-muted-foreground">--</span>}</td>
-                          </tr>
+                                ? <Badge variant="light" color="red" size="sm">{lift.failed_sets}</Badge>
+                                : <Text span fz="sm" c="dimmed">0</Text>}
+                            </Table.Td>
+                            <Table.Td ta="right">{rpeTrendIcon(lift.rpe_trend) || <Text span fz="sm" c="dimmed">--</Text>}</Table.Td>
+                          </Table.Tr>
                           {isExpanded && details && details.accessories.length > 0 && (
-                            <tr className="border-b border-border/30 bg-secondary/20">
-                              <td colSpan={9} className="py-2 px-4">
-                                <div className="ml-4">
-                                  <p className="text-xs text-muted-foreground mb-1">Accessory / Secondary Work</p>
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                            <Table.Tr>
+                              <Table.Td colSpan={9}>
+                                <Box ml="md">
+                                  <Text fz="xs" c="dimmed" mb="xs">Accessory / Secondary Work</Text>
+                                  <SimpleGrid cols={{ base: 2, md: 3, lg: 4 }}>
                                     {details.accessories.map(a => (
-                                      <div key={a.name} className="text-xs p-1.5 bg-background rounded">
-                                        <span className="font-medium">{a.name}</span>
-                                        <span className="text-muted-foreground ml-2">{a.sets} sets</span>
-                                        <span className="text-muted-foreground ml-2">{Math.round(a.volume).toLocaleString()} kg</span>
-                                      </div>
+                                      <Box key={a.name} p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default)' }}>
+                                        <Text fz="xs" fw={500}>{a.name}</Text>
+                                        <Text fz="xs" c="dimmed">{a.sets} sets · {Math.round(a.volume).toLocaleString()} kg</Text>
+                                      </Box>
                                     ))}
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
+                                  </SimpleGrid>
+                                </Box>
+                              </Table.Td>
+                            </Table.Tr>
                           )}
                         </Fragment>
                       )
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  </Table.Tbody>
+                </Table>
+              </Box>
+            </Paper>
           )}
 
           {/* Exercise Stats */}
           {data.exercise_stats && Object.keys(data.exercise_stats).length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Exercise Volume</h3>
+            <Paper withBorder p="md">
+              <Text fw={500} mb="sm">Exercise Volume</Text>
               {viewMode === 'raw' ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-border"><th className="text-left py-2 pr-4">Exercise</th><th className="text-right py-2 px-4">Total Sets</th><th className="text-right py-2 px-4">Volume (kg)</th><th className="text-right py-2 pl-4">Max (kg)</th></tr></thead>
-                    <tbody>
+                <Box style={{ overflowX: 'auto' }}>
+                  <Table fz="sm">
+                    <Table.Thead><Table.Tr><Table.Th>Exercise</Table.Th><Table.Th ta="right">Total Sets</Table.Th><Table.Th ta="right">Volume (kg)</Table.Th><Table.Th ta="right">Max (kg)</Table.Th></Table.Tr></Table.Thead>
+                    <Table.Tbody>
                       {Object.entries(data.exercise_stats)
                         .sort((a, b) => b[1].total_volume - a[1].total_volume)
                         .map(([name, s]) => (
-                          <tr key={name} className="border-b border-border/50">
-                            <td className="py-2 pr-4 font-medium">{name}</td>
-                            <td className="text-right py-2 px-4">{s.total_sets}</td>
-                            <td className="text-right py-2 px-4">{s.total_volume.toLocaleString()}</td>
-                            <td className="text-right py-2 pl-4">{s.max_kg.toFixed(1)}</td>
-                          </tr>
+                          <Table.Tr key={name}>
+                            <Table.Td fw={500}>{name}</Table.Td>
+                            <Table.Td ta="right">{s.total_sets}</Table.Td>
+                            <Table.Td ta="right">{s.total_volume.toLocaleString()}</Table.Td>
+                            <Table.Td ta="right">{s.max_kg.toFixed(1)}</Table.Td>
+                          </Table.Tr>
                         ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </Table.Tbody>
+                  </Table>
+                </Box>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground text-center mb-2">Sets Distribution</p>
+                <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+                  <Box>
+                    <Text fz="xs" c="dimmed" ta="center" mb="xs">Sets Distribution</Text>
                     <ResponsiveContainer width="100%" height={350}>
                       <PieChart>
                         <Pie data={Object.entries(data.exercise_stats).sort((a, b) => b[1].total_sets - a[1].total_sets).slice(0, 10).map(([name, s], i) => ({ name, value: s.total_sets, fill: CHART_COLORS[i % CHART_COLORS.length] }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
@@ -1301,9 +1286,9 @@ export default function AnalysisPage() {
                         <Tooltip />
                       </PieChart>
                     </ResponsiveContainer>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground text-center mb-2">Volume Distribution</p>
+                  </Box>
+                  <Box>
+                    <Text fz="xs" c="dimmed" ta="center" mb="xs">Volume Distribution</Text>
                     <ResponsiveContainer width="100%" height={350}>
                       <PieChart>
                         <Pie data={Object.entries(data.exercise_stats).sort((a, b) => b[1].total_volume - a[1].total_volume).slice(0, 10).map(([name, s], i) => ({ name, value: s.total_volume, fill: CHART_COLORS[i % CHART_COLORS.length] }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
@@ -1312,9 +1297,9 @@ export default function AnalysisPage() {
                         <Tooltip />
                       </PieChart>
                     </ResponsiveContainer>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground text-center mb-2">Max Weight (kg)</p>
+                  </Box>
+                  <Box>
+                    <Text fz="xs" c="dimmed" ta="center" mb="xs">Max Weight (kg)</Text>
                     <ResponsiveContainer width="100%" height={350}>
                       <BarChart data={Object.entries(data.exercise_stats).sort((a, b) => b[1].max_kg - a[1].max_kg).slice(0, 10).map(([name, s], i) => ({ name, max_kg: s.max_kg, fill: CHART_COLORS[i % CHART_COLORS.length] }))} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
@@ -1325,25 +1310,25 @@ export default function AnalysisPage() {
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
-                  </div>
-                </div>
+                  </Box>
+                </SimpleGrid>
               )}
-            </div>
+            </Paper>
           )}
 
           {/* Muscle Group Sets */}
           {Object.keys(muscleGroupSets).length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Sets by Muscle Group</h3>
+            <Paper withBorder p="md">
+              <Text fw={500} mb="sm">Sets by Muscle Group</Text>
               {viewMode === 'raw' ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                <SimpleGrid cols={{ base: 2, md: 4, lg: 5 }}>
                   {Object.entries(muscleGroupSets).sort((a, b) => b[1] - a[1]).map(([muscle, sets]) => (
-                    <div key={muscle} className="text-center p-2 bg-secondary/50 rounded">
-                      <p className="text-xs text-muted-foreground capitalize">{muscle.replace(/_/g, ' ')}</p>
-                      <p className="text-lg font-bold">{Math.round(sets)}</p>
-                    </div>
+                    <Stack key={muscle} gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                      <Text fz="xs" c="dimmed" tt="capitalize">{muscle.replace(/_/g, ' ')}</Text>
+                      <Text fz="lg" fw={700}>{Math.round(sets)}</Text>
+                    </Stack>
                   ))}
-                </div>
+                </SimpleGrid>
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
@@ -1354,32 +1339,32 @@ export default function AnalysisPage() {
                   </PieChart>
                 </ResponsiveContainer>
               )}
-            </div>
+            </Paper>
           )}
 
           {/* Avg Weekly by Muscle Group */}
           {Object.keys(muscleGroupAvgWeekly.sets).length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-3">Avg Weekly by Muscle Group</h3>
+            <Paper withBorder p="md">
+              <Text fw={500} mb="sm">Avg Weekly by Muscle Group</Text>
               {viewMode === 'raw' ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-border"><th className="text-left py-2 pr-4">Muscle Group</th><th className="text-right py-2 px-4">Avg Sets/wk</th><th className="text-right py-2 pl-4">Avg Vol/wk (kg)</th></tr></thead>
-                    <tbody>
+                <Box style={{ overflowX: 'auto' }}>
+                  <Table fz="sm">
+                    <Table.Thead><Table.Tr><Table.Th>Muscle Group</Table.Th><Table.Th ta="right">Avg Sets/wk</Table.Th><Table.Th ta="right">Avg Vol/wk (kg)</Table.Th></Table.Tr></Table.Thead>
+                    <Table.Tbody>
                       {Object.entries(muscleGroupAvgWeekly.sets).sort((a, b) => (muscleGroupAvgWeekly.volume[b[0]] || 0) - (muscleGroupAvgWeekly.volume[a[0]] || 0)).map(([muscle, sets]) => (
-                        <tr key={muscle} className="border-b border-border/50">
-                          <td className="py-2 pr-4 font-medium capitalize">{muscle.replace(/_/g, ' ')}</td>
-                          <td className="text-right py-2 px-4">{sets}</td>
-                          <td className="text-right py-2 pl-4">{(muscleGroupAvgWeekly.volume[muscle] || 0).toLocaleString()}</td>
-                        </tr>
+                        <Table.Tr key={muscle}>
+                          <Table.Td fw={500}>{muscle.replace(/_/g, ' ')}</Table.Td>
+                          <Table.Td ta="right">{sets}</Table.Td>
+                          <Table.Td ta="right">{(muscleGroupAvgWeekly.volume[muscle] || 0).toLocaleString()}</Table.Td>
+                        </Table.Tr>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </Table.Tbody>
+                  </Table>
+                </Box>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground text-center mb-2">Avg Sets/wk</p>
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                  <Box>
+                    <Text fz="xs" c="dimmed" ta="center" mb="xs">Avg Sets/wk</Text>
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={Object.entries(muscleGroupAvgWeekly.sets).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name: name.replace(/_/g, ' '), 'Avg Sets/wk': value }))}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -1388,9 +1373,9 @@ export default function AnalysisPage() {
                         <Bar dataKey="Avg Sets/wk" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground text-center mb-2">Avg Vol/wk (kg)</p>
+                  </Box>
+                  <Box>
+                    <Text fz="xs" c="dimmed" ta="center" mb="xs">Avg Vol/wk (kg)</Text>
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={Object.entries(muscleGroupAvgWeekly.volume).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name: name.replace(/_/g, ' '), 'Avg Vol/wk': value }))}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -1399,351 +1384,349 @@ export default function AnalysisPage() {
                         <Bar dataKey="Avg Vol/wk" fill="#22c55e" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
-                  </div>
-                </div>
+                  </Box>
+                </SimpleGrid>
               )}
-            </div>
+            </Paper>
           )}
 
           {/* ─── Exercise ROI Correlation ───────────────────────────────────────── */}
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Brain className="w-5 h-5 text-primary" />
-                <h3 className="font-medium">Exercise ROI Correlation</h3>
+          <Paper withBorder p="md">
+            <Group justify="space-between" mb="sm">
+              <Group gap="xs">
+                <Brain size={18} />
+                <Text fw={500}>Exercise ROI Correlation</Text>
                 {corrReport && (
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${corrReport.cached ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                  <Badge color={corrReport.cached ? 'blue' : 'green'} variant="light" size="sm">
                     {corrReport.cached ? `Cached ${corrReport.generated_at ? new Date(corrReport.generated_at).toLocaleDateString() : ''}` : 'Just generated'}
-                  </span>
+                  </Badge>
                 )}
-              </div>
+              </Group>
               {effectiveWeeks >= 4 && (
-                <button
+                <Button
+                  variant="subtle"
+                  size="xs"
                   onClick={refreshCorrelation}
                   disabled={corrLoading}
-                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-border rounded hover:bg-accent disabled:opacity-50"
+                  leftSection={<RefreshCw size={14} style={corrLoading ? { animation: 'spin 1s linear infinite' } : undefined} />}
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${corrLoading ? 'animate-spin' : ''}`} />
                   Regenerate
-                </button>
+                </Button>
               )}
-            </div>
+            </Group>
 
             {effectiveWeeks < 4 ? (
-              <p className="text-sm text-muted-foreground">Correlation analysis requires at least 4 weeks of data. Select 4+ weeks or Full Block.</p>
+              <Text size="sm" c="dimmed">Correlation analysis requires at least 4 weeks of data. Select 4+ weeks or Full Block.</Text>
             ) : corrLoading ? (
-              <div className="flex items-center gap-2 py-4 text-muted-foreground">
-                <div className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full" />
-                <span className="text-sm">Analyzing training data with AI...</span>
-              </div>
+              <Group gap="xs" py="md">
+                <Loader size="xs" />
+                <Text size="sm" c="dimmed">Analyzing training data with AI...</Text>
+              </Group>
             ) : corrError ? (
-              <p className="text-sm text-red-600 dark:text-red-400">{corrError}</p>
+              <Text size="sm" c="red">{corrError}</Text>
             ) : corrReport ? (
               <>
                 {corrReport.insufficient_data ? (
-                  <div className="text-sm text-muted-foreground">
-                    <p>{corrReport.insufficient_data_reason || 'Insufficient data for meaningful correlation analysis.'}</p>
-                  </div>
+                  <Text size="sm" c="dimmed">{corrReport.insufficient_data_reason || 'Insufficient data for meaningful correlation analysis.'}</Text>
                 ) : (
                   <>
                     {corrReport.summary && (
-                      <p className="text-sm text-muted-foreground mb-4 p-3 bg-secondary/30 rounded italic">{corrReport.summary}</p>
+                      <Text size="sm" c="dimmed" mb="md" p="sm" fs="italic" style={{ background: 'var(--mantine-color-default-hover)', borderRadius: 'var(--mantine-radius-sm)' }}>{corrReport.summary}</Text>
                     )}
                     {corrReport.findings.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-border">
-                              <th className="text-left py-2 pr-4">Exercise</th>
-                              <th className="text-left py-2 px-3">→ Lift</th>
-                              <th className="text-left py-2 px-3">Direction</th>
-                              <th className="text-left py-2 px-3">Strength</th>
-                              <th className="text-left py-2 px-3">Reasoning</th>
-                              <th className="text-left py-2 pl-3">Caveat</th>
-                            </tr>
-                          </thead>
-                          <tbody>
+                      <Box style={{ overflowX: 'auto' }}>
+                        <Table fz="sm">
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th ta="left">Exercise</Table.Th>
+                              <Table.Th ta="left">→ Lift</Table.Th>
+                              <Table.Th ta="left">Direction</Table.Th>
+                              <Table.Th ta="left">Strength</Table.Th>
+                              <Table.Th ta="left">Reasoning</Table.Th>
+                              <Table.Th ta="left">Caveat</Table.Th>
+                            </Table.Tr>
+                          </Table.Thead>
+                          <Table.Tbody>
                             {corrReport.findings.map((f, i) => (
-                              <tr key={i} className="border-b border-border/50 align-top">
-                                <td className="py-3 pr-4 font-medium">{f.exercise}</td>
-                                <td className="py-3 px-3 capitalize">{f.lift}</td>
-                                <td className="py-3 px-3">
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${CORR_DIR_BADGE[f.correlation_direction] || 'bg-gray-100 text-gray-600'}`}>
+                              <Table.Tr key={i} style={{ verticalAlign: 'top' }}>
+                                <Table.Td fw={500}>{f.exercise}</Table.Td>
+                                <Table.Td>{f.lift}</Table.Td>
+                                <Table.Td>
+                                  <Badge size="xs" variant="light" color={CORR_DIR_BADGE[f.correlation_direction] || 'gray'} style={{ textTransform: 'capitalize' }}>
                                     {f.correlation_direction}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-3">
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${CORR_STRENGTH_BADGE[f.strength] || 'bg-gray-100 text-gray-600'}`}>
+                                  </Badge>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Badge size="xs" variant="light" color={CORR_STRENGTH_BADGE[f.strength] || 'gray'} style={{ textTransform: 'capitalize' }}>
                                     {f.strength}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-3 text-xs max-w-xs leading-relaxed">{f.reasoning}</td>
-                                <td className="py-3 pl-3 text-xs text-muted-foreground max-w-xs leading-relaxed italic">{f.caveat}</td>
-                              </tr>
+                                  </Badge>
+                                </Table.Td>
+                                <Table.Td fz="xs">{f.reasoning}</Table.Td>
+                                <Table.Td c="dimmed" fz="xs" fs="italic">{f.caveat}</Table.Td>
+                              </Table.Tr>
                             ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          </Table.Tbody>
+                        </Table>
+                      </Box>
                     ) : (
-                      <p className="text-sm text-muted-foreground">No significant anatomically-relevant correlations found in this window.</p>
+                      <Text size="sm" c="dimmed">No significant anatomically-relevant correlations found in this window.</Text>
                     )}
                   </>
                 )}
               </>
             ) : null}
-          </div>
+          </Paper>
 
           {/* Attempt Selector Settings */}
           {data.attempt_selection && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <h3 className="font-medium mb-1">Competition Attempt Percentages</h3>
-              <p className="text-xs text-muted-foreground mb-3">Based on projected competition maxes. Enter as decimal (e.g. 0.90 for 90%).</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Paper withBorder p="md">
+              <Text fw={500} mb="xs">Competition Attempt Percentages</Text>
+              <Text size="xs" c="dimmed" mb="sm">Based on projected competition maxes. Enter as decimal (e.g. 0.90 for 90%).</Text>
+              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
                 {[
                   { key: 'opener' as const, label: 'Opener', hint: 'Should feel easy under worst conditions' },
                   { key: 'second' as const, label: 'Second', hint: 'A confident single, builds momentum' },
                   { key: 'third' as const, label: 'Third', hint: 'Your projected max — go for it' },
                 ].map(({ key, label, hint }) => (
-                  <div key={key}>
-                    <label htmlFor={`attempt-pct-${key}`} className="text-xs font-medium text-foreground block mb-1">{label}</label>
-                    <input
-                      id={`attempt-pct-${key}`}
-                      type="text"
-                      value={attemptPctRaw[key]}
-                      onChange={(e) => setAttemptPctRaw(p => ({ ...p, [key]: e.target.value }))}
-                      className={`w-full px-2 py-1 border rounded bg-background text-sm ${attemptPctErrors[key] ? 'border-red-500' : 'border-border'}`}
-                    />
-                    {attemptPctErrors[key] ? (
-                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">{attemptPctErrors[key]}</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground mt-1">{hint}</p>
-                    )}
-                  </div>
+                  <TextInput
+                    key={key}
+                    id={`attempt-pct-${key}`}
+                    label={label}
+                    size="sm"
+                    value={attemptPctRaw[key]}
+                    onChange={(e) => setAttemptPctRaw(p => ({ ...p, [key]: e.target.value }))}
+                    error={attemptPctErrors[key]}
+                    description={!attemptPctErrors[key] ? hint : undefined}
+                  />
                 ))}
-              </div>
-              {savingAttempt && <p className="text-xs text-muted-foreground mt-2">Saving...</p>}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3">
+              </SimpleGrid>
+              {savingAttempt && <Text size="xs" c="dimmed" mt="xs">Saving...</Text>}
+              <SimpleGrid cols={{ base: 2, sm: 4 }} mt="sm">
                 {Object.entries(data.attempt_selection)
                   .filter(([k]) => k !== 'total' && k !== 'attempt_pct_used')
                   .map(([lift, attempts]) => (
-                    <div key={lift} className="text-center">
-                      <div className="font-medium capitalize">{lift}</div>
-                      <div className="text-xs text-muted-foreground">
+                    <Stack key={lift} gap={2} align="center">
+                      <Text fw={500} style={{ textTransform: 'capitalize' }}>{lift}</Text>
+                      <Text size="xs" c="dimmed">
                         {(attempts as any).opener} / {(attempts as any).second} / {(attempts as any).third} kg
-                      </div>
-                    </div>
+                      </Text>
+                    </Stack>
                   ))}
-                {data.attempt_selection.total !== undefined && (
-                  <div className="text-center col-span-3 mt-2 pt-2 border-t border-border">
-                    <span className="font-medium">Projected total: {data.attempt_selection.total} kg</span>
-                  </div>
-                )}
-              </div>
-            </div>
+              </SimpleGrid>
+              {data.attempt_selection.total !== undefined && (
+                <Group justify="center" mt="xs" pt="xs" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+                  <Text fw={500}>Projected total: {data.attempt_selection.total} kg</Text>
+                </Group>
+              )}
+            </Paper>
           )}
 
           {/* ─── Program Evaluation (Full Block only) ──────────────────────────── */}
           {weeksMode === 'block' && (() => {
             const completedCount = program?.sessions?.filter(s => (s.block ?? 'current') === 'current' && s.completed).length ?? 0
-            const STANCE_COLORS: Record<string, string> = {
-              continue: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-              monitor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-              adjust: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-              critical: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-            }
-            const ALIGN_COLORS: Record<string, string> = {
-              good: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-              mixed: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-              poor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-            }
-            const PRIORITY_COLORS: Record<string, string> = {
-              low: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-              moderate: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-              high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-            }
+            const STANCE_COLORS: Record<string, string> = { continue: 'green', monitor: 'blue', adjust: 'yellow', critical: 'red' }
+            const ALIGN_COLORS: Record<string, string> = { good: 'green', mixed: 'yellow', poor: 'red' }
+            const PRIORITY_COLORS: Record<string, string> = { low: 'gray', moderate: 'yellow', high: 'red' }
             return (
-              <div className="bg-card border border-border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Trophy className="w-5 h-5 text-primary" />
-                    <h3 className="font-medium">Program Evaluation</h3>
+              <Paper withBorder p="md">
+                <Group justify="space-between" mb="sm">
+                  <Group gap="xs">
+                    <Trophy size={18} />
+                    <Text fw={500}>Program Evaluation</Text>
                     {evalReport && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${evalReport.cached ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                      <Badge color={evalReport.cached ? 'blue' : 'green'} variant="light" size="sm">
                         {evalReport.cached ? `Cached ${evalReport.generated_at ? new Date(evalReport.generated_at).toLocaleDateString() : ''}` : 'Just generated'}
-                      </span>
+                      </Badge>
                     )}
                     {evalReport?.stance && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STANCE_COLORS[evalReport.stance] || 'bg-gray-100 text-gray-600'}`}>
+                      <Badge color={STANCE_COLORS[evalReport.stance] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize' }}>
                         {evalReport.stance}
-                      </span>
+                      </Badge>
                     )}
-                  </div>
-                  <button
+                  </Group>
+                  <Button
+                    variant="subtle"
+                    size="xs"
                     onClick={refreshEvaluation}
                     disabled={evalLoading || completedCount < 4}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-border rounded hover:bg-accent disabled:opacity-50"
+                    leftSection={<RefreshCw size={14} style={evalLoading ? { animation: 'spin 1s linear infinite' } : undefined} />}
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${evalLoading ? 'animate-spin' : ''}`} />
                     Regenerate
-                  </button>
-                </div>
+                  </Button>
+                </Group>
 
                 {completedCount < 4 ? (
-                  <p className="text-sm text-muted-foreground">Program evaluation requires at least 4 completed sessions in the current block. Complete more sessions and return here.</p>
+                  <Text size="sm" c="dimmed">Program evaluation requires at least 4 completed sessions in the current block. Complete more sessions and return here.</Text>
                 ) : evalLoading ? (
-                  <div className="flex items-center gap-2 py-4 text-muted-foreground">
-                    <div className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full" />
-                    <span className="text-sm">Evaluating your training block with AI sports scientist...</span>
-                  </div>
+                  <Group gap="xs" py="md">
+                    <Loader size="xs" />
+                    <Text size="sm" c="dimmed">Evaluating your training block with AI sports scientist...</Text>
+                  </Group>
                 ) : evalError ? (
-                  <p className="text-sm text-red-600 dark:text-red-400">{evalError}</p>
+                  <Text size="sm" c="red">{evalError}</Text>
                 ) : evalReport ? (
                   <>
                     {evalReport.insufficient_data ? (
-                      <p className="text-sm text-muted-foreground">{evalReport.insufficient_data_reason || 'Insufficient data for program evaluation.'}</p>
+                      <Text size="sm" c="dimmed">{evalReport.insufficient_data_reason || 'Insufficient data for program evaluation.'}</Text>
                     ) : (
-                      <div className="space-y-4">
+                      <Stack gap="md">
                         {evalReport.summary && (
-                          <p className="text-sm text-muted-foreground p-3 bg-secondary/30 rounded italic">{evalReport.summary}</p>
+                          <Text size="sm" c="dimmed" p="sm" fs="italic" style={{ background: 'var(--mantine-color-default-hover)', borderRadius: 'var(--mantine-radius-sm)' }}>{evalReport.summary}</Text>
                         )}
 
                         {evalReport.competition_alignment.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-medium mb-2">Competition Alignment</h4>
-                            <div className="space-y-2">
+                          <Stack gap="xs">
+                            <Text size="sm" fw={500}>Competition Alignment</Text>
+                            <Stack gap="xs">
                               {evalReport.competition_alignment.map((ca, i) => (
-                                <div key={i} className="flex items-start gap-3 p-2 bg-secondary/20 rounded">
-                                  <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize mt-0.5 ${ALIGN_COLORS[ca.alignment] || ''}`}>{ca.alignment}</span>
-                                  <div>
-                                    <p className="text-sm font-medium">{ca.competition} <span className="text-xs text-muted-foreground">({ca.role}{ca.weeks_to_comp != null ? `, ${ca.weeks_to_comp.toFixed(1)} wks out` : ''})</span></p>
-                                    <p className="text-xs text-muted-foreground mt-0.5">{ca.reason}</p>
-                                  </div>
-                                </div>
+                                <Group key={i} gap="sm" align="flex-start" p="xs" style={{ background: 'var(--mantine-color-default-hover)', borderRadius: 'var(--mantine-radius-sm)' }}>
+                                  <Badge color={ALIGN_COLORS[ca.alignment] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize', marginTop: 2 }}>{ca.alignment}</Badge>
+                                  <Stack gap={2}>
+                                    <Text size="sm" fw={500}>{ca.competition} <Text span size="xs" c="dimmed">({ca.role}{ca.weeks_to_comp != null ? `, ${ca.weeks_to_comp.toFixed(1)} wks out` : ''})</Text></Text>
+                                    <Text size="xs" c="dimmed">{ca.reason}</Text>
+                                  </Stack>
+                                </Group>
                               ))}
-                            </div>
-                          </div>
+                            </Stack>
+                          </Stack>
                         )}
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                           {evalReport.what_is_working.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-medium mb-2 text-green-700 dark:text-green-400">What's Working</h4>
-                              <ul className="space-y-1">
+                            <Stack gap="xs">
+                              <Text size="sm" fw={500} c="green">What's Working</Text>
+                              <Stack gap={4}>
                                 {evalReport.what_is_working.map((item, i) => (
-                                  <li key={i} className="text-xs flex items-start gap-1.5"><span className="text-green-500 mt-0.5">✓</span>{item}</li>
+                                  <Group key={i} gap="xs" align="flex-start" wrap="nowrap">
+                                    <Badge variant="light" color="green" size="sm">✓</Badge>
+                                    <Text size="xs">{item}</Text>
+                                  </Group>
                                 ))}
-                              </ul>
-                            </div>
+                              </Stack>
+                            </Stack>
                           )}
                           {evalReport.what_is_not_working.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-medium mb-2 text-red-700 dark:text-red-400">Needs Attention</h4>
-                              <ul className="space-y-1">
+                            <Stack gap="xs">
+                              <Text size="sm" fw={500} c="red">Needs Attention</Text>
+                              <Stack gap={4}>
                                 {evalReport.what_is_not_working.map((item, i) => (
-                                  <li key={i} className="text-xs flex items-start gap-1.5"><span className="text-red-500 mt-0.5">✗</span>{item}</li>
+                                  <Group key={i} gap="xs" align="flex-start" wrap="nowrap">
+                                    <Badge variant="light" color="red" size="sm">✗</Badge>
+                                    <Text size="xs">{item}</Text>
+                                  </Group>
                                 ))}
-                              </ul>
-                            </div>
+                              </Stack>
+                            </Stack>
                           )}
-                        </div>
+                        </SimpleGrid>
 
                         {evalReport.small_changes.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-medium mb-2">Suggested Adjustments</h4>
-                            <div className="space-y-2">
+                          <Stack gap="xs">
+                            <Text size="sm" fw={500}>Suggested Adjustments</Text>
+                            <Stack gap="xs">
                               {evalReport.small_changes.map((sc, i) => (
-                                <div key={i} className="p-3 bg-secondary/20 rounded border border-border/50">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize ${PRIORITY_COLORS[sc.priority] || ''}`}>{sc.priority}</span>
-                                    <p className="text-sm font-medium">{sc.change}</p>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">{sc.why}</p>
-                                  {sc.risk && <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Risk: {sc.risk}</p>}
-                                </div>
+                                <Paper key={i} withBorder p="sm">
+                                  <Group gap="xs" mb={4}>
+                                    <Badge color={PRIORITY_COLORS[sc.priority] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize' }}>{sc.priority}</Badge>
+                                    <Text size="sm" fw={500}>{sc.change}</Text>
+                                  </Group>
+                                  <Text size="xs" c="dimmed">{sc.why}</Text>
+                                  {sc.risk && <Text size="xs" c="orange" mt={4}>Risk: {sc.risk}</Text>}
+                                </Paper>
                               ))}
-                            </div>
-                          </div>
+                            </Stack>
+                          </Stack>
                         )}
 
                         {evalReport.monitoring_focus.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-medium mb-2">Monitor Closely</h4>
-                            <div className="flex flex-wrap gap-2">
+                          <Stack gap="xs">
+                            <Text size="sm" fw={500}>Monitor Closely</Text>
+                            <Group gap="xs" wrap="wrap">
                               {evalReport.monitoring_focus.map((item, i) => (
-                                <span key={i} className="text-xs px-2.5 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-full">{item}</span>
+                                <Badge key={i} color="blue" variant="light">{item}</Badge>
                               ))}
-                            </div>
-                          </div>
+                            </Group>
+                          </Stack>
                         )}
 
                         {evalReport.conclusion && (
-                          <p className="text-sm font-medium border-t border-border pt-3 mt-2">{evalReport.conclusion}</p>
+                          <Text size="sm" fw={500} pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>{evalReport.conclusion}</Text>
                         )}
-                      </div>
+                      </Stack>
                     )}
                   </>
                 ) : null}
-              </div>
+              </Paper>
             )
           })()}
 
           {/* Formula Reference */}
-          <div className="mt-8">
-            <details className="group">
-              <summary className="cursor-pointer text-sm font-medium text-gray-400 hover:text-gray-200">How These Numbers Are Calculated</summary>
-              <div className="mt-4 space-y-2">
-                {FORMULA_DESCRIPTIONS.map(formula => (
-                  <details key={formula.id} className="border border-gray-700 rounded-lg">
-                    <summary className="px-4 py-2 cursor-pointer text-sm font-medium">{formula.title}</summary>
-                    <div className="px-4 py-3 space-y-2 text-sm text-gray-300">
-                      <p>{formula.summary}</p>
-                      <pre className="bg-gray-800 rounded p-3 font-mono text-xs overflow-x-auto">{formula.formula}</pre>
-                      {formula.variables && (
-                        <div className="grid grid-cols-2 gap-1 text-xs">
-                          {formula.variables.map(v => <div key={v.name}><code>{v.name}</code>: {v.description}</div>)}
-                        </div>
-                      )}
-                      {formula.thresholds && (
-                        <table className="w-full text-xs mt-2">
-                          <thead><tr><th className="text-left">Condition</th><th className="text-left">Value</th><th className="text-left">Flag</th></tr></thead>
-                          <tbody>{formula.thresholds.map(t => <tr key={t.label}><td className="py-0.5">{t.label}</td><td className="py-0.5">{t.value}</td><td className="py-0.5">{t.flag || '—'}</td></tr>)}</tbody>
-                        </table>
-                      )}
-                    </div>
-                  </details>
-                ))}
-              </div>
-            </details>
-          </div>
+          <Accordion mt="xl" variant="separated">
+            <Accordion.Item value="formulas-outer">
+              <Accordion.Control>
+                <Text size="sm" fw={500} c="dimmed">How These Numbers Are Calculated</Text>
+              </Accordion.Control>
+              <Accordion.Panel>
+                <Accordion variant="contained">
+                  {FORMULA_DESCRIPTIONS.map(formula => (
+                    <Accordion.Item key={formula.id} value={formula.id}>
+                      <Accordion.Control>
+                        <Text size="sm" fw={500}>{formula.title}</Text>
+                      </Accordion.Control>
+                      <Accordion.Panel>
+                        <Stack gap="xs">
+                          <Text size="sm">{formula.summary}</Text>
+                          <Box component="pre" fz="xs" p="sm" style={{ background: 'var(--mantine-color-dark-8, #1a1b1e)', borderRadius: 'var(--mantine-radius-sm)', overflowX: 'auto', fontFamily: 'monospace' }}>{formula.formula}</Box>
+                          {formula.variables && (
+                            <SimpleGrid cols={2} spacing="xs">
+                              {formula.variables.map(v => (
+                                <Text key={v.name} size="xs"><Text span ff="monospace">{v.name}</Text>: {v.description}</Text>
+                              ))}
+                            </SimpleGrid>
+                          )}
+                          {formula.thresholds && (
+                            <Table fz="xs" mt="xs">
+                              <Table.Thead><Table.Tr><Table.Th ta="left">Condition</Table.Th><Table.Th ta="left">Value</Table.Th><Table.Th ta="left">Flag</Table.Th></Table.Tr></Table.Thead>
+                              <Table.Tbody>{formula.thresholds.map(t => <Table.Tr key={t.label}><Table.Td>{t.label}</Table.Td><Table.Td>{t.value}</Table.Td><Table.Td>{t.flag || '—'}</Table.Td></Table.Tr>)}</Table.Tbody>
+                            </Table>
+                          )}
+                        </Stack>
+                      </Accordion.Panel>
+                    </Accordion.Item>
+                  ))}
+                </Accordion>
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
 
           {/* Flags */}
           {data.flags.length > 0 && (
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="w-5 h-5 text-yellow-500" />
-                <h3 className="font-medium">Flags</h3>
-              </div>
-              <div className="flex flex-wrap gap-2">
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="sm">
+                <AlertTriangle size={18} color="var(--mantine-color-yellow-5)" />
+                <Text fw={500}>Flags</Text>
+              </Group>
+              <Group gap="xs" wrap="wrap">
                 {data.flags.map(flag => (
-                  <span key={flag} className="px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">{flag}</span>
+                  <Badge key={flag} color="yellow" variant="light">{flag}</Badge>
                 ))}
-              </div>
-            </div>
+              </Group>
+            </Paper>
           )}
 
           {/* Footer */}
-          <p className="text-xs text-muted-foreground">
+          <Text size="xs" c="dimmed">
             Week {data.week} ({data.block}) &middot; {data.sessions_analyzed} sessions analyzed
             {weeksMode === 'block' && ` · Full block (${effectiveWeeks} wks)`}
-          </p>
+          </Text>
         </>
       )}
 
       {!data && !loading && !error && (
-        <div className="flex items-center justify-center min-h-[20vh]">
-          <p className="text-muted-foreground">No analysis data available for the selected period.</p>
-        </div>
+        <Center mih="20vh">
+          <Text c="dimmed">No analysis data available for the selected period.</Text>
+        </Center>
       )}
-    </div>
+    </Stack>
   )
 }

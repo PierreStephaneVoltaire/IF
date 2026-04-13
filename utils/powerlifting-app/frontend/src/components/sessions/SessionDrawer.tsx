@@ -255,15 +255,10 @@ export default function SessionDrawer({
                 <Group gap="xs">
                   <Calendar size={16} style={{ opacity: 0.6 }} />
                   <DatePickerInput
-                    value={parseDateString(localSession.date)}
+                    value={localSession.date}
                     valueFormat="YYYY-MM-DD"
                     onChange={(d) => {
-                      if (d) {
-                        const yyyy = d.getFullYear()
-                        const mm = String(d.getMonth() + 1).padStart(2, '0')
-                        const dd = String(d.getDate()).padStart(2, '0')
-                        updateDate(`${yyyy}-${mm}-${dd}`)
-                      }
+                      if (d) updateDate(d as string)
                     }}
                     size="xs"
                     style={{ width: 'auto' }}
@@ -350,7 +345,7 @@ export default function SessionDrawer({
                   )}
                 </Group>
                 {group.entries.length > 1 ? (
-                  <Table fontSize="sm" mb={4}>
+                  <Table fz="sm" mb={4}>
                     <Table.Thead>
                       <Table.Tr>
                         <Table.Th w={48}>Sets</Table.Th>
@@ -399,7 +394,7 @@ export default function SessionDrawer({
                                   onClick={() => toggleFailedSet(entry.originalIndex, si)}
                                   title={`Set ${si + 1}${f ? ' (failed)' : ''}`}
                                 >
-                                  <Text size={8}>{si + 1}</Text>
+                                  <Text fz={8}>{si + 1}</Text>
                                 </ActionIcon>
                               ))}
                             </Group>
@@ -479,7 +474,7 @@ export default function SessionDrawer({
                               onClick={() => toggleFailedSet(group.entries[0].originalIndex, si)}
                               title={`Set ${si + 1}${f ? ' (failed)' : ''}`}
                             >
-                              <Text size={9}>{si + 1}</Text>
+                              <Text fz={9}>{si + 1}</Text>
                             </ActionIcon>
                           ))}
                         </Group>

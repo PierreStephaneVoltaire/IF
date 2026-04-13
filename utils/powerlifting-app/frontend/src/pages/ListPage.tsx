@@ -192,10 +192,10 @@ export default function ListPage() {
           <Box>
             <Text size="sm" c="dimmed" mb={4}>Date</Text>
             <DatePickerInput
-              value={newDate ? parseDateString(newDate) : null}
+              value={newDate || null}
               valueFormat="YYYY-MM-DD"
               onChange={(d) => {
-                if (d) setNewDate(toDateString(d))
+                if (d) setNewDate(d)
                 else setNewDate('')
               }}
             />
@@ -305,16 +305,6 @@ export default function ListPage() {
                         cursor: 'pointer',
                         textAlign: 'left',
                       }}
-                      sx={(theme) => ({
-                        '&:hover': {
-                          backgroundColor: theme.colorScheme === 'dark'
-                            ? 'rgba(255,255,255,0.03)'
-                            : 'rgba(0,0,0,0.03)',
-                        },
-                        '&:last-child': {
-                          borderBottom: 'none',
-                        },
-                      })}
                     >
                       <Box
                         style={{

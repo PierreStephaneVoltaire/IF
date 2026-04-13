@@ -30,16 +30,7 @@ export default function AppShell({ children }: AppShellProps) {
       <MantineAppShell.Main>{children}</MantineAppShell.Main>
 
       {/* Mobile bottom navigation */}
-      <MantineAppShell.Footer
-        styles={{
-          root: {
-            display: 'none',
-            '@media (max-width: 768px)': {
-              display: 'block',
-            },
-          },
-        }}
-      >
+      <MantineAppShell.Footer>
         <Sidebar mobile />
       </MantineAppShell.Footer>
 

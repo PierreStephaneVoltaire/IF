@@ -157,6 +157,7 @@ export default function GlossaryPage() {
     try {
       const exercise: GlossaryExercise = {
         ...(isEditing || {}),
+        id: (isEditing as GlossaryExercise | null)?.id ?? '',
         name: formData.name || '',
         category: formData.category || 'squat',
         fatigue_category: (isEditing as GlossaryExercise | null)?.fatigue_category || 'accessory',
@@ -371,7 +372,7 @@ export default function GlossaryPage() {
         size="xl"
       >
         <Stack gap="md">
-          <SimpleGrid cols={2} spacing="md" breakpoints={[{ maxWidth: 'sm', cols: 1 }]}>
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
             <div>
               <Text size="sm" c="dimmed" mb={4}>Name</Text>
               <TextInput
@@ -449,7 +450,7 @@ export default function GlossaryPage() {
             )}
           </Paper>
 
-          <SimpleGrid cols={2} spacing="md" breakpoints={[{ maxWidth: 'lg', cols: 1 }]}>
+          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
             <div>
               <Text size="sm" c="dimmed" mb={4}>Primary Muscles</Text>
               <Group gap={4} style={{ maxHeight: 224, overflowY: 'auto', flexWrap: 'wrap' }}>
@@ -570,7 +571,7 @@ export default function GlossaryPage() {
                       )}
                     </Group>
                   </Accordion.Control>
-                  <Accordion.Content>
+                  <Accordion.Panel>
                     <Stack gap="md">
                       {/* Muscles */}
                       <SimpleGrid cols={2} spacing="md">
@@ -639,7 +640,7 @@ export default function GlossaryPage() {
                         </Button>
                       </Group>
                     </Stack>
-                  </Accordion.Content>
+                  </Accordion.Panel>
                 </Accordion.Item>
               ))}
             </Accordion>

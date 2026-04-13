@@ -32,7 +32,8 @@ interface SidebarProps {
 
 interface NavItem {
   to: string
-  icon: React.ComponentType<{ size?: number }>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icon: React.ComponentType<any>
   label: string
 }
 
@@ -125,7 +126,7 @@ function MobileMoreMenu() {
           }}
         >
           <MoreHorizontal size={20} />
-          <Text size={10} lh={1}>More</Text>
+          <Text fz={10} lh={1}>More</Text>
         </ActionIcon>
       </Menu.Target>
 
@@ -185,7 +186,7 @@ function MobileSidebar() {
             }}
           >
             <Icon size={20} />
-            <Text size={10} lh={1}>{label}</Text>
+            <Text fz={10} lh={1}>{label}</Text>
           </ActionIcon>
         )
       })}

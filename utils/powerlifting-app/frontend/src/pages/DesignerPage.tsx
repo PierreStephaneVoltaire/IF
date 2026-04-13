@@ -35,7 +35,7 @@ export default function DesignerPage() {
   const [exerciseSearch, setExerciseSearch] = useState('')
 
   // Session form state
-  const [sessionDate, setSessionDate] = useState<Date | null>(null)
+  const [sessionDate, setSessionDate] = useState<string | null>(null)
   const [sessionDay, setSessionDay] = useState('Monday')
   const [sessionWeek, setSessionWeek] = useState('W1')
   const [sessionPhase, setSessionPhase] = useState('')
@@ -88,7 +88,7 @@ export default function DesignerPage() {
           ? program?.sessions.indexOf(session) ?? -1
           : program?.sessions.findIndex(s => s.date === session.date && s.week_number === session.week_number && s.day === session.day) ?? -1
       )
-      setSessionDate(new Date(session.date + 'T00:00:00'))
+      setSessionDate(session.date)
       setSessionDay(session.day)
       setSessionWeek(session.week)
       setSessionPhase(typeof session.phase === 'string' ? session.phase : session.phase?.name || '')
@@ -98,7 +98,7 @@ export default function DesignerPage() {
       setEditingSessionDate('')
       setEditingSessionGlobalIndex(-1)
       const dayName = DAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]
-      setSessionDate(new Date())
+      setSessionDate(new Date().toISOString().slice(0, 10))
       setSessionDay(dayName)
       setSessionWeek(`W${selectedWeek}`)
       const phaseParam = searchParams.get('phase')
@@ -119,9 +119,7 @@ export default function DesignerPage() {
 
   async function saveSession() {
     try {
-      const dateStr = sessionDate
-        ? sessionDate.toISOString().slice(0, 10)
-        : new Date().toISOString().slice(0, 10)
+      const dateStr = sessionDate ?? new Date().toISOString().slice(0, 10)
 
       const sessionData: Partial<Session> & { date: string } = {
         date: dateStr,
@@ -225,7 +223,7 @@ export default function DesignerPage() {
             >
               <Group justify="space-between" mb="xs">
                 <Text fw={500}>{session.day}</Text>
-                <Badge variant="light" color={STATUS_COLORS[session.status] || 'blue'} size="sm">
+                <Badge variant="light" color={STATUS_COLORS[session.status ?? 'planned'] || 'blue'} size="sm">
                   {session.status || 'planned'}
                 </Badge>
               </Group>

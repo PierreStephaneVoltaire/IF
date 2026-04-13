@@ -28,7 +28,7 @@ export default function CalendarPage() {
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false
   )
-  const [monthDate, setMonthDate] = useState<Date>(new Date())
+  const [monthDate, setMonthDate] = useState<string>(new Date().toISOString().slice(0, 10))
 
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 639px)')
@@ -183,10 +183,6 @@ export default function CalendarPage() {
         <ScrollArea h="100%">
           {view === 'Month' ? (
             <Calendar
-              value={monthDate}
-              onChange={(date) => {
-                if (date) setMonthDate(date)
-              }}
               renderDay={renderDay}
               getDayProps={getDayProps}
               size={isMobile ? 'sm' : 'md'}

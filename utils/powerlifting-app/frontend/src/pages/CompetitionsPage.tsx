@@ -222,9 +222,9 @@ export default function CompetitionsPage() {
                       />
                       <DatePickerInput
                         label="Date"
-                        value={new Date(comp.date + 'T00:00:00')}
+                        value={comp.date}
                         onChange={(d) => {
-                          const newDate = d ? d.toISOString().slice(0, 10) : comp.date
+                          const newDate = d ?? comp.date
                           if (competitions.some((c) => c.date === newDate && c.date !== comp.date)) {
                             pushToast({ message: 'A competition on this date already exists', type: 'error' })
                             return

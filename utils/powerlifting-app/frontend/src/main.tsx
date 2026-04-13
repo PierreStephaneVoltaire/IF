@@ -17,7 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Notifications position="top-right" />
       <BrowserRouter basename="/app/fitness">
         <App />
-      </BrowserRouter>
-    </MantineProvider>
+      </BrowserRouter> 
+    </MantineProvider> 
   </React.StrictMode>
 )

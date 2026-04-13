@@ -192,7 +192,7 @@ export default function DotsCalculator() {
               />
             </Stack>
             {totalNeeded && (
-              <div flex={1} style={{ textAlign: 'center', flex: 1 }}>
+              <div style={{ textAlign: 'center', flex: 1 }}>
                 <Text size="sm" c="dimmed">Required Total</Text>
                 <Text fz="h3" fw={700} c="blue">
                   {displayWeight(totalNeeded, unit)}

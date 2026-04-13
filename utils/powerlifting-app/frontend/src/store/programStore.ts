@@ -100,11 +100,10 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
 
   createSession: async (sessionData) => {
     const { version } = get()
-    const newSession = await api.createSession(version, sessionData)
+    await api.createSession(version, sessionData)
 
     // Reload program to get updated sessions with derived fields
     await get().loadProgram(version)
-    return newSession
   },
 
   deleteSession: async (date, index) => {

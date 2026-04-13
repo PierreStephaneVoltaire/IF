@@ -102,11 +102,11 @@ export default function BiometricsPage() {
                 <Group gap="xs">
                   <Calendar size={16} style={{ opacity: 0.6 }} />
                   <DatePickerInput
-                    value={parseDateString(note.date)}
+                    value={note.date}
                     valueFormat="YYYY-MM-DD"
                     onChange={(d) => {
                       if (d) {
-                        const newDate = toDateString(d)
+                        const newDate = d
                         if (notes.some((n) => n.date === newDate && n.date !== note.date)) {
                           pushToast({ message: 'An entry for this date already exists', type: 'error' })
                           return
