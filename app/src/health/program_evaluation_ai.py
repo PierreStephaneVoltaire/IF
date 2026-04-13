@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from config import LLM_BASE_URL, OPENROUTER_API_KEY
+from config import LLM_BASE_URL, OPENROUTER_API_KEY, ANALYSIS_MODEL, ANALYSIS_MODEL_THINKING_BUDGET
 from health.analytics import weekly_analysis
 from health.prompt_context import (
     FORMULA_REFERENCE,
@@ -29,7 +29,6 @@ from health.prompt_context import (
     summarize_program_meta,
     summarize_supplements,
 )
-from models.router import resolve_preset_to_model
 
 logger = logging.getLogger(__name__)
 
@@ -342,8 +341,7 @@ def _build_user_message(program: dict[str, Any]) -> str:
 async def generate_program_evaluation_report(program: dict[str, Any]) -> dict[str, Any]:
     """Call the LLM to generate a conservative block evaluation report."""
     user_msg = _build_user_message(program)
-    model = resolve_preset_to_model("openrouter/@preset/health")
-    logger.info(f"[ProgramEvaluationAI] model={model} payload_chars={len(user_msg)}")
+    logger.info(f"[ProgramEvaluationAI] model={ANALYSIS_MODEL} payload_chars={len(user_msg)}")
 
     try:
         async with httpx.AsyncClient(timeout=90.0) as client:
@@ -354,7 +352,8 @@ async def generate_program_evaluation_report(program: dict[str, Any]) -> dict[st
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": model,
+                    "model": ANALYSIS_MODEL,
+                    "thinking": {"type": "enabled", "budget_tokens": ANALYSIS_MODEL_THINKING_BUDGET},
                     "messages": [
                         {"role": "system", "content": _SYSTEM_PROMPT},
                         {"role": "user", "content": user_msg},

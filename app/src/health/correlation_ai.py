@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from config import LLM_BASE_URL, OPENROUTER_API_KEY, MODEL_ROUTER_MODEL
+from config import LLM_BASE_URL, OPENROUTER_API_KEY, ANALYSIS_MODEL, ANALYSIS_MODEL_THINKING_BUDGET
 
 logger = logging.getLogger(__name__)
 
@@ -363,7 +363,8 @@ async def generate_correlation_report(
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": MODEL_ROUTER_MODEL,
+                    "model": ANALYSIS_MODEL,
+                    "thinking": {"type": "enabled", "budget_tokens": ANALYSIS_MODEL_THINKING_BUDGET},
                     "messages": [
                         {"role": "system", "content": _SYSTEM_PROMPT},
                         {"role": "user", "content": user_msg},

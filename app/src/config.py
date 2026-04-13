@@ -337,6 +337,11 @@ SCRIPTS_PATH = os.getenv(
 MODEL_ROUTER_MODEL = os.getenv("MODEL_ROUTER_MODEL", "anthropic/claude-haiku-4.5")
 MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() == "true"
 
+# Model for AI-powered health analytics (correlation analysis, program evaluation)
+# Defaults to Claude Sonnet with extended thinking enabled
+ANALYSIS_MODEL = os.getenv("ANALYSIS_MODEL", "anthropic/claude-sonnet-4-6")
+ANALYSIS_MODEL_THINKING_BUDGET = int(os.getenv("ANALYSIS_MODEL_THINKING_BUDGET", "16000"))
+
 # Interval for refreshing per-provider latency/throughput from OpenRouter (seconds)
 MODEL_STATS_REFRESH_INTERVAL = int(os.getenv("MODEL_STATS_REFRESH_INTERVAL", "1800"))  # 30 min
 

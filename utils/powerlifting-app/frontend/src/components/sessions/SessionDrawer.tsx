@@ -236,7 +236,7 @@ export default function SessionDrawer({
         opened={isOpen}
         onClose={handleCloseWithCheck}
         position="right"
-        size="md"
+        size={{ base: '100%', sm: 'xl' }}
         withCloseButton={false}
         overlayProps={{ backgroundOpacity: 0.25 }}
       >
@@ -345,85 +345,87 @@ export default function SessionDrawer({
                   )}
                 </Group>
                 {group.entries.length > 1 ? (
-                  <Table fz="sm" mb={4}>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th w={48}>Sets</Table.Th>
-                        <Table.Th w={48}>Reps</Table.Th>
-                        <Table.Th w={64}>{unit}</Table.Th>
-                        <Table.Th>Failed Set</Table.Th>
-                        <Table.Th>Notes</Table.Th>
-                        <Table.Th w={32} />
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {group.entries.map((entry) => (
-                        <Table.Tr key={entry.originalIndex}>
-                          <Table.Td>
-                            <NumberInput
-                              value={entry.exercise.sets || ''}
-                              onChange={(v) => updateSetsWithResize(entry.originalIndex, Number(v) || 0)}
-                              size="xs"
-                              min={0}
-                            />
-                          </Table.Td>
-                          <Table.Td>
-                            <NumberInput
-                              value={entry.exercise.reps || ''}
-                              onChange={(v) => updateExercise(entry.originalIndex, 'reps', Number(v) || 0)}
-                              size="xs"
-                              min={0}
-                            />
-                          </Table.Td>
-                          <Table.Td>
-                            <NumberInput
-                              value={entry.exercise.kg !== null && entry.exercise.kg !== undefined ? toDisplayUnit(entry.exercise.kg, unit) : ''}
-                              onChange={(v) => updateExercise(entry.originalIndex, 'kg', v !== '' ? fromDisplayUnit(Number(v), unit) : null)}
-                              size="xs"
-                              decimalScale={2}
-                            />
-                          </Table.Td>
-                          <Table.Td>
-                            <Group gap={4}>
-                              {(entry.exercise.failed_sets || []).map((f, si) => (
-                                <ActionIcon
-                                  key={si}
-                                  size="xs"
-                                  variant={f ? 'filled' : 'default'}
-                                  color={f ? 'red' : 'gray'}
-                                  onClick={() => toggleFailedSet(entry.originalIndex, si)}
-                                  title={`Set ${si + 1}${f ? ' (failed)' : ''}`}
-                                >
-                                  <Text fz={8}>{si + 1}</Text>
-                                </ActionIcon>
-                              ))}
-                            </Group>
-                          </Table.Td>
-                          <Table.Td>
-                            <TextInput
-                              value={entry.exercise.notes || ''}
-                              onChange={(e) => updateExercise(entry.originalIndex, 'notes', e.currentTarget.value)}
-                              placeholder="Notes"
-                              size="xs"
-                            />
-                          </Table.Td>
-                          <Table.Td>
-                            <ActionIcon
-                              variant="subtle"
-                              color="red"
-                              size="sm"
-                              onClick={() => removeExercise(entry.originalIndex)}
-                            >
-                              <Trash2 size={12} />
-                            </ActionIcon>
-                          </Table.Td>
+                  <Box style={{ overflowX: 'auto' }}>
+                    <Table fz="sm" mb={4} style={{ minWidth: 480 }}>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th w={80}>Sets</Table.Th>
+                          <Table.Th w={80}>Reps</Table.Th>
+                          <Table.Th w={96}>{unit}</Table.Th>
+                          <Table.Th w={120}>Failed Set</Table.Th>
+                          <Table.Th>Notes</Table.Th>
+                          <Table.Th w={40} />
                         </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {group.entries.map((entry) => (
+                          <Table.Tr key={entry.originalIndex}>
+                            <Table.Td>
+                              <NumberInput
+                                value={entry.exercise.sets || ''}
+                                onChange={(v) => updateSetsWithResize(entry.originalIndex, Number(v) || 0)}
+                                size="sm"
+                                min={0}
+                              />
+                            </Table.Td>
+                            <Table.Td>
+                              <NumberInput
+                                value={entry.exercise.reps || ''}
+                                onChange={(v) => updateExercise(entry.originalIndex, 'reps', Number(v) || 0)}
+                                size="sm"
+                                min={0}
+                              />
+                            </Table.Td>
+                            <Table.Td>
+                              <NumberInput
+                                value={entry.exercise.kg !== null && entry.exercise.kg !== undefined ? toDisplayUnit(entry.exercise.kg, unit) : ''}
+                                onChange={(v) => updateExercise(entry.originalIndex, 'kg', v !== '' ? fromDisplayUnit(Number(v), unit) : null)}
+                                size="sm"
+                                decimalScale={2}
+                              />
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap={4}>
+                                {(entry.exercise.failed_sets || []).map((f, si) => (
+                                  <ActionIcon
+                                    key={si}
+                                    size="sm"
+                                    variant={f ? 'filled' : 'default'}
+                                    color={f ? 'red' : 'gray'}
+                                    onClick={() => toggleFailedSet(entry.originalIndex, si)}
+                                    title={`Set ${si + 1}${f ? ' (failed)' : ''}`}
+                                  >
+                                    <Text fz={10}>{si + 1}</Text>
+                                  </ActionIcon>
+                                ))}
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <TextInput
+                                value={entry.exercise.notes || ''}
+                                onChange={(e) => updateExercise(entry.originalIndex, 'notes', e.currentTarget.value)}
+                                placeholder="Notes"
+                                size="sm"
+                              />
+                            </Table.Td>
+                            <Table.Td>
+                              <ActionIcon
+                                variant="subtle"
+                                color="red"
+                                size="sm"
+                                onClick={() => removeExercise(entry.originalIndex)}
+                              >
+                                <Trash2 size={14} />
+                              </ActionIcon>
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </Box>
                 ) : (
                   <Box>
-                    <SimpleGrid cols={{ base: 3, sm: 4 }} spacing="xs">
+                    <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs">
                       <Box>
                         <Text size="xs" c="dimmed">Sets</Text>
                         <NumberInput
