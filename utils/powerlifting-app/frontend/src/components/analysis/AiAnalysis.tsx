@@ -246,7 +246,7 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
                           <Group key={i} gap="sm" align="flex-start" p="xs" style={{ background: 'var(--mantine-color-default-hover)', borderRadius: 'var(--mantine-radius-sm)' }}>
                             <Badge color={ALIGN_COLORS[ca.alignment] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize', marginTop: 2 }}>{ca.alignment}</Badge>
                             <Stack gap={2}>
-                              <Text size="sm" fw={500}>{ca.competition} <Text span size="xs" c="dimmed">({ca.role}{ca.weeks_to_comp != null ? `, ${ca.weeks_to_comp.toFixed(1)} wks out` : ''})</Text></Text>
+                              <Text size="sm" fw={500}>{ca.competition} <Text span size="xs" c="dimmed">({ca.role}{typeof ca.weeks_to_comp === 'number' ? `, ${ca.weeks_to_comp.toFixed(1)} wks out` : ''})</Text></Text>
                               <Text size="xs" c="dimmed">{ca.reason}</Text>
                             </Stack>
                           </Group>

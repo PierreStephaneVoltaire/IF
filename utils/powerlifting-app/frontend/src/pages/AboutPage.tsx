@@ -10,6 +10,8 @@ import {
   Table,
   Badge,
   Alert,
+  Button,
+  Center,
   SimpleGrid,
   Container,
 } from '@mantine/core'
@@ -115,7 +117,7 @@ export default function AboutPage() {
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
                   <div>
                     <Text fw={600} size="xs" tt="uppercase" c="dimmed" mb={8}>Variables & Parameters</Text>
-                    <Table size="xs" withColumnBorders={false} verticalSpacing="xs">
+                    <Table fz="xs">
                       <Table.Tbody>
                         {f.variables.map((v) => (
                           <Table.Tr key={v.name}>
