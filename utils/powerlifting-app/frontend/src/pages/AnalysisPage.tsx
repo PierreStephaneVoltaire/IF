@@ -157,14 +157,6 @@ export default function AnalysisPage() {
     fetchGlossary().then(setGlossary).catch(console.error)
   }, [version])
 
-  useEffect(() => {
-    const metaPct = program?.meta?.attempt_pct
-    if (metaPct) {
-      setAttemptPct({ opener: metaPct.opener, second: metaPct.second, third: metaPct.third })
-      setAttemptPctRaw({ opener: String(metaPct.opener), second: String(metaPct.second), third: String(metaPct.third) })
-    }
-  }, [program?.meta?.attempt_pct])
-
   // Fetch correlation report when weeks >= 4
   useEffect(() => {
     if (effectiveWeeks < 4) {
@@ -544,6 +536,25 @@ export default function AnalysisPage() {
     return { rows, dotsChange }
   }, [filteredSessions, weightLog])
 
+  // Highest maxes from dotsTrend
+  const highestMaxes = useMemo(() => {
+    if (!dotsTrend || !dotsTrend.rows.length) return null
+    let squat = 0, bench = 0, deadlift = 0
+    for (const r of dotsTrend.rows) {
+      if (r.squat && r.squat > squat) squat = r.squat
+      if (r.bench && r.bench > bench) bench = r.bench
+      if (r.deadlift && r.deadlift > deadlift) deadlift = r.deadlift
+    }
+    if (!squat && !bench && !deadlift) return null
+    
+    const total = squat + bench + deadlift
+    let bw = weightTrend?.latest || 0
+    if (!bw && weightLog.length) bw = weightLog[weightLog.length - 1].kg
+    const dots = total > 0 && bw > 0 ? calcDotsScore(total, bw) : null
+    
+    return { squat: squat || null, bench: bench || null, deadlift: deadlift || null, total, dots }
+  }, [dotsTrend, weightTrend, weightLog])
+
   // Sleep trend (from biometrics)
   const sleepTrend = useMemo(() => {
     const weeks = nutritionTrend?.weekly.filter(w => w.sleep != null) || []
@@ -808,7 +819,7 @@ export default function AnalysisPage() {
           {data.fatigue_dimensions && Object.keys(data.fatigue_dimensions.weekly).length > 0 && (
             <Paper withBorder p="md">
               <Text fw={500} mb="sm">Fatigue Dimensions (Weekly)</Text>
-              <Box style={{ overflowX: 'auto' }}>
+              <Box visibleFrom="sm" style={{ overflowX: 'auto' }}>
                 <Table fz="sm">
                   <Table.Thead><Table.Tr><Table.Th>Week</Table.Th><Table.Th ta="right">Axial</Table.Th><Table.Th ta="right">Neural</Table.Th><Table.Th ta="right">Peripheral</Table.Th><Table.Th ta="right">Systemic</Table.Th></Table.Tr></Table.Thead>
                   <Table.Tbody>
@@ -826,6 +837,33 @@ export default function AnalysisPage() {
                   </Table.Tbody>
                 </Table>
               </Box>
+              <Stack hiddenFrom="sm" gap="xs">
+                {Object.entries(data.fatigue_dimensions.weekly)
+                  .sort(([a], [b]) => Number(a) - Number(b)).slice(-8)
+                  .map(([week, dims]) => (
+                    <Paper key={week} p="sm" bg="var(--mantine-color-default-hover)" radius="sm">
+                      <Text fw={700} mb={4}>Week {week}</Text>
+                      <SimpleGrid cols={4} spacing="xs">
+                        <Stack gap={0} ta="center">
+                          <Text fz="xs" c="dimmed">Axial</Text>
+                          <Text fz="sm" fw={500}>{dims.axial.toFixed(1)}</Text>
+                        </Stack>
+                        <Stack gap={0} ta="center">
+                          <Text fz="xs" c="dimmed">Neural</Text>
+                          <Text fz="sm" fw={500}>{dims.neural.toFixed(1)}</Text>
+                        </Stack>
+                        <Stack gap={0} ta="center">
+                          <Text fz="xs" c="dimmed">Periph</Text>
+                          <Text fz="sm" fw={500}>{dims.peripheral.toFixed(1)}</Text>
+                        </Stack>
+                        <Stack gap={0} ta="center">
+                          <Text fz="xs" c="dimmed">Systemic</Text>
+                          <Text fz="sm" fw={500}>{dims.systemic.toFixed(1)}</Text>
+                        </Stack>
+                      </SimpleGrid>
+                    </Paper>
+                  ))}
+              </Stack>
             </Paper>
           )}
 
@@ -1477,50 +1515,6 @@ export default function AnalysisPage() {
             ) : null}
           </Paper>
 
-          {/* Attempt Selector Settings */}
-          {data.attempt_selection && (
-            <Paper withBorder p="md">
-              <Text fw={500} mb="xs">Competition Attempt Percentages</Text>
-              <Text size="xs" c="dimmed" mb="sm">Based on projected competition maxes. Enter as decimal (e.g. 0.90 for 90%).</Text>
-              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-                {[
-                  { key: 'opener' as const, label: 'Opener', hint: 'Should feel easy under worst conditions' },
-                  { key: 'second' as const, label: 'Second', hint: 'A confident single, builds momentum' },
-                  { key: 'third' as const, label: 'Third', hint: 'Your projected max — go for it' },
-                ].map(({ key, label, hint }) => (
-                  <TextInput
-                    key={key}
-                    id={`attempt-pct-${key}`}
-                    label={label}
-                    size="sm"
-                    value={attemptPctRaw[key]}
-                    onChange={(e) => setAttemptPctRaw(p => ({ ...p, [key]: e.target.value }))}
-                    error={attemptPctErrors[key]}
-                    description={!attemptPctErrors[key] ? hint : undefined}
-                  />
-                ))}
-              </SimpleGrid>
-              {savingAttempt && <Text size="xs" c="dimmed" mt="xs">Saving...</Text>}
-              <SimpleGrid cols={{ base: 2, sm: 4 }} mt="sm">
-                {Object.entries(data.attempt_selection)
-                  .filter(([k]) => k !== 'total' && k !== 'attempt_pct_used')
-                  .map(([lift, attempts]) => (
-                    <Stack key={lift} gap={2} align="center">
-                      <Text fw={500} style={{ textTransform: 'capitalize' }}>{lift}</Text>
-                      <Text size="xs" c="dimmed">
-                        {(attempts as any).opener} / {(attempts as any).second} / {(attempts as any).third} kg
-                      </Text>
-                    </Stack>
-                  ))}
-              </SimpleGrid>
-              {data.attempt_selection.total !== undefined && (
-                <Group justify="center" mt="xs" pt="xs" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
-                  <Text fw={500}>Projected total: {data.attempt_selection.total} kg</Text>
-                </Group>
-              )}
-            </Paper>
-          )}
-
           {/* ─── Program Evaluation (Full Block only) ──────────────────────────── */}
           {weeksMode === 'block' && (() => {
             const completedCount = program?.sessions?.filter(s => (s.block ?? 'current') === 'current' && s.completed).length ?? 0
@@ -1676,7 +1670,7 @@ export default function AnalysisPage() {
                       <Accordion.Panel>
                         <Stack gap="xs">
                           <Text size="sm">{formula.summary}</Text>
-                          <Box component="pre" fz="xs" p="sm" style={{ background: 'var(--mantine-color-dark-8, #1a1b1e)', borderRadius: 'var(--mantine-radius-sm)', overflowX: 'auto', fontFamily: 'monospace' }}>{formula.formula}</Box>
+                          <Box component="pre" fz="xs" p="sm" style={{ background: 'var(--mantine-color-dark-8, #1a1b1e)', borderRadius: 'var(--mantine-radius-sm)', overflowX: 'auto', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{formula.formula}</Box>
                           {formula.variables && (
                             <SimpleGrid cols={2} spacing="xs">
                               {formula.variables.map(v => (

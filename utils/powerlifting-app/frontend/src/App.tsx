@@ -8,7 +8,6 @@ import DesignerPage from '@/pages/DesignerPage'
 import DesignerLanding from '@/pages/DesignerLanding'
 import DesignerPhases from '@/pages/DesignerPhases'
 import ListPage from '@/pages/ListPage'
-import TimelinePage from '@/pages/TimelinePage'
 import ChartsPage from '@/pages/ChartsPage'
 import AnalysisPage from '@/pages/AnalysisPage'
 import GlossaryPage from '@/pages/GlossaryPage'
@@ -18,6 +17,14 @@ import BiometricsPage from '@/pages/BiometricsPage'
 import CompetitionsPage from '@/pages/CompetitionsPage'
 import MaxesPage from '@/pages/MaxesPage'
 import VideosPage from '@/pages/VideosPage'
+
+// Tool Components
+import PlateCalculator from '@/components/tools/PlateCalculator'
+import DotsCalculator from '@/components/tools/DotsCalculator'
+import WeightTracker from '@/components/tools/WeightTracker'
+import PercentTable from '@/components/tools/PercentTable'
+import UnitConverter from '@/components/tools/UnitConverter'
+import AttemptSelector from '@/components/tools/AttemptSelector'
 
 export default function App() {
   const { loadProgram, version } = useProgramStore()
@@ -35,7 +42,6 @@ export default function App() {
         <Route path="/designer/phases" element={<DesignerPhases />} />
         <Route path="/designer/sessions" element={<DesignerPage />} />
         <Route path="/list" element={<ListPage />} />
-        <Route path="/timeline" element={<TimelinePage />} />
         <Route path="/charts" element={<ChartsPage />} />
         <Route path="/analysis" element={<AnalysisPage />} />
         <Route path="/supplements" element={<SupplementsPage />} />
@@ -45,6 +51,12 @@ export default function App() {
         <Route path="/glossary" element={<GlossaryPage />} />
         <Route path="/maxes" element={<MaxesPage />} />
         <Route path="/tools" element={<ToolsPage />} />
+        <Route path="/tools/plate" element={<PlateCalculator />} />
+        <Route path="/tools/dots" element={<DotsCalculator />} />
+        <Route path="/tools/weight" element={<WeightTracker />} />
+        <Route path="/tools/percent" element={<PercentTable />} />
+        <Route path="/tools/converter" element={<UnitConverter />} />
+        <Route path="/tools/attempts" element={<AttemptSelector />} />
         <Route path="/videos" element={<VideosPage />} />
       </Routes>
     </AppShell>

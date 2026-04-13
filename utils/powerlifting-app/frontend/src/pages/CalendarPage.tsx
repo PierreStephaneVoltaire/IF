@@ -10,6 +10,7 @@ import {
   ScrollArea,
   ThemeIcon,
   UnstyledButton,
+  Center,
 } from '@mantine/core'
 import { Calendar } from '@mantine/dates'
 import { useProgramStore } from '@/store/programStore'
@@ -149,24 +150,6 @@ export default function CalendarPage() {
         <Text size="xl" fw={700}>Calendar</Text>
 
         <Group gap="xs" wrap="nowrap">
-          {/* Phase Legend */}
-          <Group gap={4} style={{ overflowX: 'auto' }} wrap="nowrap">
-            {program.phases.map((phase, idx) => (
-              <Badge
-                key={idx}
-                variant="dot"
-                color={phaseColor(phase, program.phases)}
-                size={isMobile ? 'xs' : 'sm'}
-                styles={{
-                  root: { backgroundColor: 'transparent' },
-                  label: { fontSize: isMobile ? 10 : undefined },
-                }}
-              >
-                {phase.name}
-              </Badge>
-            ))}
-          </Group>
-
           {!isMobile && (
             <SegmentedControl
               size="xs"
@@ -182,11 +165,13 @@ export default function CalendarPage() {
       <Paper withBorder p={isMobile ? 'xs' : 'md'} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <ScrollArea h="100%">
           {view === 'Month' ? (
-            <Calendar
-              renderDay={renderDay}
-              getDayProps={getDayProps}
-              size={isMobile ? 'sm' : 'md'}
-            />
+            <Center>
+              <Calendar
+                renderDay={renderDay}
+                getDayProps={getDayProps}
+                size={isMobile ? 'sm' : 'md'}
+              />
+            </Center>
           ) : (
             <Stack gap="md">
               {weeklyGroups.map(({ weekStart, weekLabel, sessions }) => (

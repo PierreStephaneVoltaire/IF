@@ -1300,6 +1300,22 @@ async def health_update_current_maxes(
     return maxes
 
 
+def _floats_to_decimals(obj):
+    """Recursively convert float values to Decimal for DynamoDB compatibility.
+
+    DynamoDB boto3 rejects Python float types — all floats must be Decimal.
+    Uses str() conversion to preserve precision and avoid floating-point artifacts.
+    """
+    from decimal import Decimal
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    if isinstance(obj, dict):
+        return {k: _floats_to_decimals(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_floats_to_decimals(v) for v in obj]
+    return obj
+
+
 async def health_program_evaluation(refresh: bool = False) -> dict:
     """Generate a conservative full-block program evaluation.
 
@@ -1357,7 +1373,8 @@ async def health_program_evaluation(refresh: bool = False) -> dict:
     report["weeks"] = len(completed_weeks)
 
     if not (report.get("insufficient_data") and str(report.get("insufficient_data_reason", "")).startswith("AI evaluation failed")):
-        table.put_item(Item={
+        # DynamoDB does not support Python float — convert all floats to Decimal before writing
+        dynamo_item = _floats_to_decimals({
             "pk": "operator",
             "sk": cache_sk,
             "report": report,
@@ -1365,5 +1382,6 @@ async def health_program_evaluation(refresh: bool = False) -> dict:
             "window_start": window_start,
             "weeks": len(completed_weeks),
         })
+        table.put_item(Item=dynamo_item)
 
     return report

@@ -48,7 +48,6 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
 ]
 
 const SECONDARY_NAV_ITEMS: NavItem[] = [
-  { to: '/timeline', icon: GitBranch, label: 'Timeline' },
   { to: '/supplements', icon: Pill, label: 'Supplements' },
   { to: '/biometrics', icon: Utensils, label: 'Biometrics' },
   { to: '/competitions', icon: Trophy, label: 'Competitions' },
@@ -62,7 +61,6 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/designer', icon: ClipboardList, label: 'Designer' },
   { to: '/list', icon: List, label: 'List' },
-  { to: '/timeline', icon: GitBranch, label: 'Timeline' },
   { to: '/charts', icon: BarChart3, label: 'Charts' },
   { to: '/analysis', icon: Activity, label: 'Analysis' },
   { to: '/supplements', icon: Pill, label: 'Supplements' },
@@ -122,16 +120,15 @@ function MobileMoreMenu() {
             gap: 2,
             height: 'auto',
             width: 'auto',
-            padding: '4px 8px',
+            padding: '8px',
           }}
         >
-          <MoreHorizontal size={20} />
-          <Text fz={10} lh={1}>More</Text>
+          <MoreHorizontal size={24} />
         </ActionIcon>
       </Menu.Target>
 
       <Menu.Dropdown>
-        {SECONDARY_NAV_ITEMS.map(({ to, icon: Icon, label }) => {
+        {ALL_NAV_ITEMS.filter(item => !['/', '/designer', '/list', '/analysis'].includes(item.to)).map(({ to, icon: Icon, label }) => {
           const isActive =
             to === '/'
               ? location.pathname === '/'
@@ -156,10 +153,12 @@ function MobileMoreMenu() {
 
 function MobileSidebar() {
   const location = useLocation()
+  
+  const MOBILE_MAIN_ITEMS = ALL_NAV_ITEMS.filter(item => ['/', '/designer', '/list', '/analysis'].includes(item.to))
 
   return (
     <Group justify="space-around" wrap="nowrap" p="xs">
-      {PRIMARY_NAV_ITEMS.map(({ to, icon: Icon, label }) => {
+      {MOBILE_MAIN_ITEMS.map(({ to, icon: Icon, label }) => {
         const isActive =
           to === '/'
             ? location.pathname === '/'
@@ -181,12 +180,11 @@ function MobileSidebar() {
               gap: 2,
               height: 'auto',
               width: 'auto',
-              padding: '4px 8px',
+              padding: '8px',
               minHeight: 44,
             }}
           >
-            <Icon size={20} />
-            <Text fz={10} lh={1}>{label}</Text>
+            <Icon size={24} />
           </ActionIcon>
         )
       })}

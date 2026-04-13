@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
 
 import boto3
@@ -381,6 +382,23 @@ class ProgramStore:
             logger.error(f"[ProgramStore] Failed to write new version: {e}")
             raise RuntimeError(f"Failed to write new version to DynamoDB: {e}")
     
+    @staticmethod
+    def _floats_to_decimals(obj: Any) -> Any:
+        """Recursively convert float values to Decimal for DynamoDB compatibility.
+
+        DynamoDB's boto3 client does not support Python float types.
+        All floats must be converted to Decimal before writing.
+        None values are left as-is (DynamoDB accepts null).
+        """
+        if isinstance(obj, float):
+            # Use string conversion to preserve precision and avoid floating-point artifacts
+            return Decimal(str(obj))
+        if isinstance(obj, dict):
+            return {k: ProgramStore._floats_to_decimals(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [ProgramStore._floats_to_decimals(v) for v in obj]
+        return obj
+
     def _write_new_version_sync(self, program: dict, minor: bool) -> dict:
         """Synchronous version writing logic."""
         now = datetime.now(timezone.utc).isoformat()
@@ -424,6 +442,9 @@ class ProgramStore:
             "sk": new_sk,
             **program
         }
+        
+        # DynamoDB does not support Python float — convert all floats to Decimal
+        program_item = self._floats_to_decimals(program_item)
         
         logger.debug(f"[ProgramStore] Writing new program version: sk={new_sk}, label={new_label}")
         self.table.put_item(Item=program_item)

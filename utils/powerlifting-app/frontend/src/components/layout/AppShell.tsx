@@ -27,10 +27,10 @@ export default function AppShell({ children }: AppShellProps) {
         <Sidebar />
       </MantineAppShell.Navbar>
 
-      <MantineAppShell.Main>{children}</MantineAppShell.Main>
+      <MantineAppShell.Main pb={100}>{children}</MantineAppShell.Main>
 
       {/* Mobile bottom navigation */}
-      <MantineAppShell.Footer>
+      <MantineAppShell.Footer hiddenFrom="md">
         <Sidebar mobile />
       </MantineAppShell.Footer>
 
