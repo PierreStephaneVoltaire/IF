@@ -31,14 +31,18 @@ def translate_discord_batch(
     pending_uploads: List[Dict[str, Any]] = []
     api_messages: List[Dict[str, Any]] = []
 
-    # Extract bot ID from history if available (look for bot messages)
+    # Get the bot's own user ID directly from the active Discord client.
+    # This is reliable regardless of whether IF has sent any messages in
+    # the fetched history window (avoids the fragile "scan for a bot message"
+    # heuristic that left bot_id=None when no prior IF messages existed).
     bot_id = None
-    if history_messages:
-        for msg in history_messages:
-            if msg.author.bot and msg.author.display_name:
-                # Assume the bot is named "IF" or similar
-                bot_id = msg.author.id
-                break
+    try:
+        from channels.listeners.discord_listener import get_discord_client
+        _client = get_discord_client()
+        if _client and _client.user:
+            bot_id = _client.user.id
+    except Exception:
+        pass
 
     # Process history messages (they come newest-first, we need oldest-first for API)
     if history_messages:
@@ -48,13 +52,13 @@ def translate_discord_batch(
                 continue
 
             if bot_id and msg.author.id == bot_id:
-                # Bot's own message = assistant
+                # IF's own message → assistant role
                 api_messages.append({
                     "role": "assistant",
                     "content": content,
                 })
             else:
-                # User message
+                # All other messages (human or other bots) → user role
                 author = msg.author.display_name if msg.author else "unknown"
                 api_messages.append({
                     "role": "user",

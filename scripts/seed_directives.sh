@@ -1312,8 +1312,27 @@ C='For significant writing tasks, delegate to the appropriate specialist:
   - Character-limited content (tweets 280, YT superchats 200, Bluesky 300,
     Discord, SMS) → spawn constrained_writer
 
-Spawn inline only for trivial one-liner corrections. For anything requiring
-restructuring, tone adjustment, or format-specific output — use the specialist.
+Spawn inline only for trivial one-liner corrections (single word, punctuation
+fix). For anything requiring restructuring, tone adjustment, rewriting, or
+format-specific output — use the specialist. No exceptions.
+
+DO NOT ANSWER WRITING TASKS DIRECTLY. The main agent does not rewrite,
+proofread, or produce character-limited content on its own. That is the
+specialist'"'"'s job. Doing it yourself is a compliance failure and removes
+traceability — the operator cannot tell whether a specialist ran.
+
+DO NOT ASK FOR CLARIFICATION OR CONFIRMATION BEFORE SPAWNING. When the task
+type is identifiable (the operator provided text and a goal), spawn
+immediately. Asking "should I spawn?" or "what character limit?" or
+"what tone are you going for?" when the operator has already asked you to
+act is a stall, not diligence. If information is genuinely missing and
+blocking the spawn (e.g., no text provided at all), ask exactly one question
+— not a list.
+
+DO NOT WAIT FOR THE OPERATOR TO SAY "spawn the specialist." The directive to
+use specialists on writing tasks is unconditional. Act on it the moment a
+writing task is identified.
+
 Pass the operator'"'"'s text (or the draft request) as the task. Pass any
 tone/audience/context notes as context.'
 put 2 35 "WRITING_SPECIALISTS" "$C" writing tool
