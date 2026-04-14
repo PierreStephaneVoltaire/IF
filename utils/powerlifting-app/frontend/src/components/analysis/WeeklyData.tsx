@@ -2,6 +2,8 @@ import { Fragment, useState } from 'react';
 import { Paper, Text, Box, Table, Group, Button, Badge, SimpleGrid, Stack } from '@mantine/core';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, CartesianGrid, XAxis, YAxis } from 'recharts';
 import type { WeeklyAnalysis } from '@/api/analytics';
+import { toDisplayUnit } from '@/utils/units';
+import { Unit } from '@/store/settingsStore';
 
 const CHART_COLORS = [
   '#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6',
@@ -21,9 +23,10 @@ interface WeeklyDataProps {
   perLiftDetails: Record<string, { frequency: number; raw_sets: number; accessories: { name: string; sets: number; volume: number }[] }>;
   muscleGroupSets: Record<string, number>;
   muscleGroupAvgWeekly: { sets: Record<string, number>; volume: Record<string, number> };
+  unit: Unit;
 }
 
-export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, muscleGroupAvgWeekly }: WeeklyDataProps) {
+export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, muscleGroupAvgWeekly, unit }: WeeklyDataProps) {
   const [expandedLifts, setExpandedLifts] = useState<Set<string>>(new Set());
 
   return (
@@ -78,7 +81,7 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, mu
                         <Table.Td ta="right">{details ? <Text span fz="sm">{details.raw_sets}</Text> : <Text span fz="sm" c="dimmed">--</Text>}</Table.Td>
                         <Table.Td ta="right">
                           {lift.progression_rate_kg_per_week !== undefined && lift.progression_rate_kg_per_week !== null
-                            ? <Text span fz="sm" c={lift.progression_rate_kg_per_week >= 0 ? 'green' : 'red'}>{lift.progression_rate_kg_per_week >= 0 ? '+' : ''}{lift.progression_rate_kg_per_week.toFixed(1)} kg/wk</Text>
+                            ? <Text span fz="sm" c={lift.progression_rate_kg_per_week >= 0 ? 'green' : 'red'}>{lift.progression_rate_kg_per_week >= 0 ? '+' : ''}{toDisplayUnit(lift.progression_rate_kg_per_week, unit).toFixed(1)} {unit}/wk</Text>
                             : <Text span fz="sm" c="dimmed">--</Text>}
                         </Table.Td>
                         <Table.Td ta="right" visibleFrom="sm">
@@ -112,7 +115,7 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, mu
                                 {details.accessories.map(a => (
                                   <Box key={a.name} p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default)' }}>
                                     <Text fz="xs" fw={500}>{a.name}</Text>
-                                    <Text fz="xs" c="dimmed">{a.sets} sets · {Math.round(a.volume).toLocaleString()} kg</Text>
+                                    <Text fz="xs" c="dimmed">{a.sets} sets · {Math.round(toDisplayUnit(a.volume, unit)).toLocaleString()} {unit}</Text>
                                   </Box>
                                 ))}
                               </SimpleGrid>
@@ -136,7 +139,7 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, mu
           {viewMode === 'raw' ? (
             <Box style={{ overflowX: 'auto' }}>
               <Table fz="sm">
-                <Table.Thead><Table.Tr><Table.Th>Exercise</Table.Th><Table.Th ta="right">Total Sets</Table.Th><Table.Th ta="right">Volume (kg)</Table.Th><Table.Th ta="right">Max (kg)</Table.Th></Table.Tr></Table.Thead>
+                <Table.Thead><Table.Tr><Table.Th>Exercise</Table.Th><Table.Th ta="right">Total Sets</Table.Th><Table.Th ta="right">Volume ({unit})</Table.Th><Table.Th ta="right">Max ({unit})</Table.Th></Table.Tr></Table.Thead>
                 <Table.Tbody>
                   {Object.entries(data.exercise_stats)
                     .sort((a, b) => b[1].total_volume - a[1].total_volume)
@@ -144,8 +147,8 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, mu
                       <Table.Tr key={name}>
                         <Table.Td fw={500}>{name}</Table.Td>
                         <Table.Td ta="right">{s.total_sets}</Table.Td>
-                        <Table.Td ta="right">{s.total_volume.toLocaleString()}</Table.Td>
-                        <Table.Td ta="right">{s.max_kg.toFixed(1)}</Table.Td>
+                        <Table.Td ta="right">{Math.round(toDisplayUnit(s.total_volume, unit)).toLocaleString()}</Table.Td>
+                        <Table.Td ta="right">{toDisplayUnit(s.max_kg, unit).toFixed(1)}</Table.Td>
                       </Table.Tr>
                     ))}
                 </Table.Tbody>
@@ -168,7 +171,7 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, mu
                 <Text fz="xs" c="dimmed" ta="center" mb="xs">Volume Distribution</Text>
                 <ResponsiveContainer width="100%" height={350}>
                   <PieChart>
-                    <Pie data={Object.entries(data.exercise_stats).sort((a, b) => b[1].total_volume - a[1].total_volume).slice(0, 10).map(([name, s], i) => ({ name, value: s.total_volume, fill: CHART_COLORS[i % CHART_COLORS.length] }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                    <Pie data={Object.entries(data.exercise_stats).sort((a, b) => b[1].total_volume - a[1].total_volume).slice(0, 10).map(([name, s], i) => ({ name, value: toDisplayUnit(s.total_volume, unit), fill: CHART_COLORS[i % CHART_COLORS.length] }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
                       {Object.entries(data.exercise_stats).sort((a, b) => b[1].total_volume - a[1].total_volume).slice(0, 10).map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
@@ -176,13 +179,13 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, mu
                 </ResponsiveContainer>
               </Box>
               <Box>
-                <Text fz="xs" c="dimmed" ta="center" mb="xs">Max Weight (kg)</Text>
+                <Text fz="xs" c="dimmed" ta="center" mb="xs">Max Weight ({unit})</Text>
                 <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={Object.entries(data.exercise_stats).sort((a, b) => b[1].max_kg - a[1].max_kg).slice(0, 10).map(([name, s], i) => ({ name, max_kg: s.max_kg, fill: CHART_COLORS[i % CHART_COLORS.length] }))} layout="vertical">
+                  <BarChart data={Object.entries(data.exercise_stats).sort((a, b) => b[1].max_kg - a[1].max_kg).slice(0, 10).map(([name, s], i) => ({ name, max_weight: toDisplayUnit(s.max_kg, unit), fill: CHART_COLORS[i % CHART_COLORS.length] }))} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                     <XAxis type="number" /><YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 12 }} />
                     <Tooltip />
-                    <Bar dataKey="max_kg" radius={[0, 4, 4, 0]}>
+                    <Bar dataKey="max_weight" radius={[0, 4, 4, 0]}>
                       {Object.entries(data.exercise_stats).sort((a, b) => b[1].max_kg - a[1].max_kg).slice(0, 10).map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                     </Bar>
                   </BarChart>
@@ -226,13 +229,13 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, mu
           {viewMode === 'raw' ? (
             <Box style={{ overflowX: 'auto' }}>
               <Table fz="sm">
-                <Table.Thead><Table.Tr><Table.Th>Muscle Group</Table.Th><Table.Th ta="right">Avg Sets/wk</Table.Th><Table.Th ta="right">Avg Vol/wk (kg)</Table.Th></Table.Tr></Table.Thead>
+                <Table.Thead><Table.Tr><Table.Th>Muscle Group</Table.Th><Table.Th ta="right">Avg Sets/wk</Table.Th><Table.Th ta="right">Avg Vol/wk ({unit})</Table.Th></Table.Tr></Table.Thead>
                 <Table.Tbody>
                   {Object.entries(muscleGroupAvgWeekly.sets).sort((a, b) => (muscleGroupAvgWeekly.volume[b[0]] || 0) - (muscleGroupAvgWeekly.volume[a[0]] || 0)).map(([muscle, sets]) => (
                     <Table.Tr key={muscle}>
                       <Table.Td fw={500}>{muscle.replace(/_/g, ' ')}</Table.Td>
                       <Table.Td ta="right">{sets}</Table.Td>
-                      <Table.Td ta="right">{(muscleGroupAvgWeekly.volume[muscle] || 0).toLocaleString()}</Table.Td>
+                      <Table.Td ta="right">{Math.round(toDisplayUnit(muscleGroupAvgWeekly.volume[muscle] || 0, unit)).toLocaleString()}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
@@ -252,9 +255,9 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, mu
                 </ResponsiveContainer>
               </Box>
               <Box>
-                <Text fz="xs" c="dimmed" ta="center" mb="xs">Avg Vol/wk (kg)</Text>
+                <Text fz="xs" c="dimmed" ta="center" mb="xs">Avg Vol/wk ({unit})</Text>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={Object.entries(muscleGroupAvgWeekly.volume).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name: name.replace(/_/g, ' '), 'Avg Vol/wk': value }))}>
+                  <BarChart data={Object.entries(muscleGroupAvgWeekly.volume).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name: name.replace(/_/g, ' '), 'Avg Vol/wk': toDisplayUnit(value, unit) }))}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" height={60} />
                     <YAxis /><Tooltip />

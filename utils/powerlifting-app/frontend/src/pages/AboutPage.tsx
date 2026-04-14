@@ -275,9 +275,10 @@ export default function AboutPage() {
             <Paper withBorder p="md">
               <Text fw={600} size="sm" mb={4}>Biometric precision</Text>
               <Text size="sm" c="dimmed">
-                Limb lengths are sent to the AI tools as soft context for leverages but are
-                not used in the rigid fatigue or volume formulas. Formula-level bone-length
-                weighting is out of scope until a personal calibration dataset exists.
+                While we capture limb lengths, this data is currently NOT accounted for in the rigid
+                fatigue profile formulas. It is passed to the AI as context, meaning fatigue index
+                values lack this granularity, and its existence during evaluations is at the
+                discretion of the AI reasoning layer.
               </Text>
             </Paper>
             <Paper withBorder p="md">

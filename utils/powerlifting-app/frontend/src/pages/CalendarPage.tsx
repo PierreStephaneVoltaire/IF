@@ -19,6 +19,7 @@ import SessionDrawer from '@/components/sessions/SessionDrawer'
 import { startOfWeek, format } from 'date-fns'
 import { Check } from 'lucide-react'
 import dayjs from 'dayjs'
+import MuscleVolumeChart from '@/components/charts/MuscleVolumeChart'
 
 type ViewType = 'Month' | 'Agenda'
 
@@ -232,6 +233,9 @@ export default function CalendarPage() {
                   })}
                 </Stack>
               ))}
+              <Box mt="lg">
+                <MuscleVolumeChart />
+              </Box>
             </Stack>
           )}
         </ScrollArea>

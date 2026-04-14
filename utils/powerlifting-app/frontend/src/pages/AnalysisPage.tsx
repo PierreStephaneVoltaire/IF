@@ -1054,6 +1054,7 @@ export default function AnalysisPage() {
             perLiftDetails={perLiftDetails}
             muscleGroupSets={muscleGroupSets}
             muscleGroupAvgWeekly={muscleGroupAvgWeekly}
+            unit={unit}
           />
           <AiAnalysis effectiveWeeks={effectiveWeeks} weeksMode={weeksMode} />
 
