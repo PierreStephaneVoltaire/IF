@@ -87,13 +87,15 @@ app/
 │   │   ├── interceptor.py   # Bypass routing
 │   │   ├── cache.py         # Conversation cache
 │   │   └── commands.py      # Command parsing (/reset, /pondering, /reflect, etc.)
-│   ├── sandbox/             # LocalWorkspace manager for per-conversation shell access
-│   │   └── local.py         # LocalSandboxManager, init_local_sandbox, get_local_sandbox
+│   ├── app_sandbox/         # LocalWorkspace manager for per-conversation shell access
+│   │   ├── __init__.py      # init_local_sandbox, exported entry point
+│   │   └── local.py         # LocalSandboxManager, get_local_sandbox
 │   ├── files/               # FILES: metadata parsing (strip from agent output)
 │   │   └── __init__.py      # FileRef, FilesStripBuffer, strip_files_line
 │   ├── orchestrator/        # Multi-step task execution
 │   │   ├── executor.py      # execute_plan tool (sequential steps with subagents)
-│   │   └── analyzer.py      # analyze_parallel tool (parallel perspective analysis)
+│   │   ├── analyzer.py      # analyze_parallel tool (parallel perspective analysis)
+│   │   └── prompts/         # Jinja2 templates for plan/analysis subagent prompts
 │   ├── presets/             # OpenRouter preset definitions (legacy, still active)
 │   │   └── loader.py        # PresetManager (loaded at startup)
 │   ├── mcp_servers/         # MCP server config
@@ -251,7 +253,7 @@ Two selection paths:
 
 **Main agent** (`select_model_for_tier`): Maps tier number (0/1/2) to `TierConfigManager` tier config, returns first model in the sorted list. No LLM call — tier selection itself is the routing decision.
 
-**Subagents** (`select_model_for_specialist`): Maps specialist's `@preset/X` reference to a `ModelPresetManager` preset, then uses a fast LLM (`MODEL_ROUTER_MODEL`, default `google/gemma-3-4b-it`) to select the best model from the preset's candidate list based on the condensed task intent and model metadata. Falls back to first sorted model if router is disabled or fails.
+**Subagents** (`select_model_for_specialist`): Maps specialist's `@preset/X` reference to a `ModelPresetManager` preset, then uses a fast LLM (`MODEL_ROUTER_MODEL`, default `anthropic/claude-haiku-4.5`) to select the best model from the preset's candidate list based on the condensed task intent and model metadata. Falls back to first sorted model if router is disabled or fails.
 
 **Media** (`media_tools.py`): Uses `TierConfigManager.get_media_tier()` to pick a vision-capable model from the media tier pool, sorted by the tier's strategy.
 
@@ -262,7 +264,7 @@ Two selection paths:
 ### Tiering
 
 Context-aware model selection based on conversation size:
-- **Air**: Simple queries (< 150K tokens), models from `models/tiers.yaml` `tiers.air`
+- **Air**: Simple queries (< 100K tokens), models from `models/tiers.yaml` `tiers.air`
 - **Standard**: Most conversations (< 200K tokens), models from `tiers.standard`
 - **Heavy**: Complex tasks (≥ 200K tokens), models from `tiers.heavy`
 
@@ -532,7 +534,7 @@ Multi-step task execution in `orchestrator/`:
 
 Per-conversation shell access via OpenHands SDK `LocalWorkspace` — no separate terminal pod required. Each conversation gets an isolated working directory under `WORKSPACE_BASE/{conversation_id}/`.
 
-`LocalSandboxManager` (`sandbox/local.py`) manages workspace lifecycle: `init_local_sandbox(conversation_id)` creates the directory and returns a `LocalWorkspace` instance; `get_local_sandbox(conversation_id)` retrieves an existing one.
+`LocalSandboxManager` (`app_sandbox/local.py`) manages workspace lifecycle: `init_local_sandbox(conversation_id)` creates the directory and returns a `LocalWorkspace` instance; `get_local_sandbox(conversation_id)` retrieves an existing one.
 
 Tools: `terminal_execute`, `terminal_read_file`, `terminal_write_file`, `terminal_list_files`.
 
@@ -578,7 +580,7 @@ Server assignment per specialist is configured in each `specialist.yaml` under `
 
 ## Utility Applications
 
-TypeScript/Node.js apps in `app/utils/`:
+TypeScript/Node.js apps in `utils/`:
 
 | App | Port | Purpose | DynamoDB Table |
 |-----|------|---------|----------------|
@@ -629,8 +631,11 @@ Key configuration (see `app/src/config.py` for full list):
 | `SKILLS_PATH` | `project_root/skills/` | Path to AgentSkills directory |
 | `IF_MODELS_TABLE_NAME` | `if-models` | DynamoDB table for model registry |
 | `MODELS_PATH` | `project_root/models/` | Path to model preset YAML configs |
-| `MODEL_ROUTER_MODEL` | `google/gemma-3-4b-it` | Fast model for subagent model selection |
+| `MODEL_ROUTER_MODEL` | `anthropic/claude-haiku-4.5` | Fast model for subagent model selection |
 | `MODEL_ROUTER_ENABLED` | true | Enable LLM-based model routing |
+| `MODEL_SEED_INTERVAL` | 3600 | Seconds between full model metadata re-seeds from OpenRouter API |
+| `LLM_REASONING_EFFORT` | high | Reasoning effort for main agent (`high`/`medium`/`low`; silently ignored for non-supporting models) |
+| `SPECIALIST_REASONING_EFFORT` | (inherits `LLM_REASONING_EFFORT`) | Reasoning effort passed to specialist subagents using SDK agentic loop |
 | `MODEL_STATS_REFRESH_INTERVAL` | 1800 | Seconds between per-provider latency/throughput refreshes |
 
 ## Operational Rules

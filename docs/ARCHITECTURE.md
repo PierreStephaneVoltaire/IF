@@ -27,6 +27,8 @@ app/
 │   │   ├── condenser.py     # Conversation summarization
 │   │   ├── commands.py      # Slash command definitions
 │   │   ├── memory_tools.py  # ChromaDB memory search/add/remove/list
+│   │   ├── plugin_runner.py # Subprocess plugin runner helper
+│   │   ├── skills.py        # AgentSkills loader (load_skills_from_dir)
 │   │   ├── prompts/         # Jinja2 templates + specialist definitions
 │   │   │   ├── system_prompt.j2
 │   │   │   └── mcp_servers.yaml
@@ -37,9 +39,20 @@ app/
 │   │   │   ├── meta_analysis.py
 │   │   │   └── growth_tracker.py
 │   │   └── tools/           # OpenHands SDK tools
-│   │       ├── tool_schemas.py     # Registry-backed schema resolution
-│   │       ├── discovery_tools.py  # discover_tools + use_tool
-│   │       └── base.py             # TextObservation base class
+│   │       ├── base.py               # TextObservation base class
+│   │       ├── capability_tracker.py # log_gap, list_gaps
+│   │       ├── context_tools.py      # get_signals, get_financial_context, get_context_snapshot, get_current_date
+│   │       ├── directive_tools.py    # add, revise, deactivate, list
+│   │       ├── discovery_tools.py    # discover_tools + use_tool
+│   │       ├── file_tools.py         # File read/write/search tools
+│   │       ├── media_tools.py        # read_media
+│   │       ├── opinion_tools.py      # log_opinion_pair, log_misconception
+│   │       ├── session_reflection.py # store_session_reflection
+│   │       ├── subagent_sdk.py       # run_subagent_sdk (agentic SDK loop)
+│   │       ├── subagents.py          # list_specialists, condense_intent, deep_think, spawn_specialist
+│   │       ├── terminal_tools.py     # terminal_execute, terminal_read_file, etc.
+│   │       ├── tool_schemas.py       # Registry-backed schema resolution
+│   │       └── user_facts.py         # search, add, update, list, remove
 │   ├── models/              # Dynamic model routing
 │   │   ├── loader.py        # ModelPresetManager + TierConfigManager
 │   │   └── router.py        # Smart model selection via fast LLM
@@ -70,13 +83,15 @@ app/
 │   │   ├── interceptor.py   # Bypass routing
 │   │   ├── cache.py         # Conversation cache
 │   │   └── commands.py      # Command parsing
-│   ├── sandbox/             # Per-conversation shell access
+│   ├── app_sandbox/         # Per-conversation shell access
+│   │   ├── __init__.py      # init_local_sandbox entry point
 │   │   └── local.py         # LocalSandboxManager
 │   ├── files/               # FILES: metadata parsing
 │   │   └── __init__.py      # FileRef, FilesStripBuffer
 │   ├── orchestrator/        # Multi-step execution
 │   │   ├── executor.py      # execute_plan (sequential steps)
-│   │   └── analyzer.py      # analyze_parallel (multiple perspectives)
+│   │   ├── analyzer.py      # analyze_parallel (multiple perspectives)
+│   │   └── prompts/         # Jinja2 templates for orchestrator subagents
 │   ├── presets/             # Legacy preset definitions
 │   │   └── loader.py
 │   ├── mcp_servers/
@@ -198,7 +213,7 @@ Media tiers (vision-capable) are defined separately under `media_tiers`.
 | Specialists | `select_model_for_specialist()` | Maps `@preset/X` → YAML preset → fast LLM picks best model from candidates using task intent + metadata. |
 | Media | `get_media_tier()` | Picks vision-capable model from media tier pool. |
 
-Fast router model: `google/gemma-3-4b-it` (configurable). Falls back to first-sorted if router disabled or fails. If no YAML preset exists, original `@preset/X` reference passes through to OpenRouter (backward compatible).
+Fast router model: `anthropic/claude-haiku-4.5` (configurable). Falls back to first-sorted if router disabled or fails. If no YAML preset exists, original `@preset/X` reference passes through to OpenRouter (backward compatible).
 
 ---
 
@@ -432,8 +447,11 @@ Assignment per specialist via `specialist.yaml` `mcp_servers` field.
 | `SKILLS_PATH` | `project_root/skills/` | AgentSkills directory |
 | `IF_MODELS_TABLE_NAME` | `if-models` | DynamoDB table for model registry |
 | `MODELS_PATH` | `project_root/models/` | Model preset YAML configs |
-| `MODEL_ROUTER_MODEL` | `google/gemma-3-4b-it` | Fast model for subagent routing |
+| `MODEL_ROUTER_MODEL` | `anthropic/claude-haiku-4.5` | Fast model for subagent routing |
 | `MODEL_ROUTER_ENABLED` | true | Enable LLM-based model routing |
 | `MODEL_STATS_REFRESH_INTERVAL` | 1800 | Seconds between stats refreshes |
+| `MODEL_SEED_INTERVAL` | 3600 | Seconds between full model metadata re-seeds from OpenRouter |
+| `LLM_REASONING_EFFORT` | `high` | Reasoning effort for main agent (`high`/`medium`/`low`; ignored for non-supporting models) |
+| `SPECIALIST_REASONING_EFFORT` | (same as LLM_REASONING_EFFORT) | Reasoning effort for specialist subagents |
 
 ---

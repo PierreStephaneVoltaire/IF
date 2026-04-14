@@ -41,7 +41,7 @@ Models hallucinate more as their context window fills up. The orchestrator auto-
 
 | Tier | When | Why |
 |------|------|-----|
-| **Air** | < 150K tokens | Fast, cheap — most single-turn tasks |
+| **Air** | < 100K tokens | Fast, cheap — most single-turn tasks |
 | **Standard** | < 200K tokens | Mid-range — multi-turn conversations |
 | **Heavy** | ≥ 200K tokens | Large context window — complex sessions, deep analysis |
 
@@ -128,7 +128,7 @@ Domain experts spawned by the orchestrator. Each is a YAML config + Jinja2 promp
 </details>
 
 <details>
-<summary><strong>Reasoning, Planning & Communication (12 specialists)</strong></summary>
+<summary><strong>Reasoning, Planning & Communication (13 specialists)</strong></summary>
 
 | Specialist | Purpose |
 |------------|---------|
@@ -198,7 +198,7 @@ Example: `spawn_specialist(specialist_type="architect", skill="red_team")` → a
 
 Deterministic functions the agent calls instead of guessing. Two categories:
 
-**System tools** (loaded in orchestrator): user fact CRUD, directive management, capability gap tracking, opinion logging, context/signal retrieval, specialist delegation, media reading, orchestration.
+**System tools** (loaded in orchestrator): user fact CRUD, directive management, capability gap tracking, opinion logging, context/signal retrieval, specialist delegation (list_specialists, condense_intent, deep_think, spawn_specialist, spawn_specialists), media reading, orchestration.
 
 **External tool plugins** (loaded per specialist): self-contained packages in `tools/` with `tool.yaml` + `tool.py`. Auto-discovered at startup, hot-reloadable via `POST /admin/reload-tools`.
 
