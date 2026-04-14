@@ -9,6 +9,8 @@ import {
 import { useProgramStore } from '@/store/programStore'
 import { fetchWeightLog, fetchGlossary } from '@/api/client'
 import { normalizeExerciseName } from '@/utils/volume'
+import { useSettingsStore } from '@/store/settingsStore'
+import { toDisplayUnit, displayWeight } from '@/utils/units'
 import { FORMULA_DESCRIPTIONS } from '@/constants/formulaDescriptions'
 import type { WeightEntry, GlossaryExercise, ExerciseCategory } from '@powerlifting/types'
 import {
@@ -74,6 +76,7 @@ const LIFT_LABELS: Record<string, string> = { squat: 'Squat', bench: 'Bench', de
 
 export default function AnalysisPage() {
   const { program, version } = useProgramStore()
+  const { unit } = useSettingsStore()
 
   const [weeksMode, setWeeksMode] = useState<number | 'block'>(4)
   const [data, setData] = useState<WeeklyAnalysis | null>(null)
@@ -453,15 +456,15 @@ export default function AnalysisPage() {
                   <SimpleGrid cols={3}>
                     <Stack gap={2} ta="center">
                       <Text fz="xs" c="dimmed">Squat</Text>
-                      <Text fz="lg" fw={700}>{highestMaxes.squat?.toFixed(1) ?? '--'}</Text>
+                      <Text fz="lg" fw={700}>{highestMaxes.squat !== null ? toDisplayUnit(highestMaxes.squat, unit).toFixed(1) : '--'}</Text>
                     </Stack>
                     <Stack gap={2} ta="center">
                       <Text fz="xs" c="dimmed">Bench</Text>
-                      <Text fz="lg" fw={700}>{highestMaxes.bench?.toFixed(1) ?? '--'}</Text>
+                      <Text fz="lg" fw={700}>{highestMaxes.bench !== null ? toDisplayUnit(highestMaxes.bench, unit).toFixed(1) : '--'}</Text>
                     </Stack>
                     <Stack gap={2} ta="center">
                       <Text fz="xs" c="dimmed">Deadlift</Text>
-                      <Text fz="lg" fw={700}>{highestMaxes.deadlift?.toFixed(1) ?? '--'}</Text>
+                      <Text fz="lg" fw={700}>{highestMaxes.deadlift !== null ? toDisplayUnit(highestMaxes.deadlift, unit).toFixed(1) : '--'}</Text>
                     </Stack>
                   </SimpleGrid>
                   {highestMaxes.dots !== null && (
@@ -476,15 +479,15 @@ export default function AnalysisPage() {
                   <SimpleGrid cols={3}>
                     <Stack gap={2} ta="center">
                       <Text fz="xs" c="dimmed">Squat</Text>
-                      <Text fz="lg" fw={700}>{data.current_maxes.squat?.toFixed(1) ?? '--'}</Text>
+                      <Text fz="lg" fw={700}>{data.current_maxes.squat ? toDisplayUnit(data.current_maxes.squat, unit).toFixed(1) : '--'}</Text>
                     </Stack>
                     <Stack gap={2} ta="center">
                       <Text fz="xs" c="dimmed">Bench</Text>
-                      <Text fz="lg" fw={700}>{data.current_maxes.bench?.toFixed(1) ?? '--'}</Text>
+                      <Text fz="lg" fw={700}>{data.current_maxes.bench ? toDisplayUnit(data.current_maxes.bench, unit).toFixed(1) : '--'}</Text>
                     </Stack>
                     <Stack gap={2} ta="center">
                       <Text fz="xs" c="dimmed">Deadlift</Text>
-                      <Text fz="lg" fw={700}>{data.current_maxes.deadlift?.toFixed(1) ?? '--'}</Text>
+                      <Text fz="lg" fw={700}>{data.current_maxes.deadlift ? toDisplayUnit(data.current_maxes.deadlift, unit).toFixed(1) : '--'}</Text>
                     </Stack>
                   </SimpleGrid>
                   {data.estimated_dots !== null && (
@@ -727,7 +730,7 @@ export default function AnalysisPage() {
                     <TrendingUp size={18} />
                     <Text fw={500}>{proj.comp_name || 'Projected Total'}</Text>
                   </Group>
-                  <Text fz="2rem" fw={700}>{(proj.total || 0).toFixed(1)} kg</Text>
+                  <Text fz="2rem" fw={700}>{toDisplayUnit(proj.total || 0, unit).toFixed(1)} {unit}</Text>
                   <Text fz="sm" c="dimmed" mt="xs">
                     Confidence: {((proj.confidence || 0) * 100).toFixed(0)}%
                     {typeof proj.weeks_to_comp === 'number' && ` (${proj.weeks_to_comp.toFixed(1)} wks out)`}
@@ -774,10 +777,10 @@ export default function AnalysisPage() {
                     {dotsTrend.rows.map(r => (
                       <Table.Tr key={r.week}>
                         <Table.Td fw={500}>W{r.week}</Table.Td>
-                        <Table.Td ta="right">{r.squat?.toFixed(1) ?? '--'}</Table.Td>
-                        <Table.Td ta="right">{r.bench?.toFixed(1) ?? '--'}</Table.Td>
-                        <Table.Td ta="right">{r.deadlift?.toFixed(1) ?? '--'}</Table.Td>
-                        <Table.Td ta="right" fw={500}>{r.total?.toFixed(1) ?? '--'}</Table.Td>
+                        <Table.Td ta="right">{r.squat !== null ? toDisplayUnit(r.squat, unit).toFixed(1) : '--'}</Table.Td>
+                        <Table.Td ta="right">{r.bench !== null ? toDisplayUnit(r.bench, unit).toFixed(1) : '--'}</Table.Td>
+                        <Table.Td ta="right">{r.deadlift !== null ? toDisplayUnit(r.deadlift, unit).toFixed(1) : '--'}</Table.Td>
+                        <Table.Td ta="right" fw={500}>{r.total !== null ? toDisplayUnit(r.total, unit).toFixed(1) : '--'}</Table.Td>
                         <Table.Td ta="right" fw={700} c="blue">{r.dots?.toFixed(2) ?? '--'}</Table.Td>
                       </Table.Tr>
                     ))}
@@ -796,16 +799,16 @@ export default function AnalysisPage() {
                 <Text fw={500}>Body Weight Trend</Text>
               </Group>
               <Group align="baseline" gap="md">
-                <Text fz="2rem" fw={700}>{weightTrend.latest.toFixed(1)} kg</Text>
+                <Text fz="2rem" fw={700}>{toDisplayUnit(weightTrend.latest, unit).toFixed(1)} {unit}</Text>
                 <Text fz="sm" fw={500} c={weightTrend.change >= 0 ? 'yellow' : 'green'}>
-                  {weightTrend.change >= 0 ? '+' : ''}{weightTrend.change.toFixed(1)} kg over {effectiveWeeks} wk{effectiveWeeks !== 1 ? 's' : ''}
+                  {weightTrend.change >= 0 ? '+' : ''}{toDisplayUnit(Math.abs(weightTrend.change), unit).toFixed(1)} {unit} over {effectiveWeeks} wk{effectiveWeeks !== 1 ? 's' : ''}
                 </Text>
               </Group>
               <SimpleGrid cols={{ base: 4, md: 8 }} mt="sm">
                 {weightTrend.entries.map(e => (
                   <Stack key={e.date} gap={2} ta="center">
                     <Text fz="xs" c="dimmed">{e.date.slice(5)}</Text>
-                    <Text fz="sm" fw={500}>{e.kg.toFixed(1)}</Text>
+                    <Text fz="sm" fw={500}>{toDisplayUnit(e.kg, unit).toFixed(1)}</Text>
                   </Stack>
                 ))}
               </SimpleGrid>
@@ -1024,10 +1027,10 @@ export default function AnalysisPage() {
                         <Table.Td visibleFrom="sm">{compStatusBadge(c.status)}</Table.Td>
                         {c.results ? (
                           <>
-                            <Table.Td ta="right" visibleFrom="sm">{c.results.squat_kg.toFixed(1)}</Table.Td>
-                            <Table.Td ta="right" visibleFrom="sm">{c.results.bench_kg.toFixed(1)}</Table.Td>
-                            <Table.Td ta="right" visibleFrom="sm">{c.results.deadlift_kg.toFixed(1)}</Table.Td>
-                            <Table.Td ta="right" fw={700}>{c.results.total_kg.toFixed(1)}</Table.Td>
+                            <Table.Td ta="right" visibleFrom="sm">{toDisplayUnit(c.results.squat_kg, unit).toFixed(1)}</Table.Td>
+                            <Table.Td ta="right" visibleFrom="sm">{toDisplayUnit(c.results.bench_kg, unit).toFixed(1)}</Table.Td>
+                            <Table.Td ta="right" visibleFrom="sm">{toDisplayUnit(c.results.deadlift_kg, unit).toFixed(1)}</Table.Td>
+                            <Table.Td ta="right" fw={700}>{toDisplayUnit(c.results.total_kg, unit).toFixed(1)}</Table.Td>
                           </>
                         ) : (
                           <>

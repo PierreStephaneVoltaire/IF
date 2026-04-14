@@ -67,6 +67,19 @@ weight relevance. A tricep-dominant bencher benefits more from tricep accessorie
 quad-dominant squatter benefits more from quad accessories. Sticking point at lockout
 means lockout-targeting exercises matter more. Apply this lens when rating strength.
 
+EXERCISE ROI PRIOR (when provided):
+The payload may include an "Accessory Exercise ROI" table with Pearson r values between
+weekly volume and average intensity for each accessory. Treat these as a QUANTITATIVE
+PRIOR on top of anatomical reasoning:
+  - |r| >= 0.60 with >= 4 weeks observed → strong statistical signal; upgrade the
+    "strength" rating of an anatomically-plausible finding by one level.
+  - 0.30 <= |r| < 0.60 → moderate prior; use as supporting evidence only.
+  - |r| < 0.30 or fewer than 3 weeks → weak/noisy; fall back to anatomical reasoning.
+  - A high |r| on an anatomically unrelated accessory is STILL a false positive. The
+    anatomical filter is the gate; ROI only tunes the strength rating for relationships
+    that already pass the filter.
+Do NOT invent correlations from the ROI table alone.
+
 FOR EACH FINDING, PROVIDE:
   - exercise: accessory exercise name
   - lift: "squat", "bench", or "deadlift"
@@ -212,6 +225,7 @@ def _build_user_message(
     caloric_status: str | None = None,
     bodyweight_trend: dict | None = None,
     weeks_to_primary_comp: float | None = None,
+    exercise_roi: list[dict] | None = None,
 ) -> str:
     lines = [f"## Analysis window: Last {weeks} weeks (from {window_start})\n"]
 
@@ -292,10 +306,23 @@ def _build_user_message(
             lines.append(row)
         lines.append("")
 
+    if exercise_roi:
+        lines.append("## Accessory Exercise ROI (pearson r between weekly volume and avg intensity)\n")
+        lines.append("| Exercise | Pearson r | Weeks |")
+        lines.append("|----------|-----------|-------|")
+        for row in exercise_roi:
+            lines.append(
+                f"| {row.get('exercise', '?')} | {row.get('pearson_r', 0):+.3f} | "
+                f"{row.get('weeks_observed', 0)} |"
+            )
+        lines.append("")
+
     lines.append(
         "## Task\nAnalyze the data above. Identify which accessory exercises have volume trends "
         "that plausibly correlate with changes in Squat, Bench, or Deadlift e1RM. "
-        "Only report anatomically relevant correlations as per the system instructions."
+        "Only report anatomically relevant correlations as per the system instructions. "
+        "Where the exercise ROI table gives a strong |r|, use it to upgrade confidence on "
+        "anatomically-plausible findings — never invent correlations from ROI alone."
     )
     return "\n".join(lines)
 
@@ -331,8 +358,14 @@ async def generate_correlation_report(
     }
 
     # Weeks to primary comp
+    exercise_roi: list[dict] | None = None
     try:
-        from health.prompt_context import summarize_competitions, summarize_bodyweight_trend, summarize_diet_context
+        from prompt_context import (
+            summarize_competitions,
+            summarize_bodyweight_trend,
+            summarize_diet_context,
+            summarize_exercise_roi,
+        )
         comp_summary = summarize_competitions(program)
         primary = comp_summary.get("primary_competition") or {}
         weeks_to_primary_comp = primary.get("weeks_to_comp")
@@ -341,6 +374,8 @@ async def generate_correlation_report(
         caloric_context = summarize_diet_context(program, bodyweight_trend=bw_trend)
         caloric_status = caloric_context.get("status", "unclear")
         bodyweight_trend = bw_trend
+
+        exercise_roi = summarize_exercise_roi(program, sessions=sessions, top_n=10) or None
     except Exception:
         weeks_to_primary_comp = None
         caloric_status = None
@@ -352,6 +387,7 @@ async def generate_correlation_report(
         caloric_status=caloric_status,
         bodyweight_trend=bodyweight_trend,
         weeks_to_primary_comp=weeks_to_primary_comp,
+        exercise_roi=exercise_roi,
     )
 
     try:

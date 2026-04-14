@@ -332,13 +332,22 @@ async def process_chat_completion_internal(
         except (json.JSONDecodeError, ValueError) as e:
             return json.dumps({"error": f"Invalid tool arguments: {e}"}), []
 
+        # Inject sandbox key — file-emitting tools write to SANDBOX_PATH/cache_key/
+        args["_conversation_id"] = cache_key
+
         from agent.tool_registry import get_tool_registry
         registry = get_tool_registry()
         if not registry.has_tool(tool_name):
             return json.dumps({"error": f"Unknown tool: {tool_name}"}), []
 
         result = await registry.execute_tool(tool_name, args)
-        return result, []
+
+        # Strip FILES: lines and log refs (mirrors the normal agent path)
+        cleaned, file_refs = strip_files_line(result)
+        if file_refs:
+            log_file_refs(cache_key, file_refs)
+
+        return cleaned, []
 
     try:
         from heartbeat.activity import ActivityTracker

@@ -35,7 +35,6 @@ from api.files import router as files_router, get_sandbox_directory
 from api.webhooks import router as webhooks_router
 from api.directives import router as directives_router
 from api.admin import router as admin_router
-from api import health_analytics
 from presets.loader import get_preset_manager
 from mcp_servers.config import validate_mcp_config
 from storage.factory import init_store, close_store, get_webhook_store, init_directive_store
@@ -176,57 +175,6 @@ async def lifespan(app: FastAPI):
         pass
     except Exception as e:
         logger.warning(f"Legacy memory store initialization failed: {e}")
-
-    # Health module initialization (MUST run before tool registry to avoid
-    # namespace collision — tool_registry registers tools.health as a module,
-    # which blocks `from tools.health.core import init_tools`)
-    try:
-        import sys as _sys
-        _tools_dir = os.environ.get("EXTERNAL_TOOLS_PATH", str(Path(__file__).parent.parent.parent / "tools"))
-        _health_plugin_dir = str(Path(_tools_dir) / "health")
-        if _health_plugin_dir not in _sys.path:
-            _sys.path.insert(0, _health_plugin_dir)
-
-        from core import init_tools
-        from health import ProgramStore, HealthDocsRAG, ProgramNotFoundError
-
-        program_store = ProgramStore(
-            table_name=os.environ.get("IF_HEALTH_TABLE_NAME", "if-health"),
-            pk=os.environ.get("HEALTH_PROGRAM_PK", "operator"),
-            region=os.environ.get("AWS_REGION", "ca-central-1")
-        )
-
-        # Get existing ChromaDB client from user facts store
-        chroma_client = None
-        try:
-            from memory import get_user_fact_store
-            user_facts_store = get_user_fact_store()
-            chroma_client = user_facts_store._client if user_facts_store else None
-        except Exception:
-            pass
-
-        health_rag = HealthDocsRAG(
-            docs_dir=os.environ.get("HEALTH_DOCS_DIR", "docs/health"),
-            chroma_client=chroma_client
-        )
-
-        init_tools(program_store, health_rag)
-
-        # Index docs in background
-        asyncio.create_task(health_rag.index_docs())
-
-        # Pre-warm program cache
-        try:
-            await program_store.get_program()
-            logger.info("[Startup] Health program cache warmed")
-        except ProgramNotFoundError:
-            logger.info("[Startup] No health program found - create via health_new_version")
-
-        logger.info("Health module initialized")
-    except ImportError as e:
-        logger.warning(f"Health module not available: {e}")
-    except Exception as e:
-        logger.warning(f"Health module initialization failed: {e}")
 
     # External tool plugin initialization
     try:
@@ -501,7 +449,6 @@ app.include_router(files_router)
 app.include_router(webhooks_router)
 app.include_router(directives_router)
 app.include_router(admin_router)
-app.include_router(health_analytics.router)
 
 
 

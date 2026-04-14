@@ -57,10 +57,27 @@ Calibration anchors:
 - Bicep curl: axial=0.00, neural=0.10, peripheral=0.40, systemic=0.10
 - Face pulls: axial=0.00, neural=0.05, peripheral=0.25, systemic=0.05
 
+ATHLETE CONTEXT (when provided):
+If the user message includes athlete body metrics (bodyweight, height, arm wingspan, leg
+length) or a lift profile (style notes, sticking points, volume tolerance), treat them as
+soft modifiers — not hard overrides — on the estimate for exercises where those leverages
+matter. Examples: long femurs relative to torso tend to shift squat fatigue toward axial
+and systemic; short arms on a bench presser reduce bar path length and can lower peripheral
+on bench variations; a reported quad-dominant squat style raises peripheral on squat
+variations. When metrics are missing, ignore leverages entirely — do not speculate.
+
+DO NOT FACTOR IN:
+- Diet, calories, macros, water intake, or sleep — these are tracked separately and are
+  out of scope for this estimate.
+- Supplements or ergogenic aids — not in scope here.
+- Training history, recent fatigue, or programming context — estimate the exercise in
+  isolation.
+
 Rules:
 - Round all values to nearest 0.05
 - Consider equipment, muscles involved, and movement pattern
-- Provide brief reasoning for the estimate
+- Provide brief reasoning for the estimate; if athlete metrics or lift profile influenced
+  the estimate, say which field and in which direction
 """
 
 _TOOL_SCHEMA = {
@@ -87,7 +104,66 @@ def _round_to_nearest(value: float, step: float = 0.05) -> float:
     return round(round(value / step) * step, 2)
 
 
-def _build_user_message(exercise: dict) -> str:
+_BIG_LIFT_KEYS = {
+    "squat": "squat",
+    "back squat": "squat",
+    "bench press": "bench",
+    "bench": "bench",
+    "deadlift": "deadlift",
+    "conventional deadlift": "deadlift",
+    "sumo deadlift": "deadlift",
+}
+
+
+def _match_lift_profile(
+    exercise: dict,
+    lift_profiles: list[dict] | None,
+) -> dict | None:
+    if not lift_profiles:
+        return None
+    name = (exercise.get("name") or "").strip().lower()
+    category = (exercise.get("category") or "").strip().lower()
+    target = _BIG_LIFT_KEYS.get(name) or (category if category in ("squat", "bench", "deadlift") else None)
+    if not target:
+        return None
+    return next((p for p in lift_profiles if (p.get("lift") or "").lower() == target), None)
+
+
+def _format_athlete_context(meta: dict | None) -> list[str]:
+    if not meta:
+        return []
+    fields = [
+        ("bodyweight_kg", meta.get("current_body_weight_kg")),
+        ("height_cm", meta.get("height_cm")),
+        ("arm_wingspan_cm", meta.get("arm_wingspan_cm")),
+        ("leg_length_cm", meta.get("leg_length_cm")),
+        ("sex", meta.get("sex")),
+    ]
+    present = [(k, v) for k, v in fields if v not in (None, "", 0)]
+    if not present:
+        return []
+    lines = ["", "Athlete metrics:"]
+    for k, v in present:
+        lines.append(f"  {k}: {v}")
+    return lines
+
+
+def _format_lift_profile(profile: dict | None) -> list[str]:
+    if not profile:
+        return []
+    lines = ["", f"Lift profile ({profile.get('lift', '?')}):"]
+    for field in ("style_notes", "sticking_points", "primary_muscle", "volume_tolerance"):
+        value = profile.get(field)
+        if value:
+            lines.append(f"  {field}: {value}")
+    return lines if len(lines) > 1 else []
+
+
+def _build_user_message(
+    exercise: dict,
+    program_meta: dict | None = None,
+    lift_profiles: list[dict] | None = None,
+) -> str:
     parts = [f"Exercise: {exercise.get('name', 'Unknown')}"]
     if exercise.get("category"):
         parts.append(f"Category: {exercise['category']}")
@@ -101,13 +177,26 @@ def _build_user_message(exercise: dict) -> str:
         parts.append(f"Cues: {', '.join(exercise['cues'])}")
     if exercise.get("notes"):
         parts.append(f"Notes: {exercise['notes']}")
+
+    parts.extend(_format_athlete_context(program_meta))
+    parts.extend(_format_lift_profile(_match_lift_profile(exercise, lift_profiles)))
+
     return "\n".join(parts)
 
 
-async def estimate_fatigue_profile(exercise: dict) -> dict:
-    """Call LLM to estimate 4-dimensional fatigue profile for an exercise."""
+async def estimate_fatigue_profile(
+    exercise: dict,
+    program_meta: dict | None = None,
+    lift_profiles: list[dict] | None = None,
+) -> dict:
+    """Call LLM to estimate 4-dimensional fatigue profile for an exercise.
+
+    When `program_meta` (body metrics) or `lift_profiles` are supplied and
+    relevant to the exercise, they're included in the prompt as soft context
+    to adjust for the athlete's leverages and stated style.
+    """
     try:
-        user_msg = _build_user_message(exercise)
+        user_msg = _build_user_message(exercise, program_meta=program_meta, lift_profiles=lift_profiles)
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{LLM_BASE_URL}/chat/completions",

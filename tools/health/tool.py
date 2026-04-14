@@ -1265,7 +1265,7 @@ class ExportProgramHistoryExecutor(ToolExecutor[ExportProgramHistoryAction, Expo
         import os
         import tempfile
         from core import _get_store
-        from health.export import build_program_xlsx
+        from export import build_program_xlsx
 
         program = _run_async(_get_store().get_program())
         filename = "program_history.xlsx"
@@ -1319,7 +1319,7 @@ class AnalyzeProgressionExecutor(ToolExecutor[AnalyzeProgressionAction, AnalyzeP
     def __call__(self, action: AnalyzeProgressionAction, conversation=None) -> AnalyzeProgressionObservation:
         from datetime import timedelta
         from core import _get_store
-        from health.analytics import progression_rate, _calculate_current_week, _parse_date
+        from analytics import progression_rate, _calculate_current_week, _parse_date
 
         program = _run_async(_get_store().get_program())
         sessions = program.get("sessions", [])
@@ -1364,7 +1364,7 @@ class AnalyzeRpeDriftObservation(Observation):
 class AnalyzeRpeDriftExecutor(ToolExecutor[AnalyzeRpeDriftAction, AnalyzeRpeDriftObservation]):
     def __call__(self, action: AnalyzeRpeDriftAction, conversation=None) -> AnalyzeRpeDriftObservation:
         from core import _get_store
-        from health.analytics import rpe_drift
+        from analytics import rpe_drift
 
         program = _run_async(_get_store().get_program())
         sessions = program.get("sessions", [])
@@ -1402,7 +1402,7 @@ class Estimate1rmObservation(Observation):
 
 class Estimate1rmExecutor(ToolExecutor[Estimate1rmAction, Estimate1rmObservation]):
     def __call__(self, action: Estimate1rmAction, conversation=None) -> Estimate1rmObservation:
-        from health.analytics import estimate_1rm
+        from analytics import estimate_1rm
         result = estimate_1rm(action.weight_kg, action.reps, action.rpe)
         return Estimate1rmObservation.from_text(_format_result(result))
 
@@ -1435,7 +1435,7 @@ class CalculateDotsObservation(Observation):
 
 class CalculateDotsExecutor(ToolExecutor[CalculateDotsAction, CalculateDotsObservation]):
     def __call__(self, action: CalculateDotsAction, conversation=None) -> CalculateDotsObservation:
-        from health.analytics import calculate_dots
+        from analytics import calculate_dots
         result = calculate_dots(action.total_kg, action.bodyweight_kg, action.sex)
         return CalculateDotsObservation.from_text(_format_result({"dots": result}))
 
@@ -1468,7 +1468,7 @@ class WeeklyAnalysisObservation(Observation):
 class WeeklyAnalysisExecutor(ToolExecutor[WeeklyAnalysisAction, WeeklyAnalysisObservation]):
     def __call__(self, action: WeeklyAnalysisAction, conversation=None) -> WeeklyAnalysisObservation:
         from core import _get_store
-        from health.analytics import weekly_analysis
+        from analytics import weekly_analysis
         from config import IF_HEALTH_TABLE_NAME
 
         program = _run_async(_get_store().get_program())
@@ -1524,7 +1524,7 @@ class CorrelationAnalysisExecutor(ToolExecutor[CorrelationAnalysisAction, Correl
         from datetime import datetime, timedelta
 
         from core import _get_store
-        from health.correlation_ai import generate_correlation_report
+        from correlation_ai import generate_correlation_report
         from config import IF_HEALTH_TABLE_NAME
         import boto3
 
@@ -1608,8 +1608,13 @@ class FatigueProfileEstimateObservation(Observation):
 
 class FatigueProfileEstimateExecutor(ToolExecutor[FatigueProfileEstimateAction, FatigueProfileEstimateObservation]):
     def __call__(self, action: FatigueProfileEstimateAction, conversation=None) -> FatigueProfileEstimateObservation:
-        from health.fatigue_ai import estimate_fatigue_profile
-        result = _run_async(estimate_fatigue_profile(action.exercise))
+        from fatigue_ai import estimate_fatigue_profile
+        program_meta, lift_profiles = _fatigue_context()
+        result = _run_async(estimate_fatigue_profile(
+            action.exercise,
+            program_meta=program_meta,
+            lift_profiles=lift_profiles,
+        ))
         return FatigueProfileEstimateObservation.from_text(_format_result(result))
 
 
@@ -1730,6 +1735,15 @@ def get_tools() -> List[Tool]:
 def get_schemas() -> Dict[str, Dict[str, Any]]:
     """Return snake_case tool name → JSON schema mapping."""
     return {
+        "export_program_history": {
+            "name": "export_program_history",
+            "description": "Export the full training program to an Excel (.xlsx) file.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
         "health_get_program": {
             "name": "health_get_program",
             "description": (
@@ -2204,46 +2218,52 @@ def _get_program_and_sessions():
 
 
 def _do_export(args):
+    import json
     import os
-    import tempfile
+    from config import SANDBOX_PATH
     from core import _get_store
-    from health.export import build_program_xlsx
+    from export import build_program_xlsx
+
+    conversation_id = args.get("_conversation_id", "default")
+    out_dir = os.path.join(SANDBOX_PATH, conversation_id)
+    os.makedirs(out_dir, exist_ok=True)
 
     program = _run_async(_get_store().get_program())
     filename = "program_history.xlsx"
-    out_path = os.path.join(tempfile.gettempdir(), filename)
+    out_path = os.path.join(out_dir, filename)
     build_program_xlsx(program, out_path)
-    return (
-        f"Exported program history to {filename}.\n"
-        f"Emit this line at the end of your reply:\n"
-        f"FILES: {filename} (Excel export of full program history)"
-    )
+
+    payload = json.dumps({
+        "filename": filename,
+        "message": "Program history exported successfully.",
+    })
+    return f"{payload}\nFILES: {filename} (Excel export of full program history)"
 
 
 def _do_analyze_progression(args):
-    from health.analytics import progression_rate
+    from analytics import progression_rate
     program, sessions, program_start = _get_program_and_sessions()
     return progression_rate(sessions, args["exercise_name"], program_start)
 
 
 def _do_analyze_rpe_drift(args):
-    from health.analytics import rpe_drift
+    from analytics import rpe_drift
     program, sessions, program_start = _get_program_and_sessions()
     return rpe_drift(sessions, args["exercise_name"], program_start, args.get("window_weeks", 4))
 
 
 def _do_estimate_1rm(args):
-    from health.analytics import estimate_1rm
+    from analytics import estimate_1rm
     return estimate_1rm(args["weight_kg"], args["reps"], args.get("rpe"))
 
 
 def _do_calculate_dots(args):
-    from health.analytics import calculate_dots
+    from analytics import calculate_dots
     return {"dots": calculate_dots(args["total_kg"], args["bodyweight_kg"], args["sex"])}
 
 
 def _do_weekly_analysis(args):
-    from health.analytics import weekly_analysis
+    from analytics import weekly_analysis
     from config import IF_HEALTH_TABLE_NAME
     program, sessions, program_start = _get_program_and_sessions()
     glossary = _get_glossary_sync(IF_HEALTH_TABLE_NAME)
@@ -2259,7 +2279,7 @@ def _do_weekly_analysis(args):
 def _do_correlation_analysis(args):
     from datetime import datetime, timedelta
     from core import _get_store
-    from health.correlation_ai import generate_correlation_report
+    from correlation_ai import generate_correlation_report
     from config import IF_HEALTH_TABLE_NAME
     import boto3
 
@@ -2317,9 +2337,26 @@ def _do_correlation_analysis(args):
     return report
 
 
+def _fatigue_context():
+    """Return (program_meta, lift_profiles) for fatigue estimation, or (None, None) on failure."""
+    try:
+        from core import _get_store
+        program = _run_async(_get_store().get_program())
+    except Exception:
+        return None, None
+    if not isinstance(program, dict):
+        return None, None
+    return program.get("meta") or None, program.get("lift_profiles") or None
+
+
 def _do_fatigue_profile_estimate(args):
-    from health.fatigue_ai import estimate_fatigue_profile
-    return _run_async(estimate_fatigue_profile(args["exercise"]))
+    from fatigue_ai import estimate_fatigue_profile
+    program_meta, lift_profiles = _fatigue_context()
+    return _run_async(estimate_fatigue_profile(
+        args["exercise"],
+        program_meta=program_meta,
+        lift_profiles=lift_profiles,
+    ))
 
 
 def _do_program_evaluation(args):

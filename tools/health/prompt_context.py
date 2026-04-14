@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Optional
 
-from health.analytics import calculate_dots
+from analytics import calculate_dots
 
 
 def _num(value: Any) -> float:
@@ -369,6 +369,55 @@ def summarize_supplements(program: dict[str, Any]) -> dict[str, Any]:
         "supplements": supplements,
         "supplement_phases": phases,
     }
+
+
+def summarize_exercise_roi(
+    program: dict[str, Any],
+    sessions: list[dict[str, Any]] | None = None,
+    top_n: int = 10,
+) -> list[dict[str, Any]]:
+    """Return top-N accessory exercises ranked by |pearson_r| between weekly
+    volume and average intensity (via `volume_intensity_correlation`).
+
+    Each row contains the exercise name, pearson_r, and a short numeric
+    fingerprint of the volume/intensity series so the LLM can sanity-check
+    the signal. Accessories only — the three big competition lifts are
+    excluded because they're analyzed separately.
+    """
+    from analytics import volume_intensity_correlation
+
+    sessions = sessions if sessions is not None else program.get("sessions", [])
+    program_start = program.get("meta", {}).get("program_start", "") or ""
+    big_lifts = frozenset(["squat", "bench", "bench press", "deadlift"])
+
+    exercise_names: set[str] = set()
+    for s in sessions:
+        if not s.get("completed"):
+            continue
+        for ex in s.get("exercises", []):
+            name = (ex.get("name") or "").strip()
+            if not name:
+                continue
+            if name.lower() in big_lifts:
+                continue
+            exercise_names.add(name)
+
+    rows: list[dict[str, Any]] = []
+    for name in exercise_names:
+        result = volume_intensity_correlation(sessions, name, program_start)
+        r = result.get("pearson_r")
+        if r is None:
+            continue
+        rows.append({
+            "exercise": name,
+            "pearson_r": r,
+            "weeks_observed": len(result.get("volume_series") or []),
+            "volume_series": result.get("volume_series") or [],
+            "intensity_series": result.get("intensity_series") or [],
+        })
+
+    rows.sort(key=lambda row: abs(float(row["pearson_r"] or 0.0)), reverse=True)
+    return rows[:top_n]
 
 
 FORMULA_REFERENCE = """\

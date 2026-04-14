@@ -2,9 +2,9 @@
 
 Business logic for health tools. Used by tools/health/tool.py SDK wrappers.
 
-Initialization:
-    init_tools(store, rag) must be called at startup to set the ProgramStore
-    and HealthDocsRAG instances.
+Self-initialising:
+    The module lazily creates its own ProgramStore and HealthDocsRAG
+    instances on first access via _get_store() / _get_rag().
 """
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 # Import from health infrastructure module (app/src/health/)
-from health.program_store import ProgramStore, ProgramNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -25,26 +24,31 @@ _store: Optional[ProgramStore] = None
 _rag: Optional[Any] = None  # HealthDocsRAG type, avoid circular import
 
 
-def init_tools(store: ProgramStore, rag: Any = None) -> None:
-    """Initialize tools with store instance.
-
-    Called at startup from main.py after ProgramStore is created.
-
-    Args:
-        store: ProgramStore instance for program operations
-        rag: Optional HealthDocsRAG instance for document search
-    """
-    global _store, _rag
-    _store = store
-    _rag = rag
-    logger.info("[HealthTools] Initialized with store and rag")
-
-
-def _get_store() -> ProgramStore:
-    """Get the store instance, raising if not initialized."""
+def _get_store():
+    """Lazily create and return the ProgramStore singleton."""
+    global _store
     if _store is None:
-        raise RuntimeError("Health tools not initialized. Call init_tools() first.")
+        import os
+        from program_store import ProgramStore as _PS
+        _store = _PS(
+            table_name=os.environ.get("IF_HEALTH_TABLE_NAME", "if-health"),
+            pk=os.environ.get("HEALTH_PROGRAM_PK", "operator"),
+            region=os.environ.get("AWS_REGION", "ca-central-1"),
+        )
+        logger.info("[HealthTools] ProgramStore initialised from env vars")
     return _store
+
+def _get_rag():
+    """Lazily create and return the HealthDocsRAG singleton."""
+    global _rag
+    if _rag is None:
+        import os
+        from rag import HealthDocsRAG
+        _rag = HealthDocsRAG(
+            docs_dir=os.environ.get("HEALTH_DOCS_DIR", "docs/health"),
+        )
+        logger.info("[HealthTools] HealthDocsRAG initialised from env vars")
+    return _rag
 
 
 # =============================================================================
@@ -1325,7 +1329,7 @@ async def health_program_evaluation(refresh: bool = False) -> dict:
     import boto3
 
     from config import IF_HEALTH_TABLE_NAME, AWS_REGION
-    from health.program_evaluation_ai import generate_program_evaluation_report
+    from program_evaluation_ai import generate_program_evaluation_report
 
     store = _get_store()
     program = await store.get_program()

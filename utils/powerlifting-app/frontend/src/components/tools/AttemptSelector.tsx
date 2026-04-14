@@ -1,122 +1,202 @@
 import { useState, useEffect } from 'react'
-import { Stack, Title, Paper, Text, SimpleGrid, TextInput, Group, Loader, Center } from '@mantine/core'
+import { Stack, Title, Paper, Text, SimpleGrid, TextInput, Group, Loader, Center, Switch, NumberInput, Divider, Badge } from '@mantine/core'
 import { useProgramStore } from '@/store/programStore'
-import { fetchWeeklyAnalysis, type WeeklyAnalysis } from '@/api/analytics'
 import { updateMetaField } from '@/api/client'
-import { Trophy } from 'lucide-react'
+import { Trophy, ArrowUpCircle, Percent } from 'lucide-react'
+
+interface LiftSettings {
+  max: number;
+  incremental: boolean;
+  increment: number;
+}
 
 export default function AttemptSelector() {
   const { program, version } = useProgramStore()
-  const [data, setData] = useState<WeeklyAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
-  const [attemptPctRaw, setAttemptPctRaw] = useState({ opener: '0.90', second: '0.955', third: '1.00' })
-  const [attemptPctErrors, setAttemptPctErrors] = useState<{ opener: string | null; second: string | null; third: string | null }>({ opener: null, second: null, third: null })
+  
+  const [maxes, setMaxes] = useState({ squat: 0, bench: 0, deadlift: 0 })
+  const [liftSettings, setLiftSettings] = useState<Record<string, LiftSettings>>({
+    squat: { max: 0, incremental: false, increment: 5 },
+    bench: { max: 0, incremental: false, increment: 5 },
+    deadlift: { max: 0, incremental: false, increment: 5 },
+  })
+  
   const [attemptPct, setAttemptPct] = useState({ opener: 0.90, second: 0.955, third: 1.00 })
-  const [savingAttempt, setSavingAttempt] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    setLoading(true)
-    // 4 weeks is a good window to get reliable attempt selection data based on e1RM
-    fetchWeeklyAnalysis(4, 'current')
-      .then(setData)
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    const metaPct = program?.meta?.attempt_pct
-    if (metaPct) {
-      setAttemptPct({ opener: metaPct.opener, second: metaPct.second, third: metaPct.third })
-      setAttemptPctRaw({ opener: String(metaPct.opener), second: String(metaPct.second), third: String(metaPct.third) })
+    if (program?.meta) {
+      const metaMaxes = program.meta.manual_maxes || { squat: 0, bench: 0, deadlift: 0 }
+      const metaSettings = program.meta.lift_attempt_settings || {
+        squat: { max: metaMaxes.squat, incremental: false, increment: 5 },
+        bench: { max: metaMaxes.bench, incremental: false, increment: 5 },
+        deadlift: { max: metaMaxes.deadlift, incremental: false, increment: 5 },
+      }
+      const metaPct = program.meta.attempt_pct || { opener: 0.90, second: 0.955, third: 1.00 }
+      
+      setMaxes(metaMaxes)
+      setLiftSettings(metaSettings)
+      setAttemptPct(metaPct)
     }
-  }, [program?.meta?.attempt_pct])
+  }, [program?.meta])
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const keys: Array<'opener' | 'second' | 'third'> = ['opener', 'second', 'third']
-      const newErrors = { opener: null as string | null, second: null as string | null, third: null as string | null }
-      const newNums = { ...attemptPct }
-      let allValid = true
-      for (const key of keys) {
-        const raw = attemptPctRaw[key]
-        const v = parseFloat(raw)
-        if (raw === '' || isNaN(v) || v < 0 || v > 1) {
-          newErrors[key] = 'Enter a value between 0 and 1 (e.g. 0.90)'
-          allValid = false
-        } else {
-          newErrors[key] = null
-          newNums[key] = v
-        }
+  const handleUpdateSetting = async (lift: string, field: keyof LiftSettings, value: any) => {
+    const nextSettings = {
+      ...liftSettings,
+      [lift]: { ...liftSettings[lift], [field]: value }
+    }
+    setLiftSettings(nextSettings)
+    
+    // Auto-save to meta
+    setSaving(true)
+    try {
+      await updateMetaField(version, 'lift_attempt_settings', nextSettings)
+      if (field === 'max') {
+        const nextMaxes = { ...maxes, [lift]: value }
+        setMaxes(nextMaxes)
+        await updateMetaField(version, 'manual_maxes', nextMaxes)
       }
-      setAttemptPctErrors(newErrors)
-      if (allValid) {
-        setAttemptPct(newNums)
-        setSavingAttempt(true)
-        updateMetaField(version, 'attempt_pct', newNums)
-          .then(() => fetchWeeklyAnalysis(4, 'current').then(setData))
-          .finally(() => setSavingAttempt(false))
-      }
-    }, 400)
-    return () => clearTimeout(timer)
-  }, [attemptPctRaw, attemptPct, version])
-
-  if (loading && !data) {
-    return <Center mih="50vh"><Loader /></Center>
+    } finally {
+      setSaving(false)
+    }
   }
+
+  const handleUpdatePct = async (field: keyof typeof attemptPct, value: number) => {
+    const nextPct = { ...attemptPct, [field]: value }
+    setAttemptPct(nextPct)
+    setSaving(true)
+    try {
+      await updateMetaField(version, 'attempt_pct', nextPct)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const calculateAttempts = (lift: string) => {
+    const s = liftSettings[lift]
+    if (!s.max) return { opener: 0, second: 0, third: 0 }
+    
+    if (s.incremental) {
+      return {
+        opener: Math.round((s.max - s.increment * 2) * 2) / 2,
+        second: Math.round((s.max - s.increment) * 2) / 2,
+        third: Math.round(s.max * 2) / 2
+      }
+    } else {
+      return {
+        opener: Math.round((s.max * attemptPct.opener) * 2) / 2,
+        second: Math.round((s.max * attemptPct.second) * 2) / 2,
+        third: Math.round((s.max * attemptPct.third) * 2) / 2
+      }
+    }
+  }
+
+  const results = {
+    squat: calculateAttempts('squat'),
+    bench: calculateAttempts('bench'),
+    deadlift: calculateAttempts('deadlift'),
+  }
+
+  const total = results.squat.third + results.bench.third + results.deadlift.third
 
   return (
     <Stack gap="md">
-      <Title order={2}>Attempt Selector</Title>
+      <Group justify="space-between">
+        <Title order={2}>Attempt Selector</Title>
+        {saving && <Badge variant="dot" size="sm">Saving...</Badge>}
+      </Group>
       
-      {data?.attempt_selection ? (
-        <Paper withBorder p="md">
-          <Group gap="xs" mb="xs">
-            <Trophy size={18} />
-            <Text fw={500}>Competition Attempt Percentages</Text>
-          </Group>
-          <Text size="xs" c="dimmed" mb="sm">Based on projected competition maxes. Enter as decimal (e.g. 0.90 for 90%).</Text>
-          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-            {[
-              { key: 'opener' as const, label: 'Opener', hint: 'Should feel easy under worst conditions' },
-              { key: 'second' as const, label: 'Second', hint: 'A confident single, builds momentum' },
-              { key: 'third' as const, label: 'Third', hint: 'Your projected max — go for it' },
-            ].map(({ key, label, hint }) => (
-              <TextInput
-                key={key}
-                id={`attempt-pct-${key}`}
-                label={label}
-                size="sm"
-                value={attemptPctRaw[key]}
-                onChange={(e) => setAttemptPctRaw(p => ({ ...p, [key]: e.target.value }))}
-                error={attemptPctErrors[key]}
-                description={!attemptPctErrors[key] ? hint : undefined}
+      <Paper withBorder p="md">
+        <Group gap="xs" mb="md">
+          <Percent size={18} />
+          <Text fw={500}>Global Multipliers (Decimal)</Text>
+        </Group>
+        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+          {[
+            { key: 'opener' as const, label: 'Opener Pct', hint: 'Default 0.90' },
+            { key: 'second' as const, label: 'Second Pct', hint: 'Default 0.955' },
+            { key: 'third' as const, label: 'Third Pct', hint: 'Default 1.00' },
+          ].map(({ key, label, hint }) => (
+            <NumberInput
+              key={key}
+              label={label}
+              size="sm"
+              value={attemptPct[key]}
+              onChange={(v) => handleUpdatePct(key, Number(v))}
+              min={0}
+              max={2}
+              step={0.005}
+              decimalScale={3}
+              description={hint}
+            />
+          ))}
+        </SimpleGrid>
+      </Paper>
+
+      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+        {['squat', 'bench', 'deadlift'].map((lift) => (
+          <Paper key={lift} withBorder p="md">
+            <Stack gap="sm">
+              <Group justify="space-between">
+                <Text fw={700} tt="capitalize">{lift}</Text>
+                <Switch
+                  label="Incremental"
+                  size="xs"
+                  checked={liftSettings[lift].incremental}
+                  onChange={(e) => handleUpdateSetting(lift, 'incremental', e.currentTarget.checked)}
+                />
+              </Group>
+
+              <NumberInput
+                label="Target Max (kg)"
+                value={liftSettings[lift].max || ''}
+                onChange={(v) => handleUpdateSetting(lift, 'max', Number(v) || 0)}
+                min={0}
+                placeholder="Target Max"
               />
-            ))}
-          </SimpleGrid>
-          {savingAttempt && <Text size="xs" c="dimmed" mt="xs">Saving...</Text>}
-          <SimpleGrid cols={{ base: 2, sm: 4 }} mt="sm">
-            {Object.entries(data.attempt_selection)
-              .filter(([k]) => k !== 'total' && k !== 'attempt_pct_used')
-              .map(([lift, attempts]) => (
-                <Stack key={lift} gap={2} align="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
-                  <Text fw={500} style={{ textTransform: 'capitalize' }}>{lift}</Text>
-                  <Text size="sm" fw={700}>
-                    {(attempts as any).opener} / {(attempts as any).second} / {(attempts as any).third} kg
-                  </Text>
-                </Stack>
-              ))}
-          </SimpleGrid>
-          {data.attempt_selection.total !== undefined && (
-            <Group justify="center" mt="md" pt="md" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
-              <Text fw={700} size="lg">Projected total: {data.attempt_selection.total} kg</Text>
-            </Group>
-          )}
-        </Paper>
-      ) : (
-        <Paper withBorder p="md">
-          <Text c="dimmed">No projection data available to calculate attempts. Make sure you have estimated 1RMs logged.</Text>
-        </Paper>
-      )}
+
+              {liftSettings[lift].incremental && (
+                <NumberInput
+                  label="Increment (kg)"
+                  value={liftSettings[lift].increment}
+                  onChange={(v) => handleUpdateSetting(lift, 'increment', Number(v) || 5)}
+                  min={0.5}
+                  step={0.5}
+                  placeholder="kg per attempt"
+                />
+              )}
+
+              <Divider my="xs" />
+
+              <Stack gap={4}>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Opener:</Text>
+                  <Text fw={700}>{results[lift as keyof typeof results].opener} kg</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Second:</Text>
+                  <Text fw={700}>{results[lift as keyof typeof results].second} kg</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Third:</Text>
+                  <Text fw={700}>{results[lift as keyof typeof results].third} kg</Text>
+                </Group>
+              </Stack>
+            </Stack>
+          </Paper>
+        ))}
+      </SimpleGrid>
+
+      <Paper withBorder p="md" bg="var(--mantine-color-blue-light)">
+        <Group justify="center">
+          <Trophy size={24} color="var(--mantine-color-blue-filled)" />
+          <Stack gap={0} align="center">
+            <Text fz="xs" tt="uppercase" fw={700} c="dimmed">Projected Total</Text>
+            <Text fz="2rem" fw={900}>{total.toFixed(1)} kg</Text>
+          </Stack>
+        </Group>
+      </Paper>
     </Stack>
   )
 }
+

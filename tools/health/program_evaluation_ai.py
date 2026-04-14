@@ -15,13 +15,14 @@ from typing import Any
 import httpx
 
 from config import LLM_BASE_URL, OPENROUTER_API_KEY, ANALYSIS_MODEL, ANALYSIS_MODEL_THINKING_BUDGET
-from health.analytics import weekly_analysis
-from health.prompt_context import (
+from analytics import weekly_analysis
+from prompt_context import (
     FORMULA_REFERENCE,
     summarize_bodyweight_trend,
     summarize_completed_sessions,
     summarize_competitions,
     summarize_diet_context,
+    summarize_exercise_roi,
     summarize_lift_profiles,
     summarize_measurements,
     summarize_phases,
@@ -128,6 +129,14 @@ WEEKLY ANALYSIS (deterministic analytics report)
   - This is your primary quantitative evidence. The formula_reference section
     explains how each metric was calculated — use it so your reasoning is
     grounded in the actual computation, not assumptions.
+
+EXERCISE ROI (if provided)
+  - Per-accessory pearson r between weekly volume and average intensity over
+    the block. Treat |r| >= 0.60 with >= 4 weeks observed as a strong prior
+    that the accessory is pulling its weight; low |r| on a high-fatigue
+    accessory is a flag worth noting in monitoring_focus or small_changes.
+  - Anatomy still gates: a high |r| on an accessory unrelated to the
+    competition lifts is not evidence of ROI toward the primary goal.
 
 ═══════════════════════════════════════════════════════════════════
 EVALUATION FRAMEWORK
@@ -294,6 +303,7 @@ def _build_user_message(program: dict[str, Any]) -> str:
     completed_sessions = summarize_completed_sessions(sessions)
     planned_sessions = summarize_planned_sessions(sessions)
     weekly_report = weekly_analysis(program, sessions, weeks=current_weeks, block="current")
+    exercise_roi = summarize_exercise_roi(program, sessions=sessions, top_n=15)
     current_block_completed_sessions = len([s for s in sessions if s.get("completed")])
 
     payload = {
@@ -332,6 +342,7 @@ def _build_user_message(program: dict[str, Any]) -> str:
         "completed_sessions": completed_sessions,
         "planned_sessions": planned_sessions,
         "weekly_analysis": weekly_report,
+        "exercise_roi": exercise_roi,
         "formula_reference": FORMULA_REFERENCE,
     }
 

@@ -1,62 +1,102 @@
 # Powerlifting Peaking Portal
 
-A high-signal statistical analysis engine and peaking laboratory for competitive powerlifters. This is not a coaching app; it is a data-driven tool designed to quantify program effectiveness, manage fatigue dimensions, and maximize platform performance.
+A single-athlete portal for preparing powerlifting competitions. Quantifies readiness,
+peaking trajectory, and attempt selection from the data produced by actual training.
 
-## Core Philosophy
+## Why it exists
 
-- **Statistical over Subjective:** We prioritize objective metrics (ACWR, INOL, Theil-Sen regressions) over "feel," while using RPE as a proxy for velocity and neurological state.
-- **Friction vs. Signal:** We avoid tedious daily tracking (macros, heart rate, sleep cycles). Instead, we focus on high-impact data: loads, RPE, bodyweight, and estimated fatigue.
-- **Peaking Focus:** The entire architecture is built around the "Peaking Block"
+Peaking is hard to judge by feel — a block that feels smooth can still under-prepare,
+and a block that feels brutal can still land a PR total. This portal closes that loop:
+every planned session, logged session, RPE entry, bodyweight, and attempt is fed into
+deterministic formulas and narrow AI reasoning tools so the decision to push, hold, or
+back off is grounded in numbers that came from the athlete&apos;s own training history.
 
-## Tech Stack
+## Data captured (and why we don&apos;t capture more)
 
-- **Frontend:** React 19 + Vite, TypeScript, Mantine (UI), Lucide (icons), Zustand (state), Recharts (visualization).
-- **Backend:** Node.js Express (DynamoDB CRUD + S3 Video), Python FastAPI (Advanced Analytics Engine).
-- **Database:** DynamoDB single-table (`if-health`).
-- **AI Integration:** LLM-based reasoning for exercise fatigue profiling and qualitative program evaluation.
+Per-meal macros, per-night sleep scores, continuous heart rate, and minute-level HRV
+are intentionally out of scope. The signal-to-friction ratio of that kind of daily
+micro-logging is poor for a working athlete. Instead:
 
-## Mathematical Methodology
+- **Sessions** — sets, reps, kilograms, RPE, failed-set flags, session bodyweight,
+  session RPE, session notes.
+- **Competitions** — federation, weight class, date, planned attempts, results.
+- **Lift profiles** — per-lift style, sticking points, primary muscle, volume tolerance.
+- **Body metrics** — height, bodyweight, arm wingspan, leg length.
+- **Diet notes** — average daily calories, macros, sleep hours, water, consistency flag,
+  recorded per note window (not per meal or per night).
+- **Supplements** — stack and doses (stored; not yet fed to AI — waiting on the planned
+  Examine.com integration to map items to evidence before reaching the models).
 
-The portal employs several key formulas to derive its insights:
+## Mathematical methodology
 
-### 1. Strength & Intensity
+Every surfaced metric comes from a documented formula. Full definitions and thresholds
+live in [`frontend/src/constants/formulaDescriptions.ts`](frontend/src/constants/formulaDescriptions.ts)
+and render on the About page. Five families:
 
-- **Estimated 1RM (e1RM):** Uses a hybrid approach. For sets with RPE, we use a standard RTS-based RPE lookup table. For sets without RPE, we fall back to a conservative 5-rep table or the **Epley Formula**: `e1RM = weight * (1 + reps / 30)`.
-- **DOTS Score:** A sex-specific polynomial formula measuring relative strength:
-  `DOTS = 500 * total / (a + b*bw + c*bw² + d*bw³ + e*bw⁴)`
-- **INOL (Intensity Number of Lifts):** Measures set-level stress relative to intensity:
-  `INOL = reps / (100 * (1 - Intensity))`
+- **Scoring** — DOTS (sex-specific polynomial), estimated 1RM (RTS-based RPE table or
+  conservative rep-percentage fallback; 90th percentile over qualifying sessions).
+- **Progression** — Theil-Sen slope of e1RM over effective training weeks (deloads and
+  break weeks excluded); diminishing-returns projection to competition date.
+- **Stress** — INOL, ACWR (acute:chronic workload ratio), fatigue index (failed-set
+  ratio × 0.40 + fatigue spike × 0.35 + RPE stress × 0.25), RPE drift.
+- **Quality** — specificity ratio, relative-intensity distribution, compliance.
+- **Peaking** — attempt selection (projected comp max × attempt percentages, rounded to
+  2.5 kg), readiness score (weighted composite of fatigue, RPE drift, bodyweight
+  stability, miss rate, compliance).
 
-### 2. Fatigue & Readiness
+## AI reasoning layer
 
-- **ACWR (Acute:Chronic Workload Ratio):** Compares the current week's fatigue load to the 4-week chronic average.
-  `ACWR = Fatigue_Week / Avg(Fatigue_Prev_4_Weeks)`
-- **Fatigue Dimensions:** AI-estimated coefficients for 4 dimensions:
-  - **Axial:** Spinal compression and loading.
-  - **Neural:** CNS demand (scaled quadratically above 60% intensity).
-  - **Peripheral:** Localized muscle damage.
-  - **Systemic:** Total metabolic/cardiovascular demand.
-- **Readiness Score:** A 0-100 composite of fatigue, RPE drift (actual vs. target RPE), bodyweight stability, and session compliance.
+Three narrow tools. Each receives only the subset of data it needs.
 
-### 3. Projections
+- **Fatigue profile estimation** — per-exercise axial / neural / peripheral / systemic
+  estimates. Receives exercise metadata plus optional athlete body metrics and lift
+  profile for leverage-aware adjustments.
+- **Correlation analysis** — weekly e1RM trends, accessory volumes, lift profiles,
+  athlete measurements, and per-accessory ROI (pearson r between weekly volume and
+  average intensity). Reports anatomically-plausible accessory-to-lift correlations only.
+- **Program evaluation** — full current block with phases, competitions, completed and
+  planned sessions, lift profiles, measurements, diet context, supplements (for now),
+  weekly analytics report, and exercise ROI. Produces a conservative stance
+  (continue / monitor / adjust / critical) with specific data-cited reasoning.
 
-- **Diminishing Returns Projection:** Projects meet totals using a decay model based on your current DOTS level:
-  `C_max = [E_now + Δw * λ * (1 - λⁿ) / (1 - λ)] * P`
-  (Where `λ` is the decay factor and `P` is the peaking bonus).
+## Known limitations
 
-## Imperfections & Context
-
-- **Chronobiology:** The model does not yet account for "Flight Timing" (training in the evening vs. competing in the morning).
-- **Supplements:** Ergogenic aids (creatine, caffeine) are not currently factored into the fatigue dimensions.
-- **Biometrics:** Bone lengths and lift styles (e.g., sumo vs. conventional) are captured but primarily used for AI-based fatigue estimation rather than rigid physics modeling.
+- **Chronobiology** — training-time vs meet-flight timing is not modeled.
+- **Supplementation** — stored, not analyzed. Examine.com integration pending.
+- **Diet and sleep granularity** — averages only, by design. Examine.com-backed nutrition
+  reasoning pending.
+- **Biometric precision** — limb lengths are AI context only; they don&apos;t enter the
+  rigid fatigue formulas.
+- **No video analysis** — bar path, rep consistency, and technique regressions are not
+  captured. Velocity loss is inferred from RPE and failed sets.
+- **Single-athlete scope** — calibrations and defaults are tuned for one athlete.
+  Population normalization is roadmap, not current.
 
 ## Roadmap
 
-- **OpenPowerlifting Integration:** Benchmarking your readiness against global populations, filtered by age, sex, federation, and time period.
-- **In-Session Ad Hoc:** Real-time logic to adjust planned weights/sets mid-session based on injury, acute fatigue, or failed sets.
-- **Demographic Normalization:** Adjusting e1RM trajectories based on age-graded performance curves.
+- **Excel workout import** — upload a filled training log and run the same analysis on it.
+- **Excel program import** — upload a program spec (phases, templates, exercises) to seed
+  a new block without hand-entry.
+- **Examine.com supplement reasoning** — map each supplement to its evidence base before
+  exposing it to the AI tools, so the models reason about substantiated effects rather
+  than raw names.
+- **Examine.com nutrition reasoning** — same approach for calories, macros, sleep, and
+  water.
+- **OpenPowerlifting benchmarking** — score readiness and projected totals against
+  federation, weight class, age, and sex cohorts.
+- **Age and sex normalization** — adjust e1RM and DOTS trajectories against age-graded
+  curves and sex-specific recovery profiles.
+- **In-session adjustments** — mid-session load or set corrections triggered by acute
+  fatigue, failed sets, or injury flags.
 
-## Running Locally
+## Tech stack
+
+- **Frontend** — React 19 + Vite, TypeScript, Mantine, Lucide, Zustand, Recharts.
+- **Backend** — Node.js Express (DynamoDB CRUD + S3 video), Python tools (statistical
+  engine + AI reasoning).
+- **Storage** — DynamoDB single-table (`if-health`).
+
+## Running locally
 
 ```bash
 # Frontend (port 5173)

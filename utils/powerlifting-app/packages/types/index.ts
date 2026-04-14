@@ -27,6 +27,16 @@ export interface ProgramMeta {
   height_cm?: number
   arm_wingspan_cm?: number
   leg_length_cm?: number
+  manual_maxes?: {
+    squat: number
+    bench: number
+    deadlift: number
+  }
+  lift_attempt_settings?: Record<string, {
+    max: number
+    incremental: boolean
+    increment: number
+  }>
 }
 
 export interface ChangeLogEntry {

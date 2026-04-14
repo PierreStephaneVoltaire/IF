@@ -16,7 +16,6 @@ import {
   Container,
 } from '@mantine/core'
 import {
-  Info,
   Activity,
   BarChart3,
   TrendingUp,
@@ -26,6 +25,9 @@ import {
   Globe,
   Database,
   Calculator,
+  FileSpreadsheet,
+  FlaskConical,
+  Utensils,
 } from 'lucide-react'
 import { FORMULA_DESCRIPTIONS } from '@/constants/formulaDescriptions'
 
@@ -40,32 +42,37 @@ export default function AboutPage() {
             <Title order={1}>About the Peaking Portal</Title>
           </Group>
           <Text size="lg" c="dimmed" maw={800}>
-            A statistical analysis engine designed to quantify peaking program effectiveness and maximize
-            powerlifting competition performance. This is not a coaching app; it is a data-driven laboratory
-            for the serious lifter.
+            A single-athlete portal for preparing powerlifting competitions. It quantifies
+            readiness, peaking trajectory, and attempt selection from the data produced by
+            actual training — not from generic templates or coaching heuristics.
           </Text>
         </Stack>
 
         <Divider />
 
-        {/* Methodology & Mission */}
+        {/* What it is + How it's built */}
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
           <Stack gap="md">
-            <Title order={2} size="h3">Our Mission</Title>
+            <Title order={2} size="h3">What this is</Title>
             <Text>
-              The Peaking Portal aims to bridge the gap between "feel-based" training and objective
-              statistical analysis. By aggregating session data, biometrics, and historical performance,
-              we provide a granular view of how a peaking block actually transforms your strength.
+              A personal performance portal focused on one question: will the current block
+              put the athlete on the platform ready to hit a planned total? It ingests
+              planned and logged sessions (sets, reps, kilograms, RPE, failed sets), per-session
+              bodyweight, competition attempts and results, per-lift style profiles, and
+              athlete body metrics. From those, it computes e1RM trajectories, DOTS progression,
+              fatigue dimensions, readiness, and attempt selection for the upcoming meet.
             </Text>
-            <Alert icon={<ShieldCheck size={16} />} color="blue" title="Data Philosophy">
-              We balance necessity with friction. We don't ask for tedious metrics like continuous heart rate
-              or daily macro tracking. We focus on high-signal data: loads, RPE, bodyweight, and perceived fatigue.
+            <Alert icon={<ShieldCheck size={16} />} color="blue" title="Signal over friction">
+              Per-meal macros, per-night sleep scores, continuous heart rate, and minute-level
+              HRV are intentionally not required. The portal tracks averages and periodic
+              snapshots (bodyweight per session, diet notes, RPE) because the signal in daily
+              micro-tracking rarely justifies the logging burden for a working athlete.
             </Alert>
           </Stack>
           <Stack gap="md">
-            <Title order={2} size="h3">Analysis Core</Title>
+            <Title order={2} size="h3">How it&apos;s built</Title>
             <Text>
-              Our analysis is powered by two engines:
+              The analysis runs in two layers:
             </Text>
             <List
               spacing="xs"
@@ -78,15 +85,86 @@ export default function AboutPage() {
               }
             >
               <List.Item>
-                <b>Statistical Engine:</b> Handles DOTS, ACWR, INOL, and Theil-Sen regressions.
+                <b>Statistical engine.</b> Deterministic math: e1RM, DOTS, INOL, ACWR,
+                fatigue index, Theil-Sen progression, diminishing-returns projection,
+                attempt selection, readiness score.
               </List.Item>
               <List.Item>
-                <b>AI Reasoning Layer:</b> Estimates fatigue dimensions (Axial, Neural, Peripheral, Systemic)
-                based on exercise mechanics and provides qualitative program evaluation.
+                <b>AI reasoning layer.</b> Three narrow tools: per-exercise fatigue profile
+                estimation (axial / neural / peripheral / systemic), accessory-to-lift
+                correlation analysis, and block-level program evaluation. Each is fed the
+                relevant subset of the program and athlete data — nothing else.
               </List.Item>
             </List>
           </Stack>
         </SimpleGrid>
+
+        <Divider />
+
+        {/* Data we capture (and why we don't capture more) */}
+        <Stack gap="md">
+          <Group gap="sm">
+            <Database size={24} />
+            <Title order={2}>Data we capture (and why we don&apos;t capture more)</Title>
+          </Group>
+          <Text>
+            Everything below is either a direct input to a formula, a direct input to an
+            AI reasoning tool, or context that changes how an output is interpreted. Fields
+            the athlete would have to log obsessively to keep fresh are deliberately kept out.
+          </Text>
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+            <Paper withBorder p="md">
+              <Text fw={600} size="sm" mb={4}>Sessions</Text>
+              <Text size="sm" c="dimmed">
+                Sets, reps, kilograms, RPE, failed-set flags per exercise. Session-level
+                bodyweight and subjective RPE. Optional session notes. These are the raw
+                inputs to e1RM, INOL, volume, ACWR, fatigue index, and RPE drift.
+              </Text>
+            </Paper>
+            <Paper withBorder p="md">
+              <Text fw={600} size="sm" mb={4}>Competitions</Text>
+              <Text size="sm" c="dimmed">
+                Federation, weight class, date, planned attempts, and results. Drives
+                weeks-to-comp, peaking bonus, DOTS target, and attempt-selection math.
+              </Text>
+            </Paper>
+            <Paper withBorder p="md">
+              <Text fw={600} size="sm" mb={4}>Lift profiles</Text>
+              <Text size="sm" c="dimmed">
+                Per-lift style notes, sticking points, primary muscle dominance, volume
+                tolerance. Used by the correlation and program-evaluation AIs to weight
+                accessory relevance and to interpret metrics through the athlete&apos;s
+                actual movement, not a generic textbook.
+              </Text>
+            </Paper>
+            <Paper withBorder p="md">
+              <Text fw={600} size="sm" mb={4}>Body metrics</Text>
+              <Text size="sm" c="dimmed">
+                Height, bodyweight, arm wingspan, leg length. Passed to the AI tools as soft
+                context for leverages (e.g., long femurs shift squat loading toward the
+                posterior chain). Not used in the rigid formulas.
+              </Text>
+            </Paper>
+            <Paper withBorder p="md">
+              <Text fw={600} size="sm" mb={4}>Diet notes (averages only)</Text>
+              <Text size="sm" c="dimmed">
+                Average daily calories, macros, sleep hours, water intake, consistency flag.
+                Recorded per note window, not per meal or per night. The program-evaluation
+                AI uses these to explain bodyweight trends and flag recovery confounders.
+                Per-meal / per-night tracking is out of scope by design.
+              </Text>
+            </Paper>
+            <Paper withBorder p="md">
+              <Text fw={600} size="sm" mb={4}>Supplements (captured, not yet analyzed)</Text>
+              <Text size="sm" c="dimmed">
+                Current stack and dosing are stored, but not yet fed into the AI prompts.
+                Raw names and doses are too coarse to reason about — the planned Examine.com
+                integration will map each item to its evidence base before it reaches the
+                models.
+              </Text>
+            </Paper>
+          </SimpleGrid>
+        </Stack>
 
         <Divider />
 
@@ -96,6 +174,15 @@ export default function AboutPage() {
             <Calculator size={24} />
             <Title order={2}>Mathematical Methodology</Title>
           </Group>
+          <Text>
+            Every number surfaced in the portal comes from one of the formulas below.
+            They fall into five families: <b>scoring</b> (DOTS, estimated 1RM),{' '}
+            <b>progression</b> (Theil-Sen regression on effective weeks, diminishing-returns
+            projection), <b>stress</b> (INOL, ACWR, fatigue index, RPE drift),{' '}
+            <b>quality</b> (specificity ratio, relative-intensity distribution, compliance),
+            and <b>peaking</b> (attempt selection, readiness score). Each card lists the
+            exact formula, its variables, and the thresholds used to interpret output.
+          </Text>
 
           {FORMULA_DESCRIPTIONS.map((f) => (
             <Paper key={f.id} withBorder p="xl" radius="md">
@@ -156,35 +243,57 @@ export default function AboutPage() {
             <Title order={2}>Known Imperfections & Limitations</Title>
           </Group>
           <Text>
-            No statistical model is perfect. Our analysis currently contains the following biases and omissions:
+            The portal is honest about what it does not measure. The list below is the current
+            set of known blind spots — not a claim that any of them are unimportant.
           </Text>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
             <Paper withBorder p="md">
-              <Text fw={600} size="sm" mb={4}>Chronobiology & Hormones</Text>
+              <Text fw={600} size="sm" mb={4}>Chronobiology</Text>
               <Text size="sm" c="dimmed">
-                Users are typically stronger in the evening due to hormonal peaks, yet competitions often
-                start in the morning. Our model does not yet account for training time vs. competition flight timing.
+                Training typically happens in the evening; meets typically run in the morning.
+                The model does not adjust e1RM or readiness for time-of-day performance
+                differences or for meet-flight timing.
               </Text>
             </Paper>
             <Paper withBorder p="md">
-              <Text fw={600} size="sm" mb={4}>Supplementation & Recovery</Text>
+              <Text fw={600} size="sm" mb={4}>Supplementation</Text>
               <Text size="sm" c="dimmed">
-                Stimulants (caffeine, pre-workouts) and ergogenic aids (creatine) significantly impact
-                acute performance and recovery, but are currently excluded from mathematical dimensions.
+                Supplement stacks and doses are stored but not fed into any AI reasoning tool.
+                Raw names alone are too weak a signal. The planned Examine.com integration
+                will map each item to its evidence base before exposing it to the models.
               </Text>
             </Paper>
             <Paper withBorder p="md">
-              <Text fw={600} size="sm" mb={4}>Biometric Precision</Text>
+              <Text fw={600} size="sm" mb={4}>Diet and sleep granularity</Text>
               <Text size="sm" c="dimmed">
-                While we capture limb lengths, the interaction between bone length and lift style (e.g.,
-                wide-sumo vs conventional) is estimated by AI rather than a rigid physical engine.
+                Calories, macros, sleep, and water are tracked as averages per note window —
+                never per meal or per night — because that level of logging is untenable in
+                real training. Future Examine.com-backed reasoning will interpret these
+                averages against progress and fatigue signals.
               </Text>
             </Paper>
             <Paper withBorder p="md">
-              <Text fw={600} size="sm" mb={4}>Budget Constraints</Text>
+              <Text fw={600} size="sm" mb={4}>Biometric precision</Text>
               <Text size="sm" c="dimmed">
-                We explicitly avoid computer vision/video analysis to keep the portal accessible and cost-effective.
-                Technical breakdowns are inferred from velocity loss (estimated via RPE) and failure rates.
+                Limb lengths are sent to the AI tools as soft context for leverages but are
+                not used in the rigid fatigue or volume formulas. Formula-level bone-length
+                weighting is out of scope until a personal calibration dataset exists.
+              </Text>
+            </Paper>
+            <Paper withBorder p="md">
+              <Text fw={600} size="sm" mb={4}>No video analysis</Text>
+              <Text size="sm" c="dimmed">
+                Bar path, rep consistency, and technical regressions are not captured. Velocity
+                loss is inferred indirectly from RPE and failed-set patterns. Computer vision
+                is out of scope for cost and complexity reasons.
+              </Text>
+            </Paper>
+            <Paper withBorder p="md">
+              <Text fw={600} size="sm" mb={4}>Single-athlete scope</Text>
+              <Text size="sm" c="dimmed">
+                Every calibration, phase definition, and attempt-selection default is tuned for
+                one athlete. Population-level normalization (age, sex-curves, federation norms)
+                is a separate roadmap item, not a current feature.
               </Text>
             </Paper>
           </SimpleGrid>
@@ -201,37 +310,90 @@ export default function AboutPage() {
 
           <Paper withBorder p="xl" bg="var(--mantine-color-blue-light)">
             <Stack gap="lg">
-              <Group gap="lg">
-                <Stack gap={4} align="center">
+              <Group gap="lg" wrap="nowrap" align="flex-start">
+                <Stack gap={4} align="center" miw={96}>
+                  <FileSpreadsheet size={32} />
+                  <Text size="xs" fw={700} ta="center">Excel workout import</Text>
+                </Stack>
+                <Text size="sm">
+                  <b>Upload a filled training log</b> (Excel) and get the same statistical
+                  and AI analysis the portal runs on natively-entered data. Targets athletes
+                  who track in spreadsheets and don&apos;t want to re-enter history to get
+                  access to the analytics.
+                </Text>
+              </Group>
+
+              <Group gap="lg" wrap="nowrap" align="flex-start">
+                <Stack gap={4} align="center" miw={96}>
+                  <FileSpreadsheet size={32} />
+                  <Text size="xs" fw={700} ta="center">Excel program import</Text>
+                </Stack>
+                <Text size="sm">
+                  <b>Upload a program spec</b> (phases, session templates, per-day exercises)
+                  to seed a new block without hand-entry. Pairs with the workout import so a
+                  full block can be set up and back-filled in one pass.
+                </Text>
+              </Group>
+
+              <Group gap="lg" wrap="nowrap" align="flex-start">
+                <Stack gap={4} align="center" miw={96}>
+                  <FlaskConical size={32} />
+                  <Text size="xs" fw={700} ta="center">Examine.com supplements</Text>
+                </Stack>
+                <Text size="sm">
+                  <b>Evidence-backed supplement reasoning.</b> Map each logged supplement
+                  against Examine.com&apos;s research base, then let the AI tools factor the
+                  substantiated effects (on fatigue, recovery, or progress) into their
+                  interpretation instead of inferring from raw names.
+                </Text>
+              </Group>
+
+              <Group gap="lg" wrap="nowrap" align="flex-start">
+                <Stack gap={4} align="center" miw={96}>
+                  <Utensils size={32} />
+                  <Text size="xs" fw={700} ta="center">Examine.com nutrition</Text>
+                </Stack>
+                <Text size="sm">
+                  <b>Evidence-backed macro / sleep / water reasoning.</b> Same approach as
+                  supplements — use published research to translate average calorie, macro,
+                  sleep, and water trends into concrete effects on progress and fatigue,
+                  rather than hand-wave them in the prompt.
+                </Text>
+              </Group>
+
+              <Group gap="lg" wrap="nowrap" align="flex-start">
+                <Stack gap={4} align="center" miw={96}>
                   <Globe size={32} />
-                  <Text size="xs" fw={700}>OpenPowerlifting</Text>
+                  <Text size="xs" fw={700} ta="center">OpenPowerlifting</Text>
                 </Stack>
                 <Text size="sm">
-                  <b>Comparative Benchmarking:</b> We will integrate OpenPowerlifting datasets to compare your
-                  readiness against regional, national, and global populations over the last 1-5 years,
-                  filtered by federation and weight class.
+                  <b>Comparative benchmarking.</b> Score readiness and projected totals
+                  against regional, national, and global populations over recent years,
+                  filtered by federation, weight class, age, and sex.
                 </Text>
               </Group>
 
-              <Group gap="lg">
-                <Stack gap={4} align="center">
+              <Group gap="lg" wrap="nowrap" align="flex-start">
+                <Stack gap={4} align="center" miw={96}>
                   <Database size={32} />
-                  <Text size="xs" fw={700}>Demographics</Text>
+                  <Text size="xs" fw={700} ta="center">Demographics</Text>
                 </Stack>
                 <Text size="sm">
-                  <b>Age & Sex Normalization:</b> Future versions will adjust e1RM and DOTS trajectories
-                  based on age-graded performance curves and sex-specific recovery profiles.
+                  <b>Age and sex normalization.</b> Adjust e1RM and DOTS trajectories
+                  against age-graded performance curves and sex-specific recovery profiles,
+                  so year-over-year comparisons don&apos;t reward or penalize aging.
                 </Text>
               </Group>
 
-              <Group gap="lg">
-                <Stack gap={4} align="center">
+              <Group gap="lg" wrap="nowrap" align="flex-start">
+                <Stack gap={4} align="center" miw={96}>
                   <BarChart3 size={32} />
-                  <Text size="xs" fw={700}>In-Session Ad Hoc</Text>
+                  <Text size="xs" fw={700} ta="center">In-session adjustments</Text>
                 </Stack>
                 <Text size="sm">
-                  <b>Real-time Adjustments:</b> Dynamic session alteration logic to suggest weight or exercise
-                  changes mid-workout based on acute fatigue, failed sets, or minor injuries.
+                  <b>Mid-session corrections.</b> Suggest load or set changes during a session
+                  based on acute fatigue, failed sets, or injury flags — rather than waiting
+                  until the next block evaluation to react.
                 </Text>
               </Group>
             </Stack>

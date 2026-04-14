@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, Plus, X, Trash2, Edit2, RefreshCw } from 'lucide-react'
+import { Search, Plus, X, Trash2, Edit2, RefreshCw, Info } from 'lucide-react'
 import {
   Stack,
   Group,
@@ -17,6 +17,9 @@ import {
   Loader,
   CloseButton,
   SimpleGrid,
+  Box,
+  Divider,
+  Tooltip,
 } from '@mantine/core'
 import * as api from '@/api/client'
 import { useUiStore } from '@/store/uiStore'
@@ -26,13 +29,21 @@ interface FatigueSliderProps {
   label: string
   value: number
   onChange: (v: number) => void
+  help?: string
 }
 
-function FatigueSlider({ label, value, onChange }: FatigueSliderProps) {
+function FatigueSlider({ label, value, onChange, help }: FatigueSliderProps) {
   return (
     <Stack gap={4}>
       <Group justify="space-between">
-        <Text size="sm" c="dimmed">{label}</Text>
+        <Group gap={4}>
+          <Text size="sm" c="dimmed">{label}</Text>
+          {help && (
+            <Tooltip label={help} multiline w={280} withArrow position="top-start">
+              <Info size={12} color="var(--mantine-color-gray-6)" style={{ cursor: 'help' }} />
+            </Tooltip>
+          )}
+        </Group>
         <Text size="xs" ff="monospace">{(value / 100).toFixed(2)}</Text>
       </Group>
       <Slider
@@ -370,18 +381,20 @@ export default function GlossaryPage() {
         onClose={() => { setShowAddForm(false); setIsEditing(null) }}
         title={isEditing ? 'Edit Exercise' : 'Add New Exercise'}
         size="xl"
+        scrollAreaComponent={Stack}
       >
-        <Stack gap="md">
+        <Stack gap="md" pb="md">
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
             <div>
-              <Text size="sm" c="dimmed" mb={4}>Name</Text>
+              <Text size="sm" fw={500} mb={4}>Name</Text>
               <TextInput
+                placeholder="Exercise Name"
                 value={formData.name || ''}
                 onChange={(e) => setFormData((p) => ({ ...p, name: e.currentTarget.value }))}
               />
             </div>
             <div>
-              <Text size="sm" c="dimmed" mb={4}>Category</Text>
+              <Text size="sm" fw={500} mb={4}>Category</Text>
               <Select
                 value={formData.category || 'squat'}
                 onChange={(v) => setFormData((p) => ({ ...p, category: (v || 'squat') as ExerciseCategory }))}
@@ -391,7 +404,7 @@ export default function GlossaryPage() {
           </SimpleGrid>
 
           <div>
-            <Text size="sm" c="dimmed" mb={4}>Equipment</Text>
+            <Text size="sm" fw={500} mb={4}>Equipment</Text>
             <Select
               value={formData.equipment || 'barbell'}
               onChange={(v) => setFormData((p) => ({ ...p, equipment: (v || 'barbell') as Equipment }))}
@@ -400,94 +413,112 @@ export default function GlossaryPage() {
           </div>
 
           {/* Fatigue Profile Sliders */}
-          <Paper withBorder p="md">
+          <Paper withBorder p="md" radius="md" bg="var(--mantine-color-gray-0)">
             <Group justify="space-between" mb="sm">
-              <Text size="sm" fw={500}>Fatigue Profile</Text>
               <Group gap="xs">
+                <Text size="sm" fw={600}>Fatigue Profile</Text>
                 {fatigueSource && (
                   <Badge
                     variant="light"
                     color={fatigueSource === 'ai_estimated' ? 'blue' : 'green'}
+                    size="xs"
                   >
-                    {fatigueSource === 'ai_estimated' ? 'AI estimated' : 'Manual override'}
+                    {fatigueSource === 'ai_estimated' ? 'AI Estimated' : 'Manual Override'}
                   </Badge>
                 )}
-                <Button
-                  size="compact-xs"
-                  variant="default"
-                  onClick={handleReEstimate}
-                  disabled={isEstimating || !formData.name}
-                  leftSection={isEstimating ? <Loader size={12} /> : <RefreshCw size={12} />}
-                >
-                  {isEstimating ? 'Estimating...' : 'Re-estimate'}
-                </Button>
               </Group>
+              <Button
+                size="compact-xs"
+                variant="light"
+                onClick={handleReEstimate}
+                disabled={isEstimating || !formData.name}
+                leftSection={isEstimating ? <Loader size={12} /> : <RefreshCw size={12} />}
+              >
+                {isEstimating ? 'Estimating...' : 'AI Estimate'}
+              </Button>
             </Group>
-            <Stack gap="sm">
+            
+            <Stack gap="xs">
               <FatigueSlider
-                label="Axial (spinal loading)"
+                label="Axial (Spinal Loading)"
                 value={Math.round((fatigueProfile?.axial ?? 0) * 100)}
                 onChange={(v) => handleFatigueSliderChange('axial', v)}
+                help="Spinal compressive loading. High on squats and deadlifts where the bar sits on the spine or the erectors brace under load. Low on cable isolations and machines that take the spine out of the equation."
               />
               <FatigueSlider
-                label="Neural (CNS demand)"
+                label="Neural (CNS Demand)"
                 value={Math.round((fatigueProfile?.neural ?? 0) * 100)}
                 onChange={(v) => handleFatigueSliderChange('neural', v)}
+                help="Central nervous system demand from high-intensity or technically dense work. High on heavy singles and near-max compounds (>=85% 1RM). Low on pump work, low-load hypertrophy, and machines."
               />
               <FatigueSlider
-                label="Peripheral (muscle damage)"
+                label="Peripheral (Muscle Damage)"
                 value={Math.round((fatigueProfile?.peripheral ?? 0) * 100)}
                 onChange={(v) => handleFatigueSliderChange('peripheral', v)}
+                help="Local muscle damage, soreness, and eccentric stress in the target tissue. High on lengthened-partial hypertrophy work, slow eccentrics, and high-rep compounds. Low on short-range isometrics and explosive work."
               />
               <FatigueSlider
-                label="Systemic (metabolic load)"
+                label="Systemic (Metabolic Load)"
                 value={Math.round((fatigueProfile?.systemic ?? 0) * 100)}
                 onChange={(v) => handleFatigueSliderChange('systemic', v)}
+                help="Whole-body metabolic and cardiovascular cost. High on deadlifts, conditioning, and high-density circuits. Low on short-set isolations and skill work."
               />
             </Stack>
+            
             {fatigueSource === 'ai_estimated' && fatigueReasoning && (
-              <Text size="xs" c="dimmed" fs="italic" mt="xs">{fatigueReasoning}</Text>
+              <Box mt="sm" p="xs" style={{ background: 'white', borderRadius: 4, border: '1px solid var(--mantine-color-gray-2)' }}>
+                <Text size="xs" fw={500} mb={2} c="dimmed">AI Reasoning:</Text>
+                <Text size="xs" fs="italic" style={{ maxHeight: 100, overflowY: 'auto' }}>
+                  {fatigueReasoning}
+                </Text>
+              </Box>
             )}
           </Paper>
 
           <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-            <div>
-              <Text size="sm" c="dimmed" mb={4}>Primary Muscles</Text>
-              <Group gap={4} style={{ maxHeight: 224, overflowY: 'auto', flexWrap: 'wrap' }}>
-                {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
-                  <Button
-                    key={value}
-                    size="compact-xs"
-                    variant={formData.primary_muscles?.includes(value as MuscleGroup) ? 'filled' : 'default'}
-                    onClick={() => toggleMuscle(value as MuscleGroup, 'primary_muscles')}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </Group>
-            </div>
-            <div>
-              <Text size="sm" c="dimmed" mb={4}>Secondary Muscles</Text>
-              <Group gap={4} style={{ maxHeight: 224, overflowY: 'auto', flexWrap: 'wrap' }}>
-                {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
-                  <Button
-                    key={value}
-                    size="compact-xs"
-                    variant={formData.secondary_muscles?.includes(value as MuscleGroup) ? 'filled' : 'default'}
-                    onClick={() => toggleMuscle(value as MuscleGroup, 'secondary_muscles')}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </Group>
-            </div>
+            <Stack gap={4}>
+              <Text size="sm" fw={500}>Primary Muscles</Text>
+              <Paper withBorder p="xs" h={180} style={{ overflowY: 'auto' }}>
+                <Group gap={4}>
+                  {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
+                    <Button
+                      key={value}
+                      size="compact-xs"
+                      variant={formData.primary_muscles?.includes(value as MuscleGroup) ? 'filled' : 'light'}
+                      color={formData.primary_muscles?.includes(value as MuscleGroup) ? 'blue' : 'gray'}
+                      onClick={() => toggleMuscle(value as MuscleGroup, 'primary_muscles')}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </Group>
+              </Paper>
+            </Stack>
+            <Stack gap={4}>
+              <Text size="sm" fw={500}>Secondary Muscles</Text>
+              <Paper withBorder p="xs" h={180} style={{ overflowY: 'auto' }}>
+                <Group gap={4}>
+                  {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
+                    <Button
+                      key={value}
+                      size="compact-xs"
+                      variant={formData.secondary_muscles?.includes(value as MuscleGroup) ? 'filled' : 'light'}
+                      color={formData.secondary_muscles?.includes(value as MuscleGroup) ? 'blue' : 'gray'}
+                      onClick={() => toggleMuscle(value as MuscleGroup, 'secondary_muscles')}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </Group>
+              </Paper>
+            </Stack>
           </SimpleGrid>
 
           <div>
-            <Text size="sm" c="dimmed" mb={4}>Cues</Text>
+            <Text size="sm" fw={500} mb={4}>Training Cues</Text>
             <Group gap="xs" mb="xs">
               <TextInput
-                placeholder="Add a cue..."
+                placeholder="e.g., Chest up, Big air..."
                 value={cueInput}
                 onChange={(e) => setCueInput(e.currentTarget.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addCue()}
@@ -500,12 +531,11 @@ export default function GlossaryPage() {
                 <Badge
                   key={i}
                   variant="light"
+                  pr={4}
                   rightSection={
-                    <CloseButton
-                      size="xs"
-                      variant="transparent"
-                      onClick={() => removeCue(i)}
-                    />
+                    <ActionIcon size="xs" variant="transparent" color="blue" onClick={() => removeCue(i)}>
+                      <X size={10} />
+                    </ActionIcon>
                   }
                 >
                   {cue}
@@ -515,14 +545,17 @@ export default function GlossaryPage() {
           </div>
 
           <div>
-            <Text size="sm" c="dimmed" mb={4}>Notes</Text>
+            <Text size="sm" fw={500} mb={4}>Notes</Text>
             <Textarea
+              placeholder="Any additional details..."
               autosize
               minRows={3}
               value={formData.notes || ''}
               onChange={(e) => setFormData((p) => ({ ...p, notes: e.currentTarget.value }))}
             />
           </div>
+
+          <Divider mt="md" />
 
           <Group justify="flex-end">
             <Button
@@ -535,7 +568,7 @@ export default function GlossaryPage() {
               Cancel
             </Button>
             <Button onClick={handleSave}>
-              {isEditing ? 'Update' : 'Add'} Exercise
+              {isEditing ? 'Update Exercise' : 'Create Exercise'}
             </Button>
           </Group>
         </Stack>
