@@ -1,4 +1,4 @@
-import type { Program, Session, Phase } from '@powerlifting/types'
+import type { Program, Session, Phase, Template, ImportPending } from '@powerlifting/types'
 
 /**
  * Parse week number from a week label string.
@@ -35,9 +35,6 @@ function resolvePhase(weekNum: number, phases: Phase[]): Phase {
 
 /**
  * Transform DynamoDB item into a clean Program object.
- * Note: DynamoDBDocumentClient already unmarshalls data automatically,
- * so we receive plain JavaScript objects, not raw DynamoDB JSON.
- * Derives week_number and resolves phase for each session.
  */
 export function transformProgram(item: Record<string, unknown>): Program {
   const program = item as unknown as Program
@@ -70,6 +67,24 @@ export function transformProgram(item: Record<string, unknown>): Program {
   program.sessions.sort((a, b) => a.date.localeCompare(b.date))
 
   return program
+}
+
+/**
+ * Transform DynamoDB item into a clean Template object.
+ */
+export function transformTemplate(item: Record<string, unknown>): Template {
+  const template = item as unknown as Template
+  if (!template.phases) template.phases = []
+  if (!template.sessions) template.sessions = []
+  if (!template.required_maxes) template.required_maxes = []
+  return template
+}
+
+/**
+ * Transform DynamoDB item into a clean ImportPending object.
+ */
+export function transformImportPending(item: Record<string, unknown>): ImportPending {
+  return item as unknown as ImportPending
 }
 
 /**

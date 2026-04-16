@@ -37,6 +37,16 @@ export interface ProgramMeta {
     incremental: boolean
     increment: number
   }>
+  archived?: boolean
+  archived_at?: string | null
+  template_lineage?: TemplateLineage
+}
+
+export interface TemplateLineage {
+  applied_template_sk: string
+  applied_at: string
+  week_start_day: 'Saturday' | 'Monday' | 'Sunday'
+  start_date: string
 }
 
 export interface ChangeLogEntry {
@@ -128,13 +138,20 @@ export interface Exercise {
   notes: string
   failed?: boolean          // deprecated — kept for backwards compat
   failed_sets?: boolean[]   // per-set: [false, false, true, false] = set 3 failed
+  load_source?: LoadSource
+  rpe_target?: number | null
 }
+
+export type LoadSource = 'absolute' | 'rpe' | 'percentage' | 'unresolvable'
+export type LoadType = LoadSource
 
 export interface PlannedExercise {
   name: string
   sets: number
   reps: number
   kg: number | null
+  load_source?: LoadSource
+  rpe_target?: number | null
 }
 
 export type SessionStatus = 'planned' | 'logged' | 'completed' | 'skipped'
@@ -292,6 +309,15 @@ export interface FatigueProfile {
 
 export type FatigueProfileSource = 'ai_estimated' | 'manual'
 
+export interface E1rmEstimate {
+  value_kg: number
+  method: 'manual' | 'ai_backfill' | 'logged'
+  basis: string
+  confidence: 'high' | 'medium' | 'low'
+  set_at: string
+  manually_overridden: boolean
+}
+
 export interface GlossaryExercise {
   id: string
   name: string
@@ -306,6 +332,138 @@ export interface GlossaryExercise {
   fatigue_profile?: FatigueProfile
   fatigue_profile_source?: FatigueProfileSource
   fatigue_profile_reasoning?: string | null
+  e1rm_estimate?: E1rmEstimate
+  archived?: boolean
+}
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+export interface Template {
+  pk: string
+  sk: string
+  meta: TemplateMeta
+  phases: TemplatePhase[]
+  sessions: TemplateSession[]
+  glossary_resolution: GlossaryResolution
+  required_maxes: string[] // glossary_ids
+}
+
+export interface TemplateMeta {
+  name: string
+  source_filename?: string
+  source_file_hash?: string
+  description: string
+  estimated_weeks: number
+  days_per_week: number
+  created_at: string
+  updated_at: string
+  archived: boolean
+  derived_from_template_sk?: string
+  derived_from_program_sk?: string
+  ai_evaluation?: AiTemplateEvaluation
+}
+
+export interface AiTemplateEvaluation {
+  stance: string
+  strengths: string[]
+  weaknesses: string[]
+  suggestions: string[]
+  context_snapshot: any
+}
+
+export interface TemplatePhase {
+  name: string
+  week_start: number
+  week_end: number
+  target_rpe_min?: number
+  target_rpe_max?: number
+  intent: string
+}
+
+export interface TemplateSession {
+  id: string
+  week_number: number
+  day_of_week: string
+  day_index: number
+  label: string
+  exercises: TemplateExercise[]
+}
+
+export interface TemplateExercise {
+  name: string
+  glossary_id?: string
+  sets: number
+  reps: number
+  load_type: LoadType
+  load_value: number | null
+  rpe_target: number | null
+  notes: string
+}
+
+export interface GlossaryResolution {
+  resolved: string[]
+  unresolved: string[]
+  auto_added: string[]
+  resolution_status: 'resolved' | 'partial' | 'unresolved'
+}
+
+export interface TemplateListEntry {
+  sk: string
+  name: string
+  source_filename?: string
+  source_file_hash?: string
+  estimated_weeks: number
+  days_per_week: number
+  archived: boolean
+  created_at: string
+  updated_at: string
+}
+
+// ─── Imports ─────────────────────────────────────────────────────────────────
+
+export type ImportType = 'template' | 'session_import'
+export type ImportStatus = 'awaiting_review' | 'applied' | 'rejected'
+export type MergeStrategy = 'append' | 'overwrite_future' | 'selective'
+
+export interface ImportWarning {
+  type: string
+  message: string
+  severity: 'low' | 'medium' | 'high'
+}
+
+export interface AiParseResult {
+  phases: any[]
+  sessions: any[]
+  required_maxes: string[]
+  warnings: ImportWarning[]
+  raw_output?: string
+  parse_notes?: string
+}
+
+export interface ConflictResolution {
+  session_date: string
+  action: 'skip' | 'overwrite' | 'merge'
+}
+
+export interface ImportPending {
+  pk: string
+  sk: string
+  import_id: string
+  import_type: ImportType
+  status: ImportStatus
+  source_filename: string
+  source_file_hash: string
+  source_sheet_name?: string
+  classification: 'template' | 'session_import' | 'ambiguous'
+  uploaded_at: string
+  expires_at: string
+  ttl: number
+  ai_parse_result: AiParseResult
+  merge_strategy?: MergeStrategy
+  conflict_resolutions?: ConflictResolution[]
+  applied_at?: string
+  rejected_at?: string
+  rejection_reason?: string
 }
 
 // ─── Plate Calculator ─────────────────────────────────────────────────────────
@@ -345,6 +503,7 @@ export interface ProgramListItem {
   updated_at: string
   version_label: string
   is_current?: boolean      // true if this is the current/active version
+  archived?: boolean
 }
 
 // ─── Glossary Store Item ──────────────────────────────────────────────────────

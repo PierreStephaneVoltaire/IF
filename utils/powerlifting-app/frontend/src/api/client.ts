@@ -19,6 +19,13 @@ import type {
   VideoLibraryResponse,
   FatigueProfile,
   LiftProfile,
+  ImportPending,
+  ImportType,
+  MergeStrategy,
+  AiTemplateEvaluation,
+  Template,
+  TemplateListEntry,
+  ConflictResolution,
 } from '@powerlifting/types'
 
 const api = axios.create({
@@ -366,6 +373,145 @@ export async function estimateFatigueProfile(exercise: {
     exercise
   )
   return res.data.data
+}
+
+// ─── Import ──────────────────────────────────────────────────────────────────
+
+export async function uploadImport(file: File): Promise<{ 
+  import_id: string; 
+  classification: ImportType | 'ambiguous'; 
+  warnings: any[];
+  parse_notes: string;
+}> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await api.post('/import/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  return res.data
+}
+
+export async function fetchPendingImport(importId: string): Promise<ImportPending> {
+  const res = await api.get(`/import/${importId}`)
+  return res.data
+}
+
+export async function listPendingImports(type?: ImportType): Promise<ImportPending[]> {
+  const res = await api.get('/import/pending', { params: { type } })
+  return res.data
+}
+
+export async function applyImport(importId: string, body: {
+  merge_strategy: MergeStrategy;
+  conflict_resolutions?: ConflictResolution[];
+  start_date?: string;
+  classification_override?: ImportType;
+  glossary_overrides?: Record<string, string>;
+  confirmed_auto_adds?: Array<Partial<GlossaryExercise>>;
+}): Promise<any> {
+  const res = await api.post(`/import/${importId}/apply`, body)
+  return res.data
+}
+
+export async function rejectImport(importId: string, reason?: string): Promise<void> {
+  await api.post(`/import/${importId}/reject`, { reason })
+}
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+export async function fetchTemplates(includeArchived: boolean = false): Promise<TemplateListEntry[]> {
+  const res = await api.get('/templates', { params: { includeArchived } })
+  return res.data
+}
+
+export async function fetchTemplate(sk: string): Promise<Template> {
+  const res = await api.get(`/templates/${sk}`)
+  return res.data
+}
+
+export async function createTemplateFromBlock(name: string, program_sk?: string): Promise<{ sk: string }> {
+  const res = await api.post('/templates', { name, program_sk })
+  return res.data
+}
+
+export async function copyTemplate(sk: string, newName: string): Promise<{ sk: string }> {
+  const res = await api.post(`/templates/${sk}/copy`, { new_name: newName })
+  return res.data
+}
+
+export async function archiveTemplate(sk: string): Promise<void> {
+  await api.patch(`/templates/${sk}/archive`)
+}
+
+export async function unarchiveTemplate(sk: string): Promise<void> {
+  await api.patch(`/templates/${sk}/unarchive`)
+}
+
+export async function evaluateTemplate(sk: string): Promise<AiTemplateEvaluation> {
+  const res = await api.post(`/templates/${sk}/evaluate`)
+  return res.data
+}
+
+export async function applyTemplate(sk: string, body: {
+  target: string;
+  start_date?: string;
+  week_start_day: string;
+}): Promise<any> {
+  const res = await api.post(`/templates/${sk}/apply`, body)
+  return res.data
+}
+
+export async function confirmApplyTemplate(sk: string, body: {
+  backfilled_maxes?: Record<string, number>;
+  start_date?: string;
+  week_start_day: string;
+}): Promise<{ program_sk: string }> {
+  const res = await api.post(`/templates/${sk}/apply/confirm`, body)
+  return res.data
+}
+
+// ─── Archive & e1RM ─────────────────────────────────────────────────────────
+
+export async function archiveProgram(version: string): Promise<void> {
+  await api.patch(`/programs/${version}/archive`)
+}
+
+export async function unarchiveProgram(version: string): Promise<void> {
+  await api.patch(`/programs/${version}/unarchive`)
+}
+
+export async function archiveExercise(id: string): Promise<void> {
+  await api.patch(`/exercises/${id}/archive`)
+}
+
+export async function unarchiveExercise(id: string): Promise<void> {
+  await api.patch(`/exercises/${id}/unarchive`)
+}
+
+export async function setExerciseE1rm(id: string, value_kg: number, method: string = 'manual'): Promise<void> {
+  await api.post(`/exercises/${id}/e1rm`, { value_kg, method })
+}
+
+export async function estimateExerciseE1rm(id: string): Promise<any> {
+  const res = await api.post(`/exercises/${id}/estimate-e1rm`)
+  return res.data.data
+}
+
+export async function estimateExerciseFatigue(id: string): Promise<any> {
+  const res = await api.post(`/exercises/${id}/estimate-fatigue`)
+  return res.data.data
+}
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+
+export async function fetchStatCategories(): Promise<any> {
+  const res = await api.get('/stats/categories')
+  return res.data
+}
+
+export async function analyzeStats(payload: any): Promise<any> {
+  const res = await api.post('/stats/analyze', payload)
+  return res.data
 }
 
 export default api

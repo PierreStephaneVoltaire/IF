@@ -1,6 +1,7 @@
 import { Drawer, SegmentedControl, NumberInput, Text, Stack, Group, Button } from '@mantine/core'
 import { useUiStore } from '@/store/uiStore'
 import { useSettingsStore, type Theme } from '@/store/settingsStore'
+import { useProgramStore } from '@/store/programStore'
 import { Sun, Moon, Monitor } from 'lucide-react'
 
 const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
@@ -12,6 +13,7 @@ const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
 export default function SettingsDrawer() {
   const { drawerOpen, drawerType, closeDrawer } = useUiStore()
   const { theme, setTheme, sex, setSex, barWeightKg, setBarWeight } = useSettingsStore()
+  const { setSex: programSetSex } = useProgramStore()
 
   const isOpen = drawerOpen && drawerType === 'settings'
 
@@ -56,7 +58,11 @@ export default function SettingsDrawer() {
           </Text>
           <SegmentedControl
             value={sex}
-            onChange={(val) => setSex(val as 'male' | 'female')}
+            onChange={(val) => {
+              const newSex = val as 'male' | 'female';
+              setSex(newSex);
+              programSetSex(newSex).catch(console.error);
+            }}
             data={[
               { label: 'Male', value: 'male' },
               { label: 'Female', value: 'female' },

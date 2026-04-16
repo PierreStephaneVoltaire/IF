@@ -2,9 +2,12 @@ description: >
   Use health_write exclusively when a write mutation to the training program record is
   needed: logging a completed session, updating body weight, recording RPE, changing
   attempt targets, updating supplement protocol, editing diet notes, or creating/deleting
-  sessions. For read-only queries, coaching advice, or analysis — use powerlifting_coach
+  sessions. It handles structured training program imports (XLSX/CSV) and training templates.
+  For read-only queries, coaching advice, or analysis — use powerlifting_coach
   instead. Never use health_write for reads.
 preset: "health"
+agentic: true
+max_iterations: 25
 tools:
   - health_get_program
   - health_get_session
@@ -19,6 +22,29 @@ tools:
   - health_add_exercise
   - health_remove_exercise
   - health_create_competition
+  # New Import Tools
+  - import_parse_file
+  - import_apply
+  - import_reject
+  - import_list_pending
+  # New Template Tools
+  - template_list
+  - template_get
+  - template_apply
+  - template_apply_confirm
+  - template_evaluate
+  - template_create_from_block
+  - template_copy
+  - template_archive
+  - template_unarchive
+  - program_archive
+  - program_unarchive
+  # New Glossary Tools
+  - glossary_add
+  - glossary_update
+  - glossary_set_e1rm
+  - glossary_estimate_e1rm
+  - glossary_estimate_fatigue
 mcp_servers: []
 directive_types:
   - health

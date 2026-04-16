@@ -17,6 +17,10 @@ import CompetitionsPage from '@/pages/CompetitionsPage'
 import MaxesPage from '@/pages/MaxesPage'
 import VideosPage from '@/pages/VideosPage'
 import AboutPage from '@/pages/AboutPage'
+import ImportWizardPage from '@/pages/ImportWizardPage'
+import TemplateLibraryPage from '@/pages/TemplateLibraryPage'
+import TemplateDetailPage from '@/pages/TemplateDetailPage'
+import RankingsPage from '@/pages/RankingsPage'
 
 // Tool Components
 import PlateCalculator from '@/components/tools/PlateCalculator'
@@ -43,6 +47,7 @@ export default function App() {
         <Route path="/designer/sessions" element={<DesignerPage />} />
         <Route path="/list" element={<ListPage />} />
         <Route path="/analysis" element={<AnalysisPage />} />
+        <Route path="/rankings" element={<RankingsPage />} />
         <Route path="/supplements" element={<SupplementsPage />} />
         <Route path="/biometrics" element={<BiometricsPage />} />
         <Route path="/diet" element={<BiometricsPage />} />
@@ -57,6 +62,9 @@ export default function App() {
         <Route path="/tools/converter" element={<UnitConverter />} />
         <Route path="/tools/attempts" element={<AttemptSelector />} />
         <Route path="/videos" element={<VideosPage />} />
+        <Route path="/import" element={<ImportWizardPage />} />
+        <Route path="/templates" element={<TemplateLibraryPage />} />
+        <Route path="/templates/:sk" element={<TemplateDetailPage />} />
         <Route path="/about" element={<AboutPage />} />
       </Routes>
     </AppShell>

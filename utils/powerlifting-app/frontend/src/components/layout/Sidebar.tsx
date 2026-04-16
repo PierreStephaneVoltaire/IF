@@ -45,6 +45,9 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/list', icon: List, label: 'List' },
   { to: '/charts', icon: BarChart3, label: 'Charts' },
   { to: '/analysis', icon: Activity, label: 'Analysis' },
+  { to: '/rankings', icon: Trophy, label: 'Rankings' },
+  { to: '/templates', icon: BookOpen, label: 'Templates' },
+  { to: '/import', icon: GitBranch, label: 'Import' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
 ]
 
@@ -63,6 +66,9 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { to: '/designer', icon: ClipboardList, label: 'Designer' },
   { to: '/list', icon: List, label: 'List' },
   { to: '/analysis', icon: Activity, label: 'Analysis' },
+  { to: '/rankings', icon: Trophy, label: 'Rankings' },
+  { to: '/templates', icon: BookOpen, label: 'Templates' },
+  { to: '/import', icon: GitBranch, label: 'Import' },
   { to: '/supplements', icon: Pill, label: 'Supplements' },
   { to: '/biometrics', icon: Utensils, label: 'Biometrics' },
   { to: '/competitions', icon: Trophy, label: 'Competitions' },

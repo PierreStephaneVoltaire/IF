@@ -121,7 +121,7 @@ resource "kubernetes_deployment" "if_agent_api" {
               cpu    = "${var.api_cpu_millicores}m"
             }
             requests = {
-              memory = "512Mi"
+              memory = "${var.api_memory_request_mb}Mi"
               cpu    = "250m"
             }
           }

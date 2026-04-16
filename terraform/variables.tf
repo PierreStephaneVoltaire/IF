@@ -440,6 +440,12 @@ variable "portal_cpu_millicores" {
 variable "api_memory_mb" {
   description = "Memory limit for main API (MB)"
   type        = number
+  default     = 5120
+}
+
+variable "api_memory_request_mb" {
+  description = "Memory request for main API (MB) — used for scheduling; should reflect steady-state usage after dataset warm-up"
+  type        = number
   default     = 2048
 }
 

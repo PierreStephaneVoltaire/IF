@@ -11,6 +11,9 @@ import { competitionsRouter } from './routes/competitions'
 import { videosRouter } from './routes/videos'
 import { analyticsRouter } from './routes/analytics'
 import { exportRouter } from './routes/export'
+import { importRouter } from './routes/import'
+import { templateRouter } from './routes/template'
+import { statsRouter } from './routes/stats'
 import { errorHandler } from './middleware/errorHandler'
 
 const app = express()
@@ -38,6 +41,9 @@ app.use('/api/competitions', competitionsRouter)
 app.use('/api/videos', videosRouter)
 app.use('/api/analytics', analyticsRouter)
 app.use('/api/export', exportRouter)
+app.use('/api/import', importRouter)
+app.use('/api/templates', templateRouter)
+app.use('/api/stats', statsRouter)
 
 // Error handler
 app.use(errorHandler)

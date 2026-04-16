@@ -92,3 +92,57 @@ exercisesRouter.delete('/:id', async (req, res, next) => {
     next(err)
   }
 })
+
+// PATCH /api/exercises/:id/archive - Archive an exercise
+exercisesRouter.patch('/:id/archive', async (req, res, next) => {
+  try {
+    await exerciseController.archiveExercise(req.params.id)
+    res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PATCH /api/exercises/:id/unarchive - Unarchive an exercise
+exercisesRouter.patch('/:id/unarchive', async (req, res, next) => {
+  try {
+    await exerciseController.unarchiveExercise(req.params.id)
+    res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/exercises/:id/e1rm - Set e1RM estimate
+exercisesRouter.post('/:id/e1rm', async (req, res, next) => {
+  try {
+    const { value_kg, method } = req.body
+    if (typeof value_kg !== 'number') {
+      return res.status(400).json({ data: null, error: 'value_kg must be a number' })
+    }
+    await exerciseController.setE1rmEstimate(req.params.id, value_kg, method)
+    res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/exercises/:id/estimate-e1rm - AI estimate e1RM
+exercisesRouter.post('/:id/estimate-e1rm', async (req, res, next) => {
+  try {
+    const result = await exerciseController.estimateExerciseE1rm(req.params.id)
+    res.json({ data: result, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /api/exercises/:id/estimate-fatigue - AI estimate fatigue profile
+exercisesRouter.post('/:id/estimate-fatigue', async (req, res, next) => {
+  try {
+    const result = await exerciseController.estimateExerciseFatigue(req.params.id)
+    res.json({ data: result, error: null })
+  } catch (err) {
+    next(err)
+  }
+})

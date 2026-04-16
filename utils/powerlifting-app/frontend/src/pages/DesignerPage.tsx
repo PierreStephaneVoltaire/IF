@@ -68,6 +68,8 @@ interface PlannedExerciseWithId extends PlannedExercise {
   id: string
 }
 
+import { LoadTypeBadge } from '@/components/shared/LoadTypeBadge'
+
 function SortableExercise({ ex, onRemove, onUpdate }: { 
   ex: PlannedExerciseWithId; 
   onRemove: (id: string) => void;
@@ -90,6 +92,51 @@ function SortableExercise({ ex, onRemove, onUpdate }: {
     opacity: isDragging ? 0.5 : 1,
   }
 
+  const renderLoadInput = () => {
+    switch (ex.load_source) {
+      case 'rpe':
+        return (
+          <NumberInput
+            value={ex.rpe_target || ''}
+            onChange={(v) => onUpdate(ex.id, 'rpe_target', Number(v) || null)}
+            min={0}
+            max={10}
+            step={0.5}
+            w={70}
+            placeholder="RPE"
+          />
+        )
+      case 'percentage':
+        return (
+          <Group gap={4} wrap="nowrap">
+            <Text size="xs" c="dimmed">~</Text>
+            <NumberInput
+              value={ex.kg !== null ? toDisplayUnit(ex.kg, unit) : ''}
+              onChange={(v) => onUpdate(ex.id, 'kg', v !== '' ? fromDisplayUnit(Number(v), unit) : null)}
+              min={0}
+              w={70}
+              placeholder={unit}
+              decimalScale={unit === 'lb' ? 1 : 2}
+            />
+          </Group>
+        )
+      case 'unresolvable':
+        return <Text size="sm" c="dimmed">—</Text>
+      case 'absolute':
+      default:
+        return (
+          <NumberInput
+            value={ex.kg !== null ? toDisplayUnit(ex.kg, unit) : ''}
+            onChange={(v) => onUpdate(ex.id, 'kg', v !== '' ? fromDisplayUnit(Number(v), unit) : null)}
+            min={0}
+            w={70}
+            placeholder={unit}
+            decimalScale={unit === 'lb' ? 1 : 2}
+          />
+        )
+    }
+  }
+
   return (
     <Paper ref={setNodeRef} style={style} withBorder p="xs" radius="sm">
       <Group justify="space-between" gap="xs" mb={4}>
@@ -101,6 +148,7 @@ function SortableExercise({ ex, onRemove, onUpdate }: {
             </Group>
           </Box>
           <Text size="sm" fw={500} truncate>{ex.name}</Text>
+          {ex.load_source && <LoadTypeBadge source={ex.load_source} />}
         </Group>
         <ActionIcon
           variant="subtle"
@@ -128,14 +176,7 @@ function SortableExercise({ ex, onRemove, onUpdate }: {
           placeholder="Reps"
         />
         <Text size="xs" c="dimmed">@</Text>
-        <NumberInput
-          value={ex.kg !== null ? toDisplayUnit(ex.kg, unit) : undefined}
-          onChange={(v) => onUpdate(ex.id, 'kg', v !== '' ? fromDisplayUnit(Number(v), unit) : null)}
-          min={0}
-          w={70}
-          placeholder={unit}
-          decimalScale={unit === 'lb' ? 1 : 2}
-        />
+        {renderLoadInput()}
       </Group>
     </Paper>
   )

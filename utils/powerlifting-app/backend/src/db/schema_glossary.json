@@ -25,7 +25,15 @@
         "systemic": 0.6
       },
       "fatigue_profile_source": "ai_estimated",
-      "fatigue_profile_reasoning": "High spinal loading and overall CNS demand due to heavy axial loading."
+      "fatigue_profile_reasoning": "High spinal loading and overall CNS demand due to heavy axial loading.",
+      "e1rm_estimate": {
+        "value_kg": 200,
+        "method": "logged",
+        "basis": "set of 3 @ 180kg RPE 8",
+        "confidence": "high",
+        "set_at": "2026-03-08T12:00:00Z",
+        "manually_overridden": false
+      }
     }
   ],
   "updated_at": "2026-03-08T12:00:00+00:00",

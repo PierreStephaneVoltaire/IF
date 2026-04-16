@@ -124,6 +124,26 @@ class ToolRegistry:
         self, subdir: Path, slug: str, data: dict, scope: str
     ) -> None:
         """Load plugin by importing tool.py directly into the process."""
+        # Install requirements if they exist
+        req_path = subdir / "requirements.txt"
+        if req_path.exists():
+            try:
+                logger.info(f"Tool {slug}: installing requirements from {req_path}")
+                result = subprocess.run(
+                    ["uv", "pip", "install", "--system", "-r", str(req_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                if result.returncode != 0:
+                    logger.warning(
+                        f"Tool {slug}: requirements install failed (non-fatal): {result.stderr[:500]}"
+                    )
+                else:
+                    logger.info(f"Tool {slug}: requirements install succeeded")
+            except Exception as e:
+                logger.warning(f"Tool {slug}: requirements install error: {e}")
+
         module_path = subdir / "tool.py"
         if not module_path.exists():
             logger.warning(f"Tool {slug} (in_process) missing tool.py, skipping")
@@ -324,6 +344,20 @@ class ToolRegistry:
                 execution = data.get("execution", "subprocess")
 
                 if execution == "in_process":
+                    # Install requirements if they exist
+                    req_path = subdir / "requirements.txt"
+                    if req_path.exists():
+                        try:
+                            logger.info(f"Tool {slug}: installing requirements on reload from {req_path}")
+                            subprocess.run(
+                                ["uv", "pip", "install", "--system", "-r", str(req_path)],
+                                capture_output=True,
+                                text=True,
+                                timeout=120,
+                            )
+                        except Exception as e:
+                            logger.warning(f"Tool {slug}: requirements install error on reload: {e}")
+
                     module_path = subdir / "tool.py"
                     if not module_path.exists():
                         statuses[slug] = "failed: tool.py missing"

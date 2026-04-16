@@ -342,6 +342,9 @@ MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() =
 ANALYSIS_MODEL = os.getenv("ANALYSIS_MODEL", "anthropic/claude-sonnet-4-6")
 ANALYSIS_MODEL_THINKING_BUDGET = int(os.getenv("ANALYSIS_MODEL_THINKING_BUDGET", "16000"))
 
+# Fast model for import classification and resolution
+IMPORT_FAST_MODEL = os.getenv("IMPORT_FAST_MODEL", "anthropic/claude-haiku-4.5")
+
 # Interval for refreshing per-provider latency/throughput from OpenRouter (seconds)
 MODEL_STATS_REFRESH_INTERVAL = int(os.getenv("MODEL_STATS_REFRESH_INTERVAL", "1800"))  # 30 min
 

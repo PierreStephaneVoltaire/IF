@@ -123,6 +123,18 @@ COMPLETED & PLANNED SESSIONS
     mean the data is incomplete or the program is flawed.
   - Partial weeks at the start or end of the analysis window are valid data.
 
+PLANNED SESSION INTERPRETATION:
+- Sets with load_type "rpe": intensity-regulated. Do NOT treat as zero load.
+  Estimate relative intensity for qualitative assessment only:
+  RPE 10 ≈ 100%, RPE 9 ≈ 96%, RPE 8 ≈ 92%, RPE 7 ≈ 88% of current e1RM.
+  Use language like "RPE 8 prescribed" — never cite a projected kg figure.
+- Sets with load_type "absolute": use kg value as-is.
+- Sets with load_type "unspecified": exclude from volume assessment entirely.
+  Note their presence as a data gap if it affects a meaningful number of sets.
+- When summarising future block load for an exercise that mixes absolute and
+  RPE sets, describe them separately — do not aggregate into a single volume
+  figure unless you can resolve both to the same intensity basis.
+
 WEEKLY ANALYSIS (deterministic analytics report)
   - Pre-computed metrics: e1RM trends, volume loads, tonnage, fatigue
     indicators, etc.

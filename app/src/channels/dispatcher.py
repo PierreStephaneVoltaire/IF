@@ -6,8 +6,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-import httpx
-
 from channels.translators.discord_translator import translate_discord_batch
 from channels.translators.openwebui_translator import translate_openwebui_batch
 from channels.chunker import chunk_response
@@ -17,49 +15,6 @@ logger = logging.getLogger(__name__)
 
 # Number of historical messages to fetch from Discord channel
 DISCORD_HISTORY_LIMIT = 100
-
-
-async def _upload_attachments(
-    request_data: Dict[str, Any],
-    conversation_id: str,
-    http_client: httpx.AsyncClient,
-) -> None:
-    """Download attachment URLs and upload to terminal filesystem.
-
-    Pops _pending_uploads from request_data and processes each one.
-    Failures are logged as warnings and never block the pipeline.
-    """
-    pending = request_data.pop("_pending_uploads", [])
-    if not pending:
-        return
-
-    try:
-        from pathlib import Path
-        from app_sandbox import get_local_sandbox
-        from config import MEDIA_UPLOAD_DIR
-    except ImportError as e:
-        logger.warning(f"[Upload] Import error, skipping attachment upload: {e}")
-        return
-
-    try:
-        workdir = Path(get_local_sandbox().get_working_dir(conversation_id))
-        upload_dir = workdir / MEDIA_UPLOAD_DIR
-        upload_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        logger.warning(f"[Upload] Sandbox setup failed, skipping attachment upload: {e}")
-        return
-
-    for att in pending:
-        filename = att["filename"]
-        url = att["url"]
-        try:
-            resp = await http_client.get(url, timeout=30.0)
-            resp.raise_for_status()
-            dest = upload_dir / filename
-            dest.write_bytes(resp.content)
-            logger.info(f"[Upload] Uploaded {filename} ({len(resp.content)} bytes) to {dest}")
-        except Exception as e:
-            logger.warning(f"[Upload] Failed to upload {filename}: {e}")
 
 
 async def _fetch_discord_history(
@@ -167,7 +122,19 @@ async def dispatch_channel_batch(
     http_client = app.state.http_client
 
     # Step 1.5: Upload attachments to terminal filesystem
-    await _upload_attachments(request_data, conversation_id, http_client)
+    from channels.attachments import download_discord_attachments
+    pending = request_data.pop("_pending_uploads", [])
+    if pending:
+        downloaded = await download_discord_attachments(pending, conversation_id)
+        
+        # Inject system nudge for any spreadsheets found
+        for att in downloaded:
+            if "local_path" in att:
+                filename = att["filename"]
+                size_kb = att.get("size_kb", 0)
+                nudge = f"User uploaded file: {filename} (spreadsheet, {size_kb} KB). Use import_parse_file to process it."
+                request_data["messages"].insert(0, {"role": "system", "content": nudge})
+                logger.info(f"[Dispatcher] Injected nudge for {filename}")
 
     # Get webhook record for this conversation
     webhook = None

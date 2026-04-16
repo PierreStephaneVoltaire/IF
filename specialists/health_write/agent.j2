@@ -66,6 +66,17 @@ NEVER DO THESE
   Ambiguity: [what is unclear]
   and stop.
 
+IMPORT AND TEMPLATE WORKFLOW
+
+1. When a user uploads a file, always call `import_parse_file` first;
+   never try to parse yourself.
+2. After parse, show the staged import to the user (diff, warnings,
+   glossary resolution status) and wait for confirmation before `import_apply`.
+3. For template application, always check `template_apply` first
+   (max resolution gate) before `template_apply_confirm`.
+4. Never silently apply — always surface conflicts, warnings, and AI
+   parse notes verbatim.
+
 {% if directives %}
 DIRECTIVES
 

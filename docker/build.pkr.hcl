@@ -55,7 +55,15 @@ build {
     destination = "/app/requirements.txt"
   }
 
-  # Install Python dependencies using uv
+  # Install torch CPU wheel first (scoped index to avoid polluting other package lookups)
+  provisioner "shell" {
+    inline = [
+      "export PATH=\"/root/.local/bin:$PATH\"",
+      "uv pip install --system torch --extra-index-url https://download.pytorch.org/whl/cpu"
+    ]
+  }
+
+  # Install remaining Python dependencies using PyPI only
   provisioner "shell" {
     inline = [
       "export PATH=\"/root/.local/bin:$PATH\"",

@@ -24,9 +24,7 @@ python-dotenv>=1.0.0
 chromadb>=0.4.0
 lancedb>=0.4.0
 
-# Embeddings for memory (CPU-only torch to avoid CUDA bloat)
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
+# Embeddings for memory (torch installed separately in build with CPU wheel index)
 sentence-transformers>=2.2.0
 
 # Token Counting for Context Condensation
@@ -52,6 +50,7 @@ openpyxl>=3.1.0
 
 # Statistics for Theil-Sen regression in health analytics
 scipy>=1.11.0
+rapidfuzz>=3.6.0
 
 
 # Date/Time Parsing for Temporal Tools
@@ -59,5 +58,5 @@ dateparser>=1.1.0
 python-dateutil>=2.8.0
 
 # Optional: For development and testing
-# pytest>=7.4.0
-# pytest-asyncio>=0.21.0
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

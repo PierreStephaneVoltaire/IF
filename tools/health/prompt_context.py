@@ -271,6 +271,39 @@ def summarize_diet_context(
     }
 
 
+def _serialize_planned_exercise_for_prompt(ex: dict[str, Any]) -> dict[str, Any]:
+    kg = ex.get("kg") or 0
+    rpe = ex.get("rpe_target") or ex.get("rpe")
+    load_source = ex.get("load_source")
+
+    if load_source == "rpe" or (kg == 0 and rpe is not None):
+        return {
+            "name": ex["name"],
+            "sets": ex.get("sets"),
+            "reps": ex.get("reps"),
+            "load": f"@RPE {rpe}",
+            "load_type": "rpe",
+            "rpe_target": rpe,
+        }
+    if load_source == "unresolvable" or (kg == 0 and rpe is None):
+        return {
+            "name": ex["name"],
+            "sets": ex.get("sets"),
+            "reps": ex.get("reps"),
+            "load": "unspecified",
+            "load_type": "unspecified",
+        }
+    return {
+        "name": ex["name"],
+        "sets": ex.get("sets"),
+        "reps": ex.get("reps"),
+        "load": f"{kg}kg",
+        "load_type": "absolute",
+        "kg": kg,
+        "rpe_target": rpe,
+    }
+
+
 def summarize_planned_sessions(
     sessions: list[dict[str, Any]],
     limit: int | None = None,
@@ -283,14 +316,14 @@ def summarize_planned_sessions(
     rows: list[dict[str, Any]] = []
     for session in planned:
         exercises = session.get("planned_exercises") or session.get("exercises") or []
-        exercise_names = [ex.get("name", "") for ex in exercises if ex.get("name")]
+        serialized_exercises = [_serialize_planned_exercise_for_prompt(ex) for ex in exercises if ex.get("name")]
         rows.append({
             "date": session.get("date"),
             "day": session.get("day"),
             "week_number": session.get("week_number"),
             "phase": (session.get("phase") or {}).get("name") if isinstance(session.get("phase"), dict) else session.get("phase_name") or session.get("phase"),
             "status": session.get("status") or "planned",
-            "exercises": exercise_names[:5],
+            "exercises": serialized_exercises,
             "session_notes": session.get("session_notes") or "",
         })
     return rows

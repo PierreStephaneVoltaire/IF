@@ -7,6 +7,7 @@ import {
 import { DatePickerInput } from '@mantine/dates'
 import { useProgramStore } from '@/store/programStore'
 import { useUiStore } from '@/store/uiStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import { calculateDots } from '@/utils/dots'
 import type { Competition, LiftResults } from '@powerlifting/types'
 
@@ -34,6 +35,7 @@ const STATUS_OPTIONS = [
 export default function CompetitionsPage() {
   const { program, updateCompetitions, migrateLastComp, completeCompetition } = useProgramStore()
   const { pushToast } = useUiStore()
+  const { sex } = useSettingsStore()
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [hasChanges, setHasChanges] = useState(false)
   const [showCompleteModal, setShowCompleteModal] = useState<string | null>(null)
@@ -144,7 +146,7 @@ export default function CompetitionsPage() {
     if (!total) return null
 
     const bodyweight = comp.body_weight_kg || comp.weight_class_kg
-    const dots = calculateDots(total, bodyweight, 'male')
+    const dots = calculateDots(total, bodyweight, sex)
 
     return {
       dots,

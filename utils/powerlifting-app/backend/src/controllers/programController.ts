@@ -1,4 +1,4 @@
-import { GetCommand, QueryCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
+import { GetCommand, QueryCommand, PutCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'
 import crypto from 'crypto'
 import { docClient, TABLE } from '../db/dynamo'
 import { transformProgram } from '../db/transforms'
@@ -413,4 +413,78 @@ export async function updatePlannedExercises(
   })
 
   await docClient.send(updateCommand)
+}
+
+/**
+ * Archive a program version
+ */
+export async function archiveProgram(version: string): Promise<void> {
+  const sk = await resolveVersionSk(version)
+  const now = new Date().toISOString()
+
+  // Update program item
+  await docClient.send(new UpdateCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk },
+    UpdateExpression: 'SET meta.archived = :a, meta.archived_at = :now',
+    ExpressionAttributeValues: {
+      ':a': true,
+      ':now': now,
+    },
+  }))
+
+  // Check if it's current
+  const pointerCommand = new GetCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk: 'program#current' },
+  })
+  const pointerResult = await docClient.send(pointerCommand)
+  const currentSk = (pointerResult.Item as any)?.ref_sk
+
+  if (currentSk === sk) {
+    // Need to repoint current
+    const allPrograms = await listPrograms()
+    const nonArchived = allPrograms.filter(p => !p.archived && p.sk !== sk)
+    
+    if (nonArchived.length > 0) {
+      // Sort by SK descending (latest version first)
+      nonArchived.sort((a, b) => b.sk.localeCompare(a.sk))
+      const latest = nonArchived[0]
+      const versionNum = parseInt(latest.sk.split('#v')[1], 10)
+
+      await docClient.send(new PutCommand({
+        TableName: TABLE,
+        Item: {
+          pk: PK,
+          sk: 'program#current',
+          version: versionNum,
+          ref_sk: latest.sk,
+          updated_at: now,
+        },
+      }))
+    } else {
+      // No other programs, delete pointer
+      await docClient.send(new DeleteCommand({
+        TableName: TABLE,
+        Key: { pk: PK, sk: 'program#current' },
+      }))
+    }
+  }
+}
+
+/**
+ * Unarchive a program version
+ */
+export async function unarchiveProgram(version: string): Promise<void> {
+  const sk = await resolveVersionSk(version)
+
+  await docClient.send(new UpdateCommand({
+    TableName: TABLE,
+    Key: { pk: PK, sk },
+    UpdateExpression: 'SET meta.archived = :a, meta.archived_at = :null',
+    ExpressionAttributeValues: {
+      ':a': false,
+      ':null': null,
+    },
+  }))
 }

@@ -161,6 +161,11 @@ resource "aws_dynamodb_table" "if_health" {
     type = "S"
   }
 
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
   lifecycle {
     prevent_destroy = true
   }

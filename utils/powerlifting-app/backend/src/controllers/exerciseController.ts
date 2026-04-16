@@ -1,5 +1,6 @@
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb'
 import { docClient, TABLE } from '../db/dynamo'
+import { invokeToolDirect } from '../utils/agent'
 import type { GlossaryExercise, GlossaryStore } from '@powerlifting/types'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -149,4 +150,71 @@ export async function searchExercises(query: string): Promise<GlossaryExercise[]
     e.name.toLowerCase().includes(lowerQuery) ||
     e.primary_muscles.some(m => m.toLowerCase().includes(lowerQuery))
   )
+}
+
+/**
+ * Archive an exercise
+ */
+export async function archiveExercise(id: string): Promise<void> {
+  const glossary = await getGlossary()
+  const idx = glossary.exercises.findIndex(e => e.id === id)
+  if (idx < 0) return
+
+  glossary.exercises[idx].archived = true
+  glossary.updated_at = new Date().toISOString()
+
+  await docClient.send(new PutCommand({ TableName: TABLE, Item: glossary }))
+}
+
+/**
+ * Unarchive an exercise
+ */
+export async function unarchiveExercise(id: string): Promise<void> {
+  const glossary = await getGlossary()
+  const idx = glossary.exercises.findIndex(e => e.id === id)
+  if (idx < 0) return
+
+  glossary.exercises[idx].archived = false
+  glossary.updated_at = new Date().toISOString()
+
+  await docClient.send(new PutCommand({ TableName: TABLE, Item: glossary }))
+}
+
+/**
+ * Set e1RM estimate for an exercise
+ */
+export async function setE1rmEstimate(
+  id: string, 
+  valueKg: number, 
+  method: 'manual' | 'ai_backfill' | 'logged' = 'manual'
+): Promise<void> {
+  const glossary = await getGlossary()
+  const idx = glossary.exercises.findIndex(e => e.id === id)
+  if (idx < 0) return
+
+  glossary.exercises[idx].e1rm_estimate = {
+    value_kg: valueKg,
+    method,
+    basis: method === 'manual' ? 'Manual entry' : '',
+    confidence: method === 'manual' ? 'medium' : 'low',
+    set_at: new Date().toISOString(),
+    manually_overridden: method === 'manual'
+  }
+  glossary.updated_at = new Date().toISOString()
+
+  await docClient.send(new PutCommand({ TableName: TABLE, Item: glossary }))
+}
+
+/**
+ * AI estimate e1RM for an exercise
+ */
+export async function estimateExerciseE1rm(id: string): Promise<any> {
+  return invokeToolDirect('glossary_estimate_e1rm', { id })
+}
+
+/**
+ * AI estimate fatigue profile for an exercise
+ */
+export async function estimateExerciseFatigue(id: string): Promise<any> {
+  return invokeToolDirect('glossary_estimate_fatigue', { id })
 }

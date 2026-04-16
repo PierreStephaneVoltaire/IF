@@ -10,6 +10,7 @@ import { useProgramStore } from '@/store/programStore'
 import { fetchWeightLog, fetchGlossary } from '@/api/client'
 import { normalizeExerciseName } from '@/utils/volume'
 import { useSettingsStore } from '@/store/settingsStore'
+import { calculateDots } from '@/utils/dots'
 import { toDisplayUnit, displayWeight } from '@/utils/units'
 import { FORMULA_DESCRIPTIONS } from '@/constants/formulaDescriptions'
 import type { WeightEntry, GlossaryExercise, ExerciseCategory } from '@powerlifting/types'
@@ -19,17 +20,6 @@ import {
 } from '@mantine/core'
 import { AiAnalysis } from '@/components/analysis/AiAnalysis'
 import { WeeklyData } from '@/components/analysis/WeeklyData'
-
-// ─── DOTS calculation (male coefficients) ─────────────────────────────────────
-const DOTS_A = -307.75076, DOTS_B = 24.0900756, DOTS_C = -0.1918759221
-const DOTS_D = 0.0007391293, DOTS_E = -0.000001093
-
-function calcDotsScore(totalKg: number, bwKg: number): number {
-  if (bwKg <= 0 || totalKg <= 0) return 0
-  const denom = DOTS_A + DOTS_B * bwKg + DOTS_C * bwKg ** 2 + DOTS_D * bwKg ** 3 + DOTS_E * bwKg ** 4
-  if (denom <= 0) return 0
-  return Math.round((totalKg * 500 / denom) * 100) / 100
-}
 
 function epleyE1rm(kg: number, reps: number): number {
   if (reps <= 0 || kg <= 0) return 0
@@ -76,7 +66,7 @@ const LIFT_LABELS: Record<string, string> = { squat: 'Squat', bench: 'Bench', de
 
 export default function AnalysisPage() {
   const { program, version } = useProgramStore()
-  const { unit } = useSettingsStore()
+  const { unit, sex } = useSettingsStore()
 
   const [weeksMode, setWeeksMode] = useState<number | 'block'>(4)
   const [data, setData] = useState<WeeklyAnalysis | null>(null)
@@ -346,7 +336,7 @@ export default function AnalysisPage() {
         if (!bw && sortedLog.length) bw = sortedLog[sortedLog.length - 1].kg
 
         const total = (d.squat > 0 ? d.squat : 0) + (d.bench > 0 ? d.bench : 0) + (d.deadlift > 0 ? d.deadlift : 0)
-        const dots = total > 0 && bw > 0 ? calcDotsScore(total, bw) : null
+        const dots = total > 0 && bw > 0 ? calculateDots(total, bw, sex) : null
         return {
           week: wn,
           squat: d.squat > 0 ? Math.round(d.squat * 10) / 10 : null,
@@ -367,7 +357,7 @@ export default function AnalysisPage() {
     }
 
     return { rows, dotsChange }
-  }, [filteredSessions, weightLog])
+  }, [filteredSessions, weightLog, sex])
 
   const highestMaxes = useMemo(() => {
     if (!dotsTrend || !dotsTrend.rows.length) return null
@@ -382,11 +372,10 @@ export default function AnalysisPage() {
     const total = squat + bench + deadlift
     let bw = weightTrend?.latest || 0
     if (!bw && weightLog.length) bw = weightLog[weightLog.length - 1].kg
-    const dots = total > 0 && bw > 0 ? calcDotsScore(total, bw) : null
-    
-    return { squat: squat || null, bench: bench || null, deadlift: deadlift || null, total, dots }
-  }, [dotsTrend, weightTrend, weightLog])
+    const dots = total > 0 && bw > 0 ? calculateDots(total, bw, sex) : null
 
+    return { squat: squat || null, bench: bench || null, deadlift: deadlift || null, total, dots }
+    }, [dotsTrend, weightTrend, weightLog, sex])
   const sleepTrend = useMemo(() => {
     const weeks = nutritionTrend?.weekly.filter(w => w.sleep != null) || []
     if (!weeks.length) return null

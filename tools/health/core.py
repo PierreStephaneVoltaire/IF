@@ -9,10 +9,13 @@ Self-initialising:
 from __future__ import annotations
 
 import asyncio
+import copy
+import json
 import logging
 import re
+import uuid
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 
 # Import from health infrastructure module (app/src/health/)
 
@@ -21,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 # Module-level store instance (set via init_tools)
 _store: Optional[ProgramStore] = None
+_template_store: Optional[Any] = None
+_import_store: Optional[Any] = None
+_glossary_store: Optional[Any] = None
 _rag: Optional[Any] = None  # HealthDocsRAG type, avoid circular import
 
 
@@ -37,6 +43,42 @@ def _get_store():
         )
         logger.info("[HealthTools] ProgramStore initialised from env vars")
     return _store
+
+def _get_template_store():
+    global _template_store
+    if _template_store is None:
+        import os
+        from template_store import TemplateStore
+        _template_store = TemplateStore(
+            table_name=os.environ.get("IF_HEALTH_TABLE_NAME", "if-health"),
+            pk=os.environ.get("HEALTH_PROGRAM_PK", "operator"),
+            region=os.environ.get("AWS_REGION", "ca-central-1"),
+        )
+    return _template_store
+
+def _get_import_store():
+    global _import_store
+    if _import_store is None:
+        import os
+        from import_store import ImportStore
+        _import_store = ImportStore(
+            table_name=os.environ.get("IF_HEALTH_TABLE_NAME", "if-health"),
+            pk=os.environ.get("HEALTH_PROGRAM_PK", "operator"),
+            region=os.environ.get("AWS_REGION", "ca-central-1"),
+        )
+    return _import_store
+
+def _get_glossary_store():
+    global _glossary_store
+    if _glossary_store is None:
+        import os
+        from glossary_store import GlossaryStore
+        _glossary_store = GlossaryStore(
+            table_name=os.environ.get("IF_HEALTH_TABLE_NAME", "if-health"),
+            pk=os.environ.get("HEALTH_PROGRAM_PK", "operator"),
+            region=os.environ.get("AWS_REGION", "ca-central-1"),
+        )
+    return _glossary_store
 
 def _get_rag():
     """Lazily create and return the HealthDocsRAG singleton."""
@@ -1389,3 +1431,467 @@ async def health_program_evaluation(refresh: bool = False) -> dict:
         table.put_item(Item=dynamo_item)
 
     return report
+
+# =============================================================================
+# Import & Template Tools
+# =============================================================================
+
+async def import_parse_file(base64_content: str, filename: str) -> dict:
+    """Parse a spreadsheet file and stage it as a pending import."""
+    import base64
+    from import_classifier import file_hash, extract_xlsx, extract_csv, preclassify_rows
+    from import_classify_ai import generate_classification_report
+    from import_parse_ai import generate_import_parse_report
+    from glossary_resolve_ai import generate_glossary_resolve_report
+
+    file_bytes = base64.b64decode(base64_content)
+    fhash = file_hash(file_bytes)
+    
+    # 1. Extraction
+    if filename.lower().endswith(".xlsx"):
+        rows, sheet_name = extract_xlsx(file_bytes)
+    else:
+        rows = extract_csv(file_bytes)
+        sheet_name = "CSV"
+
+    # 2. Classification
+    classification = preclassify_rows(rows)
+    if not classification:
+        report = await generate_classification_report(rows)
+        classification = report.get("classification", "ambiguous")
+
+    # 3. AI Parse
+    # Get athlete context for better parsing
+    store = _get_store()
+    try:
+        program = await store.get_program()
+        current_maxes = program.get("current_maxes", {})
+        current_weeks = len(set(s.get("week_number") for s in program.get("sessions", []) if s.get("week_number")))
+    except:
+        current_maxes = {}
+        current_weeks = 0
+
+    athlete_context = {
+        "current_maxes": current_maxes,
+        "current_program_weeks": current_weeks
+    }
+
+    # Flatten rows to text for AI if it's too large, but usually we just send the JSON
+    parse_result = await generate_import_parse_report(
+        file_content=json.dumps(rows[:100], indent=2), # Limit rows for token safety
+        file_name=filename,
+        classification=classification,
+        athlete_context=athlete_context
+    )
+
+    # 4. Glossary Resolution
+    glossary_store = _get_glossary_store()
+    glossary = await glossary_store.get_glossary()
+    
+    unique_names = list(set(
+        ex.get("name") 
+        for sess in parse_result.get("sessions", []) 
+        for ex in sess.get("exercises", []) 
+        if ex.get("name")
+    ))
+    
+    # Fuzzy pre-match
+    resolved = {}
+    unresolved_names = []
+    for name in unique_names:
+        gid = await glossary_store.fuzzy_resolve(name, threshold=0.92)
+        if gid:
+            resolved[name] = gid
+        else:
+            unresolved_names.append(name)
+            
+    # AI resolution for the rest
+    if unresolved_names:
+        ai_res = await generate_glossary_resolve_report(unresolved_names, glossary)
+        for res in ai_res.get("resolutions", []):
+            if res.get("matched_id"):
+                resolved[res["input"]] = res["matched_id"]
+
+    # Map resolved IDs back into parse_result
+    for sess in parse_result.get("sessions", []):
+        for ex in sess.get("exercises", []):
+            if ex.get("name") in resolved:
+                ex["glossary_id"] = resolved[ex["name"]]
+
+    # 5. Stage in DynamoDB
+    import_store = _get_import_store()
+    import_id = await import_store.stage_import({
+        "import_type": "template" if classification == "template" else "session_import",
+        "source_filename": filename,
+        "source_file_hash": fhash,
+        "ai_parse_result": parse_result,
+    })
+
+    return {
+        "import_id": import_id,
+        "classification": classification,
+        "warnings": parse_result.get("warnings", []),
+        "parse_notes": parse_result.get("parse_notes", "")
+    }
+
+async def import_apply(
+    import_id: str, 
+    merge_strategy: str = "append", 
+    conflict_resolutions: list[dict] | None = None,
+    start_date: str | None = None
+) -> dict:
+    """Apply a staged import to the program or template library."""
+    import_store = _get_import_store()
+    pending = await import_store.get_pending(import_id)
+    if not pending:
+        raise ValueError(f"Import not found: {import_id}")
+        
+    if pending.get("status") != "awaiting_review":
+        raise ValueError(f"Import {import_id} has already been {pending.get('status')}")
+
+    import_type = pending.get("import_type")
+    parse_result = pending.get("ai_parse_result", {})
+
+    if import_type == "template":
+        template_store = _get_template_store()
+        # Convert parse result to template format
+        template = {
+            "meta": {
+                "name": f"Imported {pending.get('source_filename', 'template').split('.')[0]}",
+                "description": parse_result.get("parse_notes", ""),
+                "source_filename": pending.get("source_filename"),
+                "source_file_hash": pending.get("source_file_hash"),
+                "estimated_weeks": max([s.get("week_number", 0) for s in parse_result.get("sessions", [])] or [0]),
+                "days_per_week": 4, # Guess or derive
+                "archived": False
+            },
+            "phases": parse_result.get("phases", []),
+            "sessions": parse_result.get("sessions", []),
+            "required_maxes": list(set([
+                ex.get("glossary_id") 
+                for s in parse_result.get("sessions", []) 
+                for ex in s.get("exercises", []) 
+                if ex.get("glossary_id")
+            ])),
+            "glossary_resolution": {
+                "resolved": [], # Fill based on resolution
+                "unresolved": [],
+                "auto_added": [],
+                "resolution_status": "resolved"
+            }
+        }
+        sk = await template_store.put_template(template)
+        await import_store.mark_applied(import_id, datetime.now(timezone.utc).isoformat())
+        return {"status": "applied", "target_sk": sk}
+    else:
+        # Session Import
+        store = _get_store()
+        program = await store.get_program()
+        new_program = copy.deepcopy(program)
+        
+        # Merge logic based on merge_strategy
+        staged_sessions = parse_result.get("sessions", [])
+        if not staged_sessions:
+            raise ValueError("No sessions found in staged import")
+            
+        existing_sessions = new_program.get("sessions", [])
+        
+        # Mapping of existing sessions by date
+        existing_map = {s["date"]: s for s in existing_sessions}
+        
+        # Resolution map
+        resolutions = {r["session_date"]: r["action"] for r in (conflict_resolutions or [])}
+        
+        applied_count = 0
+        skipped_count = 0
+        
+        for staged in staged_sessions:
+            s_date = staged.get("date")
+            if not s_date:
+                continue
+                
+            if s_date in existing_map:
+                action = resolutions.get(s_date, merge_strategy)
+                if action == "skip":
+                    skipped_count += 1
+                    continue
+                elif action == "overwrite" or action == "replace_planned":
+                    # Replace
+                    existing_map[s_date].update(staged)
+                    applied_count += 1
+                elif action == "merge" or action == "append":
+                    # Merge exercises
+                    existing_map[s_date].setdefault("exercises", []).extend(staged.get("exercises", []))
+                    existing_map[s_date].setdefault("planned_exercises", []).extend(staged.get("planned_exercises", []))
+                    applied_count += 1
+            else:
+                # New session
+                existing_sessions.append(staged)
+                existing_map[s_date] = staged
+                applied_count += 1
+        
+        # Re-sort sessions
+        new_program["sessions"] = sorted(existing_sessions, key=lambda s: s.get("date", ""))
+        
+        # Write new version
+        await store._write_new_version(new_program, minor=False)
+        await import_store.mark_applied(import_id, datetime.now(timezone.utc).isoformat())
+        
+        return {
+            "status": "applied", 
+            "applied_count": applied_count, 
+            "skipped_count": skipped_count,
+            "new_version": new_program["meta"].get("version_label")
+        }
+
+
+async def import_reject(import_id: str, reason: str | None = None) -> dict:
+    import_store = _get_import_store()
+    await import_store.mark_rejected(import_id, reason)
+    return {"status": "rejected", "import_id": import_id}
+
+async def import_list_pending(import_type: str | None = None) -> list[dict]:
+    import_store = _get_import_store()
+    return await import_store.list_pending(import_type)
+
+async def template_list(include_archived: bool = False) -> list[dict]:
+    template_store = _get_template_store()
+    return await template_store.list_templates(include_archived)
+
+async def template_get(sk: str) -> dict:
+    template_store = _get_template_store()
+    tpl = await template_store.get_template(sk)
+    if not tpl:
+        raise ValueError(f"Template not found: {sk}")
+    return tpl
+
+async def template_apply(
+    sk: str, 
+    target: str = "new_block", 
+    start_date: str | None = None, 
+    week_start_day: str = "Monday"
+) -> dict:
+    """Run max resolution gate and return missing or preview."""
+    from template_apply import check_max_resolution_gate, concretize
+    
+    template_store = _get_template_store()
+    template = await template_store.get_template(sk)
+    
+    store = _get_store()
+    program = await store.get_program()
+    current_maxes = program.get("current_maxes", {})
+    
+    glossary_store = _get_glossary_store()
+    glossary = await glossary_store.get_glossary()
+    
+    missing = check_max_resolution_gate(template, current_maxes, glossary)
+    if missing:
+        return {"status": "gate_blocked", "missing_exercises": missing}
+        
+    # Preview concretization
+    from datetime import date
+    s_date = date.fromisoformat(start_date) if start_date else date.today()
+    
+    sessions = concretize(template, current_maxes, glossary, s_date, week_start_day)
+    return {"status": "ready", "preview_sessions": sessions[:5]} # Return first 5 for preview
+
+async def template_apply_confirm(
+    sk: str, 
+    backfilled_maxes: dict | None = None,
+    start_date: str | None = None,
+    week_start_day: str = "Monday"
+) -> dict:
+    """Concretize and write new program version."""
+    from template_apply import concretize
+    from datetime import date
+    
+    template_store = _get_template_store()
+    template = await template_store.get_template(sk)
+    
+    store = _get_store()
+    program = await store.get_program()
+    current_maxes = dict(program.get("current_maxes", {}))
+    if backfilled_maxes:
+        current_maxes.update(backfilled_maxes)
+        
+    glossary_store = _get_glossary_store()
+    glossary = await glossary_store.get_glossary()
+    
+    s_date = date.fromisoformat(start_date) if start_date else date.today()
+    sessions = concretize(template, current_maxes, glossary, s_date, week_start_day)
+    
+    # Create new program version
+    # Stripping existing sessions if it's a new block
+    new_program = copy.deepcopy(program)
+    new_program["sessions"] = sessions
+    new_program["meta"]["template_lineage"] = {
+        "applied_template_sk": sk,
+        "applied_at": datetime.now(timezone.utc).isoformat(),
+        "week_start_day": week_start_day,
+        "start_date": s_date.isoformat()
+    }
+    
+    await store._write_new_version(new_program, minor=False)
+    return {"status": "applied", "program_version": new_program["meta"]["version_label"]}
+
+async def template_evaluate(sk: str) -> dict:
+    from template_evaluate_ai import generate_template_evaluate_report
+    
+    template_store = _get_template_store()
+    template = await template_store.get_template(sk)
+    
+    # Get athlete context
+    store = _get_store()
+    program = await store.get_program()
+    # Mocking advanced metrics for now
+    athlete_context = {
+        "current_maxes": program.get("current_maxes", {}),
+        "dots_score": 350,
+        "weeks_to_comp": 12
+    }
+    
+    report = await generate_template_evaluate_report(template, athlete_context)
+    
+    # Store report on template
+    template["meta"]["ai_evaluation"] = report
+    # We need a way to update template meta without changing SK
+    # For now, just return it
+    return report
+
+async def template_create_from_block(name: str, program_sk: str | None = None) -> dict:
+    from template_convert import convert_block_to_template
+    
+    store = _get_store()
+    if program_sk:
+        # Load specific version - need ProgramStore to support this
+        program = await store.get_program() # Fallback to current
+    else:
+        program = await store.get_program()
+        
+    # Get e1RM map for conversion
+    e1rm_map = program.get("current_maxes", {})
+    
+    template = convert_block_to_template(program, e1rm_map)
+    template["meta"]["name"] = name
+    
+    template_store = _get_template_store()
+    sk = await template_store.put_template(template)
+    return {"status": "created", "sk": sk}
+
+async def template_copy(sk: str, new_name: str) -> dict:
+    template_store = _get_template_store()
+    new_sk = await template_store.copy_template(sk, new_name)
+    return {"status": "copied", "new_sk": new_sk}
+
+async def template_archive(sk: str) -> dict:
+    template_store = _get_template_store()
+    await template_store.archive_template(sk)
+    return {"status": "archived", "sk": sk}
+
+async def template_unarchive(sk: str) -> dict:
+    template_store = _get_template_store()
+    await template_store.unarchive_template(sk)
+    return {"status": "unarchived", "sk": sk}
+
+async def program_archive(sk: str) -> dict:
+    store = _get_store()
+    await store.archive(sk)
+    return {"status": "archived", "sk": sk}
+
+async def program_unarchive(sk: str) -> dict:
+    store = _get_store()
+    await store.unarchive(sk)
+    return {"status": "unarchived", "sk": sk}
+
+async def glossary_add(exercise: dict) -> dict:
+    glossary_store = _get_glossary_store()
+    eid = await glossary_store.add_exercise(exercise)
+    return {"status": "added", "id": eid}
+
+async def glossary_update(exercise_id: str, fields: dict) -> dict:
+    glossary_store = _get_glossary_store()
+    await glossary_store.update_exercise(exercise_id, fields)
+    return {"status": "updated", "id": exercise_id}
+
+async def glossary_set_e1rm(exercise_id: str, value_kg: float, method: str = "manual") -> dict:
+    glossary_store = _get_glossary_store()
+    await glossary_store.set_e1rm(exercise_id, value_kg, method=method)
+    return {"status": "e1rm_set", "id": exercise_id, "value_kg": value_kg}
+
+async def glossary_estimate_e1rm(exercise_id: str) -> dict:
+    from e1rm_backfill_ai import generate_e1rm_backfill_report
+    
+    glossary_store = _get_glossary_store()
+    glossary = await glossary_store.get_glossary()
+    ex = next((e for e in glossary if e["id"] == exercise_id), None)
+    if not ex:
+        raise ValueError(f"Exercise not found: {exercise_id}")
+        
+    store = _get_store()
+    program = await store.get_program()
+    current_maxes = program.get("current_maxes", {})
+    lift_profiles = program.get("lift_profiles", [])
+    
+    past_instances = {}
+    for s in program.get("sessions", []):
+        if not s.get("completed"):
+            continue
+        for ex_item in s.get("exercises", []):
+            name = ex_item.get("name")
+            if not name:
+                continue
+            if name not in past_instances:
+                past_instances[name] = []
+            past_instances[name].append({
+                "date": s.get("date"),
+                "sets": ex_item.get("sets"),
+                "reps": ex_item.get("reps"),
+                "kg": ex_item.get("kg"),
+                "rpe": ex_item.get("rpe", ex_item.get("rpe_target")),
+                "notes": ex_item.get("notes"),
+            })
+    
+    report = await generate_e1rm_backfill_report(
+        [ex["name"]], 
+        current_maxes,
+        lift_profiles=lift_profiles,
+        past_instances=past_instances
+    )
+    estimates = report.get("estimates", [])
+    if not estimates:
+        return {"status": "error", "message": "AI failed to generate estimate"}
+        
+    est = estimates[0]
+    await glossary_store.set_e1rm(
+        exercise_id, 
+        est["e1rm_kg"], 
+        method="ai_backfill", 
+        basis=est["basis"], 
+        confidence="low", 
+        manually_overridden=False
+    )
+    return {"status": "estimated", "id": exercise_id, "estimate": est}
+
+async def glossary_estimate_fatigue(exercise_id: str) -> dict:
+    from fatigue_ai import estimate_fatigue_profile
+    
+    glossary_store = _get_glossary_store()
+    glossary = await glossary_store.get_glossary()
+    ex = next((e for e in glossary if e["id"] == exercise_id), None)
+    if not ex:
+        raise ValueError(f"Exercise not found: {exercise_id}")
+        
+    store = _get_store()
+    program = await store.get_program()
+    
+    profile = await estimate_fatigue_profile(
+        ex["name"], 
+        program_meta=program.get("meta", {}),
+        lift_profiles=program.get("lift_profiles", [])
+    )
+    
+    await glossary_store.update_exercise(exercise_id, {
+        "fatigue_profile": profile,
+        "fatigue_profile_source": "ai_estimated"
+    })
+    return {"status": "fatigue_estimated", "id": exercise_id, "profile": profile}

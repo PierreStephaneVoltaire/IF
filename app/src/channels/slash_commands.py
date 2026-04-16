@@ -232,6 +232,95 @@ def setup_command_tree(
         "tools", "Show tool suggestions from capability gaps"
     )
 
+    # --- /import ---
+    @tree.command(
+        name="import",
+        description="Import a training program spreadsheet (XLSX/CSV)",
+    )
+    @app_commands.describe(
+        file="Spreadsheet file to import",
+    )
+    async def import_cmd(interaction: discord.Interaction, file: discord.Attachment):
+        await interaction.response.defer()
+        try:
+            # The dispatcher already handles download, but for manual /import 
+            # we need to ensure the agent knows about the file.
+            prompt = f"Process the uploaded file {file.filename} as a program/template import."
+            # Note: attachment is already in interaction.data['resolved']['attachments']
+            # but _invoke_via_agent will see it via the interaction object if we pass it.
+            result = await _invoke_via_agent(prompt, interaction)
+            await _send_chunked(interaction, result)
+        except Exception as e:
+            logger.error(f"[SlashCmd] /import error: {e}")
+            await interaction.followup.send(f"Error: {e}")
+
+    # --- /template ---
+    @tree.command(
+        name="template",
+        description="Manage or apply training templates",
+    )
+    @app_commands.describe(
+        action="Action to perform",
+        name="Template name (autocomplete)",
+    )
+    @app_commands.choices(action=[
+        app_commands.Choice(name="list", value="list"),
+        app_commands.Choice(name="apply", value="apply"),
+        app_commands.Choice(name="evaluate", value="evaluate"),
+        app_commands.Choice(name="archive", value="archive"),
+    ])
+    async def template_cmd(interaction: discord.Interaction, action: str, name: str = ""):
+        await interaction.response.defer()
+        try:
+            prompt = f"Template {action} {name}".strip()
+            result = await _invoke_via_agent(prompt, interaction)
+            await _send_chunked(interaction, result)
+        except Exception as e:
+            logger.error(f"[SlashCmd] /template error: {e}")
+            await interaction.followup.send(f"Error: {e}")
+
+    @template_cmd.autocomplete("name")
+    async def template_name_autocomplete(
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        try:
+            from tools.health.template_store import list_templates
+            import asyncio
+            
+            # Run in executor since it's a sync DynamoDB call
+            loop = asyncio.get_event_loop()
+            templates = await loop.run_in_executor(None, lambda: list_templates(include_archived=False))
+            
+            choices = [
+                app_commands.Choice(name=t["name"], value=t["sk"])
+                for t in templates
+                if current.lower() in t["name"].lower()
+            ]
+            return choices[:25]
+        except Exception as e:
+            logger.warning(f"[Autocomplete] Failed: {e}")
+            return []
+
+    # --- /program_archive ---
+    @tree.command(
+        name="program_archive",
+        description="Archive a program version",
+    )
+    @app_commands.describe(
+        version="Version to archive (default: current)",
+        confirm="Confirm archiving (required if version has future sessions)",
+    )
+    async def program_archive_cmd(interaction: discord.Interaction, version: str = "current", confirm: bool = False):
+        await interaction.response.defer()
+        try:
+            prompt = f"Archive program version {version} (confirm={confirm})"
+            result = await _invoke_via_agent(prompt, interaction)
+            await _send_chunked(interaction, result)
+        except Exception as e:
+            logger.error(f"[SlashCmd] /program_archive error: {e}")
+            await interaction.followup.send(f"Error: {e}")
+
     # --- Dynamic commands from tool registry and specialists ---
     _register_dynamic_commands(tree, channel_id, conversation_id)
 

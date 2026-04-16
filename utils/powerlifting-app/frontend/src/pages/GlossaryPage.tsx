@@ -20,6 +20,7 @@ import {
   Box,
   Divider,
   Tooltip,
+  SegmentedControl,
 } from '@mantine/core'
 import * as api from '@/api/client'
 import { useUiStore } from '@/store/uiStore'
@@ -126,7 +127,14 @@ export default function GlossaryPage() {
   const [fatigueProfile, setFatigueProfile] = useState<FatigueProfile | null>(null)
   const [fatigueSource, setFatigueSource] = useState<FatigueProfileSource | null>(null)
   const [fatigueReasoning, setFatigueReasoning] = useState<string | null>(null)
+  const [e1rmEstimate, setE1rmEstimate] = useState<GlossaryExercise['e1rm_estimate'] | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
+  const [hasE1rmFilter, setHasE1rmFilter] = useState<'all' | 'with' | 'without'>('all')
   const [isEstimating, setIsEstimating] = useState(false)
+  const [isEstimatingE1rm, setIsEstimatingE1rm] = useState(false)
+  const [isBulkEstimatingFatigue, setIsBulkEstimatingFatigue] = useState(false)
+  const [isBulkEstimatingE1rm, setIsBulkEstimatingE1rm] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null)
 
   useEffect(() => {
     loadExercises()
@@ -180,6 +188,7 @@ export default function GlossaryPage() {
         fatigue_profile: fatigueProfile || undefined,
         fatigue_profile_source: fatigueSource || undefined,
         fatigue_profile_reasoning: fatigueReasoning,
+        e1rm_estimate: e1rmEstimate || undefined,
       }
 
       await api.upsertExercise(exercise)
@@ -201,6 +210,7 @@ export default function GlossaryPage() {
       setFatigueProfile(null)
       setFatigueSource(null)
       setFatigueReasoning(null)
+      setE1rmEstimate(null)
       loadExercises()
     } catch (err) {
       pushToast({ message: 'Failed to save exercise', type: 'error' })
@@ -233,6 +243,7 @@ export default function GlossaryPage() {
     setFatigueProfile(exercise.fatigue_profile || null)
     setFatigueSource(exercise.fatigue_profile_source || null)
     setFatigueReasoning(exercise.fatigue_profile_reasoning || null)
+    setE1rmEstimate(exercise.e1rm_estimate || null)
     setShowAddForm(true)
   }
 
@@ -303,16 +314,87 @@ export default function GlossaryPage() {
     }
   }
 
+  async function handleBulkEstimateFatigue() {
+    const toEstimate = exercises.filter(e => !e.fatigue_profile || e.fatigue_profile_source !== 'ai_estimated')
+    if (toEstimate.length === 0) {
+      pushToast({ message: 'All exercises already have AI fatigue profiles', type: 'info' })
+      return
+    }
+
+    if (!confirm(`Estimate fatigue profiles for ${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
+
+    setIsBulkEstimatingFatigue(true)
+    setBulkProgress({ current: 0, total: toEstimate.length })
+
+    let successCount = 0
+    for (let i = 0; i < toEstimate.length; i++) {
+      setBulkProgress({ current: i + 1, total: toEstimate.length })
+      try {
+        const res = await api.estimateExerciseFatigue(toEstimate[i].id)
+        if (res?.fatigue_profile) {
+          successCount++
+        }
+      } catch (err) {
+        console.error(`Failed to estimate fatigue for ${toEstimate[i].name}`, err)
+      }
+    }
+
+    pushToast({ message: `Successfully estimated fatigue for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
+    setIsBulkEstimatingFatigue(false)
+    setBulkProgress(null)
+    loadExercises()
+  }
+
+  async function handleBulkEstimateE1rm() {
+    const toEstimate = exercises.filter(e => !e.e1rm_estimate)
+    if (toEstimate.length === 0) {
+      pushToast({ message: 'All exercises already have e1RM estimates', type: 'info' })
+      return
+    }
+
+    if (!confirm(`Estimate e1RM for ${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
+
+    setIsBulkEstimatingE1rm(true)
+    setBulkProgress({ current: 0, total: toEstimate.length })
+
+    let successCount = 0
+    for (let i = 0; i < toEstimate.length; i++) {
+      setBulkProgress({ current: i + 1, total: toEstimate.length })
+      try {
+        const res = await api.estimateExerciseE1rm(toEstimate[i].id)
+        if (res?.estimate) {
+          successCount++
+        }
+      } catch (err) {
+        console.error(`Failed to estimate e1RM for ${toEstimate[i].name}`, err)
+      }
+    }
+
+    pushToast({ message: `Successfully estimated e1RM for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
+    setIsBulkEstimatingE1rm(false)
+    setBulkProgress(null)
+    loadExercises()
+  }
+
   const filteredExercises = useMemo(() => {
-    if (!searchQuery.trim()) return exercises
+    let result = exercises
+    if (!showArchived) {
+      result = result.filter(e => !e.archived)
+    }
+    if (hasE1rmFilter === 'with') {
+      result = result.filter(e => !!e.e1rm_estimate?.value_kg)
+    } else if (hasE1rmFilter === 'without') {
+      result = result.filter(e => !e.e1rm_estimate?.value_kg)
+    }
+    if (!searchQuery.trim()) return result
     const query = searchQuery.toLowerCase()
-    return exercises.filter(
+    return result.filter(
       (e) =>
         e.name.toLowerCase().includes(query) ||
         e.category.toLowerCase().includes(query) ||
         e.primary_muscles.some((m) => m.toLowerCase().includes(query))
     )
-  }, [exercises, searchQuery])
+  }, [exercises, searchQuery, showArchived, hasE1rmFilter])
 
   const groupedExercises = useMemo(() => {
     const groups: Record<ExerciseCategory, GlossaryExercise[]> = {
@@ -347,33 +429,76 @@ export default function GlossaryPage() {
           <Text fz="h1" fw={700}>Exercise Glossary</Text>
           <Text c="dimmed">Browse and manage exercise definitions</Text>
         </div>
-        <Button
-          leftSection={<Plus size={16} />}
-          onClick={() => {
-            setShowAddForm(true)
-            setIsEditing(null)
-            setFormData({
-              name: '',
-              category: 'squat',
-              primary_muscles: [],
-              secondary_muscles: [],
-              equipment: 'barbell',
-              cues: [],
-              notes: '',
-            })
-          }}
-        >
-          Add Exercise
-        </Button>
+        <Group>
+          <Button
+            variant="light"
+            color="blue"
+            leftSection={<RefreshCw size={16} />}
+            onClick={handleBulkEstimateFatigue}
+            loading={isBulkEstimatingFatigue}
+            disabled={isBulkEstimatingFatigue || isBulkEstimatingE1rm}
+          >
+            {isBulkEstimatingFatigue && bulkProgress ? `Fatigue (${bulkProgress.current}/${bulkProgress.total})` : 'Estimate Fatigue'}
+          </Button>
+          <Button
+            variant="light"
+            color="green"
+            leftSection={<RefreshCw size={16} />}
+            onClick={handleBulkEstimateE1rm}
+            loading={isBulkEstimatingE1rm}
+            disabled={isBulkEstimatingFatigue || isBulkEstimatingE1rm}
+          >
+            {isBulkEstimatingE1rm && bulkProgress ? `e1RM (${bulkProgress.current}/${bulkProgress.total})` : 'Estimate e1RM'}
+          </Button>
+          <Button
+            leftSection={<Plus size={16} />}
+            onClick={() => {
+              setShowAddForm(true)
+              setIsEditing(null)
+              setFormData({
+                name: '',
+                category: 'squat',
+                primary_muscles: [],
+                secondary_muscles: [],
+                equipment: 'barbell',
+                cues: [],
+                notes: '',
+              })
+            }}
+          >
+            Add Exercise
+          </Button>
+        </Group>
       </Group>
 
-      {/* Search */}
-      <TextInput
-        leftSection={<Search size={16} />}
-        placeholder="Search exercises..."
-        value={searchQuery}
-        onChange={(e) => handleSearch(e.currentTarget.value)}
-      />
+      {/* Search and Filters */}
+      <Group align="flex-end">
+        <TextInput
+          leftSection={<Search size={16} />}
+          placeholder="Search exercises..."
+          value={searchQuery}
+          onChange={(e) => handleSearch(e.currentTarget.value)}
+          style={{ flex: 1 }}
+        />
+        <SegmentedControl
+          size="sm"
+          value={hasE1rmFilter}
+          onChange={(v) => setHasE1rmFilter(v as 'all' | 'with' | 'without')}
+          data={[
+            { label: 'All e1RM', value: 'all' },
+            { label: 'With e1RM', value: 'with' },
+            { label: 'Missing e1RM', value: 'without' },
+          ]}
+        />
+        <Button
+          variant={showArchived ? 'filled' : 'light'}
+          color="gray"
+          size="sm"
+          onClick={() => setShowArchived(!showArchived)}
+        >
+          {showArchived ? 'Hide Archived' : 'Show Archived'}
+        </Button>
+      </Group>
 
       {/* Add/Edit Form Modal */}
       <Modal
@@ -390,7 +515,10 @@ export default function GlossaryPage() {
               <TextInput
                 placeholder="Exercise Name"
                 value={formData.name || ''}
-                onChange={(e) => setFormData((p) => ({ ...p, name: e.currentTarget.value }))}
+                onChange={(e) => {
+                  const val = e.currentTarget.value;
+                  setFormData((p) => ({ ...p, name: val }));
+                }}
               />
             </div>
             <div>
@@ -413,7 +541,7 @@ export default function GlossaryPage() {
           </div>
 
           {/* Fatigue Profile Sliders */}
-          <Paper withBorder p="md" radius="md" bg="var(--mantine-color-gray-0)">
+          <Paper withBorder p="md" radius="md" bg="var(--mantine-color-gray-light)">
             <Group justify="space-between" mb="sm">
               <Group gap="xs">
                 <Text size="sm" fw={600}>Fatigue Profile</Text>
@@ -466,13 +594,91 @@ export default function GlossaryPage() {
             </Stack>
             
             {fatigueSource === 'ai_estimated' && fatigueReasoning && (
-              <Box mt="sm" p="xs" style={{ background: 'white', borderRadius: 4, border: '1px solid var(--mantine-color-gray-2)' }}>
+              <Box mt="sm" p="xs" style={{ background: 'var(--mantine-color-body)', borderRadius: 4, border: '1px solid var(--mantine-color-gray-2)' }}>
                 <Text size="xs" fw={500} mb={2} c="dimmed">AI Reasoning:</Text>
                 <Text size="xs" fs="italic" style={{ maxHeight: 100, overflowY: 'auto' }}>
                   {fatigueReasoning}
                 </Text>
               </Box>
             )}
+          </Paper>
+
+          {/* e1RM Estimate Section */}
+          <Paper withBorder p="md" radius="md" bg="var(--mantine-color-green-light)">
+            <Group justify="space-between" mb="sm">
+              <Group gap="xs">
+                <Text size="sm" fw={600}>e1RM Estimate</Text>
+                {e1rmEstimate && (
+                  <Badge
+                    variant="light"
+                    color={e1rmEstimate.confidence === 'high' ? 'green' : e1rmEstimate.confidence === 'medium' ? 'yellow' : 'red'}
+                    size="xs"
+                  >
+                    {e1rmEstimate.confidence.toUpperCase()} CONFIDENCE
+                  </Badge>
+                )}
+              </Group>
+              <Button
+                size="compact-xs"
+                variant="light"
+                color="green"
+                onClick={async () => {
+                  if (!isEditing?.id) return
+                  setIsEstimatingE1rm(true)
+                  try {
+                    const res = await api.estimateExerciseE1rm(isEditing.id)
+                    if (res?.estimate) {
+                      setE1rmEstimate({
+                        value_kg: res.estimate.e1rm_kg,
+                        method: 'ai_backfill',
+                        basis: res.estimate.basis,
+                        confidence: res.estimate.confidence,
+                        set_at: new Date().toISOString(),
+                        manually_overridden: false,
+                      })
+                    } else {
+                      pushToast({ message: 'e1RM estimation returned no result', type: 'error' })
+                    }
+                  } catch {
+                    pushToast({ message: 'e1RM estimation failed', type: 'error' })
+                  } finally {
+                    setIsEstimatingE1rm(false)
+                  }
+                }}
+                disabled={isEstimatingE1rm || !isEditing?.id}
+                leftSection={isEstimatingE1rm ? <Loader size={12} /> : <RefreshCw size={12} />}
+              >
+                {isEstimatingE1rm ? 'Estimating...' : 'AI Estimate'}
+              </Button>
+            </Group>
+
+            <Group gap="md">
+              <Stack gap={4} style={{ flex: 1 }}>
+                <Text size="xs" c="dimmed">Value (kg)</Text>
+                <TextInput
+                  type="number"
+                  placeholder="e.g. 140"
+                  value={e1rmEstimate?.value_kg || ''}
+                  onChange={(e) => {
+                    const val = parseFloat(e.currentTarget.value)
+                    setE1rmEstimate(prev => ({
+                      value_kg: isNaN(val) ? 0 : val,
+                      method: 'manual',
+                      basis: prev?.basis || 'Manual override',
+                      confidence: 'high',
+                      set_at: new Date().toISOString(),
+                      manually_overridden: true
+                    }))
+                  }}
+                />
+              </Stack>
+              {e1rmEstimate && (
+                <Stack gap={4} style={{ flex: 2 }}>
+                  <Text size="xs" c="dimmed">Basis</Text>
+                  <Text size="sm" italic>{e1rmEstimate.basis}</Text>
+                </Stack>
+              )}
+            </Group>
           </Paper>
 
           <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
@@ -551,7 +757,10 @@ export default function GlossaryPage() {
               autosize
               minRows={3}
               value={formData.notes || ''}
-              onChange={(e) => setFormData((p) => ({ ...p, notes: e.currentTarget.value }))}
+              onChange={(e) => {
+                const val = e.currentTarget.value;
+                setFormData((p) => ({ ...p, notes: val }));
+              }}
             />
           </div>
 
@@ -599,9 +808,15 @@ export default function GlossaryPage() {
                       </Badge>
                       {exercise.fatigue_profile && (
                         <Badge variant="light" color="blue" size="sm">
-                          {exercise.fatigue_profile_source === 'ai_estimated' ? 'AI' : 'Manual'}
+                          {exercise.fatigue_profile_source === 'ai_estimated' ? 'AI FP' : 'Manual FP'}
                         </Badge>
                       )}
+                      {exercise.e1rm_estimate && (
+                        <Badge variant="filled" color="green" size="sm">
+                          e1RM: {exercise.e1rm_estimate.value_kg}kg
+                        </Badge>
+                      )}
+                      {exercise.archived && <Badge color="gray" size="sm">Archived</Badge>}
                     </Group>
                   </Accordion.Control>
                   <Accordion.Panel>
@@ -670,6 +885,27 @@ export default function GlossaryPage() {
                           onClick={() => handleDelete(exercise.id)}
                         >
                           Delete
+                        </Button>
+                        <Button
+                          size="compact-sm"
+                          variant="light"
+                          color="gray"
+                          onClick={async () => {
+                            try {
+                              if (exercise.archived) {
+                                await api.unarchiveExercise(exercise.id)
+                                pushToast({ message: 'Exercise unarchived', type: 'success' })
+                              } else {
+                                await api.archiveExercise(exercise.id)
+                                pushToast({ message: 'Exercise archived', type: 'success' })
+                              }
+                              loadExercises()
+                            } catch {
+                              pushToast({ message: 'Failed to update exercise', type: 'error' })
+                            }
+                          }}
+                        >
+                          {exercise.archived ? 'Unarchive' : 'Archive'}
                         </Button>
                       </Group>
                     </Stack>

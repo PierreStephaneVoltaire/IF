@@ -42,6 +42,14 @@
         "increment": 2.5
       }
     },
+    "archived": false,
+    "archived_at": null,
+    "template_lineage": {
+      "applied_template_sk": "template#v001",
+      "applied_at": "2026-03-08T10:00:00Z",
+      "week_start_day": "Monday",
+      "start_date": "2026-02-15"
+    },
     "training_notes": [
       "Bench responds better to volume.",
       "Knees and back sensitive under squat and deadlift load."
@@ -110,7 +118,9 @@
           "name": "Squat",
           "sets": 3,
           "reps": 5,
-          "kg": 100.0
+          "kg": 100.0,
+          "load_source": "absolute",
+          "rpe_target": null
         }
       ],
       "exercises": [
@@ -121,7 +131,9 @@
           "kg": 100.0,
           "notes": "Done as planned",
           "failed": false,
-          "failed_sets": [false, false, false]
+          "failed_sets": [false, false, false],
+          "load_source": "absolute",
+          "rpe_target": null
         }
       ],
       "videos": [

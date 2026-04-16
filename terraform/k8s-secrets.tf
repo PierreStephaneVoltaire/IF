@@ -57,6 +57,7 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     IF_DIARY_ENTRIES_TABLE_NAME = var.dynamodb_diary_entries_table
     IF_DIARY_SIGNALS_TABLE_NAME = var.dynamodb_diary_signals_table
     IF_PROPOSALS_TABLE_NAME     = var.dynamodb_proposals_table
+    POWERLIFTING_S3_BUCKET      = aws_s3_bucket.powerlifting_data.id
 
     API_MODEL_NAME  = var.api_model_name
     TOKENIZER_MODEL = var.tokenizer_model

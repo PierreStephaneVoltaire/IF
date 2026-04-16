@@ -25,6 +25,66 @@ from openhands.sdk.tool import ToolExecutor
 
 
 # =============================================================================
+# Initial Setup: Sync powerlifting datasets from S3 to sandbox
+# =============================================================================
+
+def _sync_powerlifting_datasets():
+    import os
+    import logging
+    import threading
+    from pathlib import Path
+
+    def _sync_worker():
+        try:
+            import boto3
+            from config import SANDBOX_PATH
+
+            logger = logging.getLogger(__name__)
+            bucket_name = os.getenv("POWERLIFTING_S3_BUCKET")
+            if not bucket_name:
+                logger.warning("Health Plugin: POWERLIFTING_S3_BUCKET env var not set, skipping dataset sync")
+            else:
+                prefix = "datasets/"
+                sandbox_dir = Path(SANDBOX_PATH)
+                sandbox_dir.mkdir(parents=True, exist_ok=True)
+
+                logger.info(f"Health Plugin: [Background] Syncing powerlifting datasets from s3://{bucket_name}/{prefix} to {sandbox_dir}...")
+                s3 = boto3.client('s3')
+                response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+
+                if 'Contents' in response:
+                    for obj in response['Contents']:
+                        key = obj['Key']
+                        if key.endswith('.csv') and 'openpowerlifting' in key:
+                            filename = os.path.basename(key)
+                            dest_path = sandbox_dir / filename
+                            if not dest_path.exists():
+                                logger.info(f"Health Plugin: [Background] Downloading {filename}...")
+                                s3.download_file(bucket_name, key, str(dest_path))
+                    logger.info("Health Plugin: [Background] Powerlifting datasets sync complete")
+                else:
+                    logger.warning(f"Health Plugin: [Background] No powerlifting datasets found in s3://{bucket_name}/{prefix}")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Health Plugin: [Background] Powerlifting dataset sync failed: {e}")
+
+        # Always attempt to warm the DataFrame cache after sync (covers both fresh
+        # downloads and restarts where files already exist on the PV).
+        try:
+            from powerlifting_stats import warm_cache
+            warm_cache()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Health Plugin: [Background] warm_cache() failed: {e}")
+
+    # Run sync in background thread to avoid blocking tool loading/app startup
+    thread = threading.Thread(target=_sync_worker, daemon=True)
+    thread.start()
+
+_sync_powerlifting_datasets()
+
+
+# =============================================================================
 # Helpers (duplicated from agent/tools/base to avoid cross-dir imports)
 # =============================================================================
 
@@ -1673,6 +1733,118 @@ class ProgramEvaluationTool(ToolDefinition[ProgramEvaluationAction, ProgramEvalu
 register_tool("ProgramEvaluationTool", ProgramEvaluationTool)
 
 
+# --- powerlifting_filter_categories ---
+
+class PowerliftingFilterCategoriesAction(Action):
+    pass
+
+
+class PowerliftingFilterCategoriesObservation(Observation):
+    pass
+
+
+class PowerliftingFilterCategoriesExecutor(ToolExecutor[PowerliftingFilterCategoriesAction, PowerliftingFilterCategoriesObservation]):
+    def __call__(self, action: PowerliftingFilterCategoriesAction, conversation=None) -> PowerliftingFilterCategoriesObservation:
+        from powerlifting_stats import load_data, get_filter_categories, DatasetNotReadyError
+        try:
+            df = load_data()
+            categories = get_filter_categories(df)
+            return PowerliftingFilterCategoriesObservation.from_text(_format_result(categories))
+        except DatasetNotReadyError as e:
+            return PowerliftingFilterCategoriesObservation.from_text(f"ERROR: Dataset not ready. {e}")
+        except FileNotFoundError as e:
+            return PowerliftingFilterCategoriesObservation.from_text(f"ERROR: Dataset missing. {e}")
+
+
+class PowerliftingFilterCategoriesTool(ToolDefinition[PowerliftingFilterCategoriesAction, PowerliftingFilterCategoriesObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["PowerliftingFilterCategoriesTool"]:
+        return [cls(
+            description=(
+                "Retrieves the unique options (categories) available for filtering "
+                "the OpenPowerlifting dataset (e.g. federations, countries, equipment, etc)."
+            ),
+            action_type=PowerliftingFilterCategoriesAction,
+            observation_type=PowerliftingFilterCategoriesObservation,
+            executor=PowerliftingFilterCategoriesExecutor(),
+        )]
+
+register_tool("PowerliftingFilterCategoriesTool", PowerliftingFilterCategoriesTool)
+
+
+# --- analyze_powerlifting_stats ---
+
+class AnalyzePowerliftingStatsAction(Action):
+    squat_kg: Optional[float] = Field(default=None, description="User's best squat in kg")
+    bench_kg: Optional[float] = Field(default=None, description="User's best bench in kg")
+    deadlift_kg: Optional[float] = Field(default=None, description="User's best deadlift in kg")
+    total_kg: Optional[float] = Field(default=None, description="User's best total in kg")
+    dots: Optional[float] = Field(default=None, description="User's best DOTS score")
+    
+    federation: Optional[str] = Field(default=None, description="Filter by federation")
+    country: Optional[str] = Field(default=None, description="Filter by country")
+    region: Optional[str] = Field(default=None, description="Filter by region/state")
+    equipment: Optional[str] = Field(default=None, description="Filter by equipment (e.g. Raw)")
+    sex: Optional[str] = Field(default=None, description="Filter by sex (e.g. M or F)")
+    age_class: Optional[str] = Field(default=None, description="Filter by age class")
+    year: Optional[int] = Field(default=None, description="Filter by year of competition")
+    event_type: Optional[str] = Field(default=None, description="Filter by event type (e.g. SBD)")
+    min_dots: Optional[float] = Field(default=None, description="Minimum DOTS score")
+
+
+class AnalyzePowerliftingStatsObservation(Observation):
+    pass
+
+
+class AnalyzePowerliftingStatsExecutor(ToolExecutor[AnalyzePowerliftingStatsAction, AnalyzePowerliftingStatsObservation]):
+    def __call__(self, action: AnalyzePowerliftingStatsAction, conversation=None) -> AnalyzePowerliftingStatsObservation:
+        from powerlifting_stats import load_data, filter_dataset, analyze_stats, DatasetNotReadyError
+        try:
+            df = load_data()
+        except DatasetNotReadyError as e:
+            return AnalyzePowerliftingStatsObservation.from_text(f"ERROR: Dataset not ready. {e}")
+        except FileNotFoundError as e:
+            return AnalyzePowerliftingStatsObservation.from_text(f"ERROR: Dataset missing. {e}")
+        filtered_df = filter_dataset(
+            df,
+            federation=action.federation,
+            country=action.country,
+            region=action.region,
+            equipment=action.equipment,
+            sex=action.sex,
+            age_class=action.age_class,
+            year=action.year,
+            event_type=action.event_type,
+            min_dots=action.min_dots,
+        )
+        stats = analyze_stats(
+            filtered_df,
+            squat_kg=action.squat_kg,
+            bench_kg=action.bench_kg,
+            deadlift_kg=action.deadlift_kg,
+            total_kg=action.total_kg,
+            dots=action.dots,
+        )
+        return AnalyzePowerliftingStatsObservation.from_text(_format_result(stats))
+
+
+class AnalyzePowerliftingStatsTool(ToolDefinition[AnalyzePowerliftingStatsAction, AnalyzePowerliftingStatsObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["AnalyzePowerliftingStatsTool"]:
+        return [cls(
+            description=(
+                "Compares a user's powerlifting stats (SBD, Total, DOTS) against the "
+                "OpenPowerlifting dataset using various filters (age, sex, federation, etc) "
+                "and returns percentile rankings and dataset statistics."
+            ),
+            action_type=AnalyzePowerliftingStatsAction,
+            observation_type=AnalyzePowerliftingStatsObservation,
+            executor=AnalyzePowerliftingStatsExecutor(),
+        )]
+
+register_tool("AnalyzePowerliftingStatsTool", AnalyzePowerliftingStatsTool)
+
+
 # =============================================================================
 # Plugin contract: get_tools()
 # =============================================================================
@@ -1725,6 +1897,28 @@ def get_tools() -> List[Tool]:
         Tool(name="CorrelationAnalysisTool"),
         Tool(name="FatigueProfileEstimateTool"),
         Tool(name="ProgramEvaluationTool"),
+        Tool(name="ImportParseFileTool"),
+        Tool(name="ImportApplyTool"),
+        Tool(name="ImportRejectTool"),
+        Tool(name="ImportListPendingTool"),
+        Tool(name="TemplateListTool"),
+        Tool(name="TemplateGetTool"),
+        Tool(name="TemplateApplyTool"),
+        Tool(name="TemplateApplyConfirmTool"),
+        Tool(name="TemplateEvaluateTool"),
+        Tool(name="TemplateCreateFromBlockTool"),
+        Tool(name="TemplateCopyTool"),
+        Tool(name="TemplateArchiveTool"),
+        Tool(name="TemplateUnarchiveTool"),
+        Tool(name="ProgramArchiveTool"),
+        Tool(name="ProgramUnarchiveTool"),
+        Tool(name="GlossaryAddTool"),
+        Tool(name="GlossaryUpdateTool"),
+        Tool(name="GlossarySetE1rmTool"),
+        Tool(name="GlossaryEstimateE1rmTool"),
+        Tool(name="GlossaryEstimateFatigueTool"),
+        Tool(name="PowerliftingFilterCategoriesTool"),
+        Tool(name="AnalyzePowerliftingStatsTool"),
     ]
 
 
@@ -2201,6 +2395,275 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "required": [],
             },
         },
+        "import_parse_file": {
+            "name": "import_parse_file",
+            "description": "Parse a spreadsheet file and stage it as a pending import.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "base64_content": {"type": "string"},
+                    "filename": {"type": "string"}
+                },
+                "required": ["base64_content", "filename"],
+            },
+        },
+        "import_apply": {
+            "name": "import_apply",
+            "description": "Apply a staged import to the program or template library.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "import_id": {"type": "string"},
+                    "merge_strategy": {"type": "string", "default": "append"},
+                    "conflict_resolutions": {"type": "array", "items": {"type": "object"}},
+                    "start_date": {"type": "string"}
+                },
+                "required": ["import_id"],
+            },
+        },
+        "import_reject": {
+            "name": "import_reject",
+            "description": "Reject a staged import.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "import_id": {"type": "string"},
+                    "reason": {"type": "string"}
+                },
+                "required": ["import_id"],
+            },
+        },
+        "import_list_pending": {
+            "name": "import_list_pending",
+            "description": "List all awaiting_review imports.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "import_type": {"type": "string"}
+                },
+                "required": [],
+            },
+        },
+        "template_list": {
+            "name": "template_list",
+            "description": "List all training templates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "include_archived": {"type": "boolean", "default": False}
+                },
+                "required": [],
+            },
+        },
+        "template_get": {
+            "name": "template_get",
+            "description": "Get full training template structure.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"}
+                },
+                "required": ["sk"],
+            },
+        },
+        "template_apply": {
+            "name": "template_apply",
+            "description": "Apply a template to the program block (preview).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"},
+                    "target": {"type": "string", "default": "new_block"},
+                    "start_date": {"type": "string"},
+                    "week_start_day": {"type": "string", "default": "Monday"}
+                },
+                "required": ["sk"],
+            },
+        },
+        "template_apply_confirm": {
+            "name": "template_apply_confirm",
+            "description": "Confirm and write concretized block from template.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"},
+                    "backfilled_maxes": {"type": "object"},
+                    "start_date": {"type": "string"},
+                    "week_start_day": {"type": "string"}
+                },
+                "required": ["sk"],
+            },
+        },
+        "template_evaluate": {
+            "name": "template_evaluate",
+            "description": "Run AI-powered template evaluation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"}
+                },
+                "required": ["sk"],
+            },
+        },
+        "template_create_from_block": {
+            "name": "template_create_from_block",
+            "description": "Convert program block to template.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "program_sk": {"type": "string"}
+                },
+                "required": ["name"],
+            },
+        },
+        "template_copy": {
+            "name": "template_copy",
+            "description": "Duplicate a template.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"},
+                    "new_name": {"type": "string"}
+                },
+                "required": ["sk", "new_name"],
+            },
+        },
+        "template_archive": {
+            "name": "template_archive",
+            "description": "Archive a template.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"}
+                },
+                "required": ["sk"],
+            },
+        },
+        "template_unarchive": {
+            "name": "template_unarchive",
+            "description": "Unarchive a template.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"}
+                },
+                "required": ["sk"],
+            },
+        },
+        "program_archive": {
+            "name": "program_archive",
+            "description": "Archive a program version.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"}
+                },
+                "required": ["sk"],
+            },
+        },
+        "program_unarchive": {
+            "name": "program_unarchive",
+            "description": "Unarchive a program version.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"}
+                },
+                "required": ["sk"],
+            },
+        },
+        "glossary_add": {
+            "name": "glossary_add",
+            "description": "Add new exercise to glossary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "exercise": {"type": "object"}
+                },
+                "required": ["exercise"],
+            },
+        },
+        "glossary_update": {
+            "name": "glossary_update",
+            "description": "Update exercise in glossary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "fields": {"type": "object"}
+                },
+                "required": ["id", "fields"],
+            },
+        },
+        "glossary_set_e1rm": {
+            "name": "glossary_set_e1rm",
+            "description": "Manually set e1RM for glossary exercise.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "value_kg": {"type": "number"},
+                    "method": {"type": "string"}
+                },
+                "required": ["id", "value_kg"],
+            },
+        },
+        "glossary_estimate_e1rm": {
+            "name": "glossary_estimate_e1rm",
+            "description": "AI backfill e1RM estimate for one exercise.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"}
+                },
+                "required": ["id"],
+            },
+        },
+        "glossary_estimate_fatigue": {
+            "name": "glossary_estimate_fatigue",
+            "description": "AI fatigue profile estimation for one exercise.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"}
+                },
+                "required": ["id"],
+            },
+        },
+        "powerlifting_filter_categories": {
+            "name": "powerlifting_filter_categories",
+            "description": "Retrieves the unique options available for filtering the OpenPowerlifting dataset.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+        "analyze_powerlifting_stats": {
+            "name": "analyze_powerlifting_stats",
+            "description": "Compares a user's powerlifting stats against the OpenPowerlifting dataset.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "squat_kg": {"type": "number"},
+                    "bench_kg": {"type": "number"},
+                    "deadlift_kg": {"type": "number"},
+                    "total_kg": {"type": "number"},
+                    "dots": {"type": "number"},
+                    "federation": {"type": "string"},
+                    "country": {"type": "string"},
+                    "region": {"type": "string"},
+                    "equipment": {"type": "string"},
+                    "sex": {"type": "string"},
+                    "age_class": {"type": "string"},
+                    "year": {"type": "integer"},
+                    "event_type": {"type": "string"},
+                    "min_dots": {"type": "number"}
+                },
+                "required": [],
+            },
+        },
     }
 
 
@@ -2364,6 +2827,48 @@ def _do_program_evaluation(args):
     return _run_async(health_program_evaluation(refresh=args.get("refresh", False)))
 
 
+def _do_powerlifting_filter_categories(args):
+    from powerlifting_stats import load_data, get_filter_categories, DatasetNotReadyError
+    try:
+        df = load_data()
+        return get_filter_categories(df)
+    except DatasetNotReadyError as e:
+        return f"ERROR: Dataset not ready. {str(e)}"
+    except FileNotFoundError as e:
+        return f"ERROR: Dataset missing. {str(e)}"
+
+
+def _do_analyze_powerlifting_stats(args):
+    from powerlifting_stats import load_data, filter_dataset, analyze_stats, DatasetNotReadyError
+    try:
+        df = load_data()
+    except DatasetNotReadyError as e:
+        return f"ERROR: Dataset not ready. {str(e)}"
+    except FileNotFoundError as e:
+        return f"ERROR: Dataset missing. {str(e)}"
+        
+    filtered_df = filter_dataset(
+        df,
+        federation=args.get("federation"),
+        country=args.get("country"),
+        region=args.get("region"),
+        equipment=args.get("equipment"),
+        sex=args.get("sex"),
+        age_class=args.get("age_class"),
+        year=args.get("year"),
+        event_type=args.get("event_type"),
+        min_dots=args.get("min_dots"),
+    )
+    return analyze_stats(
+        filtered_df,
+        squat_kg=args.get("squat_kg"),
+        bench_kg=args.get("bench_kg"),
+        deadlift_kg=args.get("deadlift_kg"),
+        total_kg=args.get("total_kg"),
+        dots=args.get("dots"),
+    )
+
+
 # =============================================================================
 # Plugin contract: execute() — async dispatcher for non-agentic specialist path
 # =============================================================================
@@ -2403,6 +2908,26 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         calculate_attempts,
         days_until,
         health_new_version as do_new_version,
+        import_parse_file,
+        import_apply,
+        import_reject,
+        import_list_pending,
+        template_list,
+        template_get,
+        template_apply,
+        template_apply_confirm,
+        template_evaluate,
+        template_create_from_block,
+        template_copy,
+        template_archive,
+        template_unarchive,
+        program_archive,
+        program_unarchive,
+        glossary_add,
+        glossary_update,
+        glossary_set_e1rm,
+        glossary_estimate_e1rm,
+        glossary_estimate_fatigue,
     )
 
     ROUTES = {
@@ -2447,6 +2972,28 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "correlation_analysis": lambda: _do_correlation_analysis(args),
         "fatigue_profile_estimate": lambda: _do_fatigue_profile_estimate(args),
         "program_evaluation": lambda: _do_program_evaluation(args),
+        "import_parse_file": lambda: import_parse_file(args["base64_content"], args["filename"]),
+        "import_apply": lambda: import_apply(args["import_id"], args.get("merge_strategy", "append"), args.get("conflict_resolutions"), args.get("start_date")),
+        "import_reject": lambda: import_reject(args["import_id"], args.get("reason")),
+        "import_list_pending": lambda: import_list_pending(args.get("import_type")),
+        "template_list": lambda: template_list(args.get("include_archived", False)),
+        "template_get": lambda: template_get(args["sk"]),
+        "template_apply": lambda: template_apply(args["sk"], args.get("target", "new_block"), args.get("start_date"), args.get("week_start_day", "Monday")),
+        "template_apply_confirm": lambda: template_apply_confirm(args["sk"], args.get("backfilled_maxes"), args.get("start_date"), args.get("week_start_day", "Monday")),
+        "template_evaluate": lambda: template_evaluate(args["sk"]),
+        "template_create_from_block": lambda: template_create_from_block(args["name"], args.get("program_sk")),
+        "template_copy": lambda: template_copy(args["sk"], args["new_name"]),
+        "template_archive": lambda: template_archive(args["sk"]),
+        "template_unarchive": lambda: template_unarchive(args["sk"]),
+        "program_archive": lambda: program_archive(args["sk"]),
+        "program_unarchive": lambda: program_unarchive(args["sk"]),
+        "glossary_add": lambda: glossary_add(args["exercise"]),
+        "glossary_update": lambda: glossary_update(args["id"], args["fields"]),
+        "glossary_set_e1rm": lambda: glossary_set_e1rm(args["id"], args["value_kg"], args.get("method", "manual")),
+        "glossary_estimate_e1rm": lambda: glossary_estimate_e1rm(args["id"]),
+        "glossary_estimate_fatigue": lambda: glossary_estimate_fatigue(args["id"]),
+        "powerlifting_filter_categories": lambda: asyncio.to_thread(_do_powerlifting_filter_categories, args),
+        "analyze_powerlifting_stats": lambda: asyncio.to_thread(_do_analyze_powerlifting_stats, args),
     }
 
     handler = ROUTES.get(name)
@@ -2459,3 +3006,560 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
     if isinstance(result, str):
         return result
     return json.dumps(result, indent=2, default=str)
+
+# --- import_parse_file ---
+
+class ImportParseFileAction(Action):
+    base64_content: str = Field(description="Base64 encoded spreadsheet file content")
+    filename: str = Field(description="Name of the file including extension")
+
+
+class ImportParseFileObservation(Observation):
+    pass
+
+
+class ImportParseFileExecutor(ToolExecutor[ImportParseFileAction, ImportParseFileObservation]):
+    def __call__(self, action: ImportParseFileAction, conversation=None) -> ImportParseFileObservation:
+        from core import import_parse_file
+        result = _run_async(import_parse_file(action.base64_content, action.filename))
+        return ImportParseFileObservation.from_text(_format_result(result))
+
+
+class ImportParseFileTool(ToolDefinition[ImportParseFileAction, ImportParseFileObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["ImportParseFileTool"]:
+        return [cls(
+            description="Parse a spreadsheet file and stage it as a pending import. Returns import_id and classification.",
+            action_type=ImportParseFileAction,
+            observation_type=ImportParseFileObservation,
+            executor=ImportParseFileExecutor(),
+        )]
+
+
+# --- import_apply ---
+
+class ImportApplyAction(Action):
+    import_id: str = Field(description="ID of the staged import to apply")
+    merge_strategy: str = Field(default="append", description="Merge strategy: append, replace_planned, selective")
+    conflict_resolutions: Optional[List[Dict[str, Any]]] = Field(default=None, description="Resolutions for session conflicts")
+    start_date: Optional[str] = Field(default=None, description="Start date for templates (YYYY-MM-DD)")
+
+
+class ImportApplyObservation(Observation):
+    pass
+
+
+class ImportApplyExecutor(ToolExecutor[ImportApplyAction, ImportApplyObservation]):
+    def __call__(self, action: ImportApplyAction, conversation=None) -> ImportApplyObservation:
+        from core import import_apply
+        result = _run_async(import_apply(action.import_id, action.merge_strategy, action.conflict_resolutions, action.start_date))
+        return ImportApplyObservation.from_text(_format_result(result))
+
+
+class ImportApplyTool(ToolDefinition[ImportApplyAction, ImportApplyObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["ImportApplyTool"]:
+        return [cls(
+            description="Apply a staged import to the program or template library.",
+            action_type=ImportApplyAction,
+            observation_type=ImportApplyObservation,
+            executor=ImportApplyExecutor(),
+        )]
+
+# --- import_reject ---
+
+class ImportRejectAction(Action):
+    import_id: str = Field(description="ID of the staged import to reject")
+    reason: Optional[str] = Field(default=None, description="Reason for rejection")
+
+
+class ImportRejectObservation(Observation):
+    pass
+
+
+class ImportRejectExecutor(ToolExecutor[ImportRejectAction, ImportRejectObservation]):
+    def __call__(self, action: ImportRejectAction, conversation=None) -> ImportRejectObservation:
+        from core import import_reject
+        result = _run_async(import_reject(action.import_id, action.reason))
+        return ImportRejectObservation.from_text(_format_result(result))
+
+
+class ImportRejectTool(ToolDefinition[ImportRejectAction, ImportRejectObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["ImportRejectTool"]:
+        return [cls(
+            description="Reject a staged import, unblocking new imports of that type.",
+            action_type=ImportRejectAction,
+            observation_type=ImportRejectObservation,
+            executor=ImportRejectExecutor(),
+        )]
+
+# --- import_list_pending ---
+
+class ImportListPendingAction(Action):
+    import_type: Optional[str] = Field(default=None, description="Filter by type: template, session_import")
+
+
+class ImportListPendingObservation(Observation):
+    pass
+
+
+class ImportListPendingExecutor(ToolExecutor[ImportListPendingAction, ImportListPendingObservation]):
+    def __call__(self, action: ImportListPendingAction, conversation=None) -> ImportListPendingObservation:
+        from core import import_list_pending
+        result = _run_async(import_list_pending(action.import_type))
+        return ImportListPendingObservation.from_text(_format_result(result))
+
+
+class ImportListPendingTool(ToolDefinition[ImportListPendingAction, ImportListPendingObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["ImportListPendingTool"]:
+        return [cls(
+            description="List all awaiting_review imports.",
+            action_type=ImportListPendingAction,
+            observation_type=ImportListPendingObservation,
+            executor=ImportListPendingExecutor(),
+        )]
+
+# --- template_list ---
+
+class TemplateListAction(Action):
+    include_archived: bool = Field(default=False, description="Whether to include archived templates")
+
+
+class TemplateListObservation(Observation):
+    pass
+
+
+class TemplateListExecutor(ToolExecutor[TemplateListAction, TemplateListObservation]):
+    def __call__(self, action: TemplateListAction, conversation=None) -> TemplateListObservation:
+        from core import template_list
+        result = _run_async(template_list(action.include_archived))
+        return TemplateListObservation.from_text(_format_result(result))
+
+
+class TemplateListTool(ToolDefinition[TemplateListAction, TemplateListObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateListTool"]:
+        return [cls(
+            description="List all training templates in the library.",
+            action_type=TemplateListAction,
+            observation_type=TemplateListObservation,
+            executor=TemplateListExecutor(),
+        )]
+
+# --- template_get ---
+
+class TemplateGetAction(Action):
+    sk: str = Field(description="SK of the template to retrieve (e.g. template#v001)")
+
+
+class TemplateGetObservation(Observation):
+    pass
+
+
+class TemplateGetExecutor(ToolExecutor[TemplateGetAction, TemplateGetObservation]):
+    def __call__(self, action: TemplateGetAction, conversation=None) -> TemplateGetObservation:
+        from core import template_get
+        result = _run_async(template_get(action.sk))
+        return TemplateGetObservation.from_text(_format_result(result))
+
+
+class TemplateGetTool(ToolDefinition[TemplateGetAction, TemplateGetObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateGetTool"]:
+        return [cls(
+            description="Get full training template structure.",
+            action_type=TemplateGetAction,
+            observation_type=TemplateGetObservation,
+            executor=TemplateGetExecutor(),
+        )]
+
+# --- template_apply ---
+
+class TemplateApplyAction(Action):
+    sk: str = Field(description="SK of the template to apply")
+    target: str = Field(default="new_block", description="Target: new_block, append, replace_planned")
+    start_date: Optional[str] = Field(default=None, description="Start date (YYYY-MM-DD)")
+    week_start_day: str = Field(default="Monday", description="Week start day: Saturday, Monday, Sunday")
+
+
+class TemplateApplyObservation(Observation):
+    pass
+
+
+class TemplateApplyExecutor(ToolExecutor[TemplateApplyAction, TemplateApplyObservation]):
+    def __call__(self, action: TemplateApplyAction, conversation=None) -> TemplateApplyObservation:
+        from core import template_apply
+        result = _run_async(template_apply(action.sk, action.target, action.start_date, action.week_start_day))
+        return TemplateApplyObservation.from_text(_format_result(result))
+
+
+class TemplateApplyTool(ToolDefinition[TemplateApplyAction, TemplateApplyObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateApplyTool"]:
+        return [cls(
+            description="Apply a template to the program block. Runs Max Resolution Gate and returns preview.",
+            action_type=TemplateApplyAction,
+            observation_type=TemplateApplyObservation,
+            executor=TemplateApplyExecutor(),
+        )]
+
+# --- template_apply_confirm ---
+
+class TemplateApplyConfirmAction(Action):
+    sk: str = Field(description="SK of the template to apply")
+    backfilled_maxes: Optional[Dict[str, float]] = Field(default=None, description="Manual or AI backfilled maxes")
+    start_date: Optional[str] = Field(default=None, description="Start date (YYYY-MM-DD)")
+    week_start_day: str = Field(default="Monday", description="Week start day")
+
+
+class TemplateApplyConfirmObservation(Observation):
+    pass
+
+
+class TemplateApplyConfirmExecutor(ToolExecutor[TemplateApplyConfirmAction, TemplateApplyConfirmObservation]):
+    def __call__(self, action: TemplateApplyConfirmAction, conversation=None) -> TemplateApplyConfirmObservation:
+        from core import template_apply_confirm
+        result = _run_async(template_apply_confirm(action.sk, action.backfilled_maxes, action.start_date, action.week_start_day))
+        return TemplateApplyConfirmObservation.from_text(_format_result(result))
+
+
+class TemplateApplyConfirmTool(ToolDefinition[TemplateApplyConfirmAction, TemplateApplyConfirmObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateApplyConfirmTool"]:
+        return [cls(
+            description="Confirm and write concretized block from template.",
+            action_type=TemplateApplyConfirmAction,
+            observation_type=TemplateApplyConfirmObservation,
+            executor=TemplateApplyConfirmExecutor(),
+        )]
+
+# --- template_evaluate ---
+
+class TemplateEvaluateAction(Action):
+    sk: str = Field(description="SK of the template to evaluate")
+
+
+class TemplateEvaluateObservation(Observation):
+    pass
+
+
+class TemplateEvaluateExecutor(ToolExecutor[TemplateEvaluateAction, TemplateEvaluateObservation]):
+    def __call__(self, action: TemplateEvaluateAction, conversation=None) -> TemplateEvaluateObservation:
+        from core import template_evaluate
+        result = _run_async(template_evaluate(action.sk))
+        return TemplateEvaluateObservation.from_text(_format_result(result))
+
+
+class TemplateEvaluateTool(ToolDefinition[TemplateEvaluateAction, TemplateEvaluateObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateEvaluateTool"]:
+        return [cls(
+            description="Run AI-powered template evaluation against athlete profile.",
+            action_type=TemplateEvaluateAction,
+            observation_type=TemplateEvaluateObservation,
+            executor=TemplateEvaluateExecutor(),
+        )]
+
+# --- template_create_from_block ---
+
+class TemplateCreateFromBlockAction(Action):
+    name: str = Field(description="Name for the new template")
+    program_sk: Optional[str] = Field(default=None, description="SK of source program version (defaults to current)")
+
+
+class TemplateCreateFromBlockObservation(Observation):
+    pass
+
+
+class TemplateCreateFromBlockExecutor(ToolExecutor[TemplateCreateFromBlockAction, TemplateCreateFromBlockObservation]):
+    def __call__(self, action: TemplateCreateFromBlockAction, conversation=None) -> TemplateCreateFromBlockObservation:
+        from core import template_create_from_block
+        result = _run_async(template_create_from_block(action.name, action.program_sk))
+        return TemplateCreateFromBlockObservation.from_text(_format_result(result))
+
+
+class TemplateCreateFromBlockTool(ToolDefinition[TemplateCreateFromBlockAction, TemplateCreateFromBlockObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateCreateFromBlockTool"]:
+        return [cls(
+            description="Convert current or specified program block into a reusable template.",
+            action_type=TemplateCreateFromBlockAction,
+            observation_type=TemplateCreateFromBlockObservation,
+            executor=TemplateCreateFromBlockExecutor(),
+        )]
+
+# --- template_copy ---
+
+class TemplateCopyAction(Action):
+    sk: str = Field(description="SK of the template to copy")
+    new_name: str = Field(description="Name for the new template")
+
+
+class TemplateCopyObservation(Observation):
+    pass
+
+
+class TemplateCopyExecutor(ToolExecutor[TemplateCopyAction, TemplateCopyObservation]):
+    def __call__(self, action: TemplateCopyAction, conversation=None) -> TemplateCopyObservation:
+        from core import template_copy
+        result = _run_async(template_copy(action.sk, action.new_name))
+        return TemplateCopyObservation.from_text(_format_result(result))
+
+
+class TemplateCopyTool(ToolDefinition[TemplateCopyAction, TemplateCopyObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateCopyTool"]:
+        return [cls(
+            description="Duplicate a training template.",
+            action_type=TemplateCopyAction,
+            observation_type=TemplateCopyObservation,
+            executor=TemplateCopyExecutor(),
+        )]
+
+# --- template_archive ---
+
+class TemplateArchiveAction(Action):
+    sk: str = Field(description="SK of the template to archive")
+
+
+class TemplateArchiveObservation(Observation):
+    pass
+
+
+class TemplateArchiveExecutor(ToolExecutor[TemplateArchiveAction, TemplateArchiveObservation]):
+    def __call__(self, action: TemplateArchiveAction, conversation=None) -> TemplateArchiveObservation:
+        from core import template_archive
+        result = _run_async(template_archive(action.sk))
+        return TemplateArchiveObservation.from_text(_format_result(result))
+
+
+class TemplateArchiveTool(ToolDefinition[TemplateArchiveAction, TemplateArchiveObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateArchiveTool"]:
+        return [cls(
+            description="Archive a training template.",
+            action_type=TemplateArchiveAction,
+            observation_type=TemplateArchiveObservation,
+            executor=TemplateArchiveExecutor(),
+        )]
+
+# --- template_unarchive ---
+
+class TemplateUnarchiveAction(Action):
+    sk: str = Field(description="SK of the template to unarchive")
+
+
+class TemplateUnarchiveObservation(Observation):
+    pass
+
+
+class TemplateUnarchiveExecutor(ToolExecutor[TemplateUnarchiveAction, TemplateUnarchiveObservation]):
+    def __call__(self, action: TemplateUnarchiveAction, conversation=None) -> TemplateUnarchiveObservation:
+        from core import template_unarchive
+        result = _run_async(template_unarchive(action.sk))
+        return TemplateUnarchiveObservation.from_text(_format_result(result))
+
+
+class TemplateUnarchiveTool(ToolDefinition[TemplateUnarchiveAction, TemplateUnarchiveObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateUnarchiveTool"]:
+        return [cls(
+            description="Unarchive a training template.",
+            action_type=TemplateUnarchiveAction,
+            observation_type=TemplateUnarchiveObservation,
+            executor=TemplateUnarchiveExecutor(),
+        )]
+
+# --- program_archive ---
+
+class ProgramArchiveAction(Action):
+    sk: str = Field(description="SK of the program version to archive")
+
+
+class ProgramArchiveObservation(Observation):
+    pass
+
+
+class ProgramArchiveExecutor(ToolExecutor[ProgramArchiveAction, ProgramArchiveObservation]):
+    def __call__(self, action: ProgramArchiveAction, conversation=None) -> ProgramArchiveObservation:
+        from core import program_archive
+        result = _run_async(program_archive(action.sk))
+        return ProgramArchiveObservation.from_text(_format_result(result))
+
+
+class ProgramArchiveTool(ToolDefinition[ProgramArchiveAction, ProgramArchiveObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["ProgramArchiveTool"]:
+        return [cls(
+            description="Archive a program version. Repoints current if needed.",
+            action_type=ProgramArchiveAction,
+            observation_type=ProgramArchiveObservation,
+            executor=ProgramArchiveExecutor(),
+        )]
+
+# --- program_unarchive ---
+
+class ProgramUnarchiveAction(Action):
+    sk: str = Field(description="SK of the program version to unarchive")
+
+
+class ProgramUnarchiveObservation(Observation):
+    pass
+
+
+class ProgramUnarchiveExecutor(ToolExecutor[ProgramUnarchiveAction, ProgramUnarchiveObservation]):
+    def __call__(self, action: ProgramUnarchiveAction, conversation=None) -> ProgramUnarchiveObservation:
+        from core import program_unarchive
+        result = _run_async(program_unarchive(action.sk))
+        return ProgramUnarchiveObservation.from_text(_format_result(result))
+
+
+class ProgramUnarchiveTool(ToolDefinition[ProgramUnarchiveAction, ProgramUnarchiveObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["ProgramUnarchiveTool"]:
+        return [cls(
+            description="Unarchive a program version.",
+            action_type=ProgramUnarchiveAction,
+            observation_type=ProgramUnarchiveObservation,
+            executor=ProgramUnarchiveExecutor(),
+        )]
+
+# --- glossary_add ---
+
+class GlossaryAddAction(Action):
+    exercise: Dict[str, Any] = Field(description="Exercise object with name, category, equipment")
+
+
+class GlossaryAddObservation(Observation):
+    pass
+
+
+class GlossaryAddExecutor(ToolExecutor[GlossaryAddAction, GlossaryAddObservation]):
+    def __call__(self, action: GlossaryAddAction, conversation=None) -> GlossaryAddObservation:
+        from core import glossary_add
+        result = _run_async(glossary_add(action.exercise))
+        return GlossaryAddObservation.from_text(_format_result(result))
+
+
+class GlossaryAddTool(ToolDefinition[GlossaryAddAction, GlossaryAddObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["GlossaryAddTool"]:
+        return [cls(
+            description="Add a new exercise to the canonical glossary.",
+            action_type=GlossaryAddAction,
+            observation_type=GlossaryAddObservation,
+            executor=GlossaryAddExecutor(),
+        )]
+
+# --- glossary_update ---
+
+class GlossaryUpdateAction(Action):
+    id: str = Field(description="ID of the exercise to update")
+    fields: Dict[str, Any] = Field(description="Fields to update")
+
+
+class GlossaryUpdateObservation(Observation):
+    pass
+
+
+class GlossaryUpdateExecutor(ToolExecutor[GlossaryUpdateAction, GlossaryUpdateObservation]):
+    def __call__(self, action: GlossaryUpdateAction, conversation=None) -> GlossaryUpdateObservation:
+        from core import glossary_update
+        result = _run_async(glossary_update(action.id, action.fields))
+        return GlossaryUpdateObservation.from_text(_format_result(result))
+
+
+class GlossaryUpdateTool(ToolDefinition[GlossaryUpdateAction, GlossaryUpdateObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["GlossaryUpdateTool"]:
+        return [cls(
+            description="Update exercise fields in the glossary.",
+            action_type=GlossaryUpdateAction,
+            observation_type=GlossaryUpdateObservation,
+            executor=GlossaryUpdateExecutor(),
+        )]
+
+# --- glossary_set_e1rm ---
+
+class GlossarySetE1rmAction(Action):
+    id: str = Field(description="Exercise ID")
+    value_kg: float = Field(description="e1RM estimate in kg")
+    method: str = Field(default="manual", description="Method: manual, ai_backfill, logged")
+
+
+class GlossarySetE1rmObservation(Observation):
+    pass
+
+
+class GlossarySetE1rmExecutor(ToolExecutor[GlossarySetE1rmAction, GlossarySetE1rmObservation]):
+    def __call__(self, action: GlossarySetE1rmAction, conversation=None) -> GlossarySetE1rmObservation:
+        from core import glossary_set_e1rm
+        result = _run_async(glossary_set_e1rm(action.id, action.value_kg, action.method))
+        return GlossarySetE1rmObservation.from_text(_format_result(result))
+
+
+class GlossarySetE1rmTool(ToolDefinition[GlossarySetE1rmAction, GlossarySetE1rmObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["GlossarySetE1rmTool"]:
+        return [cls(
+            description="Manually set an e1RM estimate for a glossary exercise.",
+            action_type=GlossarySetE1rmAction,
+            observation_type=GlossarySetE1rmObservation,
+            executor=GlossarySetE1rmExecutor(),
+        )]
+
+# --- glossary_estimate_e1rm ---
+
+class GlossaryEstimateE1rmAction(Action):
+    id: str = Field(description="Exercise ID to estimate e1RM for")
+
+
+class GlossaryEstimateE1rmObservation(Observation):
+    pass
+
+
+class GlossaryEstimateE1rmExecutor(ToolExecutor[GlossaryEstimateE1rmAction, GlossaryEstimateE1rmObservation]):
+    def __call__(self, action: GlossaryEstimateE1rmAction, conversation=None) -> GlossaryEstimateE1rmObservation:
+        from core import glossary_estimate_e1rm
+        result = _run_async(glossary_estimate_e1rm(action.id))
+        return GlossaryEstimateE1rmObservation.from_text(_format_result(result))
+
+
+class GlossaryEstimateE1rmTool(ToolDefinition[GlossaryEstimateE1rmAction, GlossaryEstimateE1rmObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["GlossaryEstimateE1rmTool"]:
+        return [cls(
+            description="AI backfill e1RM estimate for one exercise based on SBD maxes.",
+            action_type=GlossaryEstimateE1rmAction,
+            observation_type=GlossaryEstimateE1rmObservation,
+            executor=GlossaryEstimateE1rmExecutor(),
+        )]
+
+# --- glossary_estimate_fatigue ---
+
+class GlossaryEstimateFatigueAction(Action):
+    id: str = Field(description="Exercise ID to estimate fatigue profile for")
+
+
+class GlossaryEstimateFatigueObservation(Observation):
+    pass
+
+
+class GlossaryEstimateFatigueExecutor(ToolExecutor[GlossaryEstimateFatigueAction, GlossaryEstimateFatigueObservation]):
+    def __call__(self, action: GlossaryEstimateFatigueAction, conversation=None) -> GlossaryEstimateFatigueObservation:
+        from core import glossary_estimate_fatigue
+        result = _run_async(glossary_estimate_fatigue(action.id))
+        return GlossaryEstimateFatigueObservation.from_text(_format_result(result))
+
+
+class GlossaryEstimateFatigueTool(ToolDefinition[GlossaryEstimateFatigueAction, GlossaryEstimateFatigueObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["GlossaryEstimateFatigueTool"]:
+        return [cls(
+            description="AI fatigue profile estimation for one exercise.",
+            action_type=GlossaryEstimateFatigueAction,
+            observation_type=GlossaryEstimateFatigueObservation,
+            executor=GlossaryEstimateFatigueExecutor(),
+        )]

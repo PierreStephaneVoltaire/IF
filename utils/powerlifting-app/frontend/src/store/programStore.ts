@@ -45,6 +45,8 @@ interface ProgramState {
   addWeightEntry: (entry: WeightEntry) => Promise<void>
   removeWeightEntry: (date: string) => Promise<void>
   forkVersion: (label?: string) => Promise<string>
+  archiveProgram: () => Promise<void>
+  unarchiveProgram: () => Promise<void>
   reset: () => void
 
   // Supplements
@@ -52,6 +54,9 @@ interface ProgramState {
 
   // Lift Profiles
   updateLiftProfiles: (liftProfiles: LiftProfile[]) => Promise<void>
+
+  // Sex
+  setSex: (sex: Sex) => Promise<void>
 
   // Diet Notes
   updateDietNotes: (dietNotes: DietNote[]) => Promise<void>
@@ -295,6 +300,20 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
     return newVersion
   },
 
+  archiveProgram: async () => {
+    const { version } = get()
+    await api.archiveProgram(version)
+    await get().loadVersions()
+    await get().loadProgram(version)
+  },
+
+  unarchiveProgram: async () => {
+    const { version } = get()
+    await api.unarchiveProgram(version)
+    await get().loadVersions()
+    await get().loadProgram(version)
+  },
+
   // Supplements
   updateSupplementPhases: async (phases) => {
     const { version } = get()
@@ -322,6 +341,25 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
         program: {
           ...state.program,
           lift_profiles: liftProfiles,
+        },
+      }
+    })
+  },
+
+  // Sex
+  setSex: async (sex: Sex) => {
+    const { version } = get()
+    await api.updateMetaField(version, 'sex', sex)
+
+    set((state) => {
+      if (!state.program) return state
+      return {
+        program: {
+          ...state.program,
+          meta: {
+            ...state.program.meta,
+            sex,
+          },
         },
       }
     })

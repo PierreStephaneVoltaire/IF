@@ -187,7 +187,10 @@ export default function DesignerPhases() {
             <Text size="sm" c="dimmed" mb={4}>Name</Text>
             <TextInput
               value={phaseForm.name || ''}
-              onChange={(e) => setPhaseForm(p => ({ ...p, name: e.currentTarget.value }))}
+              onChange={(e) => {
+                const val = e.currentTarget.value;
+                setPhaseForm(p => ({ ...p, name: val }));
+              }}
               size="sm"
             />
           </Box>
@@ -215,7 +218,10 @@ export default function DesignerPhases() {
             <Text size="sm" c="dimmed" mb={4}>Intent</Text>
             <Textarea
               value={phaseForm.intent || ''}
-              onChange={(e) => setPhaseForm(p => ({ ...p, intent: e.currentTarget.value }))}
+              onChange={(e) => {
+                const val = e.currentTarget.value;
+                setPhaseForm(p => ({ ...p, intent: val }));
+              }}
               autosize
               minRows={2}
               size="sm"
@@ -253,7 +259,10 @@ export default function DesignerPhases() {
             <Text size="sm" c="dimmed" mb={4}>Notes</Text>
             <Textarea
               value={phaseForm.notes || ''}
-              onChange={(e) => setPhaseForm(p => ({ ...p, notes: e.currentTarget.value }))}
+              onChange={(e) => {
+                const val = e.currentTarget.value;
+                setPhaseForm(p => ({ ...p, notes: val }));
+              }}
               autosize
               minRows={2}
               size="sm"

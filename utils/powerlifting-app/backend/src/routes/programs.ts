@@ -177,3 +177,23 @@ programsRouter.put('/:version/designer/:date/:index/planned-exercises', async (r
     next(err)
   }
 })
+
+// PATCH /api/programs/:version/archive - Archive a program
+programsRouter.patch('/:version/archive', async (req, res, next) => {
+  try {
+    await programController.archiveProgram(req.params.version)
+    res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// PATCH /api/programs/:version/unarchive - Unarchive a program
+programsRouter.patch('/:version/unarchive', async (req, res, next) => {
+  try {
+    await programController.unarchiveProgram(req.params.version)
+    res.json({ data: { success: true }, error: null })
+  } catch (err) {
+    next(err)
+  }
+})

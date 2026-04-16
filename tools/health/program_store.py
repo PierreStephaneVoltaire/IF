@@ -26,6 +26,11 @@ class ProgramNotFoundError(Exception):
     pass
 
 
+class CurrentProgramHasFutureSessionsError(Exception):
+    """Raised when trying to archive a program that still has planned future sessions."""
+    pass
+
+
 class ProgramStore:
     """DynamoDB-backed store for training programs with versioning support.
 
@@ -468,3 +473,154 @@ class ProgramStore:
         logger.info(f"[ProgramStore] Created new {'minor' if minor else 'major'} version: {new_label} (v{new_version_int})")
         
         return program
+
+    async def archive(self, sk: str) -> None:
+        """Archive a program version.
+
+        If the program being archived is the current active program,
+        this will attempt to point 'program#current' to the most recent
+        non-archived version.
+
+        Args:
+            sk: SK of the program to archive (e.g. "program#v001")
+
+        Raises:
+            CurrentProgramHasFutureSessionsError: If current program has incomplete future sessions
+            ProgramNotFoundError: If program does not exist
+        """
+        await asyncio.get_running_loop().run_in_executor(
+            None, lambda: self._archive_sync(sk)
+        )
+        self.invalidate_cache()
+
+    def _archive_sync(self, sk: str) -> None:
+        """Synchronous archive logic."""
+        # Read program item
+        resp = self.table.get_item(Key={"pk": self._pk, "sk": sk})
+        if "Item" not in resp:
+            raise ProgramNotFoundError(f"Program not found: {sk}")
+        
+        program = resp["Item"]
+        
+        # Check if it's the current program
+        pointer_resp = self.table.get_item(Key={"pk": self._pk, "sk": self.POINTER_SK})
+        is_current = "Item" in pointer_resp and pointer_resp["Item"].get("ref_sk") == sk
+        
+        if is_current:
+            # Rule: cannot archive if it has incomplete future sessions
+            sessions = program.get("sessions", [])
+            has_future = any(
+                not s.get("completed", False) and s.get("date", "") >= datetime.now().strftime("%Y-%m-%d")
+                for s in sessions
+            )
+            if has_future:
+                raise CurrentProgramHasFutureSessionsError(
+                    "Cannot archive active program with incomplete future sessions. "
+                    "Mark them as completed or skipped first, or delete them."
+                )
+
+        # Update program item with archive fields
+        now = datetime.now(timezone.utc).isoformat()
+        if "meta" not in program:
+            program["meta"] = {}
+        program["meta"]["archived"] = True
+        program["meta"]["archived_at"] = now
+        
+        self.table.put_item(Item=program)
+        logger.info(f"[ProgramStore] Archived program {sk}")
+        
+        if is_current:
+            # Flip pointer to most recent non-archived
+            self._repoint_current_to_latest_non_archived_sync()
+
+    def _repoint_current_to_latest_non_archived_sync(self) -> None:
+        """Find the latest non-archived program and update the pointer to it."""
+        programs = self._list_programs_sync(include_archived=False)
+        if not programs:
+            logger.warning("[ProgramStore] No non-archived programs found to repoint 'program#current'")
+            # Optionally delete the pointer or leave it?
+            # Plan says "flip current pointer to most recent non-archived", implying it should exist.
+            # If none, we might just delete the pointer.
+            self.table.delete_item(Key={"pk": self._pk, "sk": self.POINTER_SK})
+            return
+
+        # Sort by version (sk) descending
+        programs.sort(key=lambda p: p["sk"], reverse=True)
+        latest = programs[0]
+        
+        now = datetime.now(timezone.utc).isoformat()
+        version_str = latest["sk"][len(self.PROGRAM_SK_PREFIX):]
+        pointer_item = {
+            "pk": self._pk,
+            "sk": self.POINTER_SK,
+            "version": int(version_str),
+            "ref_sk": latest["sk"],
+            "updated_at": now,
+        }
+        self.table.put_item(Item=pointer_item)
+        logger.info(f"[ProgramStore] Repointed 'program#current' to {latest['sk']}")
+
+    async def unarchive(self, sk: str) -> None:
+        """Unarchive a program version.
+
+        Args:
+            sk: SK of the program to unarchive
+
+        Raises:
+            ProgramNotFoundError: If program does not exist
+        """
+        await asyncio.get_running_loop().run_in_executor(
+            None, lambda: self._unarchive_sync(sk)
+        )
+        self.invalidate_cache()
+
+    def _unarchive_sync(self, sk: str) -> None:
+        """Synchronous unarchive logic."""
+        resp = self.table.get_item(Key={"pk": self._pk, "sk": sk})
+        if "Item" not in resp:
+            raise ProgramNotFoundError(f"Program not found: {sk}")
+        
+        program = resp["Item"]
+        if "meta" not in program:
+            program["meta"] = {}
+        
+        program["meta"]["archived"] = False
+        program["meta"]["archived_at"] = None
+        
+        self.table.put_item(Item=program)
+        logger.info(f"[ProgramStore] Unarchived program {sk}")
+
+    async def list_programs(self, include_archived: bool = False) -> list[dict]:
+        """List all program versions.
+
+        Args:
+            include_archived: Whether to include archived programs in the list
+
+        Returns:
+            List of program summaries (sk, meta, etc.)
+        """
+        return await asyncio.get_running_loop().run_in_executor(
+            None, lambda: self._list_programs_sync(include_archived)
+        )
+
+    def _list_programs_sync(self, include_archived: bool = False) -> list[dict]:
+        """Synchronous program listing logic."""
+        scan_result = self.table.query(
+            KeyConditionExpression=Key("pk").eq(self._pk) & Key("sk").begins_with(self.PROGRAM_SK_PREFIX)
+        )
+        items = scan_result.get("Items", [])
+        
+        if not include_archived:
+            items = [
+                item for item in items 
+                if not item.get("meta", {}).get("archived", False)
+            ]
+        
+        # Clean up items for return
+        results = []
+        for item in items:
+            p = dict(item)
+            # We can keep 'sk' here as it's useful for listing
+            results.append(p)
+            
+        return results
