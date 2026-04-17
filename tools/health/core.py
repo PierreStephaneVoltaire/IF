@@ -1478,7 +1478,7 @@ async def import_parse_file(base64_content: str, filename: str) -> dict:
 
     # Flatten rows to text for AI if it's too large, but usually we just send the JSON
     parse_result = await generate_import_parse_report(
-        file_content=json.dumps(rows[:100], indent=2), # Limit rows for token safety
+        file_content=json.dumps(rows[:100], indent=2, default=str), # Limit rows for token safety
         file_name=filename,
         classification=classification,
         athlete_context=athlete_context
@@ -1653,6 +1653,14 @@ async def import_reject(import_id: str, reason: str | None = None) -> dict:
 async def import_list_pending(import_type: str | None = None) -> list[dict]:
     import_store = _get_import_store()
     return await import_store.list_pending(import_type)
+
+async def import_get_pending(import_id: str) -> dict:
+    """Get a single pending import by ID."""
+    import_store = _get_import_store()
+    pending = await import_store.get_pending(import_id)
+    if not pending:
+        raise ValueError(f"Import not found: {import_id}")
+    return pending
 
 async def template_list(include_archived: bool = False) -> list[dict]:
     template_store = _get_template_store()

@@ -114,7 +114,7 @@ async def generate_import_parse_report(
         "file_name": file_name,
         "classification": classification,
         "athlete_context": athlete_context or {}
-    }, indent=2)
+    }, indent=2, default=str)
 
     logger.info(f"[ImportParseAI] model={ANALYSIS_MODEL} payload_chars={len(user_msg)}")
 

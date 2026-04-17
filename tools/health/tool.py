@@ -1901,6 +1901,7 @@ def get_tools() -> List[Tool]:
         Tool(name="ImportApplyTool"),
         Tool(name="ImportRejectTool"),
         Tool(name="ImportListPendingTool"),
+        Tool(name="ImportGetPendingTool"),
         Tool(name="TemplateListTool"),
         Tool(name="TemplateGetTool"),
         Tool(name="TemplateApplyTool"),
@@ -2444,6 +2445,17 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "required": [],
             },
         },
+        "import_get_pending": {
+            "name": "import_get_pending",
+            "description": "Get a single pending import by ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "import_id": {"type": "string"}
+                },
+                "required": ["import_id"],
+            },
+        },
         "template_list": {
             "name": "template_list",
             "description": "List all training templates.",
@@ -2912,6 +2924,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         import_apply,
         import_reject,
         import_list_pending,
+        import_get_pending,
         template_list,
         template_get,
         template_apply,
@@ -2976,6 +2989,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "import_apply": lambda: import_apply(args["import_id"], args.get("merge_strategy", "append"), args.get("conflict_resolutions"), args.get("start_date")),
         "import_reject": lambda: import_reject(args["import_id"], args.get("reason")),
         "import_list_pending": lambda: import_list_pending(args.get("import_type")),
+        "import_get_pending": lambda: import_get_pending(args["import_id"]),
         "template_list": lambda: template_list(args.get("include_archived", False)),
         "template_get": lambda: template_get(args["sk"]),
         "template_apply": lambda: template_apply(args["sk"], args.get("target", "new_block"), args.get("start_date"), args.get("week_start_day", "Monday")),
@@ -3119,6 +3133,33 @@ class ImportListPendingTool(ToolDefinition[ImportListPendingAction, ImportListPe
             action_type=ImportListPendingAction,
             observation_type=ImportListPendingObservation,
             executor=ImportListPendingExecutor(),
+        )]
+
+# --- import_get_pending ---
+
+class ImportGetPendingAction(Action):
+    import_id: str = Field(description="The import ID to fetch")
+
+
+class ImportGetPendingObservation(Observation):
+    pass
+
+
+class ImportGetPendingExecutor(ToolExecutor[ImportGetPendingAction, ImportGetPendingObservation]):
+    def __call__(self, action: ImportGetPendingAction, conversation=None) -> ImportGetPendingObservation:
+        from core import import_get_pending
+        result = _run_async(import_get_pending(action.import_id))
+        return ImportGetPendingObservation.from_text(_format_result(result))
+
+
+class ImportGetPendingTool(ToolDefinition[ImportGetPendingAction, ImportGetPendingObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["ImportGetPendingTool"]:
+        return [cls(
+            description="Get a single pending import by ID.",
+            action_type=ImportGetPendingAction,
+            observation_type=ImportGetPendingObservation,
+            executor=ImportGetPendingExecutor(),
         )]
 
 # --- template_list ---

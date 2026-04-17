@@ -35,7 +35,6 @@ export const Step6_Apply: React.FC<Props> = ({ pendingImport, overrides, onPrev,
     setError(null)
     try {
       await applyImport(pendingImport.import_id, {
-        merge_strategy: 'append',
         classification_override: overrides.classificationOverride || undefined,
         glossary_overrides:
           Object.keys(overrides.glossaryOverrides).length > 0

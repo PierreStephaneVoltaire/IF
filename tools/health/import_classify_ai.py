@@ -57,7 +57,7 @@ async def generate_classification_report(rows: list[dict[str, Any]]) -> dict[str
     """Call the LLM to classify rows from a spreadsheet."""
     # Send a sample of rows (first 30) to save tokens
     sample = rows[:30]
-    user_msg = json.dumps({"rows_sample": sample}, indent=2)
+    user_msg = json.dumps({"rows_sample": sample}, indent=2, default=str)
 
     logger.info(f"[ImportClassifyAI] model={IMPORT_FAST_MODEL} payload_chars={len(user_msg)}")
 

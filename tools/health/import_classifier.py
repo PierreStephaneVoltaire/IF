@@ -9,6 +9,7 @@ import csv
 import hashlib
 import io
 import logging
+from datetime import datetime, date
 from typing import Any, Optional
 
 import openpyxl
@@ -21,32 +22,49 @@ def file_hash(file_bytes: bytes) -> str:
     return f"sha256:{h[:16]}"
 
 def extract_xlsx(file_bytes: bytes) -> tuple[list[dict[str, Any]], str]:
-    """Extract rows from the first non-empty sheet of an XLSX file."""
+    """Extract rows from all non-empty sheets of an XLSX file.
+
+    Each row gets a ``_sheet`` key so downstream consumers can distinguish
+    which sheet it came from.  Returns (rows, comma-separated sheet names).
+    """
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-    
-    # Find first sheet with data
-    sheet = wb.active
+
+    all_rows: list[dict[str, Any]] = []
+    sheet_names: list[str] = []
+
     for sname in wb.sheetnames:
-        if wb[sname].max_row > 1:
-            sheet = wb[sname]
-            break
-            
-    rows = []
-    headers = [str(cell.value).strip() if cell.value else f"col_{i}" for i, cell in enumerate(sheet[1])]
-    
-    for row_cells in sheet.iter_rows(min_row=2):
-        row_dict = {}
-        has_data = False
-        for i, cell in enumerate(row_cells):
-            if i < len(headers):
-                val = cell.value
-                row_dict[headers[i]] = val
-                if val is not None:
-                    has_data = True
-        if has_data:
-            rows.append(row_dict)
-            
-    return rows, sheet.title
+        sheet = wb[sname]
+        if sheet.max_row is None or sheet.max_row < 2:
+            continue
+
+        first_row = list(sheet.iter_rows(min_row=1, max_row=1))
+        if not first_row:
+            continue
+        headers = [
+            str(cell.value).strip() if cell.value else f"col_{i}"
+            for i, cell in enumerate(first_row[0])
+        ]
+
+        sheet_has_data = False
+        for row_cells in sheet.iter_rows(min_row=2):
+            row_dict: dict[str, Any] = {"_sheet": sname}
+            has_data = False
+            for i, cell in enumerate(row_cells):
+                if i < len(headers):
+                    val = cell.value
+                    if isinstance(val, (datetime, date)):
+                        val = val.isoformat()
+                    row_dict[headers[i]] = val
+                    if val is not None:
+                        has_data = True
+            if has_data:
+                all_rows.append(row_dict)
+                sheet_has_data = True
+
+        if sheet_has_data:
+            sheet_names.append(sname)
+
+    return all_rows, ", ".join(sheet_names) if sheet_names else "empty"
 
 def extract_csv(file_bytes: bytes) -> list[dict[str, Any]]:
     """Extract rows from a CSV file."""
@@ -88,5 +106,3 @@ def preclassify_rows(rows: list[dict[str, Any]]) -> Optional[str]:
         return "template"
 
     return None
-
-from datetime import datetime, date

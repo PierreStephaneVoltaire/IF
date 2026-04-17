@@ -5,7 +5,6 @@ import { Step1_Upload } from './Step1_Upload'
 import { Step2_Classification } from './Step2_Classification'
 import { Step3_GlossaryReview } from './Step3_GlossaryReview'
 import { Step4_Preview } from './Step4_Preview'
-import { Step5_ConflictResolve } from './Step5_ConflictResolve'
 import { Step6_Apply } from './Step6_Apply'
 import { AutoAddReview } from './AutoAddReview'
 import type { AutoAddDraft } from './AutoAddReview'
@@ -90,6 +89,9 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   }
 }
 
+// Steps: Upload(0) → Classify(1) → Glossary(2) → AutoAdd(3) → Preview(4) → Completed
+const STEP_COUNT = 5 // 5 rendered steps → Completed triggers at index 5
+
 export const ImportWizard: React.FC = () => {
   const [state, dispatch] = useReducer(wizardReducer, initialState)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -108,8 +110,11 @@ export const ImportWizard: React.FC = () => {
     }
   }, [searchParams])
 
-  const nextStep = () => dispatch({ type: 'SET_STEP', payload: state.activeStep + 1 })
-  const prevStep = () => dispatch({ type: 'SET_STEP', payload: state.activeStep - 1 })
+  const nextStep = () =>
+    dispatch({ type: 'SET_STEP', payload: state.activeStep + 1 })
+
+  const prevStep = () =>
+    dispatch({ type: 'SET_STEP', payload: state.activeStep - 1 })
 
   return (
     <Stack gap="lg">
@@ -156,14 +161,6 @@ export const ImportWizard: React.FC = () => {
 
           <Stepper.Step label="Preview" description="Review data">
             <Step4_Preview
-              pendingImport={state.pendingImport}
-              onNext={nextStep}
-              onPrev={prevStep}
-            />
-          </Stepper.Step>
-
-          <Stepper.Step label="Conflicts" description="Handle overlaps">
-            <Step5_ConflictResolve
               pendingImport={state.pendingImport}
               onNext={nextStep}
               onPrev={prevStep}
