@@ -52,11 +52,16 @@ export async function createSession(
   // Derive week_number and phase for the new session
   const weekMatch = session.week?.match(/W(\d+)/)
   const weekNumber = weekMatch ? parseInt(weekMatch[1], 10) : 1
+  const sessionBlock = session.block ?? 'current'
 
-  // Resolve phase from program phases
-  let resolvedPhase: Phase = { name: 'Unknown', intent: '', start_week: weekNumber, end_week: weekNumber }
+  // Resolve phase scoped to the session's block
+  let resolvedPhase: Phase = { name: 'Unknown', intent: '', start_week: weekNumber, end_week: weekNumber, block: sessionBlock }
   if (phases && phases.length > 0) {
-    const phase = phases.find(p => weekNumber >= p.start_week && weekNumber <= p.end_week)
+    const phase = phases.find(p =>
+      (p.block ?? 'current') === sessionBlock &&
+      weekNumber >= p.start_week &&
+      weekNumber <= p.end_week
+    )
     if (phase) resolvedPhase = phase
   }
 
@@ -64,7 +69,7 @@ export async function createSession(
     ...session,
     week_number: weekNumber,
     phase: resolvedPhase,
-    block: session.block ?? 'current',
+    block: sessionBlock,
   }
 
   sessions.push(newSession)

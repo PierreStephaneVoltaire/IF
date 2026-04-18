@@ -21,16 +21,29 @@ function parseWeekNumber(weekLabel: string | number | undefined): number {
   return isNaN(num) ? 0 : num
 }
 
+const DEFAULT_BLOCK = 'current'
+
+function phaseBlock(p: Phase): string {
+  return p.block ?? DEFAULT_BLOCK
+}
+
+function sessionBlock(s: Session): string {
+  return s.block ?? DEFAULT_BLOCK
+}
+
 /**
- * Resolve the correct Phase object for a given week number using program.phases.
- * No hardcoded phase names anywhere — purely data-driven from the JSON.
+ * Resolve the correct Phase object for a given week number, scoped to the session's block.
+ * Phases match only if they share the same block as the session (default "current").
+ * start_week/end_week are block-local (1 = first week of the block).
  */
-function resolvePhase(weekNum: number, phases: Phase[]): Phase {
+function resolvePhase(weekNum: number, block: string, phases: Phase[]): Phase {
   if (weekNum <= 0 || phases.length === 0) {
-    return { name: 'Unscheduled', intent: '', start_week: 0, end_week: 0 }
+    return { name: 'Unscheduled', intent: '', start_week: 0, end_week: 0, block }
   }
-  const phase = phases.find(p => weekNum >= p.start_week && weekNum <= p.end_week)
-  return phase ?? { name: 'Unscheduled', intent: '', start_week: weekNum, end_week: weekNum }
+  const phase = phases.find(
+    p => phaseBlock(p) === block && weekNum >= p.start_week && weekNum <= p.end_week
+  )
+  return phase ?? { name: 'Unscheduled', intent: '', start_week: weekNum, end_week: weekNum, block }
 }
 
 /**
@@ -47,13 +60,11 @@ export function transformProgram(item: Record<string, unknown>): Program {
     program.phases = []
   }
 
-  // Derive week_number and resolve phase for each session
+  // Derive week_number and resolve phase for each session within its block
   program.sessions = program.sessions.map(session => {
-    // Parse week number from session.week field
     const weekNum = parseWeekNumber(session.week as string | number | undefined)
-
-    // Resolve phase from the program's phases array based on week number
-    const phase = resolvePhase(weekNum, program.phases)
+    const block = sessionBlock(session)
+    const phase = resolvePhase(weekNum, block, program.phases)
 
     return {
       ...session,

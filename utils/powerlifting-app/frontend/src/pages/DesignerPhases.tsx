@@ -5,15 +5,30 @@ import { useProgramStore } from '@/store/programStore'
 import { useUiStore } from '@/store/uiStore'
 import {
   Paper, Title, Text, Group, Stack, SimpleGrid, Button, ActionIcon,
-  NumberInput, TextInput, Textarea, Modal, Box,
+  NumberInput, TextInput, Textarea, Modal, Box, Select,
 } from '@mantine/core'
 import type { Phase } from '@powerlifting/types'
+
+const DEFAULT_BLOCK = 'current'
 
 export default function DesignerPhases() {
   const { program, updatePhases } = useProgramStore()
   const { pushToast } = useUiStore()
 
-  const phases = program?.phases || []
+  const allPhases = program?.phases || []
+  const [selectedBlock, setSelectedBlock] = useState<string>(DEFAULT_BLOCK)
+
+  const blockOptions = useMemo(() => {
+    const blocks = new Set<string>([DEFAULT_BLOCK])
+    for (const p of allPhases) blocks.add(p.block ?? DEFAULT_BLOCK)
+    for (const s of program?.sessions ?? []) blocks.add(s.block ?? DEFAULT_BLOCK)
+    return Array.from(blocks).map(b => ({ value: b, label: b }))
+  }, [allPhases, program?.sessions])
+
+  const phases = useMemo(
+    () => allPhases.filter(p => (p.block ?? DEFAULT_BLOCK) === selectedBlock),
+    [allPhases, selectedBlock]
+  )
 
   const [editingPhase, setEditingPhase] = useState<Phase | null>(null)
   const [editingPhaseIndex, setEditingPhaseIndex] = useState<number>(-1)
@@ -74,6 +89,7 @@ export default function DesignerPhases() {
       target_rpe_max: phaseForm.target_rpe_max,
       days_per_week: phaseForm.days_per_week,
       notes: phaseForm.notes,
+      block: selectedBlock,
     }
 
     const overlaps = updatedPhases.some((phase, idx) => {
@@ -94,14 +110,14 @@ export default function DesignerPhases() {
 
     updatedPhases.sort((a, b) => a.start_week - b.start_week)
 
-    await updatePhases(updatedPhases)
+    await updatePhases(updatedPhases, selectedBlock)
     closePhaseEditor()
   }
 
   async function deletePhase(name: string) {
     if (!confirm(`Delete phase "${name}"?`)) return
     const updatedPhases = phases.filter(p => p.name !== name)
-    await updatePhases(updatedPhases)
+    await updatePhases(updatedPhases, selectedBlock)
   }
 
   return (
@@ -114,13 +130,24 @@ export default function DesignerPhases() {
           <Text c="dimmed">/</Text>
           <Title order={2}>Phase Design</Title>
         </Group>
-        <Button
-          size="sm"
-          leftSection={<Plus size={16} />}
-          onClick={() => openPhaseEditor()}
-        >
-          Add Phase
-        </Button>
+        <Group gap="xs">
+          <Select
+            size="sm"
+            value={selectedBlock}
+            onChange={(v) => setSelectedBlock(v || DEFAULT_BLOCK)}
+            data={blockOptions}
+            allowDeselect={false}
+            style={{ width: 160 }}
+            aria-label="Block"
+          />
+          <Button
+            size="sm"
+            leftSection={<Plus size={16} />}
+            onClick={() => openPhaseEditor()}
+          >
+            Add Phase
+          </Button>
+        </Group>
       </Group>
 
       {phases.length > 0 ? (

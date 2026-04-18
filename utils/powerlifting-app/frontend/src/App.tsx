@@ -51,8 +51,8 @@ export default function App() {
         <Route path="/supplements" element={<SupplementsPage />} />
         <Route path="/biometrics" element={<BiometricsPage />} />
         <Route path="/diet" element={<BiometricsPage />} />
-        <Route path="/competitions" element={<CompetitionsPage />} />
-        <Route path="/glossary" element={<GlossaryPage />} />
+        <Route path="/designer/competitions" element={<CompetitionsPage />} />
+        <Route path="/designer/glossary" element={<GlossaryPage />} />
         <Route path="/maxes" element={<MaxesPage />} />
         <Route path="/tools" element={<ToolsPage />} />
         <Route path="/tools/plate" element={<PlateCalculator />} />
@@ -62,9 +62,9 @@ export default function App() {
         <Route path="/tools/converter" element={<UnitConverter />} />
         <Route path="/tools/attempts" element={<AttemptSelector />} />
         <Route path="/videos" element={<VideosPage />} />
-        <Route path="/import" element={<ImportWizardPage />} />
-        <Route path="/templates" element={<TemplateLibraryPage />} />
-        <Route path="/templates/:sk" element={<TemplateDetailPage />} />
+        <Route path="/designer/import" element={<ImportWizardPage />} />
+        <Route path="/designer/templates" element={<TemplateLibraryPage />} />
+        <Route path="/designer/templates/:sk" element={<TemplateDetailPage />} />
         <Route path="/about" element={<AboutPage />} />
       </Routes>
     </AppShell>

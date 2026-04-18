@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Title, SimpleGrid, Button, Group, LoadingOverlay, Stack, Text } from '@mantine/core'
 import { Plus } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { fetchTemplates } from '../api/client'
 import { TemplateCard } from '../components/templates/TemplateCard'
 import type { TemplateListEntry } from '@powerlifting/types'
@@ -21,10 +21,16 @@ export default function TemplateLibraryPage() {
     <Stack gap="lg">
       <LoadingOverlay visible={loading} />
       <Group justify="space-between">
-        <Title order={2}>Template Library</Title>
+        <Group gap="xs">
+          <Text component={Link} to="/designer" size="sm" c="dimmed" style={{ textDecoration: 'none' }}>
+            Designer
+          </Text>
+          <Text c="dimmed">/</Text>
+          <Title order={2}>Template Library</Title>
+        </Group>
         <Button 
           leftSection={<Plus size={16} />} 
-          onClick={() => navigate('/import')}
+          onClick={() => navigate('/designer/import')}
         >
           Import Template
         </Button>

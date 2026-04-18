@@ -1,6 +1,7 @@
 import type { Phase, Session } from '@powerlifting/types'
 
-// Colors assigned by index in program.phases — adding/renaming phases requires no code change
+const DEFAULT_BLOCK = 'current'
+
 const PHASE_PALETTE = [
   '#94a3b8', // index 0 - slate
   '#3b82f6', // index 1 - blue
@@ -12,21 +13,35 @@ const PHASE_PALETTE = [
   '#eab308', // index 7 - yellow
 ]
 
+function phaseBlock(p: Phase): string {
+  return p.block ?? DEFAULT_BLOCK
+}
+
 /**
- * Get the color for a phase based on its position in the phases array.
- * This ensures colors are data-driven, not hardcoded by phase name.
+ * Filter phases to a single block (default "current").
+ */
+export function phasesForBlock(phases: Phase[], block: string = DEFAULT_BLOCK): Phase[] {
+  return phases.filter(p => phaseBlock(p) === block)
+}
+
+/**
+ * Color is indexed within the phase's own block so adding/removing phases
+ * in one block does not shift colors in another.
  */
 export function phaseColor(phase: Phase, allPhases: Phase[]): string {
-  const index = allPhases.findIndex(p => p.name === phase.name)
+  const block = phaseBlock(phase)
+  const blockPhases = allPhases.filter(p => phaseBlock(p) === block)
+  const index = blockPhases.findIndex(p => p.name === phase.name)
   return PHASE_PALETTE[index >= 0 ? index % PHASE_PALETTE.length : 0]
 }
 
 /**
- * Build a map from week number to Phase for O(1) lookup.
+ * Build a map from week number to Phase for O(1) lookup within a single block.
  */
-export function buildPhaseMap(phases: Phase[]): Map<number, Phase> {
+export function buildPhaseMap(phases: Phase[], block: string = DEFAULT_BLOCK): Map<number, Phase> {
   const map = new Map<number, Phase>()
   for (const phase of phases) {
+    if (phaseBlock(phase) !== block) continue
     for (let w = phase.start_week; w <= phase.end_week; w++) {
       map.set(w, phase)
     }
@@ -35,17 +50,24 @@ export function buildPhaseMap(phases: Phase[]): Map<number, Phase> {
 }
 
 /**
- * Filter sessions by phase name.
+ * Filter sessions by phase name, optionally scoped to a block.
  */
-export function sessionsByPhase(sessions: Session[], phaseName: string): Session[] {
-  return sessions.filter(s => s.phase.name === phaseName)
+export function sessionsByPhase(sessions: Session[], phaseName: string, block?: string): Session[] {
+  return sessions.filter(s => {
+    if (s.phase.name !== phaseName) return false
+    if (block === undefined) return true
+    return (s.block ?? DEFAULT_BLOCK) === block
+  })
 }
 
 /**
- * Get unique phase names from sessions.
+ * Get unique phase names from sessions, optionally scoped to a block.
  */
-export function uniquePhaseNames(sessions: Session[]): string[] {
+export function uniquePhaseNames(sessions: Session[], block?: string): string[] {
   const names = new Set<string>()
-  sessions.forEach(s => names.add(s.phase.name))
+  for (const s of sessions) {
+    if (block !== undefined && (s.block ?? DEFAULT_BLOCK) !== block) continue
+    names.add(s.phase.name)
+  }
   return Array.from(names)
 }

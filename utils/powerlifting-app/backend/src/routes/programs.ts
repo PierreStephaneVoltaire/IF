@@ -77,7 +77,7 @@ programsRouter.put('/:version/body-weight', async (req, res, next) => {
 // PUT /api/programs/:version/phases - Update phases
 programsRouter.put('/:version/phases', async (req, res, next) => {
   try {
-    const { phases } = req.body
+    const { phases, block } = req.body
 
     if (!Array.isArray(phases)) {
       return res.status(400).json({
@@ -86,7 +86,14 @@ programsRouter.put('/:version/phases', async (req, res, next) => {
       })
     }
 
-    await programController.updatePhases(req.params.version, phases)
+    if (block !== undefined && typeof block !== 'string') {
+      return res.status(400).json({
+        data: null,
+        error: 'block must be a string when provided',
+      })
+    }
+
+    await programController.updatePhases(req.params.version, phases, block)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)

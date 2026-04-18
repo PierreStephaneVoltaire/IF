@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { Search, Plus, X, Trash2, Edit2, RefreshCw, Info } from 'lucide-react'
 import {
   Stack,
@@ -317,7 +318,7 @@ export default function GlossaryPage() {
   async function handleBulkEstimateFatigue() {
     const toEstimate = exercises.filter(e => !e.fatigue_profile || e.fatigue_profile_source !== 'ai_estimated')
     if (toEstimate.length === 0) {
-      pushToast({ message: 'All exercises already have AI fatigue profiles', type: 'info' })
+      pushToast({ message: 'All exercises already have AI fatigue profiles', type: 'success' })
       return
     }
 
@@ -425,10 +426,16 @@ export default function GlossaryPage() {
   return (
     <Stack gap={24}>
       <Group justify="space-between">
-        <div>
-          <Text fz="h1" fw={700}>Exercise Glossary</Text>
-          <Text c="dimmed">Browse and manage exercise definitions</Text>
-        </div>
+        <Stack gap={0}>
+          <Group gap="xs">
+            <Text component={Link} to="/designer" size="sm" c="dimmed" style={{ textDecoration: 'none' }}>
+              Designer
+            </Text>
+            <Text c="dimmed">/</Text>
+            <Text fz="h1" fw={700}>Glossary</Text>
+          </Group>
+          <Text c="dimmed" size="sm" mt={4}>Browse and manage exercise definitions</Text>
+        </Stack>
         <Group>
           <Button
             variant="light"
@@ -675,7 +682,7 @@ export default function GlossaryPage() {
               {e1rmEstimate && (
                 <Stack gap={4} style={{ flex: 2 }}>
                   <Text size="xs" c="dimmed">Basis</Text>
-                  <Text size="sm" italic>{e1rmEstimate.basis}</Text>
+                  <Text size="sm" fs="italic">{e1rmEstimate.basis}</Text>
                 </Stack>
               )}
             </Group>

@@ -27,7 +27,7 @@ export const TemplateCard: React.FC<Props> = ({ template }) => {
       </Stack>
 
       <Group grow>
-        <Button variant="light" onClick={() => navigate(`/templates/${template.sk}`)}>
+        <Button variant="light" onClick={() => navigate(`/designer/templates/${template.sk}`)}>
           View Detail
         </Button>
       </Group>

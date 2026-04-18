@@ -224,13 +224,36 @@ export async function updateBodyWeight(
 }
 
 /**
- * Update phases
+ * Update phases.
+ * If `block` is provided: replaces only the phases scoped to that block, leaving
+ * other blocks' phases untouched. Incoming phases without a block are tagged with `block`.
+ * If `block` is omitted: full replace of the phases array; each phase keeps its own `block` field.
  */
 export async function updatePhases(
   version: string,
-  phases: Phase[]
+  phases: Phase[],
+  block?: string
 ): Promise<void> {
   const sk = await resolveVersionSk(version)
+
+  let nextPhases: Phase[]
+  if (block) {
+    const getCommand = new GetCommand({
+      TableName: TABLE,
+      Key: { pk: PK, sk },
+      ProjectionExpression: 'phases',
+    })
+    const result = await docClient.send(getCommand)
+    if (!result.Item) {
+      throw new AppError(`Program version ${version} not found`, 404)
+    }
+    const existing = (result.Item.phases ?? []) as Phase[]
+    const otherBlocks = existing.filter(p => (p.block ?? 'current') !== block)
+    const incoming = phases.map(p => ({ ...p, block: p.block ?? block }))
+    nextPhases = [...otherBlocks, ...incoming]
+  } else {
+    nextPhases = phases.map(p => ({ ...p, block: p.block ?? 'current' }))
+  }
 
   const command = new UpdateCommand({
     TableName: TABLE,
@@ -243,7 +266,7 @@ export async function updatePhases(
       '#meta': 'meta',
     },
     ExpressionAttributeValues: {
-      ':phases': phases,
+      ':phases': nextPhases,
       ':now': new Date().toISOString(),
     },
   })
@@ -279,8 +302,12 @@ export async function batchCreateWeek(
   const sessions = (result.Item.sessions ?? []) as Session[]
   const phases = (result.Item.phases ?? []) as Phase[]
 
-  const phase = phases.find(p => weekNumber >= p.start_week && weekNumber <= p.end_week)
-    ?? { name: phaseName, intent: '', start_week: weekNumber, end_week: weekNumber }
+  const targetBlock = 'current'
+  const phase = phases.find(p =>
+    (p.block ?? 'current') === targetBlock &&
+    weekNumber >= p.start_week &&
+    weekNumber <= p.end_week
+  ) ?? { name: phaseName, intent: '', start_week: weekNumber, end_week: weekNumber, block: targetBlock }
 
   const existingDates = new Set(sessions.map(s => s.date))
   for (const day of days) {

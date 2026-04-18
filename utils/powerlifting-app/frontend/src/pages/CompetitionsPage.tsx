@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Plus, Trash2, Save, Trophy, Target, CheckCircle } from 'lucide-react'
 import {
   Stack, Group, Text, Button, Paper, Badge, Modal, SimpleGrid,
-  TextInput, NumberInput, Select, Textarea, Accordion,
+  TextInput, NumberInput, Select, Textarea, Accordion, Title,
 } from '@mantine/core'
 import { DatePickerInput } from '@mantine/dates'
 import { useProgramStore } from '@/store/programStore'
@@ -160,8 +161,14 @@ export default function CompetitionsPage() {
     <Stack gap="md">
       <Group justify="space-between">
         <Stack gap={0}>
-          <Text fw={700} size="xl">Competitions</Text>
-          <Text c="dimmed" size="sm">
+          <Group gap="xs">
+            <Text component={Link} to="/designer" size="sm" c="dimmed" style={{ textDecoration: 'none' }}>
+              Designer
+            </Text>
+            <Text c="dimmed">/</Text>
+            <Title order={2}>Competitions</Title>
+          </Group>
+          <Text c="dimmed" size="sm" mt={4}>
             Track upcoming and past competitions with DOTS scores
           </Text>
         </Stack>

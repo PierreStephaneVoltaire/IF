@@ -1,6 +1,6 @@
 import { useReducer, useEffect } from 'react'
-import { Stepper, Paper, Title, Stack } from '@mantine/core'
-import { useSearchParams } from 'react-router-dom'
+import { Stepper, Paper, Title, Stack, Group, Text } from '@mantine/core'
+import { useSearchParams, Link } from 'react-router-dom'
 import { Step1_Upload } from './Step1_Upload'
 import { Step2_Classification } from './Step2_Classification'
 import { Step3_GlossaryReview } from './Step3_GlossaryReview'
@@ -118,7 +118,13 @@ export const ImportWizard: React.FC = () => {
 
   return (
     <Stack gap="lg">
-      <Title order={2}>Import Training Program</Title>
+      <Group gap="xs">
+        <Text component={Link} to="/designer" size="sm" c="dimmed" style={{ textDecoration: 'none' }}>
+          Designer
+        </Text>
+        <Text c="dimmed">/</Text>
+        <Title order={2}>Import Training Program</Title>
+      </Group>
 
       <Paper withBorder p="xl" radius="md">
         <Stepper active={state.activeStep} onStepClick={(step) => dispatch({ type: 'SET_STEP', payload: step })} breakpoint="sm">

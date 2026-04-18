@@ -201,9 +201,12 @@ export async function updateBodyWeight(
 
 export async function updatePhases(
   version: string,
-  phases: Phase[]
+  phases: Phase[],
+  block?: string
 ): Promise<void> {
-  await api.put(`/programs/${version}/phases`, { phases })
+  const body: { phases: Phase[]; block?: string } = { phases }
+  if (block !== undefined) body.block = block
+  await api.put(`/programs/${version}/phases`, body)
 }
 
 export async function addMaxEntry(

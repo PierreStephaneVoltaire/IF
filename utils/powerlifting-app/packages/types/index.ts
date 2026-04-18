@@ -90,6 +90,7 @@ export interface CaffeineStep {
 // ─── Phase ───────────────────────────────────────────────────────────────────
 
 // Phase is loaded directly from program.phases — never hardcoded in UI logic.
+// start_week/end_week are BLOCK-LOCAL (1 = first week of the phase's block).
 export interface Phase {
   name: string
   intent: string
@@ -99,6 +100,7 @@ export interface Phase {
   target_rpe_max?: number
   days_per_week?: number
   notes?: string
+  block?: string   // Training block identifier. Default: "current". Mirrors Session.block.
 }
 
 // ─── Competition ─────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from typing import List
 
 import discord
 from discord import app_commands
@@ -328,6 +329,7 @@ def setup_command_tree(
 STATIC_COMMAND_NAMES = {
     "end_convo", "pondering", "clear", "reflect", "gaps",
     "patterns", "opinions", "growth", "meta", "tools",
+    "import", "template", "program_archive",
 }
 
 # Discord hard-limits chat input commands per application/guild.
@@ -411,14 +413,20 @@ def _register_tool_commands(tree, used_names: set[str]):
                 logger.warning(f"[SlashCmd] Skipping duplicate tool command: {discord_name} -> {tool_name}")
                 continue
 
-            used_names.add(discord_name)
             description = (schema.get("description") or tool_name)[:100]
 
             tool_handler = _make_proxy_command_handler(tool_name, discord_name)
             tool_handler = app_commands.describe(
                 args="Optional JSON arguments e.g. {\"weeks\": 4}"
             )(tool_handler)
-            tree.command(name=discord_name, description=description)(tool_handler)
+            try:
+                tree.command(name=discord_name, description=description)(tool_handler)
+            except app_commands.errors.CommandAlreadyRegistered:
+                logger.warning(
+                    f"[SlashCmd] Tool command name collision, skipping: {discord_name} -> {tool_name}"
+                )
+                continue
+            used_names.add(discord_name)
 
 
 def _register_specialist_commands(tree, used_names: set[str]):
@@ -466,11 +474,17 @@ def _register_specialist_commands(tree, used_names: set[str]):
         if spec is None:
             continue
 
-        used_names.add(discord_name)
         description = spec.description[:100]
 
         specialist_handler = _make_proxy_command_handler(command_name, discord_name)
         specialist_handler = app_commands.describe(
             args="Task or question for the specialist"
         )(specialist_handler)
-        tree.command(name=discord_name, description=description)(specialist_handler)
+        try:
+            tree.command(name=discord_name, description=description)(specialist_handler)
+        except app_commands.errors.CommandAlreadyRegistered:
+            logger.warning(
+                f"[SlashCmd] Specialist command name collision, skipping: {discord_name} -> {slug}"
+            )
+            continue
+        used_names.add(discord_name)

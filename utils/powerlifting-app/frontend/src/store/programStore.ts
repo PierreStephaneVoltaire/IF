@@ -41,7 +41,7 @@ interface ProgramState {
     deadlift_kg: number
   }) => Promise<void>
   updateBodyWeight: (weightKg: number) => Promise<void>
-  updatePhases: (phases: Phase[]) => Promise<void>
+  updatePhases: (phases: Phase[], block?: string) => Promise<void>
   addWeightEntry: (entry: WeightEntry) => Promise<void>
   removeWeightEntry: (date: string) => Promise<void>
   forkVersion: (label?: string) => Promise<string>
@@ -268,16 +268,25 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
     })
   },
 
-  updatePhases: async (phases: Phase[]) => {
+  updatePhases: async (phases: Phase[], block?: string) => {
     const { version } = get()
-    await api.updatePhases(version, phases)
+    await api.updatePhases(version, phases, block)
 
     set((state) => {
       if (!state.program) return state
+      const existing = state.program.phases ?? []
+      let nextPhases: Phase[]
+      if (block) {
+        const other = existing.filter(p => (p.block ?? 'current') !== block)
+        const incoming = phases.map(p => ({ ...p, block: p.block ?? block }))
+        nextPhases = [...other, ...incoming]
+      } else {
+        nextPhases = phases.map(p => ({ ...p, block: p.block ?? 'current' }))
+      }
       return {
         program: {
           ...state.program,
-          phases,
+          phases: nextPhases,
         },
       }
     })

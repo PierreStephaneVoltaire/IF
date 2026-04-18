@@ -64,7 +64,14 @@ def create_discord_listener(
 
         from channels.slash_commands import setup_command_tree, should_sync
 
-        setup_command_tree(tree, channel_id, conversation_id, webhook_id)
+        try:
+            setup_command_tree(tree, channel_id, conversation_id, webhook_id)
+        except Exception as e:
+            logger.error(
+                f"Slash command setup failed for {webhook_id} "
+                f"(messages will still be received): {e}",
+                exc_info=True,
+            )
 
         @client.event
         async def on_ready():
@@ -79,11 +86,24 @@ def create_discord_listener(
                 if should_sync(client.user.id, guild.id):
                     try:
                         tree.copy_global_to(guild=guild)
-                        await tree.sync(guild=guild)
-                        logger.info(
-                            f"Synced slash commands to guild "
-                            f"{guild.name} ({guild.id})"
-                        )
+                        
+                        existing_commands = await tree.fetch_commands(guild=guild)
+                        existing_names = {cmd.name for cmd in existing_commands}
+                        
+                        local_commands = tree.get_commands(guild=guild)
+                        local_names = {cmd.name for cmd in local_commands}
+                        
+                        if existing_names != local_names:
+                            await tree.sync(guild=guild)
+                            logger.info(
+                                f"Synced slash commands to guild "
+                                f"{guild.name} ({guild.id})"
+                            )
+                        else:
+                            logger.info(
+                                f"Slash commands already registered for guild "
+                                f"{guild.name} ({guild.id}), skipping sync"
+                            )
                     except discord.HTTPException as e:
                         logger.error(
                             f"Failed to sync slash commands to "

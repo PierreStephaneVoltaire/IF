@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom'
 import { Card, SimpleGrid, Text, UnstyledButton, Group, Stack } from '@mantine/core'
-import { GitBranch, ClipboardList } from 'lucide-react'
+import { GitBranch, ClipboardList, BookOpen, Trophy, Import } from 'lucide-react'
 
 export default function DesignerLanding() {
   return (
     <Stack gap="md">
       <Text size="xl" fw={700}>Program Designer</Text>
 
-      <SimpleGrid cols={{ base: 1, sm: 2 }}>
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
         <UnstyledButton component={Link} to="/designer/phases">
           <Card withBorder shadow="sm" padding="lg">
             <Stack justify="space-between" h="100%">
@@ -38,6 +38,74 @@ export default function DesignerLanding() {
                 </Text>
               </div>
               <Text size="xs" c="blue" mt="md">Open session designer →</Text>
+            </Stack>
+          </Card>
+        </UnstyledButton>
+
+        <UnstyledButton component={Link} to="/designer/templates">
+          <Card withBorder shadow="sm" padding="lg">
+            <Stack justify="space-between" h="100%">
+              <div>
+                <Group gap="sm" mb="sm">
+                  <BookOpen size={24} />
+                  <Text size="lg" fw={600}>Plan Templates</Text>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Manage reusable training templates. Create, apply, or evaluate program structures.
+                </Text>
+              </div>
+              <Text size="xs" c="blue" mt="md">Open template library →</Text>
+            </Stack>
+          </Card>
+        </UnstyledButton>
+
+        <UnstyledButton component={Link} to="/designer/import">
+          <Card withBorder shadow="sm" padding="lg">
+            <Stack justify="space-between" h="100%">
+              <div>
+                <Group gap="sm" mb="sm">
+                  <Import size={24} />
+                  <Text size="lg" fw={600}>Import</Text>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Import logs, template spreadsheets, or custom formats into your program.
+                </Text>
+              </div>
+              <Text size="xs" c="blue" mt="md">Open import wizard →</Text>
+            </Stack>
+          </Card>
+        </UnstyledButton>
+
+        <UnstyledButton component={Link} to="/designer/glossary">
+          <Card withBorder shadow="sm" padding="lg">
+            <Stack justify="space-between" h="100%">
+              <div>
+                <Group gap="sm" mb="sm">
+                  <BookOpen size={24} />
+                  <Text size="lg" fw={600}>Glossary</Text>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Manage exercise names, primary muscle groups, categories, and video links.
+                </Text>
+              </div>
+              <Text size="xs" c="blue" mt="md">Open glossary →</Text>
+            </Stack>
+          </Card>
+        </UnstyledButton>
+
+        <UnstyledButton component={Link} to="/designer/competitions">
+          <Card withBorder shadow="sm" padding="lg">
+            <Stack justify="space-between" h="100%">
+              <div>
+                <Group gap="sm" mb="sm">
+                  <Trophy size={24} />
+                  <Text size="lg" fw={600}>Competitions</Text>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Plan your competitions, track results, and project attempt selections.
+                </Text>
+              </div>
+              <Text size="xs" c="blue" mt="md">Open competitions →</Text>
             </Stack>
           </Card>
         </UnstyledButton>
