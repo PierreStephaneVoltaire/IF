@@ -57,7 +57,7 @@ spec:
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; frame-ancestors 'self';" always;
         limit_req zone=portal_limit burst=20 nodelay;
   YAML
 }
@@ -80,7 +80,7 @@ spec:
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; frame-ancestors 'self';" always;
         limit_req zone=portal_limit burst=20 nodelay;
   YAML
 }
@@ -102,7 +102,7 @@ spec:
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://fastapi.tiangolo.com; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://fastapi.tiangolo.com; font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; frame-ancestors 'self';" always;
         limit_req zone=portal_limit burst=20 nodelay;
   YAML
 }
@@ -337,42 +337,6 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /app/fitness
-      filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: gateway.nginx.org
-            kind: SnippetsFilter
-            name: security-only
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /
-      backendRefs:
-        - name: ${kubernetes_service.portal_frontends["powerlifting-app"].metadata[0].name}
-          port: 3001
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /fitness
-      filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: gateway.nginx.org
-            kind: SnippetsFilter
-            name: security-only
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /
-      backendRefs:
-        - name: ${kubernetes_service.portal_backends["powerlifting-app"].metadata[0].name}
-          port: 3005
-    - matches:
-        - path:
-            type: PathPrefix
             value: /agent
       filters:
         - type: ExtensionRef
@@ -427,5 +391,56 @@ spec:
         - name: grafana
           namespace: ${kubernetes_namespace.monitoring.metadata[0].name}
           port: 3000
+  YAML
+}
+
+# ─── Per-domain HTTPRoutes (one per utils/*/domain.yaml with a domain field) ──
+# Each app with a domain.yaml gets its own subdomain route through the tunnel.
+# Auth is handled at the Cloudflare edge; only the security-only snippet applies here.
+
+resource "kubectl_manifest" "route_per_domain" {
+  for_each = local.public_apps
+
+  depends_on = [kubectl_manifest.snippets_security_only]
+
+  yaml_body = <<-YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: domain-${each.key}
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  parentRefs:
+    - name: ${var.gateway_name}
+      namespace: ${var.gateway_namespace}
+  hostnames:
+    - ${each.value.domain}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: security-only
+      backendRefs:
+        - name: ${each.key}-backend
+          port: ${local.portal_backend_ports[each.key]}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: security-only
+      backendRefs:
+        - name: ${each.key}-frontend
+          port: 3001
   YAML
 }

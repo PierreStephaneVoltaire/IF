@@ -29,3 +29,9 @@ templateRouter.post('/:sk/apply', templateController.applyTemplate)
 
 // POST /api/templates/:sk/apply/confirm
 templateRouter.post('/:sk/apply/confirm', templateController.confirmApplyTemplate)
+
+// POST /api/templates/blank
+templateRouter.post('/blank', templateController.createBlankTemplate)
+
+// PUT /api/templates/:sk
+templateRouter.put('/:sk', templateController.updateTemplate)

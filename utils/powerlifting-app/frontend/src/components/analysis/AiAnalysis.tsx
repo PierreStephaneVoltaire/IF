@@ -54,7 +54,7 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
     setCorrError(null);
     setCorrReport(null);
     import('@/api/analytics').then(({ fetchCorrelationReport }) => {
-      const apiBase = import.meta.env.VITE_API_BASE_URL || '/fitness/api';
+      const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
       fetch(`${apiBase}/analytics/correlation?weeks=${effectiveWeeks}&block=current&refresh=true`)
         .then(r => r.json())
         .then(body => {

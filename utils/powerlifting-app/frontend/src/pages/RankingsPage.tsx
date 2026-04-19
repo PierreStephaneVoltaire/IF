@@ -17,6 +17,8 @@ import {
 } from '@mantine/core'
 import { AlertCircle, Clock } from 'lucide-react'
 import { fetchStatCategories, analyzeStats } from '@/api/client'
+import { calculateDots } from '@/utils/dots'
+import { useSettingsStore } from '@/store/settingsStore'
 
 interface FilterCategories {
   federations: string[]
@@ -27,6 +29,9 @@ interface FilterCategories {
   age_classes: string[]
   event_types: string[]
   years: number[]
+  country_federations?: Record<string, string[]>
+  country_regions?: Record<string, string[]>
+  region_federations?: Record<string, string[]>
 }
 
 interface StatResult {
@@ -44,6 +49,7 @@ interface StatResult {
 
 interface AnalysisResponse {
   dataset_size: number
+  computed: { total_kg: number | null; dots: number | null }
   analysis: {
     Squat?: StatResult
     Bench?: StatResult
@@ -54,6 +60,9 @@ interface AnalysisResponse {
 }
 
 export default function RankingsPage() {
+  const { sex: settingsSex } = useSettingsStore()
+  const sexCode = settingsSex === 'female' ? 'F' : 'M'
+
   const [categories, setCategories] = useState<FilterCategories | null>(null)
   const [loading, setLoading] = useState(false)
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
@@ -75,8 +84,41 @@ export default function RankingsPage() {
   const [squat, setSquat] = useState<number | ''>('')
   const [bench, setBench] = useState<number | ''>('')
   const [deadlift, setDeadlift] = useState<number | ''>('')
-  const [total, setTotal] = useState<number | ''>('')
-  const [dots, setDots] = useState<number | ''>('')
+  const [bodyweight, setBodyweight] = useState<number | ''>('')
+
+  // Derived live preview
+  const derivedTotal =
+    squat !== '' && bench !== '' && deadlift !== ''
+      ? Number(squat) + Number(bench) + Number(deadlift)
+      : null
+  const derivedDots =
+    derivedTotal !== null && bodyweight !== ''
+      ? calculateDots(derivedTotal, Number(bodyweight), settingsSex)
+      : null
+
+  // Narrowed filter options based on selection
+  const federationOptions: string[] = region
+    ? (categories?.region_federations?.[region] ?? [])
+    : country
+      ? (categories?.country_federations?.[country] ?? [])
+      : (categories?.federations ?? [])
+
+  const regionOptions: string[] = country
+    ? (categories?.country_regions?.[country] ?? [])
+    : (categories?.regions ?? [])
+
+  // Clear stale federation/region when narrowed list no longer contains them
+  useEffect(() => {
+    if (federation && !federationOptions.includes(federation)) {
+      setFederation(null)
+    }
+  }, [federation, federationOptions])
+
+  useEffect(() => {
+    if (region && !regionOptions.includes(region)) {
+      setRegion(null)
+    }
+  }, [region, regionOptions])
 
   const loadCategories = useCallback(() => {
     fetchStatCategories()
@@ -110,8 +152,8 @@ export default function RankingsPage() {
         squat: squat !== '' ? squat : undefined,
         bench: bench !== '' ? bench : undefined,
         deadlift: deadlift !== '' ? deadlift : undefined,
-        total: total !== '' ? total : undefined,
-        dots: dots !== '' ? dots : undefined,
+        bodyweight: bodyweight !== '' ? bodyweight : undefined,
+        sex_code: sexCode,
         federation: federation || undefined,
         country: country || undefined,
         region: region || undefined,
@@ -176,20 +218,29 @@ export default function RankingsPage() {
                 clearable
               />
               <Select
-                label="Federation"
-                placeholder="All"
-                data={categories?.federations || []}
-                value={federation}
-                onChange={setFederation}
-                searchable
-                clearable
-              />
-              <Select
                 label="Country"
                 placeholder="All"
                 data={categories?.countries || []}
                 value={country}
                 onChange={setCountry}
+                searchable
+                clearable
+              />
+              <Select
+                label="Region / State"
+                placeholder="All"
+                data={regionOptions}
+                value={region}
+                onChange={setRegion}
+                searchable
+                clearable
+              />
+              <Select
+                label="Federation"
+                placeholder="All"
+                data={federationOptions}
+                value={federation}
+                onChange={setFederation}
                 searchable
                 clearable
               />
@@ -248,20 +299,23 @@ export default function RankingsPage() {
                   min={0}
                 />
                 <NumberInput
-                  label="Total (kg)"
-                  placeholder="e.g. 520"
-                  value={total}
-                  onChange={(v) => setTotal(typeof v === 'number' ? v : '')}
-                  min={0}
-                />
-                <NumberInput
-                  label="DOTS"
-                  placeholder="e.g. 350"
-                  value={dots}
-                  onChange={(v) => setDots(typeof v === 'number' ? v : '')}
+                  label="Bodyweight (kg)"
+                  placeholder="e.g. 83"
+                  value={bodyweight}
+                  onChange={(v) => setBodyweight(typeof v === 'number' ? v : '')}
                   min={0}
                 />
               </SimpleGrid>
+
+              {(derivedTotal !== null || derivedDots !== null) && (
+                <Text size="sm" c="dimmed" mt="sm">
+                  {derivedTotal !== null && <>Total: <strong>{derivedTotal} kg</strong></>}
+                  {derivedTotal !== null && derivedDots !== null && ' · '}
+                  {derivedDots !== null && <>DOTS: <strong>{derivedDots}</strong></>}
+                  {' '}(using {settingsSex} coefficients from settings)
+                </Text>
+              )}
+
               <Button
                 onClick={handleAnalyze}
                 loading={loading}
@@ -274,7 +328,7 @@ export default function RankingsPage() {
             </Paper>
 
             {analysis && (
-              <Paper withBorder p="md" radius="md" bg="var(--mantine-color-gray-0)">
+              <Paper withBorder p="md" radius="md">
                 <Title order={4} mb="xs">
                   Analysis Results ({analysis.dataset_size.toLocaleString()} lifters found)
                 </Title>
@@ -287,19 +341,19 @@ export default function RankingsPage() {
                       <Box key={lift}>
                         <Text fw={600} size="lg">{lift} Ranking</Text>
                         <SimpleGrid cols={{ base: 2, sm: 4 }} mt="xs">
-                          <Paper withBorder p="sm" radius="md" ta="center" bg="white">
+                          <Paper withBorder p="sm" radius="md" ta="center">
                             <Text c="dimmed" size="sm">Percentile</Text>
-                            <Text fw={700} size="xl">{stat.percentile}%</Text>
+                            <Text fw={700} size="xl">{stat.percentile}</Text>
                           </Paper>
-                          <Paper withBorder p="sm" radius="md" ta="center" bg="white">
+                          <Paper withBorder p="sm" radius="md" ta="center">
                             <Text c="dimmed" size="sm">Rank</Text>
                             <Text fw={700} size="xl">#{stat.rank}</Text>
                           </Paper>
-                          <Paper withBorder p="sm" radius="md" ta="center" bg="white">
+                          <Paper withBorder p="sm" radius="md" ta="center">
                             <Text c="dimmed" size="sm">Beat / Tied</Text>
                             <Text fw={700} size="xl">{stat.beat} / {stat.tied}</Text>
                           </Paper>
-                          <Paper withBorder p="sm" radius="md" ta="center" bg="white">
+                          <Paper withBorder p="sm" radius="md" ta="center">
                             <Text c="dimmed" size="sm">% of Max</Text>
                             <Text fw={700} size="xl">{stat.pct_of_max}%</Text>
                           </Paper>

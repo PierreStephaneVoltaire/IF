@@ -184,6 +184,26 @@ presets:
       should I lend money to a friend, my manager acts differently since the reorg, someone
       spent their savings irresponsibly. Always non-technical. True catch-all.
 
+  research:
+    models:
+      - perplexity/sonar-pro-search
+      - perplexity/sonar-reasoning
+      - anthropic/claude-sonnet-4.6:online
+      - openai/gpt-5.4:online
+      - anthropic/claude-opus-4.6:online
+    sort_by: price_asc
+    when: >
+      Up-to-date information gathering and synthesis where training-data staleness is a risk.
+      Covers: medical/scientific research, current documentation, API specs, vendor pricing,
+      news, market data, legal/regulatory updates, competitive intel, "latest" or "recent"
+      queries on any topic. Uses native web search — Perplexity Sonar or OpenRouter :online
+      suffix — no separate search MCP needed. Also the right preset for the research_assistant
+      specialist, which couples native search with the local supplement_research PDF corpus.
+      NOT for: static codebase reasoning → code.
+      NOT for: local supplement PDF corpus only → call supplement_search directly from the
+      research_assistant.
+      NOT for: computed financial data → finance.
+
   pondering:
     models:
       - qwen/qwen3-max-thinking

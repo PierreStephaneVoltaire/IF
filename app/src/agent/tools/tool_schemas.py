@@ -27,10 +27,87 @@ GET_CURRENT_DATE_SCHEMA = {
     }
 }
 
+PLAN_APPEND_SCHEMA = {
+    "name": "plan_append",
+    "description": (
+        "Append markdown content to a plan file under {sandbox}/plans/. "
+        "Creates the file if missing. Use checkbox state convention: "
+        "'- [ ]' open, '- [x]' done, '- [!]' needs adjustment, '- [?]' blocked. "
+        "Subagents emit '- [!]' entries to signal the main agent that a step needs revisiting."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Plan file path relative to plans/ (e.g. 'supplement-bucket'). '.md' auto-appended."
+            },
+            "content": {"type": "string", "description": "Markdown content to append."},
+            "prepend_timestamp": {
+                "type": "boolean",
+                "description": "If true (default), prefix the block with a UTC timestamp comment.",
+                "default": True,
+            },
+        },
+        "required": ["path", "content"],
+    },
+}
+
+PLAN_READ_SCHEMA = {
+    "name": "plan_read",
+    "description": (
+        "Read a plan file under {sandbox}/plans/. "
+        "Returns content up to max_lines; longer files are truncated with an ellipsis marker."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Plan file path relative to plans/."},
+            "max_lines": {
+                "type": "integer",
+                "description": "Maximum lines to return before truncating.",
+                "default": 500,
+            },
+        },
+        "required": ["path"],
+    },
+}
+
+PLAN_LIST_SCHEMA = {
+    "name": "plan_list",
+    "description": "List all plan files under {sandbox}/plans/ with size and last-modified time.",
+    "parameters": {"type": "object", "properties": {}, "required": []},
+}
+
+PLAN_GREP_SCHEMA = {
+    "name": "plan_grep",
+    "description": (
+        "Regex-search across plan files under {sandbox}/plans/. "
+        "Returns matching lines as 'file:lineno:content'. "
+        "Use pattern '- \\[!\\]' for adjustment flags or '- \\[ \\]' for open items."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "description": "Regex pattern to search for."},
+            "path": {
+                "type": "string",
+                "description": "Optional: limit search to a single plan file. Empty = search all.",
+                "default": "",
+            },
+        },
+        "required": ["pattern"],
+    },
+}
+
 # System tool schemas that specialists can reference by snake_case name
 _SYSTEM_TOOL_SCHEMAS: Dict[str, dict] = {
     "terminal_execute": TERMINAL_EXECUTE_SCHEMA,
     "get_current_date": GET_CURRENT_DATE_SCHEMA,
+    "plan_append": PLAN_APPEND_SCHEMA,
+    "plan_read": PLAN_READ_SCHEMA,
+    "plan_list": PLAN_LIST_SCHEMA,
+    "plan_grep": PLAN_GREP_SCHEMA,
 }
 
 

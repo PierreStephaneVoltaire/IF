@@ -33,6 +33,33 @@ export async function createTemplateFromBlock(req: Request, res: Response) {
   }
 }
 
+export async function createBlankTemplate(req: Request, res: Response) {
+  const { name, description, estimated_weeks, days_per_week } = req.body
+  try {
+    const result = await invokeToolDirect('template_create_blank', {
+      name,
+      description: description ?? '',
+      estimated_weeks: estimated_weeks ?? 4,
+      days_per_week: days_per_week ?? 3,
+    })
+    res.status(201).json(result)
+  } catch (err: any) {
+    throw new AppError(`Template creation failed: ${err.message}`, 502)
+  }
+}
+
+export async function updateTemplate(req: Request, res: Response) {
+  const { sk } = req.params
+  const template = req.body
+  try {
+    const result = await invokeToolDirect('template_update', { sk, template })
+    res.json(result)
+  } catch (err: any) {
+    if (err.message?.includes('not found')) throw new AppError('Template not found', 404)
+    throw new AppError(`Update failed: ${err.message}`, 502)
+  }
+}
+
 export async function copyTemplate(req: Request, res: Response) {
   const { sk } = req.params
   const { new_name } = req.body

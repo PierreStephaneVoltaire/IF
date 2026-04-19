@@ -16,7 +16,7 @@ exportRouter.get('/xlsx', async (_req, res) => {
         'X-Direct-Tool-Invoke': 'true',
       },
       body: JSON.stringify({
-        model: 'if-prototype-a1',  // must match API_MODEL_NAME in config
+        model: 'if-prototype',  // must match API_MODEL_NAME in config
         chat_id: EXPORT_CHAT_ID,
         messages: [{ role: 'user', content: '/export_program_history {}' }],
       }),

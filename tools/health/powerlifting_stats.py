@@ -134,12 +134,47 @@ def load_data() -> pd.DataFrame:
 
 
 # =============================================================================
+# DOTS formula (mirrors frontend/src/utils/dots.ts)
+# =============================================================================
+
+_DOTS_COEFFS: Dict[str, tuple] = {
+    "M": (-307.75076, 24.0900756, -0.1918759221, 0.0007391293, -0.000001093),
+    "F": (-57.96288,  13.6175032, -0.1126655495, 0.0005158568, -0.0000010706),
+}
+
+
+def compute_dots(total_kg: float, bw_kg: float, sex_code: str) -> Optional[float]:
+    coeffs = _DOTS_COEFFS.get(sex_code)
+    if not coeffs or bw_kg <= 0 or total_kg <= 0:
+        return None
+    a, b, c, d, e = coeffs
+    denom = a + b*bw_kg + c*bw_kg**2 + d*bw_kg**3 + e*bw_kg**4
+    if denom == 0:
+        return None
+    return round(500 / denom * total_kg, 2)
+
+
+# =============================================================================
 # Query helpers
 # =============================================================================
 
-def get_filter_categories(df: pd.DataFrame) -> Dict[str, List[Any]]:
-    """Retrieves unique categories to fill UI frontend dropdowns."""
-    options = {}
+def _group_unique(df: pd.DataFrame, group_col: str, value_col: str) -> Dict[str, List[str]]:
+    if group_col not in df.columns or value_col not in df.columns:
+        return {}
+    sub = df[[group_col, value_col]].dropna()
+    sub = sub[
+        (sub[group_col].astype(str).str.strip() != "") &
+        (sub[value_col].astype(str).str.strip() != "")
+    ]
+    return {
+        str(k): sorted({str(v) for v in g[value_col].unique()})
+        for k, g in sub.groupby(group_col, observed=True)
+    }
+
+
+def get_filter_categories(df: pd.DataFrame) -> Dict[str, Any]:
+    """Retrieves unique categories and groupby maps to populate UI dropdowns."""
+    options: Dict[str, Any] = {}
 
     categorical_cols = {
         "federations": "Federation",
@@ -158,6 +193,10 @@ def get_filter_categories(df: pd.DataFrame) -> Dict[str, List[Any]]:
 
     if "Year" in df.columns:
         options["years"] = sorted([int(x) for x in df["Year"].unique() if pd.notna(x)], reverse=True)
+
+    options["country_federations"] = _group_unique(df, "MeetCountry", "Federation")
+    options["country_regions"]     = _group_unique(df, "MeetCountry", "State")
+    options["region_federations"]  = _group_unique(df, "State", "Federation")
 
     return options
 
@@ -217,7 +256,7 @@ def rank_value(value: float, series: pd.Series) -> dict:
         "rank": n - beat,
         "beat": beat,
         "tied": tied,
-        "percentile": round(float(beat / n * 100), 2),
+        "percentile": int(round(float(beat / n * 100))),
         "pct_of_max": round(value / arr.max() * 100, 2) if arr.max() > 0 else 0,
         "pct_of_mean": round(value / arr.mean() * 100, 2) if arr.mean() > 0 else 0,
         "median": round(float(np.median(arr)), 2),
@@ -231,24 +270,36 @@ def analyze_stats(
     squat_kg: Optional[float] = None,
     bench_kg: Optional[float] = None,
     deadlift_kg: Optional[float] = None,
-    total_kg: Optional[float] = None,
-    dots: Optional[float] = None,
+    bodyweight_kg: Optional[float] = None,
+    sex_code: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Returns statistical analysis comparing the user's lifts to the filtered dataset."""
-    results = {
+    """Returns statistical analysis comparing the user's lifts to the filtered dataset.
+
+    Total and DOTS are derived from inputs — callers should not supply them directly.
+    """
+    total_kg: Optional[float] = None
+    if squat_kg and bench_kg and deadlift_kg:
+        total_kg = squat_kg + bench_kg + deadlift_kg
+
+    dots_val: Optional[float] = None
+    if total_kg and bodyweight_kg and sex_code:
+        dots_val = compute_dots(total_kg, bodyweight_kg, sex_code)
+
+    results: Dict[str, Any] = {
         "dataset_size": len(filtered_df),
-        "analysis": {}
+        "computed": {"total_kg": total_kg, "dots": dots_val},
+        "analysis": {},
     }
 
     if len(filtered_df) == 0:
         return results
 
     metrics = [
-        ("Squat", squat_kg, "Best3SquatKg"),
-        ("Bench", bench_kg, "Best3BenchKg"),
+        ("Squat",    squat_kg,    "Best3SquatKg"),
+        ("Bench",    bench_kg,    "Best3BenchKg"),
         ("Deadlift", deadlift_kg, "Best3DeadliftKg"),
-        ("Total", total_kg, "TotalKg"),
-        ("Dots", dots, "Dots"),
+        ("Total",    total_kg,    "TotalKg"),
+        ("Dots",     dots_val,    "Dots"),
     ]
 
     for label, user_val, col in metrics:

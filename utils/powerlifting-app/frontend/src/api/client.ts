@@ -473,6 +473,20 @@ export async function confirmApplyTemplate(sk: string, body: {
   return res.data
 }
 
+export async function createBlankTemplate(body: {
+  name: string
+  description?: string
+  estimated_weeks?: number
+  days_per_week?: number
+}): Promise<{ sk: string }> {
+  const res = await api.post('/templates/blank', body)
+  return res.data
+}
+
+export async function updateTemplate(sk: string, template: Template): Promise<void> {
+  await api.put(`/templates/${sk}`, template)
+}
+
 // ─── Archive & e1RM ─────────────────────────────────────────────────────────
 
 export async function archiveProgram(version: string): Promise<void> {

@@ -353,7 +353,7 @@ export default function GlossaryPage() {
       return
     }
 
-    if (!confirm(`Estimate e1RM for ${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
+    if (!window.confirm(`Estimate e1RM for $${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
 
     setIsBulkEstimatingE1rm(true)
     setBulkProgress({ current: 0, total: toEstimate.length })

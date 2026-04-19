@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Stack, Group, Title, Button, Text, Badge, Divider, LoadingOverlay } from '@mantine/core'
+import { Edit2 } from 'lucide-react'
 import { Template, AiTemplateEvaluation } from '@powerlifting/types'
 import { SessionGrid } from './SessionGrid'
 import { EvaluationPanel } from './EvaluationPanel'
@@ -62,6 +63,13 @@ export const TemplateDetail: React.FC<Props> = ({ template, onRefresh }) => {
         </Stack>
         
         <Group>
+          <Button
+            variant="default"
+            leftSection={<Edit2 size={16} />}
+            onClick={() => navigate(`/designer/templates/${encodeURIComponent(template.sk)}/edit`)}
+          >
+            Edit
+          </Button>
           <Button size="lg" onClick={() => setApplyModalOpened(true)}>Apply Template</Button>
         </Group>
       </Group>
