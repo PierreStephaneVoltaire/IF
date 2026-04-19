@@ -27,7 +27,7 @@ User message (Discord / OpenWebUI / HTTP API)
       → Response → Chunker → Delivery back to platform
 ```
 
-The orchestrator never sees all 40 domains of instructions at once. It classifies intent, picks a specialist, condenses the context, and hands off. Each specialist receives only:
+The orchestrator never sees all specialist domains at once. It classifies intent, picks a specialist, condenses the context, and hands off. Each specialist receives only:
 
 - Its own system prompt template
 - Directives filtered to its domain (health specialist gets health directives, not finance ones)

@@ -443,6 +443,7 @@ Assignment per specialist via `specialist.yaml` `mcp_servers` field.
 | `WORKSPACE_BASE` | `/app/src/data/conversations` | Per-conversation working directories |
 | `TOOL_OUTPUT_CHAR_LIMIT` | 200000 | Max tool output chars |
 | `EXTERNAL_TOOLS_PATH` | `""` | Override for external tool plugins path |
+| `EXTERNAL_TOOLS_FALLBACK` | `project_root/tools/` | Fallback path if EXTERNAL_TOOLS_PATH is empty |
 | `SPECIALISTS_PATH` | `project_root/specialists/` | Specialists directory |
 | `SKILLS_PATH` | `project_root/skills/` | AgentSkills directory |
 | `IF_MODELS_TABLE_NAME` | `if-models` | DynamoDB table for model registry |
