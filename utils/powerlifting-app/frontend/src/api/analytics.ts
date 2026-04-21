@@ -156,7 +156,7 @@ export interface ProgramEvaluationReport {
 }
 
 export async function fetchProgramEvaluation(refresh = false): Promise<ProgramEvaluationReport> {
-  const apiBase = import.meta.env.VITE_API_BASE_URL || '/fitness/api'
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '/api'
   const res = await fetch(`${apiBase}/analytics/program-evaluation?refresh=${refresh}`, {
     headers: { 'Content-Type': 'application/json' },
   })

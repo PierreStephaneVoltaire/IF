@@ -45,6 +45,8 @@ tools:
   - glossary_set_e1rm
   - glossary_estimate_e1rm
   - glossary_estimate_fatigue
+  # Supplement research (cite evidence when logging supplement changes)
+  - supplement_search
 mcp_servers: []
 directive_types:
   - health

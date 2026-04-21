@@ -55,3 +55,4 @@ mcp_servers: []
 directive_types:
   - health
   - competition
+context_builder: "agent.specialist_context.powerlifting_coach:build_context"

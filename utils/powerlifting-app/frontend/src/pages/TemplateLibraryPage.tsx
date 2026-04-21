@@ -28,12 +28,21 @@ export default function TemplateLibraryPage() {
           <Text c="dimmed">/</Text>
           <Title order={2}>Template Library</Title>
         </Group>
-        <Button 
-          leftSection={<Plus size={16} />} 
-          onClick={() => navigate('/designer/import')}
-        >
-          Import Template
-        </Button>
+        <Group gap="xs">
+          <Button
+            variant="default"
+            leftSection={<Plus size={16} />}
+            onClick={() => navigate('/designer/templates/new')}
+          >
+            Create Template
+          </Button>
+          <Button
+            leftSection={<Plus size={16} />}
+            onClick={() => navigate('/designer/import')}
+          >
+            Import Template
+          </Button>
+        </Group>
       </Group>
 
       {templates.length > 0 ? (

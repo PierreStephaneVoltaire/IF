@@ -15,7 +15,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="auto">
       <Notifications position="top-right" />
-      <BrowserRouter basename="/app/fitness">
+      <BrowserRouter basename="/">
         <App />
       </BrowserRouter> 
     </MantineProvider> 

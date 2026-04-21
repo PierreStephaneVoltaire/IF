@@ -232,3 +232,44 @@ class TemplateStore:
         return await asyncio.get_running_loop().run_in_executor(
             None, lambda: self.copy_template_sync(sk, new_name)
         )
+
+    def update_template_sync(self, sk: str, template: dict) -> None:
+        existing = self.get_template_sync(sk)
+        if not existing:
+            raise TemplateNotFoundError(f"Template not found: {sk}")
+
+        now = datetime.now(timezone.utc).isoformat()
+        template_item = copy.deepcopy(template)
+        if "meta" not in template_item:
+            template_item["meta"] = {}
+
+        template_item["meta"]["updated_at"] = now
+        template_item["meta"]["created_at"] = existing["meta"].get("created_at", now)
+
+        template_item["pk"] = self._pk
+        template_item["sk"] = sk
+        self.table.put_item(Item=self._floats_to_decimals(template_item))
+
+        # Update index
+        templates = self.list_templates_sync(include_archived=True)
+        for t in templates:
+            if t["sk"] == sk:
+                t["name"] = template_item["meta"].get("name", t.get("name"))
+                t["estimated_weeks"] = template_item["meta"].get("estimated_weeks", t.get("estimated_weeks"))
+                t["days_per_week"] = template_item["meta"].get("days_per_week", t.get("days_per_week"))
+                t["archived"] = template_item["meta"].get("archived", t.get("archived", False))
+                t["updated_at"] = now
+                break
+
+        index_item = {
+            "pk": self._pk,
+            "sk": self.INDEX_SK,
+            "templates": templates,
+            "updated_at": now,
+        }
+        self.table.put_item(Item=self._floats_to_decimals(index_item))
+
+    async def update_template(self, sk: str, template: dict) -> None:
+        await asyncio.get_running_loop().run_in_executor(
+            None, lambda: self.update_template_sync(sk, template)
+        )

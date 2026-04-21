@@ -413,7 +413,7 @@ export default function AnalysisPage() {
           />
           <Button
             component="a"
-            href="/fitness/api/export/xlsx"
+            href="/api/export/xlsx"
             download="program_history.xlsx"
             size="sm"
             leftSection={<Download size={16} />}
@@ -758,7 +758,7 @@ export default function AnalysisPage() {
                       <Table.Th ta="right">Squat</Table.Th>
                       <Table.Th ta="right">Bench</Table.Th>
                       <Table.Th ta="right">Deadlift</Table.Th>
-                      <Table.Th ta="right">Total</Table.Th>
+                      <Table.Th ta="right" visibleFrom="sm">Total</Table.Th>
                       <Table.Th ta="right">DOTS</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
@@ -769,7 +769,7 @@ export default function AnalysisPage() {
                         <Table.Td ta="right">{r.squat !== null ? toDisplayUnit(r.squat, unit).toFixed(1) : '--'}</Table.Td>
                         <Table.Td ta="right">{r.bench !== null ? toDisplayUnit(r.bench, unit).toFixed(1) : '--'}</Table.Td>
                         <Table.Td ta="right">{r.deadlift !== null ? toDisplayUnit(r.deadlift, unit).toFixed(1) : '--'}</Table.Td>
-                        <Table.Td ta="right" fw={500}>{r.total !== null ? toDisplayUnit(r.total, unit).toFixed(1) : '--'}</Table.Td>
+                        <Table.Td ta="right" fw={500} visibleFrom="sm">{r.total !== null ? toDisplayUnit(r.total, unit).toFixed(1) : '--'}</Table.Td>
                         <Table.Td ta="right" fw={700} c="blue">{r.dots?.toFixed(2) ?? '--'}</Table.Td>
                       </Table.Tr>
                     ))}

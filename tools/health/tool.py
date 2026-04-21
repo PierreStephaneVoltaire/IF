@@ -1309,6 +1309,100 @@ register_tool("HealthUpdateCurrentMaxesTool", HealthUpdateCurrentMaxesTool)
 
 # --- export_program_history ---
 
+def _build_analysis_bundle(program: dict, sessions: list[dict]) -> dict:
+    """Assemble the analysis bundle threaded into the XLSX export.
+
+    Uses cached AI reports (no forced regeneration) and the pure weekly_analysis
+    function. Missing pieces degrade gracefully — each piece is independently
+    wrapped so one failure doesn't cascade.
+    """
+    import logging
+
+    from analytics import weekly_analysis
+    from config import IF_HEALTH_TABLE_NAME
+    from prompt_context import summarize_lift_profiles
+
+    logger = logging.getLogger(__name__)
+
+    bundle: dict[str, Any] = {
+        "weekly": None,
+        "correlation": None,
+        "program_evaluation": None,
+        "lift_profiles": summarize_lift_profiles(program.get("lift_profiles")),
+    }
+
+    try:
+        glossary = _get_glossary_sync(IF_HEALTH_TABLE_NAME)
+    except Exception as e:
+        logger.warning("export: glossary fetch failed (%s); continuing without it", e)
+        glossary = []
+
+    try:
+        from datetime import datetime
+        block_sessions = [s for s in sessions if s.get("block", "current") == "current" and s.get("date")]
+        if not block_sessions:
+            effective_weeks = 4
+        else:
+            block_sessions.sort(key=lambda x: x["date"])
+            first = datetime.fromisoformat(block_sessions[0]["date"][:10])
+            last = datetime.fromisoformat(block_sessions[-1]["date"][:10])
+            diff_days = abs((last - first).days)
+            # Frontend uses Math.ceil(diff / 7), so days//7 + 1 or similar
+            # Since frontend does: diffTime / (7 days), then Math.ceil
+            # Let's match frontend more closely:
+            effective_weeks = max(int((diff_days / 7) + 0.999), 4)
+    except Exception as e:
+        logger.warning("export: effective_weeks calculation failed: %s", e)
+        effective_weeks = 4
+
+    try:
+        bundle["weekly"] = weekly_analysis(
+            program, sessions, weeks=effective_weeks, block="current", glossary=glossary,
+        )
+    except Exception as e:
+        logger.warning("export: weekly_analysis failed: %s", e)
+
+    try:
+        bundle["correlation"] = _read_cached_correlation(weeks=effective_weeks)
+    except Exception as e:
+        logger.warning("export: correlation cache read failed: %s", e)
+
+    try:
+        from core import health_program_evaluation
+        bundle["program_evaluation"] = _run_async(health_program_evaluation(refresh=False))
+    except Exception as e:
+        logger.warning("export: program_evaluation read failed: %s", e)
+
+    return bundle
+
+
+def _read_cached_correlation(weeks: int = 4) -> dict | None:
+    """Return the cached correlation report for the current window, or None."""
+    from datetime import datetime, timedelta
+
+    import boto3
+
+    from config import IF_HEALTH_TABLE_NAME
+
+    today = datetime.utcnow().date()
+    raw_cutoff = today - timedelta(weeks=weeks)
+    window_start = (raw_cutoff - timedelta(days=raw_cutoff.weekday())).isoformat()
+    cache_sk = f"corr_report#{window_start}_{weeks}w"
+
+    table = boto3.resource("dynamodb", region_name="ca-central-1").Table(IF_HEALTH_TABLE_NAME)
+    item = table.get_item(Key={"pk": "operator", "sk": cache_sk}).get("Item")
+    if not item or not item.get("report"):
+        return None
+
+    report = item["report"]
+    if isinstance(report, dict):
+        report["cached"] = True
+        report["generated_at"] = item.get("generated_at", "")
+        report["window_start"] = window_start
+        report["weeks"] = weeks
+    return _sanitize_decimals(report)
+
+
 class ExportProgramHistoryAction(Action):
     format: str = Field(default="xlsx", description="Export format (only 'xlsx' supported)")
 
@@ -1328,6 +1422,7 @@ class ExportProgramHistoryExecutor(ToolExecutor[ExportProgramHistoryAction, Expo
         from export import build_program_xlsx
 
         program = _run_async(_get_store().get_program())
+        sessions = program.get("sessions", []) if isinstance(program, dict) else []
         filename = "program_history.xlsx"
 
         if self.chat_id:
@@ -1340,7 +1435,8 @@ class ExportProgramHistoryExecutor(ToolExecutor[ExportProgramHistoryAction, Expo
             work_dir = tempfile.gettempdir()
 
         out_path = os.path.join(work_dir, filename)
-        build_program_xlsx(program, out_path)
+        analysis = _build_analysis_bundle(program, sessions)
+        build_program_xlsx(program, out_path, analysis=analysis)
 
         return ExportProgramHistoryObservation.from_text(
             f"Exported program history to {filename}.\n"
@@ -1355,7 +1451,10 @@ class ExportProgramHistoryTool(ToolDefinition[ExportProgramHistoryAction, Export
         return [cls(
             description=(
                 "Export the full training program to an Excel (.xlsx) file. "
-                "The file contains sheets for Meta, Current Maxes, Phases, Sessions, Exercises, and Competitions. "
+                "Sheets: Meta, Current Maxes, Phases, Sessions, Exercises, Competitions, "
+                "Lift Profiles, Weekly Analysis, Per-Lift Metrics, ROI Correlation, Program Evaluation. "
+                "The three AI-driven sheets (Weekly Analysis, ROI Correlation, Program Evaluation) use cached values — "
+                "refresh them on the Analysis page first if you want the freshest data. "
                 "After calling this tool, emit a FILES: line to deliver the file."
             ),
             action_type=ExportProgramHistoryAction,
@@ -1778,9 +1877,9 @@ class AnalyzePowerliftingStatsAction(Action):
     squat_kg: Optional[float] = Field(default=None, description="User's best squat in kg")
     bench_kg: Optional[float] = Field(default=None, description="User's best bench in kg")
     deadlift_kg: Optional[float] = Field(default=None, description="User's best deadlift in kg")
-    total_kg: Optional[float] = Field(default=None, description="User's best total in kg")
-    dots: Optional[float] = Field(default=None, description="User's best DOTS score")
-    
+    bodyweight_kg: Optional[float] = Field(default=None, description="User's bodyweight in kg (used to compute DOTS)")
+    sex_code: Optional[str] = Field(default=None, description="User's sex for DOTS calculation: 'M' or 'F'")
+
     federation: Optional[str] = Field(default=None, description="Filter by federation")
     country: Optional[str] = Field(default=None, description="Filter by country")
     region: Optional[str] = Field(default=None, description="Filter by region/state")
@@ -1822,8 +1921,8 @@ class AnalyzePowerliftingStatsExecutor(ToolExecutor[AnalyzePowerliftingStatsActi
             squat_kg=action.squat_kg,
             bench_kg=action.bench_kg,
             deadlift_kg=action.deadlift_kg,
-            total_kg=action.total_kg,
-            dots=action.dots,
+            bodyweight_kg=action.bodyweight_kg,
+            sex_code=action.sex_code,
         )
         return AnalyzePowerliftingStatsObservation.from_text(_format_result(stats))
 
@@ -1911,6 +2010,8 @@ def get_tools() -> List[Tool]:
         Tool(name="TemplateCopyTool"),
         Tool(name="TemplateArchiveTool"),
         Tool(name="TemplateUnarchiveTool"),
+        Tool(name="TemplateCreateBlankTool"),
+        Tool(name="TemplateUpdateTool"),
         Tool(name="ProgramArchiveTool"),
         Tool(name="ProgramUnarchiveTool"),
         Tool(name="GlossaryAddTool"),
@@ -1932,7 +2033,11 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
     return {
         "export_program_history": {
             "name": "export_program_history",
-            "description": "Export the full training program to an Excel (.xlsx) file.",
+            "description": (
+                "Export the full training program to an Excel (.xlsx) file, including "
+                "Lift Profiles, Weekly Analysis, Per-Lift Metrics, ROI Correlation, "
+                "and Program Evaluation sheets alongside the base program sheets."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -2256,7 +2361,9 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
             "name": "export_program_history",
             "description": (
                 "Export the full training program to an Excel (.xlsx) file. "
-                "Contains sheets for Meta, Current Maxes, Phases, Sessions, Exercises, and Competitions. "
+                "Sheets: Meta, Current Maxes, Phases, Sessions, Exercises, Competitions, "
+                "Lift Profiles, Weekly Analysis, Per-Lift Metrics, ROI Correlation, Program Evaluation. "
+                "The three AI-driven sheets use cached values; refresh on the Analysis page first if needed. "
                 "After calling, emit a FILES: line to deliver the file."
             ),
             "parameters": {
@@ -2563,6 +2670,32 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "required": ["sk"],
             },
         },
+        "template_create_blank": {
+            "name": "template_create_blank",
+            "description": "Create a new blank training template with no sessions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string", "default": ""},
+                    "estimated_weeks": {"type": "integer", "default": 4},
+                    "days_per_week": {"type": "integer", "default": 3},
+                },
+                "required": ["name"],
+            },
+        },
+        "template_update": {
+            "name": "template_update",
+            "description": "Overwrite an existing training template in place (metadata, phases, sessions).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sk": {"type": "string"},
+                    "template": {"type": "object"},
+                },
+                "required": ["sk", "template"],
+            },
+        },
         "program_archive": {
             "name": "program_archive",
             "description": "Archive a program version.",
@@ -2661,8 +2794,8 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                     "squat_kg": {"type": "number"},
                     "bench_kg": {"type": "number"},
                     "deadlift_kg": {"type": "number"},
-                    "total_kg": {"type": "number"},
-                    "dots": {"type": "number"},
+                    "bodyweight_kg": {"type": "number"},
+                    "sex_code": {"type": "string", "description": "User's sex for DOTS: 'M' or 'F'"},
                     "federation": {"type": "string"},
                     "country": {"type": "string"},
                     "region": {"type": "string"},
@@ -2704,9 +2837,11 @@ def _do_export(args):
     os.makedirs(out_dir, exist_ok=True)
 
     program = _run_async(_get_store().get_program())
+    sessions = program.get("sessions", []) if isinstance(program, dict) else []
     filename = "program_history.xlsx"
     out_path = os.path.join(out_dir, filename)
-    build_program_xlsx(program, out_path)
+    analysis = _build_analysis_bundle(program, sessions)
+    build_program_xlsx(program, out_path, analysis=analysis)
 
     payload = json.dumps({
         "filename": filename,
@@ -2876,8 +3011,8 @@ def _do_analyze_powerlifting_stats(args):
         squat_kg=args.get("squat_kg"),
         bench_kg=args.get("bench_kg"),
         deadlift_kg=args.get("deadlift_kg"),
-        total_kg=args.get("total_kg"),
-        dots=args.get("dots"),
+        bodyweight_kg=args.get("bodyweight_kg"),
+        sex_code=args.get("sex_code"),
     )
 
 
@@ -2934,6 +3069,8 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         template_copy,
         template_archive,
         template_unarchive,
+        template_create_blank,
+        template_update,
         program_archive,
         program_unarchive,
         glossary_add,
@@ -2999,6 +3136,8 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "template_copy": lambda: template_copy(args["sk"], args["new_name"]),
         "template_archive": lambda: template_archive(args["sk"]),
         "template_unarchive": lambda: template_unarchive(args["sk"]),
+        "template_create_blank": lambda: template_create_blank(args["name"], args.get("description", ""), args.get("estimated_weeks", 4), args.get("days_per_week", 3)),
+        "template_update": lambda: template_update(args["sk"], args["template"]),
         "program_archive": lambda: program_archive(args["sk"]),
         "program_unarchive": lambda: program_unarchive(args["sk"]),
         "glossary_add": lambda: glossary_add(args["exercise"]),
@@ -3411,6 +3550,65 @@ class TemplateUnarchiveTool(ToolDefinition[TemplateUnarchiveAction, TemplateUnar
             action_type=TemplateUnarchiveAction,
             observation_type=TemplateUnarchiveObservation,
             executor=TemplateUnarchiveExecutor(),
+        )]
+
+# --- template_create_blank ---
+
+class TemplateCreateBlankAction(Action):
+    name: str = Field(description="Name for the new template")
+    description: str = Field(default="", description="Optional description")
+    estimated_weeks: int = Field(default=4, description="Estimated program duration in weeks")
+    days_per_week: int = Field(default=3, description="Training days per week")
+
+
+class TemplateCreateBlankObservation(Observation):
+    pass
+
+
+class TemplateCreateBlankExecutor(ToolExecutor[TemplateCreateBlankAction, TemplateCreateBlankObservation]):
+    def __call__(self, action: TemplateCreateBlankAction, conversation=None) -> TemplateCreateBlankObservation:
+        from core import template_create_blank
+        result = _run_async(template_create_blank(action.name, action.description, action.estimated_weeks, action.days_per_week))
+        return TemplateCreateBlankObservation.from_text(_format_result(result))
+
+
+class TemplateCreateBlankTool(ToolDefinition[TemplateCreateBlankAction, TemplateCreateBlankObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateCreateBlankTool"]:
+        return [cls(
+            description="Create a new blank training template with no sessions.",
+            action_type=TemplateCreateBlankAction,
+            observation_type=TemplateCreateBlankObservation,
+            executor=TemplateCreateBlankExecutor(),
+        )]
+
+
+# --- template_update ---
+
+class TemplateUpdateAction(Action):
+    sk: str = Field(description="SK of the template to update (e.g. template#v001)")
+    template: Dict = Field(description="Full template object to write back")
+
+
+class TemplateUpdateObservation(Observation):
+    pass
+
+
+class TemplateUpdateExecutor(ToolExecutor[TemplateUpdateAction, TemplateUpdateObservation]):
+    def __call__(self, action: TemplateUpdateAction, conversation=None) -> TemplateUpdateObservation:
+        from core import template_update
+        result = _run_async(template_update(action.sk, action.template))
+        return TemplateUpdateObservation.from_text(_format_result(result))
+
+
+class TemplateUpdateTool(ToolDefinition[TemplateUpdateAction, TemplateUpdateObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["TemplateUpdateTool"]:
+        return [cls(
+            description="Overwrite an existing training template in place (metadata, phases, sessions).",
+            action_type=TemplateUpdateAction,
+            observation_type=TemplateUpdateObservation,
+            executor=TemplateUpdateExecutor(),
         )]
 
 # --- program_archive ---

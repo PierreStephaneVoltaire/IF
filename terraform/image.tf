@@ -95,7 +95,7 @@ locals {
     "finance-portal"   = "/finance"
     "diary-portal"     = "/diary"
     "proposals-portal" = "/proposals"
-    "powerlifting-app" = "/fitness/api"
+    "powerlifting-app" = "/api"
   }
 }
 

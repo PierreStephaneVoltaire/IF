@@ -20,6 +20,8 @@ import AboutPage from '@/pages/AboutPage'
 import ImportWizardPage from '@/pages/ImportWizardPage'
 import TemplateLibraryPage from '@/pages/TemplateLibraryPage'
 import TemplateDetailPage from '@/pages/TemplateDetailPage'
+import TemplateCreatePage from '@/pages/TemplateCreatePage'
+import TemplateEditPage from '@/pages/TemplateEditPage'
 import RankingsPage from '@/pages/RankingsPage'
 
 // Tool Components
@@ -64,6 +66,8 @@ export default function App() {
         <Route path="/videos" element={<VideosPage />} />
         <Route path="/designer/import" element={<ImportWizardPage />} />
         <Route path="/designer/templates" element={<TemplateLibraryPage />} />
+        <Route path="/designer/templates/new" element={<TemplateCreatePage />} />
+        <Route path="/designer/templates/:sk/edit" element={<TemplateEditPage />} />
         <Route path="/designer/templates/:sk" element={<TemplateDetailPage />} />
         <Route path="/about" element={<AboutPage />} />
       </Routes>

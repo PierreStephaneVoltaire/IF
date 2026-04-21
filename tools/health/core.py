@@ -1791,6 +1791,61 @@ async def template_copy(sk: str, new_name: str) -> dict:
     new_sk = await template_store.copy_template(sk, new_name)
     return {"status": "copied", "new_sk": new_sk}
 
+async def template_create_blank(name: str, description: str, estimated_weeks: int, days_per_week: int) -> dict:
+    template = {
+        "meta": {
+            "name": name,
+            "description": description,
+            "estimated_weeks": estimated_weeks,
+            "days_per_week": days_per_week,
+            "archived": False,
+        },
+        "phases": [],
+        "sessions": [],
+        "glossary_resolution": {
+            "resolved": [],
+            "unresolved": [],
+            "auto_added": [],
+            "resolution_status": "resolved",
+        },
+        "required_maxes": [],
+    }
+    template_store = _get_template_store()
+    sk = await template_store.put_template(template)
+    return {"status": "created", "sk": sk}
+
+async def template_update(sk: str, template: dict) -> dict:
+    template = copy.deepcopy(template)
+    sessions = template.get("sessions", [])
+    resolved = set()
+    unresolved = set()
+    for session in sessions:
+        for exercise in session.get("exercises", []):
+            gid = exercise.get("glossary_id")
+            if gid:
+                resolved.add(gid)
+            else:
+                name = exercise.get("name", "")
+                if name:
+                    unresolved.add(name)
+
+    if unresolved:
+        resolution_status = "partial" if resolved else "unresolved"
+    else:
+        resolution_status = "resolved"
+
+    template["glossary_resolution"] = {
+        "resolved": sorted(resolved),
+        "unresolved": sorted(unresolved),
+        "auto_added": [],
+        "resolution_status": resolution_status,
+    }
+    template["required_maxes"] = sorted(resolved)
+
+    template_store = _get_template_store()
+    await template_store.update_template(sk, template)
+    return {"status": "updated", "sk": sk}
+
 async def template_archive(sk: str) -> dict:
     template_store = _get_template_store()
     await template_store.archive_template(sk)

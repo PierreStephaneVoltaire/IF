@@ -195,8 +195,8 @@ export default function AboutPage() {
                   <Badge variant="light">Formula ID: {f.id}</Badge>
                 </Group>
 
-                <Paper withBorder p="md" bg="var(--mantine-color-gray-0)" style={{ borderLeft: '4px solid var(--mantine-color-blue-filled)' }}>
-                  <Text ff="monospace" style={{ whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
+                <Paper withBorder p="md" bg="var(--mantine-color-gray-0)" style={{ borderLeft: '4px solid var(--mantine-color-blue-filled)', overflowX: 'auto' }}>
+                  <Text ff="monospace" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.9rem' }}>
                     {f.formula}
                   </Text>
                 </Paper>
@@ -204,12 +204,12 @@ export default function AboutPage() {
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
                   <div>
                     <Text fw={600} size="xs" tt="uppercase" c="dimmed" mb={8}>Variables & Parameters</Text>
-                    <Table fz="xs">
+                    <Table fz="xs" style={{ tableLayout: 'fixed' }}>
                       <Table.Tbody>
                         {f.variables.map((v) => (
                           <Table.Tr key={v.name}>
-                            <Table.Td fw={700} w={80}>{v.name}</Table.Td>
-                            <Table.Td>{v.description}</Table.Td>
+                            <Table.Td fw={700} w="35%" style={{ wordBreak: 'break-word' }}>{v.name}</Table.Td>
+                            <Table.Td style={{ wordBreak: 'break-word' }}>{v.description}</Table.Td>
                           </Table.Tr>
                         ))}
                       </Table.Tbody>

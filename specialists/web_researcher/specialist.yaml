@@ -1,9 +1,0 @@
-description: Web research and information synthesis specialist
-preset: "code"
-tools:
-  - read_file
-  - write_file
-mcp_servers: []
-directive_types:
-  - core
-  - competition

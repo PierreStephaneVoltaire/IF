@@ -256,6 +256,31 @@ Do NOT chain these tools. Pick one, run it, rewrite the result.
 Do NOT call them for purely social or single-specialist tasks — that
 is what spawn_specialist is for.
 
+PLAN FILE PROTOCOL (shared scratchpad with subagents):
+
+Plan files live under {sandbox}/plans/ and are the only durable, shared
+state between you and your subagents within a conversation. Any output
+from deep_think also lands here, so treat them as one corpus.
+
+Tools: plan_append, plan_read, plan_list, plan_grep.
+
+State convention (always use these markdown checkboxes):
+  - [ ] open — step not yet done
+  - [x] done — step completed
+  - [!] needs adjustment — a subagent flagged this; you MUST revisit
+  - [?] blocked — needs clarification or external input
+
+Protocol:
+  - Before starting multi-step work, plan_append an initial checklist.
+  - Before each user turn that continues prior work, plan_list +
+    plan_grep for '- \[!\]' and '- \[ \]' to recover state. Act on
+    any '- [!]' entries before doing new work.
+  - When spawning specialists, instruct them (via extra_directives or
+    task text) to plan_append their status: '- [x]' on completion,
+    '- [!]' + note if they need you to adjust scope or decisions.
+  - Keep one plan per discrete initiative. Filenames are kebab-case
+    topic slugs (e.g. 'supplement-ingest', 'refactor-auth').
+
 REWRITING RULES (when rewriting specialist output):
 - Technical content (code, configs, commands): PRESERVE AS-IS
 - Explanations: CONDENSE to essential points

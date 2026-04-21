@@ -41,6 +41,7 @@ from agent.tools.session_reflection import get_session_reflection_tools
 from agent.tools.directive_tools import get_directive_tools
 from agent.tools.context_tools import get_context_tools
 from agent.tools.subagents import get_subagent_tools
+from agent.tools.planfiles import get_planfile_tools
 from agent.tools.media_tools import get_media_tools
 from agent.tools import file_tools  # registers read_file, write_file, search_files
 from agent.tools.discovery_tools import get_discovery_tools
@@ -448,6 +449,8 @@ async def execute_agent(
         tools.extend(get_context_tools())
         # Get subagent tools (list_specialists, condense_intent, spawn_specialist, deep_think)
         tools.extend(get_subagent_tools(session.conversation_id))
+        # Get plan-file tools (shared scratchpad with subagents)
+        tools.extend(get_planfile_tools(session.conversation_id))
         # Get media tools (on-demand file/image analysis)
         tools.extend(get_media_tools(session.conversation_id))
         # Create shared HTTP client for orchestrator tools (connection pooling)

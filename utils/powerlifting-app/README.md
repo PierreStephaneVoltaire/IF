@@ -1,109 +1,64 @@
-# Powerlifting Peaking Portal
+# Powerlifting App
 
-A single-athlete portal for preparing powerlifting competitions. Quantifies readiness,
-peaking trajectory, and attempt selection from the data produced by actual training.
-
-## Why it exists
-
-Peaking is hard to judge by feel — a block that feels smooth can still under-prepare,
-and a block that feels brutal can still land a PR total. This portal closes that loop:
-every planned session, logged session, RPE entry, bodyweight, and attempt is fed into
-deterministic formulas and narrow AI reasoning tools so the decision to push, hold, or
-back off is grounded in numbers that came from the athlete&apos;s own training history.
-
-## Data captured (and why we don&apos;t capture more)
-
-Per-meal macros, per-night sleep scores, continuous heart rate, and minute-level HRV
-are intentionally out of scope. The signal-to-friction ratio of that kind of daily
-micro-logging is poor for a working athlete. Instead:
-
-- **Sessions** — sets, reps, kilograms, RPE, failed-set flags, session bodyweight,
-  session RPE, session notes.
-- **Competitions** — federation, weight class, date, planned attempts, results.
-- **Lift profiles** — per-lift style, sticking points, primary muscle, volume tolerance.
-- **Body metrics** — height, bodyweight, arm wingspan, leg length.
-- **Diet notes** — average daily calories, macros, sleep hours, water, consistency flag,
-  recorded per note window (not per meal or per night).
-- **Supplements** — stack and doses (stored; not yet fed to AI — waiting on the planned
-  Examine.com integration to map items to evidence before reaching the models).
-
-## Mathematical methodology
-
-Every surfaced metric comes from a documented formula. Full definitions and thresholds
-live in [`frontend/src/constants/formulaDescriptions.ts`](frontend/src/constants/formulaDescriptions.ts)
-and render on the About page. Five families:
-
-- **Scoring** — DOTS (sex-specific polynomial), estimated 1RM (RTS-based RPE table or
-  conservative rep-percentage fallback; 90th percentile over qualifying sessions).
-- **Progression** — Theil-Sen slope of e1RM over effective training weeks (deloads and
-  break weeks excluded); diminishing-returns projection to competition date.
-- **Stress** — INOL, ACWR (acute:chronic workload ratio), fatigue index (failed-set
-  ratio × 0.40 + fatigue spike × 0.35 + RPE stress × 0.25), RPE drift.
-- **Quality** — specificity ratio, relative-intensity distribution, compliance.
-- **Peaking** — attempt selection (projected comp max × attempt percentages, rounded to
-  2.5 kg), readiness score (weighted composite of fatigue, RPE drift, bodyweight
-  stability, miss rate, compliance).
-
-## AI reasoning layer
-
-Three narrow tools. Each receives only the subset of data it needs.
-
-- **Fatigue profile estimation** — per-exercise axial / neural / peripheral / systemic
-  estimates. Receives exercise metadata plus optional athlete body metrics and lift
-  profile for leverage-aware adjustments.
-- **Correlation analysis** — weekly e1RM trends, accessory volumes, lift profiles,
-  athlete measurements, and per-accessory ROI (pearson r between weekly volume and
-  average intensity). Reports anatomically-plausible accessory-to-lift correlations only.
-- **Program evaluation** — full current block with phases, competitions, completed and
-  planned sessions, lift profiles, measurements, diet context, supplements (for now),
-  weekly analytics report, and exercise ROI. Produces a conservative stance
-  (continue / monitor / adjust / critical) with specific data-cited reasoning.
-
-## Known limitations
-
-- **Chronobiology** — training-time vs meet-flight timing is not modeled.
-- **Supplementation** — stored, not analyzed. Examine.com integration pending.
-- **Diet and sleep granularity** — averages only, by design. Examine.com-backed nutrition
-  reasoning pending.
-- **Biometric precision** — limb lengths are AI context only; they don&apos;t enter the
-  rigid fatigue formulas.
-- **No video analysis** — bar path, rep consistency, and technique regressions are not
-  captured. Velocity loss is inferred from RPE and failed sets.
-- **Single-athlete scope** — calibrations and defaults are tuned for one athlete.
-  Population normalization is roadmap, not current.
-
-## Roadmap
-
-- **Excel workout import** — upload a filled training log and run the same analysis on it.
-- **Excel program import** — upload a program spec (phases, templates, exercises) to seed
-  a new block without hand-entry.
-- **Examine.com supplement reasoning** — map each supplement to its evidence base before
-  exposing it to the AI tools, so the models reason about substantiated effects rather
-  than raw names.
-- **Examine.com nutrition reasoning** — same approach for calories, macros, sleep, and
-  water.
-- **OpenPowerlifting benchmarking** — score readiness and projected totals against
-  federation, weight class, age, and sex cohorts.
-- **Age and sex normalization** — adjust e1RM and DOTS trajectories against age-graded
-  curves and sex-specific recovery profiles.
-- **In-session adjustments** — mid-session load or set corrections triggered by acute
-  fatigue, failed sets, or injury flags.
+Training tracking and analytics portal. Data is managed by the `powerlifting_coach` specialist (reads) and the `health_write` specialist (writes). Stores to DynamoDB `if-health`.
 
 ## Tech stack
 
-- **Frontend** — React 19 + Vite, TypeScript, Mantine, Lucide, Zustand, Recharts.
-- **Backend** — Node.js Express (DynamoDB CRUD + S3 video), Python tools (statistical
-  engine + AI reasoning).
-- **Storage** — DynamoDB single-table (`if-health`).
+- **Frontend** — React 19, Vite, TypeScript, Mantine, Zustand, Recharts, react-router-dom, dnd-kit
+- **Backend** — Node.js, Express 5, TypeScript, AWS SDK v3 (DynamoDB, S3)
+- **Storage** — DynamoDB single-table (`if-health`), S3 (video — not yet wired)
+- **Shared types** — `packages/types/` (TypeScript workspace package)
+
+## Ports
+
+| Service | Port |
+|---------|------|
+| Frontend (Vite dev) | 5173 |
+| Backend (Express) | 3001 |
+
+In production served on port 3005 via Kubernetes.
+
+## Directory layout
+
+```
+powerlifting-app/
+├── backend/src/
+│   ├── server.ts          # Express entry point
+│   ├── routes/            # Route handlers
+│   ├── controllers/       # Business logic
+│   ├── db/                # DynamoDB operations
+│   ├── services/          # Shared services
+│   ├── ai/                # AI reasoning tools (fatigue, correlation, evaluation)
+│   └── utils/
+├── frontend/src/
+│   ├── main.tsx           # Vite entry
+│   ├── App.tsx
+│   ├── pages/             # Route-level components
+│   ├── components/        # Shared components
+│   ├── store/             # Zustand state
+│   ├── constants/         # Formula descriptions and thresholds
+│   └── utils/
+└── packages/types/        # Shared TypeScript types
+```
 
 ## Running locally
 
 ```bash
-# Frontend (port 5173)
-cd frontend && npm install && npm run dev
+# From powerlifting-app/
+npm install
 
-# Backend (port 3001)
-cd backend && npm install && npm run dev
+npm run dev:backend    # Express on :3001
+npm run dev:frontend   # Vite on :5173 (proxies /api/* to :3001)
+
+npm run build          # Build all workspaces
+npm run typecheck      # Type-check all workspaces
 ```
 
-The frontend dev server proxies `/api/*` calls to the Express backend.
+## Key features
+
+- Session logging (sets, reps, kg, RPE, failed-set flags, bodyweight)
+- Competition management (attempts, results, weight class)
+- Program phases + planned vs logged session compliance
+- Analytics: DOTS, e1RM (RPE table or Epley), Theil-Sen progression slope, ACWR, INOL, fatigue index, readiness score
+- AI reasoning layer: fatigue profile estimation, accessory correlation analysis, full-block program evaluation
+- Formula definitions and thresholds: `frontend/src/constants/formulaDescriptions.ts`

@@ -44,9 +44,10 @@ app/
 │   │   ├── condenser.py     # Conversation summarization
 │   │   ├── commands.py      # Slash command definitions
 │   │   ├── memory_tools.py  # ChromaDB memory search/add/remove/list
+│   │   ├── plugin_runner.py # Subprocess plugin runner helper
+│   │   ├── skills.py        # AgentSkills loader (load_skills_from_dir)
 │   │   ├── prompts/         # Jinja2 templates + specialist definitions
-│   │   │   ├── system_prompt.j2
-│   │   │   └── mcp_servers.yaml   # MCP server command definitions
+│   │   │   └── system_prompt.j2
 │   │   ├── reflection/      # Metacognitive layer
 │   │   │   ├── engine.py           # ReflectionEngine (periodic, post-session, on-demand)
 │   │   │   ├── pattern_detector.py # Behavioral pattern detection
@@ -112,6 +113,7 @@ app/
 ├── terraform/               # Kubernetes, AWS infra
 └── main_system_prompt.txt   # Agent personality base prompt
 specialists/                 # One subdir per specialist (specialist.yaml + agent.j2)
+├── mcp_servers.yaml         # MCP server command definitions
 skills/                       # AgentSkills-compliant skill packages
 └── {skill-name}/
     ├── SKILL.md              # YAML frontmatter + markdown body
@@ -299,6 +301,8 @@ Domain experts spawned by the main agent. Each has its own `specialist.yaml` con
 | `dialectic` | Structured adversarial reasoning — thesis-antithesis-synthesis | read_file | standard |
 | `decision_analyst` | Multi-criteria decision analysis with weighted scoring and tradeoff matrices | write_file | standard |
 | `project_manager` | Implementation verification — confirms planned work exists in codebase. `agentic: true` | terminal_execute, read/search files | `@preset/code` |
+| `product_manager` | Product strategy — app ideation, user personas, competitive framing, go-to-market, success metrics, roadmap direction. Not for backlog decomposition (→ product_owner) or implementation (→ architect/coder). | read/write files | `@preset/architecture` |
+| `product_owner` | Agile product ownership — breaks known product direction into user stories with acceptance criteria, backlog prioritization, scope trade-offs. Not for ideation (→ product_manager) or implementation. | read/write files | `@preset/architecture` |
 | `todo_generator` | Extracts actionable task lists from conversations and documents | read/write files | standard |
 | `proofreader` | Prose editing, grammar, clarity, tone | — | standard |
 | `email_writer` | Professional email drafting | — | standard |
@@ -324,9 +328,10 @@ Domain experts spawned by the main agent. Each has its own `specialist.yaml` con
 | `consensus_builder` | Multi-source synthesis — spawns 2-3 specialists, collects outputs, synthesizes | spawn_specialist(s), write_file | standard |
 | `self_improver` | Analyzes IF's own performance and proposes improvements to directives and prompts | read/write/search files | standard |
 | `health_write` | Training program mutations (log sessions, RPE, body weight) | Health DynamoDB tools | standard |
+| `powerlifting_coach` | Read-only training queries and coaching advice — fetch program state, sessions, current maxes, competition countdown, fatigue/correlation/program analysis. Write counterpart: health_write. | health read tools, weekly_analysis, correlation_analysis, fatigue_profile_estimate, program_evaluation | `@preset/health` |
 | `finance_write` | Finance snapshot mutations (balances, holdings, goals) | Finance DynamoDB tools | standard |
 | `financial_analyst` | Market research and financial analysis | Yahoo Finance + Alpha Vantage MCPs | standard |
-| `web_researcher` | Web research and information synthesis | read/write files | standard |
+| `research_assistant` | Web research + Examine.com supplement corpus. Native web search via research model pool (Perplexity Sonar / :online suffix). | read/write files, supplement_search, plan_append, plan_read | `@preset/research` |
 | `media_reader` | On-demand file and image analysis (vision model, single turn) | — | media preset |
 
 **Skills** (mode modifiers for specialists): `red_team` (adversarial), `blue_team` (defensive), `pro_con` (balanced analysis), `steelman` (strongest version of a position), `devils_advocate` (attacks preferred option), `backcast` (start from outcome, work backward), `rubber_duck` (ask questions instead of answers), `eli5` (simplify maximally), `formal` (professional register), `speed` (compressed action-only), `teach` (explain why alongside what)

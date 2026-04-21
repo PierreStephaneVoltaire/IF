@@ -479,6 +479,35 @@ variable "domain" {
   default     = ""
 }
 
+variable "cloudflare_api_token" {
+  description = "Scoped Cloudflare API token (Zone:DNS:Edit, Tunnel:Edit, Access:Edit)"
+  type        = string
+  sensitive   = true
+}
+
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_tunnel_name" {
+  description = "Name for the Cloudflare Tunnel"
+  type        = string
+  default     = "if-tunnel"
+}
+
+variable "cloudflare_team_name" {
+  description = "Cloudflare Access team name (<team>.cloudflareaccess.com)"
+  type        = string
+}
+
+variable "cloudflare_zone_plan" {
+  description = "Cloudflare zone plan for managed zones (free, pro, business)"
+  type        = string
+  default     = "free"
+}
+
+
 variable "gateway_name" {
   description = "Name of the manually-managed Gateway resource"
   type        = string

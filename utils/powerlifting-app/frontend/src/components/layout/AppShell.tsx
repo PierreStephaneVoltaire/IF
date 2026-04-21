@@ -17,7 +17,9 @@ export default function AppShell({ children }: AppShellProps) {
         breakpoint: 'md',
         collapsed: { mobile: true },
       }}
+      footer={{ height: 60, collapsed: { desktop: true, mobile: false } }}
       padding="md"
+      style={{ minHeight: '100dvh' }}
     >
       <MantineAppShell.Header>
         <TopBar />

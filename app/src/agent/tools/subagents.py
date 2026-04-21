@@ -193,6 +193,9 @@ async def _run_subagent(
                         from agent.tools.context_tools import get_current_date
                         import json as _json
                         output = _json.dumps(get_current_date())
+                    elif tool_name in ("plan_append", "plan_read", "plan_list", "plan_grep"):
+                        from agent.tools.planfiles import _execute_plan_tool_sync
+                        output = _execute_plan_tool_sync(tool_name, chat_id, args)
                     elif _is_external_tool(tool_name):
                         from agent.tools.tool_schemas import execute_domain_tool
                         output = await execute_domain_tool(tool_name, args)
@@ -399,7 +402,7 @@ Available specialists:
 - devops: Infrastructure and deployment automation
 - financial_analyst: Financial data analysis and market research
 - health_write: DynamoDB mutations for training program (logging sessions, updating body weight, RPE, etc.)
-- web_researcher: Web research and information synthesis
+- research_assistant: Up-to-date research via native web search + local supplement corpus
 
 Skills (mode modifiers):
 - red_team: Adversarial/attack perspective
@@ -411,7 +414,7 @@ class SpawnSpecialistAction(Action):
     """Action for spawning a specialist subagent."""
 
     specialist_type: str = Field(
-        description="Type of specialist to spawn (coder, scripter, debugger, architect, secops, devops, financial_analyst, health_write, web_researcher)"
+        description="Type of specialist to spawn (coder, scripter, debugger, architect, secops, devops, financial_analyst, health_write, research_assistant)"
     )
     task: str = Field(
         description="Detailed task description for the specialist"
@@ -488,6 +491,18 @@ class SpawnSpecialistExecutor(ToolExecutor):
                 action.extra_directives
             )
 
+            # Resolve context builder
+            injected_context: Optional[str] = None
+            if specialist.context_builder:
+                try:
+                    module_path, func_name = specialist.context_builder.rsplit(":", 1)
+                    import importlib
+                    mod = importlib.import_module(module_path)
+                    builder = getattr(mod, func_name)
+                    injected_context = await builder(pk=action.pk or "operator", task=action.task)
+                except Exception as e:
+                    logger.warning(f"[SpecialistContext] context_builder failed for {specialist.slug}: {e}")
+
             # Render specialist prompt
             system_prompt = render_specialist_prompt(
                 specialist=specialist,
@@ -497,6 +512,7 @@ class SpawnSpecialistExecutor(ToolExecutor):
                 skill=action.skill,
                 pk=action.pk,
                 sk=action.sk,
+                injected_context=injected_context,
             )
 
             # Build user message

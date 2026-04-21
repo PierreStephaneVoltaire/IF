@@ -49,6 +49,7 @@ class SpecialistConfig:
     agentic: bool = False
     max_iterations: int = AGENTIC_MAX_ITERATIONS
     skills: List[str] = field(default_factory=list)
+    context_builder: Optional[str] = None
 
 
 def _load_specialists() -> Dict[str, SpecialistConfig]:
@@ -95,6 +96,7 @@ def _load_specialists() -> Dict[str, SpecialistConfig]:
             agentic=data.get("agentic", False),
             max_iterations=data.get("max_iterations", AGENTIC_MAX_ITERATIONS),
             skills=data.get("skills", []),
+            context_builder=data.get("context_builder"),
         )
 
     logger.info(f"Loaded {len(registry)} specialists: {list(registry.keys())}")
@@ -165,7 +167,8 @@ def render_specialist_prompt(
     directives: Optional[str] = None,
     skill: Optional[str] = None,
     pk: Optional[str] = None,
-    sk: Optional[str] = None
+    sk: Optional[str] = None,
+    injected_context: Optional[str] = None,
 ) -> str:
     """Render a specialist's prompt template.
 
@@ -189,6 +192,7 @@ def render_specialist_prompt(
         skill=skill,
         pk=pk or "operator",
         sk=sk or "program#current",
+        injected_context=injected_context or "",
     )
 
     handoff = render_template("handoff_protocol.j2")
