@@ -3,16 +3,14 @@ import { docClient, TABLE } from '../db/dynamo'
 import { AppError } from '../middleware/errorHandler'
 import type { SupplementPhase } from '@powerlifting/types'
 
-const PK = 'operator'
-
 /**
  * Resolve a version string to the actual SK.
  */
-async function resolveVersionSk(version: string): Promise<string> {
+async function resolveVersionSk(pk: string, version: string): Promise<string> {
   if (version === 'current') {
     const pointerCommand = new GetCommand({
       TableName: TABLE,
-      Key: { pk: PK, sk: 'program#current' },
+      Key: { pk, sk: 'program#current' },
     })
     const pointerResult = await docClient.send(pointerCommand)
     if (!pointerResult.Item) return 'program#v001'
@@ -25,14 +23,15 @@ async function resolveVersionSk(version: string): Promise<string> {
  * Update all supplement phases
  */
 export async function updateSupplementPhases(
+  pk: string,
   version: string,
   phases: SupplementPhase[]
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET supplement_phases = :phases, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -48,13 +47,14 @@ export async function updateSupplementPhases(
  * Get supplement phases
  */
 export async function getSupplementPhases(
+  pk: string,
   version: string
 ): Promise<SupplementPhase[]> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'supplement_phases',
   })
 

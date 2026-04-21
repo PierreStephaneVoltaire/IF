@@ -6,15 +6,12 @@ import {
   Group,
   ScrollArea,
   ActionIcon,
-  Text,
 } from '@mantine/core'
 import {
   LayoutDashboard,
   Calendar,
   List,
-  GitBranch,
   BarChart3,
-  BookOpen,
   Wrench,
   Pill,
   Utensils,
@@ -46,17 +43,13 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/charts', icon: BarChart3, label: 'Charts' },
   { to: '/analysis', icon: Activity, label: 'Analysis' },
   { to: '/rankings', icon: Trophy, label: 'Rankings' },
-  { to: '/templates', icon: BookOpen, label: 'Templates' },
-  { to: '/import', icon: GitBranch, label: 'Import' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
 ]
 
 const SECONDARY_NAV_ITEMS: NavItem[] = [
   { to: '/supplements', icon: Pill, label: 'Supplements' },
   { to: '/biometrics', icon: Utensils, label: 'Biometrics' },
-  { to: '/competitions', icon: Trophy, label: 'Competitions' },
   { to: '/maxes', icon: TrendingUp, label: 'Maxes' },
-  { to: '/glossary', icon: BookOpen, label: 'Glossary' },
   { to: '/videos', icon: Film, label: 'Videos' },
 ]
 
@@ -161,7 +154,7 @@ function MobileSidebar() {
 
   return (
     <Group justify="space-around" wrap="nowrap" p="xs">
-      {MOBILE_MAIN_ITEMS.map(({ to, icon: Icon, label }) => {
+      {MOBILE_MAIN_ITEMS.map(({ to, icon: Icon }) => {
         const isActive =
           to === '/'
             ? location.pathname === '/'

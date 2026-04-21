@@ -3153,9 +3153,34 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
     if not handler:
         return f"Unknown health tool: {name}"
 
-    result = handler()
-    if asyncio.iscoroutine(result):
-        result = await result
+    # If pk is supplied (e.g. from portal auth), override the store singletons
+    # so the operation targets the correct user's data partition.
+    override_pk = args.get("pk")
+    saved_pk = None
+    if override_pk:
+        from core import _get_store, _get_template_store, _get_import_store, _get_glossary_store
+        for getter in (_get_store, _get_template_store, _get_import_store, _get_glossary_store):
+            try:
+                s = getter()
+                if saved_pk is None:
+                    saved_pk = s.pk
+                s.pk = override_pk
+            except Exception:
+                pass
+
+    try:
+        result = handler()
+        if asyncio.iscoroutine(result):
+            result = await result
+    finally:
+        # Restore original pk to avoid leaking across calls
+        if saved_pk is not None:
+            for getter in (_get_store, _get_template_store, _get_import_store, _get_glossary_store):
+                try:
+                    getter().pk = saved_pk
+                except Exception:
+                    pass
+
     if isinstance(result, str):
         return result
     return json.dumps(result, indent=2, default=str)

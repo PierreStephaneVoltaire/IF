@@ -7,7 +7,7 @@ export const supplementsRouter = Router({ mergeParams: true })
 // GET /api/supplements/:version - Get supplement phases
 supplementsRouter.get('/:version', async (req, res, next) => {
   try {
-    const phases = await supplementController.getSupplementPhases(req.params.version)
+    const phases = await supplementController.getSupplementPhases(req.effectivePk!, req.params.version)
     res.json({ data: phases, error: null })
   } catch (err) {
     next(err)
@@ -27,6 +27,7 @@ supplementsRouter.put('/:version', async (req, res, next) => {
     }
 
     await supplementController.updateSupplementPhases(
+      req.effectivePk!,
       req.params.version,
       phases as SupplementPhase[]
     )

@@ -7,8 +7,6 @@ import { AppError } from '../middleware/errorHandler'
 import { transformProgram } from '../db/transforms'
 import type { Session, SessionVideo, VideoLibraryItem } from '@powerlifting/types'
 
-const PK = 'operator'
-
 const S3_BUCKET = process.env.VIDEOS_BUCKET || 'powerlifting-session-videos'
 const S3_REGION = process.env.AWS_REGION || 'ca-central-1'
 
@@ -35,11 +33,11 @@ function stripUndefined(obj: any): any {
 /**
  * Resolve a version string to the actual SK.
  */
-async function resolveVersionSk(version: string): Promise<string> {
+async function resolveVersionSk(pk: string, version: string): Promise<string> {
   if (version === 'current') {
     const pointerCommand = new GetCommand({
       TableName: TABLE,
-      Key: { pk: PK, sk: 'program#current' },
+      Key: { pk, sk: 'program#current' },
     })
     const pointerResult = await docClient.send(pointerCommand)
     if (!pointerResult.Item) return 'program#v001'
@@ -52,6 +50,7 @@ async function resolveVersionSk(version: string): Promise<string> {
  * Upload a video to S3 and add metadata to session
  */
 export async function uploadSessionVideo(
+  pk: string,
   version: string,
   sessionDate: string,
   file: Buffer,
@@ -61,7 +60,7 @@ export async function uploadSessionVideo(
   setNumber?: number,
   notes?: string
 ): Promise<SessionVideo> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   // Generate video ID
   const videoId = uuidv4()
@@ -78,7 +77,7 @@ export async function uploadSessionVideo(
       Metadata: {
         video_id: videoId,
         session_date: sessionDate,
-        pk: PK,
+        pk,
         sk,
       },
     },
@@ -102,7 +101,7 @@ export async function uploadSessionVideo(
   // Add to session in DynamoDB
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
   })
 
   const result = await docClient.send(getCommand)
@@ -128,7 +127,7 @@ export async function uploadSessionVideo(
   // Safely update both sessions and metadata
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -146,16 +145,17 @@ export async function uploadSessionVideo(
  * Remove a video from a session
  */
 export async function removeSessionVideo(
+  pk: string,
   version: string,
   sessionDate: string,
   videoId: string
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   // Get session to find video info
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
   })
 
   const result = await docClient.send(getCommand)
@@ -204,7 +204,7 @@ export async function removeSessionVideo(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -220,6 +220,7 @@ export async function removeSessionVideo(
  * Update video thumbnail URL (called by Lambda)
  */
 export async function updateVideoThumbnail(
+  pk: string,
   version: string,
   sessionDate: string,
   videoId: string,
@@ -227,11 +228,11 @@ export async function updateVideoThumbnail(
   thumbnailS3Key: string,
   status: 'ready' | 'failed'
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
   })
 
   const result = await docClient.send(getCommand)
@@ -268,7 +269,7 @@ export async function updateVideoThumbnail(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -281,15 +282,16 @@ export async function updateVideoThumbnail(
 }
 
 export async function getVideoLibrary(
+  pk: string,
   version: string,
   exercise?: string,
   sort: 'newest' | 'oldest' = 'newest'
 ): Promise<{ videos: VideoLibraryItem[]; exercises: string[] }> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   const command = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
   })
 
   const result = await docClient.send(command)

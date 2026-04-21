@@ -2,16 +2,14 @@ import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb'
 import { docClient, TABLE } from '../db/dynamo'
 import type { WeightEntry, WeightLogStore } from '@powerlifting/types'
 
-const PK = 'operator'
-
 /**
  * Get weight log for a program version
  */
-export async function getWeightLog(version: string): Promise<WeightLogStore> {
+export async function getWeightLog(pk: string, version: string): Promise<WeightLogStore> {
   const command = new GetCommand({
     TableName: TABLE,
     Key: {
-      pk: PK,
+      pk,
       sk: `weight_log#${version}`,
     },
   })
@@ -21,7 +19,7 @@ export async function getWeightLog(version: string): Promise<WeightLogStore> {
   if (!result.Item) {
     // Return empty log if not found
     return {
-      pk: PK,
+      pk,
       sk: `weight_log#${version}`,
       entries: [],
       updated_at: new Date().toISOString(),
@@ -35,10 +33,11 @@ export async function getWeightLog(version: string): Promise<WeightLogStore> {
  * Add a weight entry
  */
 export async function addWeightEntry(
+  pk: string,
   version: string,
   entry: WeightEntry
 ): Promise<void> {
-  const log = await getWeightLog(version)
+  const log = await getWeightLog(pk, version)
 
   // Check if entry for this date already exists
   const existingIndex = log.entries.findIndex(e => e.date === entry.date)
@@ -67,10 +66,11 @@ export async function addWeightEntry(
  * Remove a weight entry by date
  */
 export async function removeWeightEntry(
+  pk: string,
   version: string,
   date: string
 ): Promise<void> {
-  const log = await getWeightLog(version)
+  const log = await getWeightLog(pk, version)
 
   log.entries = log.entries.filter(e => e.date !== date)
   log.updated_at = new Date().toISOString()

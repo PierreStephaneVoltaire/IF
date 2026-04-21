@@ -7,7 +7,7 @@ export const programsRouter = Router()
 // GET /api/programs - List all program versions
 programsRouter.get('/', async (req, res, next) => {
   try {
-    const programs = await programController.listPrograms()
+    const programs = await programController.listPrograms(req.effectivePk!)
     res.json({ data: programs, error: null })
   } catch (err) {
     next(err)
@@ -17,7 +17,7 @@ programsRouter.get('/', async (req, res, next) => {
 // GET /api/programs/:version - Get a specific program
 programsRouter.get('/:version', async (req, res, next) => {
   try {
-    const program = await programController.getProgram(req.params.version)
+    const program = await programController.getProgram(req.effectivePk!, req.params.version)
     res.json({ data: program, error: null })
   } catch (err) {
     next(err)
@@ -36,7 +36,7 @@ programsRouter.put('/:version/meta', async (req, res, next) => {
       })
     }
 
-    await programController.updateMetaField(req.params.version, field, value)
+    await programController.updateMetaField(req.effectivePk!, req.params.version, field, value)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -47,7 +47,7 @@ programsRouter.put('/:version/meta', async (req, res, next) => {
 programsRouter.post('/:version/fork', async (req, res, next) => {
   try {
     const { label } = req.body
-    const newVersion = await programController.forkProgram(req.params.version, label)
+    const newVersion = await programController.forkProgram(req.effectivePk!, req.params.version, label)
     res.json({ data: { version: newVersion }, error: null })
   } catch (err) {
     next(err)
@@ -66,8 +66,8 @@ programsRouter.put('/:version/body-weight', async (req, res, next) => {
       })
     }
 
-    await programController.updateMetaField(req.params.version, 'current_body_weight_kg', weightKg)
-    await programController.updateMetaField(req.params.version, 'current_body_weight_lb', weightKg * 2.20462)
+    await programController.updateMetaField(req.effectivePk!, req.params.version, 'current_body_weight_kg', weightKg)
+    await programController.updateMetaField(req.effectivePk!, req.params.version, 'current_body_weight_lb', weightKg * 2.20462)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -93,7 +93,7 @@ programsRouter.put('/:version/phases', async (req, res, next) => {
       })
     }
 
-    await programController.updatePhases(req.params.version, phases, block)
+    await programController.updatePhases(req.effectivePk!, req.params.version, phases, block)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -128,6 +128,7 @@ programsRouter.post('/:version/designer/batch-week', async (req, res, next) => {
     }
 
     await programController.batchCreateWeek(
+      req.effectivePk!,
       req.params.version,
       week_number,
       week_label,
@@ -153,7 +154,7 @@ programsRouter.put('/:version/lift-profiles', async (req, res, next) => {
       })
     }
 
-    await programController.updateLiftProfiles(req.params.version, liftProfiles)
+    await programController.updateLiftProfiles(req.effectivePk!, req.params.version, liftProfiles)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -174,6 +175,7 @@ programsRouter.put('/:version/designer/:date/:index/planned-exercises', async (r
     }
 
     await programController.updatePlannedExercises(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index,
@@ -188,7 +190,7 @@ programsRouter.put('/:version/designer/:date/:index/planned-exercises', async (r
 // PATCH /api/programs/:version/archive - Archive a program
 programsRouter.patch('/:version/archive', async (req, res, next) => {
   try {
-    await programController.archiveProgram(req.params.version)
+    await programController.archiveProgram(req.effectivePk!, req.params.version)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -198,7 +200,7 @@ programsRouter.patch('/:version/archive', async (req, res, next) => {
 // PATCH /api/programs/:version/unarchive - Unarchive a program
 programsRouter.patch('/:version/unarchive', async (req, res, next) => {
   try {
-    await programController.unarchiveProgram(req.params.version)
+    await programController.unarchiveProgram(req.effectivePk!, req.params.version)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)

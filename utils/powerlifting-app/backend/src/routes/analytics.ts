@@ -42,7 +42,7 @@ analyticsRouter.get('/analysis/weekly', async (req, res) => {
   try {
     const weeks = parseInt(req.query.weeks as string) || 1
     const block = (req.query.block as string) || 'current'
-    const data = await invokeToolDirect('weekly_analysis', { weeks, block })
+    const data = await invokeToolDirect('weekly_analysis', { weeks, block, pk: req.effectivePk })
     res.json({ data, error: null })
   } catch (err) {
     res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
@@ -55,7 +55,7 @@ analyticsRouter.get('/correlation', async (req, res) => {
     const weeks = parseInt(req.query.weeks as string) || 4
     const block = (req.query.block as string) || 'current'
     const refresh = req.query.refresh === 'true'
-    const data = await invokeToolDirect('correlation_analysis', { weeks, block, refresh })
+    const data = await invokeToolDirect('correlation_analysis', { weeks, block, refresh, pk: req.effectivePk })
     res.json({ data, error: null })
   } catch (err) {
     res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
@@ -76,7 +76,7 @@ analyticsRouter.post('/fatigue-profile/estimate', async (req, res) => {
 analyticsRouter.get('/program-evaluation', async (req, res) => {
   try {
     const refresh = req.query.refresh === 'true'
-    const data = await invokeToolDirect('program_evaluation', { refresh })
+    const data = await invokeToolDirect('program_evaluation', { refresh, pk: req.effectivePk })
     res.json({ data, error: null })
   } catch (err) {
     res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })

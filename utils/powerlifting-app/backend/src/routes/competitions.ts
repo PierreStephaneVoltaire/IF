@@ -7,7 +7,7 @@ export const competitionsRouter = Router({ mergeParams: true })
 // GET /api/competitions/:version - Get competitions
 competitionsRouter.get('/:version', async (req, res, next) => {
   try {
-    const competitions = await competitionController.getCompetitions(req.params.version)
+    const competitions = await competitionController.getCompetitions(req.effectivePk!, req.params.version)
     res.json({ data: competitions, error: null })
   } catch (err) {
     next(err)
@@ -27,6 +27,7 @@ competitionsRouter.put('/:version', async (req, res, next) => {
     }
 
     await competitionController.updateCompetitions(
+      req.effectivePk!,
       req.params.version,
       competitions as Competition[]
     )
@@ -39,7 +40,7 @@ competitionsRouter.put('/:version', async (req, res, next) => {
 // POST /api/competitions/:version/migrate - Migrate last_comp into competitions
 competitionsRouter.post('/:version/migrate', async (req, res, next) => {
   try {
-    const competitions = await competitionController.migrateLastComp(req.params.version)
+    const competitions = await competitionController.migrateLastComp(req.effectivePk!, req.params.version)
     res.json({ data: competitions, error: null })
   } catch (err) {
     next(err)
@@ -59,6 +60,7 @@ competitionsRouter.patch('/:version/:date/complete', async (req, res, next) => {
     }
 
     await competitionController.completeCompetition(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       results as LiftResults,

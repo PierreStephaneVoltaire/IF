@@ -300,4 +300,3 @@ This project exists to build applied knowledge. Here's what it exercises:
 ## License
 
 MIT
-~/.claude/plans/shimmying-drifting-popcorn.md

@@ -8,8 +8,8 @@ export const maxesRouter = Router()
 maxesRouter.get('/:version', async (req, res, next) => {
   try {
     const [targets, history] = await Promise.all([
-      maxController.getTargetMaxes(req.params.version),
-      maxController.getMaxHistory(req.params.version),
+      maxController.getTargetMaxes(req.effectivePk!, req.params.version),
+      maxController.getMaxHistory(req.effectivePk!, req.params.version),
     ])
     res.json({
       data: { targets, history },
@@ -36,7 +36,7 @@ maxesRouter.put('/:version', async (req, res, next) => {
       })
     }
 
-    await maxController.updateTargetMaxes(req.params.version, {
+    await maxController.updateTargetMaxes(req.effectivePk!, req.params.version, {
       squat_kg,
       bench_kg,
       deadlift_kg,
@@ -59,7 +59,7 @@ maxesRouter.post('/:version/history', async (req, res, next) => {
       })
     }
 
-    await maxController.addMaxEntry(req.params.version, entry)
+    await maxController.addMaxEntry(req.effectivePk!, req.params.version, entry)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
