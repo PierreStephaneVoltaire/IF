@@ -1,4 +1,3 @@
-"""Temporal to-unix tool plugin — parse datetime string and return Unix timestamp."""
 from __future__ import annotations
 
 import json
