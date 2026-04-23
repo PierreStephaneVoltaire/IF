@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
-import { fetchWeightLog, updateMetaField } from '@/api/client'
+import { fetchWeightLog, updateMetaField, reviewLiftProfile, rewriteLiftProfile, estimateLiftProfileStimulus, type LiftProfileReview } from '@/api/client'
 import { daysUntil, sessionsThisCalendarWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
-import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2, Download, Dumbbell, Ruler } from 'lucide-react'
+import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2, Download, Dumbbell, Ruler, Sparkles } from 'lucide-react'
 import {
   Stack,
   Group,
@@ -23,8 +24,14 @@ import {
   Badge,
   Loader,
   Box,
+  Modal,
+  Alert,
+  Divider,
 } from '@mantine/core'
 import type { Phase, WeightEntry, LiftProfile } from '@powerlifting/types'
+
+const LIFT_ORDER = ['squat', 'bench', 'deadlift'] as const
+const PROFILE_ESTIMATE_READY_SCORE = 55
 
 const LIFT_LABELS: Record<LiftProfile['lift'], string> = {
   squat: 'Squat',
@@ -50,7 +57,20 @@ const DEFAULT_PROFILE = (lift: LiftProfile['lift']): LiftProfile => ({
   sticking_points: '',
   primary_muscle: '',
   volume_tolerance: 'moderate',
+  stimulus_coefficient: 1,
 })
+
+const normalizeLiftProfile = (profile: LiftProfile): LiftProfile => ({
+  ...DEFAULT_PROFILE(profile.lift),
+  ...profile,
+  stimulus_coefficient: Math.max(1, Math.min(2, profile.stimulus_coefficient ?? 1)),
+})
+
+const mergeLiftProfiles = (profiles: LiftProfile[] = []): LiftProfile[] =>
+  LIFT_ORDER.map(lift => normalizeLiftProfile(profiles.find(p => p.lift === lift) ?? DEFAULT_PROFILE(lift)))
+
+const coefficientValue = (value: string | number): number =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.max(1, Math.min(2, value)) : 1
 
 export default function Dashboard() {
   const { program, version, isLoading, updateMaxes, updateBodyWeight, updatePhases, updateLiftProfiles } = useProgramStore()
@@ -70,6 +90,12 @@ export default function Dashboard() {
   const [localHeight, setLocalHeight] = useState<number | ''>('')
   const [localWingspan, setLocalWingspan] = useState<number | ''>('')
   const [localLegLength, setLocalLegLength] = useState<number | ''>('')
+  const [profileGuideOpen, setProfileGuideOpen] = useState(false)
+  const [profileGuideDraft, setProfileGuideDraft] = useState<LiftProfile | null>(null)
+  const [profileGuideReview, setProfileGuideReview] = useState<LiftProfileReview | null>(null)
+  const [profileGuideLoading, setProfileGuideLoading] = useState(false)
+  const [profileGuideRewriting, setProfileGuideRewriting] = useState(false)
+  const [profileGuideEstimating, setProfileGuideEstimating] = useState(false)
 
   useEffect(() => {
     if (version) {
@@ -81,14 +107,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (program?.lift_profiles) {
-      setLocalLiftProfiles(program.lift_profiles)
+      setLocalLiftProfiles(mergeLiftProfiles(program.lift_profiles))
     } else {
-      // Initialize with defaults for all 3 lifts
-      setLocalLiftProfiles([
-        DEFAULT_PROFILE('squat'),
-        DEFAULT_PROFILE('bench'),
-        DEFAULT_PROFILE('deadlift'),
-      ])
+      setLocalLiftProfiles(mergeLiftProfiles())
     }
   }, [program?.lift_profiles])
 
@@ -209,11 +230,7 @@ export default function Dashboard() {
   const removePhase = (index: number) => setLocalPhases(prev => prev.filter((_, i) => i !== index))
 
   const startEditingLiftProfiles = () => {
-    const existing = program?.lift_profiles || []
-    const merged: LiftProfile[] = (['squat', 'bench', 'deadlift'] as const).map(lift =>
-      existing.find(p => p.lift === lift) ?? DEFAULT_PROFILE(lift)
-    )
-    setLocalLiftProfiles(merged)
+    setLocalLiftProfiles(mergeLiftProfiles(program?.lift_profiles))
     setEditingLiftProfiles(true)
   }
 
@@ -233,10 +250,98 @@ export default function Dashboard() {
     )
   }
 
+  const reviewProfileDraft = async (profile: LiftProfile) => {
+    setProfileGuideLoading(true)
+    try {
+      const review = await reviewLiftProfile(profile)
+      setProfileGuideReview(review)
+    } catch (err) {
+      pushToast({ message: 'AI profile review failed', type: 'error' })
+    } finally {
+      setProfileGuideLoading(false)
+    }
+  }
+
+  const openProfileGuide = async (profile: LiftProfile) => {
+    const merged = mergeLiftProfiles(localLiftProfiles.length ? localLiftProfiles : program?.lift_profiles)
+    const draft = normalizeLiftProfile(merged.find(p => p.lift === profile.lift) ?? profile)
+    const shouldAutoReview = Math.abs((draft.stimulus_coefficient ?? 1) - 1) < 0.001
+    setLocalLiftProfiles(merged)
+    setEditingLiftProfiles(true)
+    setProfileGuideDraft(draft)
+    setProfileGuideReview(null)
+    setProfileGuideOpen(true)
+    if (shouldAutoReview) {
+      await reviewProfileDraft(draft)
+    }
+  }
+
+  const updateProfileGuideDraft = (updates: Partial<LiftProfile>) => {
+    setProfileGuideDraft(prev => prev ? { ...prev, ...updates } : prev)
+  }
+
+  const runProfileGuideReview = async () => {
+    if (!profileGuideDraft) return
+    await reviewProfileDraft(profileGuideDraft)
+  }
+
+  const runRewriteProfile = async () => {
+    if (!profileGuideDraft) return
+    setProfileGuideRewriting(true)
+    try {
+      const result = await rewriteLiftProfile(profileGuideDraft)
+      const updated = normalizeLiftProfile({ ...profileGuideDraft, ...result })
+      setProfileGuideDraft(updated)
+      updateLocalProfile(updated.lift, updated)
+      await reviewProfileDraft(updated)
+      pushToast({ message: 'Lift profile rewritten', type: 'success' })
+    } catch (err) {
+      pushToast({ message: 'AI rewrite failed', type: 'error' })
+    } finally {
+      setProfileGuideRewriting(false)
+    }
+  }
+
+  const runEstimateStimulus = async () => {
+    if (!profileGuideDraft) return
+    const score = profileGuideReview?.completeness_score ?? 0
+    if (score < PROFILE_ESTIMATE_READY_SCORE) {
+      pushToast({ message: `Profile score needs ${PROFILE_ESTIMATE_READY_SCORE}% before estimating stimulus`, type: 'error' })
+      return
+    }
+    setProfileGuideEstimating(true)
+    try {
+      const result = await estimateLiftProfileStimulus(profileGuideDraft)
+      const updated = normalizeLiftProfile({
+        ...profileGuideDraft,
+        stimulus_coefficient: result.stimulus_coefficient,
+        stimulus_coefficient_confidence: result.stimulus_coefficient_confidence,
+        stimulus_coefficient_reasoning: result.stimulus_coefficient_reasoning,
+        stimulus_coefficient_updated_at: result.stimulus_coefficient_updated_at,
+      })
+      setProfileGuideDraft(updated)
+      updateLocalProfile(updated.lift, updated)
+      pushToast({ message: 'Stimulus coefficient applied', type: 'success' })
+    } catch (err) {
+      pushToast({ message: 'AI stimulus estimate failed', type: 'error' })
+    } finally {
+      setProfileGuideEstimating(false)
+    }
+  }
+
+  const applyProfileGuide = () => {
+    if (!profileGuideDraft) return
+    updateLocalProfile(profileGuideDraft.lift, profileGuideDraft)
+    setProfileGuideOpen(false)
+    pushToast({ message: 'Profile staged. Save lift profiles to persist it.', type: 'success' })
+  }
+
   const displayProfiles = (program?.lift_profiles?.length
-    ? program.lift_profiles
-    : (['squat', 'bench', 'deadlift'] as const).map(DEFAULT_PROFILE)
+    ? mergeLiftProfiles(program.lift_profiles)
+    : mergeLiftProfiles()
   )
+  const profileGuideScore = profileGuideReview?.completeness_score ?? 0
+  const profileGuideCanEstimate = profileGuideScore >= PROFILE_ESTIMATE_READY_SCORE
 
   return (
     <Stack gap={24}>
@@ -575,32 +680,49 @@ export default function Dashboard() {
             <Dumbbell size={20} />
             <Text fw={500}>Lift Style Profiles</Text>
           </Group>
-          {editingLiftProfiles ? (
-            <Group gap={4}>
-              <ActionIcon variant="subtle" color="blue" onClick={saveLiftProfiles}><Save size={16} /></ActionIcon>
-              <ActionIcon variant="subtle" onClick={() => setEditingLiftProfiles(false)}><X size={16} /></ActionIcon>
-            </Group>
-          ) : (
-            <ActionIcon variant="subtle" onClick={startEditingLiftProfiles}><Edit2 size={16} /></ActionIcon>
-          )}
+          <Group gap={4}>
+            {LIFT_ORDER.map((lift) => (
+              <Button
+                key={lift}
+                component={Link}
+                to={`/lift-profiles/${lift}`}
+                variant="subtle"
+                size="compact-sm"
+                leftSection={<Edit2 size={14} />}
+              >
+                {LIFT_LABELS[lift]}
+              </Button>
+            ))}
+          </Group>
         </Group>
 
         {editingLiftProfiles ? (
           <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="lg">
             {localLiftProfiles.map((profile) => (
-              <Stack key={profile.lift} gap="sm">
-                <Text size="sm" fw={500} tt="capitalize" style={{ borderBottom: '1px solid var(--mantine-color-default-border)', paddingBottom: 4 }}>{LIFT_LABELS[profile.lift]}</Text>
+              <Stack key={profile.lift} gap="sm" style={{ minWidth: 0 }}>
+                <Group justify="space-between" align="center" style={{ borderBottom: '1px solid var(--mantine-color-default-border)', paddingBottom: 4 }}>
+                  <Text size="sm" fw={500} tt="capitalize">{LIFT_LABELS[profile.lift]}</Text>
+                  <Button
+                    component={Link}
+                    to={`/lift-profiles/${profile.lift}`}
+                    variant="subtle"
+                    size="compact-xs"
+                    leftSection={<Sparkles size={12} />}
+                  >
+                    Open Profile
+                  </Button>
+                </Group>
 
                 {/* Style Notes */}
                 <Stack gap={4}>
                   <Text size="xs" c="dimmed">Style & Setup</Text>
                   <Textarea
-                    autosize
-                    minRows={3}
+                    rows={2}
                     value={profile.style_notes}
                     onChange={(e) => updateLocalProfile(profile.lift, { style_notes: e.currentTarget.value })}
                     placeholder={LIFT_STYLE_PLACEHOLDERS[profile.lift]}
                     size="xs"
+                    styles={{ input: { maxWidth: '100%', minWidth: 0, width: '100%', overflowY: 'auto', resize: 'vertical' } }}
                   />
                 </Stack>
 
@@ -608,12 +730,12 @@ export default function Dashboard() {
                 <Stack gap={4}>
                   <Text size="xs" c="dimmed">Sticking Points</Text>
                   <Textarea
-                    autosize
-                    minRows={2}
+                    rows={2}
                     value={profile.sticking_points}
                     onChange={(e) => updateLocalProfile(profile.lift, { sticking_points: e.currentTarget.value })}
                     placeholder={STICKING_PLACEHOLDERS[profile.lift]}
                     size="xs"
+                    styles={{ input: { maxWidth: '100%', minWidth: 0, width: '100%', overflowY: 'auto', resize: 'vertical' } }}
                   />
                 </Stack>
 
@@ -643,6 +765,22 @@ export default function Dashboard() {
                     onChange={(v) => updateLocalProfile(profile.lift, { volume_tolerance: v as 'low' | 'moderate' | 'high' })}
                   />
                 </Stack>
+
+                <Stack gap={4}>
+                  <Text size="xs" c="dimmed">Stimulus Coefficient</Text>
+                  <NumberInput
+                    min={1}
+                    max={2}
+                    step={0.05}
+                    decimalScale={2}
+                    value={profile.stimulus_coefficient ?? 1}
+                    onChange={(v) => updateLocalProfile(profile.lift, { stimulus_coefficient: coefficientValue(v) })}
+                    size="xs"
+                  />
+                  {profile.stimulus_coefficient_reasoning && (
+                    <Text size="xs" c="dimmed" lineClamp={3}>{profile.stimulus_coefficient_reasoning}</Text>
+                  )}
+                </Stack>
               </Stack>
             ))}
           </SimpleGrid>
@@ -651,7 +789,7 @@ export default function Dashboard() {
             {displayProfiles.map((profile) => {
               const hasData = profile.style_notes || profile.sticking_points || profile.primary_muscle
               return (
-                <Stack key={profile.lift} gap="xs">
+                <Stack key={profile.lift} gap="xs" style={{ minWidth: 0 }}>
                   <Text size="sm" fw={500} tt="capitalize" style={{ borderBottom: '1px solid var(--mantine-color-default-border)', paddingBottom: 4 }}>{LIFT_LABELS[profile.lift]}</Text>
                   {hasData ? (
                     <>
@@ -681,6 +819,9 @@ export default function Dashboard() {
                       >
                         {profile.volume_tolerance} volume tolerance
                       </Badge>
+                      <Badge variant="light" color="blue" size="sm">
+                        Stimulus x{(profile.stimulus_coefficient ?? 1).toFixed(2)}
+                      </Badge>
                     </>
                   ) : (
                     <Text size="xs" c="dimmed" fs="italic">No profile yet - click edit to add</Text>
@@ -691,6 +832,157 @@ export default function Dashboard() {
           </SimpleGrid>
         )}
       </Paper>
+
+      <Modal
+        opened={profileGuideOpen}
+        onClose={() => setProfileGuideOpen(false)}
+        title={profileGuideDraft ? `${LIFT_LABELS[profileGuideDraft.lift]} Lift Profile` : 'Lift Profile'}
+        size="lg"
+      >
+        {profileGuideDraft && (
+          <Stack gap="md">
+            {profileGuideReview && (
+              <Alert
+                variant="light"
+                color={profileGuideCanEstimate ? 'green' : 'yellow'}
+                icon={<Sparkles size={16} />}
+              >
+                <Group justify="space-between" align="center" mb={(profileGuideReview.missing_details ?? []).length ? 'xs' : 0}>
+                  <Text fw={500}>Profile score {profileGuideReview.completeness_score}%</Text>
+                  <Badge color={profileGuideCanEstimate ? 'green' : 'yellow'} variant="light">
+                    {profileGuideCanEstimate ? 'Estimate ready' : `Needs ${PROFILE_ESTIMATE_READY_SCORE}%`}
+                  </Badge>
+                </Group>
+                <Text size="xs" c="dimmed" mb="xs">
+                  {profileGuideReview.score_explanation ?? 'Score is 0-100 completeness for estimating a lift-specific INOL stimulus coefficient.'}
+                </Text>
+                {profileGuideReview.score_breakdown && (
+                  <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs" mb="xs">
+                    {Object.entries(profileGuideReview.score_breakdown).map(([key, part]) => (
+                      <Paper key={key} withBorder p="xs">
+                        <Text size="xs" fw={500} tt="capitalize">{key.replaceAll('_', ' ')}</Text>
+                        <Text size="sm" fw={700}>{part.score}/{part.max}</Text>
+                        {(part.notes ?? []).slice(0, 2).map((note) => (
+                          <Text key={note} size="xs" c="dimmed">{note}</Text>
+                        ))}
+                      </Paper>
+                    ))}
+                  </SimpleGrid>
+                )}
+                {(profileGuideReview.missing_details ?? []).length > 0 && (
+                  <Stack gap={4}>
+                    {(profileGuideReview.missing_details ?? []).map((detail) => (
+                      <Text key={detail} size="xs">{detail}</Text>
+                    ))}
+                  </Stack>
+                )}
+                {(profileGuideReview.suggestions ?? []).length > 0 && (
+                  <Stack gap={4} mt="xs">
+                    {(profileGuideReview.suggestions ?? []).map((suggestion) => (
+                      <Text key={suggestion} size="xs" c="dimmed">{suggestion}</Text>
+                    ))}
+                  </Stack>
+                )}
+              </Alert>
+            )}
+
+            <Textarea
+              label="Style & Setup"
+              rows={3}
+              value={profileGuideDraft.style_notes}
+              onChange={(e) => updateProfileGuideDraft({ style_notes: e.currentTarget.value })}
+              placeholder={LIFT_STYLE_PLACEHOLDERS[profileGuideDraft.lift]}
+              styles={{ input: { maxWidth: '100%', minWidth: 0, width: '100%', maxHeight: '28vh', overflowY: 'auto', resize: 'vertical' } }}
+            />
+
+            <Textarea
+              label="Sticking Points"
+              rows={2}
+              value={profileGuideDraft.sticking_points}
+              onChange={(e) => updateProfileGuideDraft({ sticking_points: e.currentTarget.value })}
+              placeholder={STICKING_PLACEHOLDERS[profileGuideDraft.lift]}
+              styles={{ input: { maxWidth: '100%', minWidth: 0, width: '100%', maxHeight: '24vh', overflowY: 'auto', resize: 'vertical' } }}
+            />
+
+            <TextInput
+              label="Primary Muscle Driver"
+              value={profileGuideDraft.primary_muscle}
+              onChange={(e) => updateProfileGuideDraft({ primary_muscle: e.currentTarget.value })}
+              placeholder={profileGuideDraft.lift === 'squat' ? 'Quad dominant' : profileGuideDraft.lift === 'bench' ? 'Tricep dominant' : 'Glute dominant'}
+            />
+
+            <Group grow align="flex-end">
+              <SegmentedControl
+                fullWidth
+                data={[
+                  { label: 'Low', value: 'low' },
+                  { label: 'Moderate', value: 'moderate' },
+                  { label: 'High', value: 'high' },
+                ]}
+                value={profileGuideDraft.volume_tolerance}
+                onChange={(v) => updateProfileGuideDraft({ volume_tolerance: v as 'low' | 'moderate' | 'high' })}
+              />
+              <NumberInput
+                label="Stimulus Coefficient"
+                min={1}
+                max={2}
+                step={0.05}
+                decimalScale={2}
+                value={profileGuideDraft.stimulus_coefficient ?? 1}
+                onChange={(v) => updateProfileGuideDraft({ stimulus_coefficient: coefficientValue(v) })}
+              />
+            </Group>
+
+            {profileGuideDraft.stimulus_coefficient_reasoning && (
+              <Alert variant="light" color="blue">
+                <Text size="sm">{profileGuideDraft.stimulus_coefficient_reasoning}</Text>
+                {profileGuideDraft.stimulus_coefficient_confidence && (
+                  <Badge mt="xs" variant="light" color="blue">
+                    {profileGuideDraft.stimulus_coefficient_confidence} confidence
+                  </Badge>
+                )}
+              </Alert>
+            )}
+
+            <Divider />
+
+            <Text size="xs" c="dimmed">
+              Estimate unlocks at {PROFILE_ESTIMATE_READY_SCORE}% profile score. Rewrite only cleans the text; estimate only applies the stimulus coefficient.
+            </Text>
+
+            <Group justify="space-between" gap="sm">
+              <Button
+                variant="light"
+                leftSection={<Sparkles size={16} />}
+                loading={profileGuideLoading}
+                onClick={runProfileGuideReview}
+              >
+                Review
+              </Button>
+              <Group gap="sm">
+                <Button
+                  variant="light"
+                  leftSection={<Sparkles size={16} />}
+                  loading={profileGuideRewriting}
+                  onClick={runRewriteProfile}
+                >
+                  Rewrite
+                </Button>
+                <Button
+                  variant="light"
+                  leftSection={<Sparkles size={16} />}
+                  loading={profileGuideEstimating}
+                  disabled={!profileGuideCanEstimate}
+                  onClick={runEstimateStimulus}
+                >
+                  Estimate Stimulus
+                </Button>
+                <Button onClick={applyProfileGuide}>Apply</Button>
+              </Group>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
     </Stack>
   )
 }

@@ -1380,7 +1380,7 @@ async def health_program_evaluation(refresh: bool = False) -> dict:
     completed_weeks = sorted({
         int(s.get("week_number"))
         for s in sessions
-        if s.get("completed") and s.get("week_number") is not None
+        if (s.get("completed") or s.get("status") in ("logged", "completed")) and s.get("week_number") is not None
     })
     if len(completed_weeks) < 4:
         return {
@@ -1897,7 +1897,7 @@ async def glossary_estimate_e1rm(exercise_id: str) -> dict:
     
     past_instances = {}
     for s in program.get("sessions", []):
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         for ex_item in s.get("exercises", []):
             name = ex_item.get("name")

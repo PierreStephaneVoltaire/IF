@@ -55,6 +55,10 @@ export interface WeeklyAnalysis {
     per_lift_per_week: Record<string, Record<string, number>>
     /** Average INOL per lift across the analysis window. */
     avg_inol: Record<string, number>
+    raw_per_lift_per_week?: Record<string, Record<string, number>>
+    /** Average unadjusted INOL before lift-specific stimulus coefficients. */
+    raw_avg_inol?: Record<string, number>
+    stimulus_coefficients?: Record<string, number>
     flags: string[]
   } | null
   acwr?: {

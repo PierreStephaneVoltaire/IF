@@ -5,19 +5,17 @@ import { transformProgram } from '../db/transforms'
 import { AppError } from '../middleware/errorHandler'
 import type { Program, ProgramListItem, Phase, Session, PlannedExercise, LiftProfile } from '@powerlifting/types'
 
-const PK = 'operator'
-
 /**
  * Resolve a version string to the actual SK.
  * If version is "current", look up the pointer to get the real version.
  */
-async function resolveVersionSk(version: string): Promise<string> {
+async function resolveVersionSk(pk: string, version: string): Promise<string> {
   if (version === 'current') {
     // Look up the pointer
     const pointerCommand = new GetCommand({
       TableName: TABLE,
       Key: {
-        pk: PK,
+        pk,
         sk: 'program#current',
       },
     })
@@ -39,13 +37,13 @@ async function resolveVersionSk(version: string): Promise<string> {
 /**
  * Get a specific program version
  */
-export async function getProgram(version: string): Promise<Program> {
-  const sk = await resolveVersionSk(version)
+export async function getProgram(pk: string, version: string): Promise<Program> {
+  const sk = await resolveVersionSk(pk, version)
 
   const command = new GetCommand({
     TableName: TABLE,
     Key: {
-      pk: PK,
+      pk,
       sk,
     },
   })
@@ -62,12 +60,12 @@ export async function getProgram(version: string): Promise<Program> {
 /**
  * List all program versions
  */
-export async function listPrograms(): Promise<ProgramListItem[]> {
+export async function listPrograms(pk: string): Promise<ProgramListItem[]> {
   const command = new QueryCommand({
     TableName: TABLE,
     KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
     ExpressionAttributeValues: {
-      ':pk': PK,
+      ':pk': pk,
       ':prefix': 'program#',
     },
   })
@@ -110,14 +108,15 @@ export async function listPrograms(): Promise<ProgramListItem[]> {
  * Fork a program to a new version
  */
 export async function forkProgram(
+  pk: string,
   currentVersion: string,
   label?: string
 ): Promise<string> {
   // Get current program
-  const current = await getProgram(currentVersion)
+  const current = await getProgram(pk, currentVersion)
 
   // Find next version number
-  const all = await listPrograms()
+  const all = await listPrograms(pk)
   const nums = all.map(v => parseInt(v.version.replace(/\D/g, ''), 10)).filter(n => !isNaN(n))
   const next = nums.length > 0 ? Math.max(...nums) + 1 : 1
   const newVersion = `v${String(next).padStart(3, '0')}`
@@ -155,6 +154,7 @@ export async function forkProgram(
  * Update a single meta field
  */
 export async function updateMetaField(
+  pk: string,
   version: string,
   field: string,
   value: unknown
@@ -171,12 +171,12 @@ export async function updateMetaField(
     throw new AppError(`Cannot update field: ${field}`, 400)
   }
 
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   const command = new UpdateCommand({
     TableName: TABLE,
     Key: {
-      pk: PK,
+      pk,
       sk,
     },
     UpdateExpression: `SET #meta.#field = :value, #meta.updated_at = :now`,
@@ -197,16 +197,17 @@ export async function updateMetaField(
  * Update body weight
  */
 export async function updateBodyWeight(
+  pk: string,
   version: string,
   weightKg: number
 ): Promise<void> {
   const weightLb = weightKg * 2.20462
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   const command = new UpdateCommand({
     TableName: TABLE,
     Key: {
-      pk: PK,
+      pk,
       sk,
     },
     UpdateExpression: `SET #meta.current_body_weight_kg = :kg, #meta.current_body_weight_lb = :lb, #meta.updated_at = :now`,
@@ -230,17 +231,18 @@ export async function updateBodyWeight(
  * If `block` is omitted: full replace of the phases array; each phase keeps its own `block` field.
  */
 export async function updatePhases(
+  pk: string,
   version: string,
   phases: Phase[],
   block?: string
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   let nextPhases: Phase[]
   if (block) {
     const getCommand = new GetCommand({
       TableName: TABLE,
-      Key: { pk: PK, sk },
+      Key: { pk, sk },
       ProjectionExpression: 'phases',
     })
     const result = await docClient.send(getCommand)
@@ -258,7 +260,7 @@ export async function updatePhases(
   const command = new UpdateCommand({
     TableName: TABLE,
     Key: {
-      pk: PK,
+      pk,
       sk,
     },
     UpdateExpression: `SET phases = :phases, #meta.updated_at = :now`,
@@ -279,6 +281,7 @@ export async function updatePhases(
  * Creates one session per day entry, all with status "planned" and the same planned_exercises.
  */
 export async function batchCreateWeek(
+  pk: string,
   version: string,
   weekNumber: number,
   weekLabel: string,
@@ -286,10 +289,10 @@ export async function batchCreateWeek(
   phaseName: string,
   exercises: PlannedExercise[]
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions, phases',
   })
 
@@ -338,7 +341,7 @@ export async function batchCreateWeek(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -354,15 +357,16 @@ export async function batchCreateWeek(
  * Update lift profiles (squat/bench/deadlift style, sticking points, muscle dominance, volume tolerance).
  */
 export async function updateLiftProfiles(
+  pk: string,
   version: string,
   liftProfiles: LiftProfile[]
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   const command = new UpdateCommand({
     TableName: TABLE,
     Key: {
-      pk: PK,
+      pk,
       sk,
     },
     UpdateExpression: 'SET lift_profiles = :profiles, #meta.updated_at = :now',
@@ -382,15 +386,16 @@ export async function updateLiftProfiles(
  * Update planned exercises on a session.
  */
 export async function updatePlannedExercises(
+  pk: string,
   version: string,
   date: string,
   index: number,
   plannedExercises: PlannedExercise[]
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -430,7 +435,7 @@ export async function updatePlannedExercises(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -445,14 +450,14 @@ export async function updatePlannedExercises(
 /**
  * Archive a program version
  */
-export async function archiveProgram(version: string): Promise<void> {
-  const sk = await resolveVersionSk(version)
+export async function archiveProgram(pk: string, version: string): Promise<void> {
+  const sk = await resolveVersionSk(pk, version)
   const now = new Date().toISOString()
 
   // Update program item
   await docClient.send(new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET meta.archived = :a, meta.archived_at = :now',
     ExpressionAttributeValues: {
       ':a': true,
@@ -463,14 +468,14 @@ export async function archiveProgram(version: string): Promise<void> {
   // Check if it's current
   const pointerCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk: 'program#current' },
+    Key: { pk, sk: 'program#current' },
   })
   const pointerResult = await docClient.send(pointerCommand)
   const currentSk = (pointerResult.Item as any)?.ref_sk
 
   if (currentSk === sk) {
     // Need to repoint current
-    const allPrograms = await listPrograms()
+    const allPrograms = await listPrograms(pk)
     const nonArchived = allPrograms.filter(p => !p.archived && p.sk !== sk)
     
     if (nonArchived.length > 0) {
@@ -482,7 +487,7 @@ export async function archiveProgram(version: string): Promise<void> {
       await docClient.send(new PutCommand({
         TableName: TABLE,
         Item: {
-          pk: PK,
+          pk,
           sk: 'program#current',
           version: versionNum,
           ref_sk: latest.sk,
@@ -493,7 +498,7 @@ export async function archiveProgram(version: string): Promise<void> {
       // No other programs, delete pointer
       await docClient.send(new DeleteCommand({
         TableName: TABLE,
-        Key: { pk: PK, sk: 'program#current' },
+        Key: { pk, sk: 'program#current' },
       }))
     }
   }
@@ -502,12 +507,12 @@ export async function archiveProgram(version: string): Promise<void> {
 /**
  * Unarchive a program version
  */
-export async function unarchiveProgram(version: string): Promise<void> {
-  const sk = await resolveVersionSk(version)
+export async function unarchiveProgram(pk: string, version: string): Promise<void> {
+  const sk = await resolveVersionSk(pk, version)
 
   await docClient.send(new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET meta.archived = :a, meta.archived_at = :null',
     ExpressionAttributeValues: {
       ':a': false,

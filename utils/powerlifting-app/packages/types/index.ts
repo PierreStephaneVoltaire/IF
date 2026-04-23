@@ -246,6 +246,10 @@ export interface LiftProfile {
   sticking_points: string     // where in the lift they struggle most
   primary_muscle: string      // e.g. "quad dominant", "tricep dominant"
   volume_tolerance: 'low' | 'moderate' | 'high'
+  stimulus_coefficient?: number
+  stimulus_coefficient_reasoning?: string
+  stimulus_coefficient_confidence?: 'low' | 'medium' | 'high'
+  stimulus_coefficient_updated_at?: string
 }
 
 export interface Supplement {

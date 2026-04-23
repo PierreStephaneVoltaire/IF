@@ -405,6 +405,12 @@ resource "kubernetes_deployment" "portal_frontends" {
             }
           }
 
+          env_from {
+            config_map_ref {
+              name = "${each.key}-config"
+            }
+          }
+
           liveness_probe {
             http_get {
               path = "/"

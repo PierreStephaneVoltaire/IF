@@ -6,8 +6,10 @@ const IF_API_URL = process.env.IF_API_URL || 'http://if-agent-api.if-portals.svc
 // Stable chat_id → predictable sandbox directory for the exported file
 const EXPORT_CHAT_ID = process.env.EXPORT_CHAT_ID || 'pl-export'
 
-exportRouter.get('/xlsx', async (_req, res) => {
+exportRouter.get('/xlsx', async (req, res) => {
   try {
+    const pk = req.effectivePk || 'operator'
+    const toolArgs = JSON.stringify({ pk })
     // Step 1: invoke the export tool via X-Direct-Tool-Invoke
     const invokeRes = await fetch(`${IF_API_URL}/v1/chat/completions`, {
       method: 'POST',
@@ -18,7 +20,7 @@ exportRouter.get('/xlsx', async (_req, res) => {
       body: JSON.stringify({
         model: 'if-prototype',  // must match API_MODEL_NAME in config
         chat_id: EXPORT_CHAT_ID,
-        messages: [{ role: 'user', content: '/export_program_history {}' }],
+        messages: [{ role: 'user', content: `/export_program_history ${toolArgs}` }],
       }),
     })
 

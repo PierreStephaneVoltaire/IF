@@ -328,7 +328,7 @@ resource "kubernetes_daemon_set_v1" "promtail" {
           args  = ["-config.file=/etc/promtail/promtail.yaml"]
 
           security_context {
-            run_as_user = 0
+            run_as_user  = 0
             run_as_group = 0
           }
 

@@ -12,6 +12,14 @@ function extractJson(text: string): unknown {
   return JSON.parse(match[0])
 }
 
+function throwIfToolError(data: unknown): unknown {
+  if (data && typeof data === 'object' && 'error' in data) {
+    const error = (data as { error?: unknown }).error
+    if (error) throw new Error(String(error))
+  }
+  return data
+}
+
 async function invokeToolDirect(
   toolName: string,
   args: Record<string, unknown>,
@@ -34,7 +42,7 @@ async function invokeToolDirect(
   }
   const body = await response.json()
   const rawContent: string = body?.choices?.[0]?.message?.content ?? ''
-  return extractJson(rawContent)
+  return throwIfToolError(extractJson(rawContent))
 }
 
 // GET /api/analytics/analysis/weekly?weeks=N&block=X
@@ -42,7 +50,7 @@ analyticsRouter.get('/analysis/weekly', async (req, res) => {
   try {
     const weeks = parseInt(req.query.weeks as string) || 1
     const block = (req.query.block as string) || 'current'
-    const data = await invokeToolDirect('weekly_analysis', { weeks, block })
+    const data = await invokeToolDirect('weekly_analysis', { weeks, block, refresh_program: true, pk: req.effectivePk })
     res.json({ data, error: null })
   } catch (err) {
     res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
@@ -55,7 +63,7 @@ analyticsRouter.get('/correlation', async (req, res) => {
     const weeks = parseInt(req.query.weeks as string) || 4
     const block = (req.query.block as string) || 'current'
     const refresh = req.query.refresh === 'true'
-    const data = await invokeToolDirect('correlation_analysis', { weeks, block, refresh })
+    const data = await invokeToolDirect('correlation_analysis', { weeks, block, refresh, pk: req.effectivePk })
     res.json({ data, error: null })
   } catch (err) {
     res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
@@ -72,11 +80,55 @@ analyticsRouter.post('/fatigue-profile/estimate', async (req, res) => {
   }
 })
 
+// POST /api/analytics/lift-profile/review
+analyticsRouter.post('/lift-profile/review', async (req, res) => {
+  try {
+    const profile = req.body?.profile ?? req.body
+    const data = await invokeToolDirect('lift_profile_review', { profile, pk: req.effectivePk })
+    res.json({ data, error: null })
+  } catch (err) {
+    res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
+  }
+})
+
+// POST /api/analytics/lift-profile/rewrite
+analyticsRouter.post('/lift-profile/rewrite', async (req, res) => {
+  try {
+    const profile = req.body?.profile ?? req.body
+    const data = await invokeToolDirect('lift_profile_rewrite', { profile, pk: req.effectivePk })
+    res.json({ data, error: null })
+  } catch (err) {
+    res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
+  }
+})
+
+// POST /api/analytics/lift-profile/estimate-stimulus
+analyticsRouter.post('/lift-profile/estimate-stimulus', async (req, res) => {
+  try {
+    const profile = req.body?.profile ?? req.body
+    const data = await invokeToolDirect('lift_profile_estimate_stimulus', { profile, pk: req.effectivePk })
+    res.json({ data, error: null })
+  } catch (err) {
+    res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
+  }
+})
+
+// POST /api/analytics/lift-profile/rewrite-and-estimate
+analyticsRouter.post('/lift-profile/rewrite-and-estimate', async (req, res) => {
+  try {
+    const profile = req.body?.profile ?? req.body
+    const data = await invokeToolDirect('lift_profile_rewrite_and_estimate', { profile, pk: req.effectivePk })
+    res.json({ data, error: null })
+  } catch (err) {
+    res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
+  }
+})
+
 // GET /api/analytics/program-evaluation?refresh=bool
 analyticsRouter.get('/program-evaluation', async (req, res) => {
   try {
     const refresh = req.query.refresh === 'true'
-    const data = await invokeToolDirect('program_evaluation', { refresh })
+    const data = await invokeToolDirect('program_evaluation', { refresh, pk: req.effectivePk })
     res.json({ data, error: null })
   } catch (err) {
     res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })

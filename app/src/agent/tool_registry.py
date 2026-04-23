@@ -24,6 +24,7 @@ import importlib.util
 import logging
 import subprocess
 import sys
+import types
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -154,6 +155,7 @@ class ToolRegistry:
             logger.error(f"Tool {slug}: failed to create module spec")
             return
 
+        self._ensure_tools_package(subdir.parent)
         module = importlib.util.module_from_spec(spec)
         sys.modules[f"tools.{slug}"] = module
 
@@ -196,6 +198,17 @@ class ToolRegistry:
             schemas=schemas,
             dispatcher=dispatcher,
         )
+
+    def _ensure_tools_package(self, base: Path) -> None:
+        """Ensure importlib.reload can reload modules named tools.<slug>."""
+        package = sys.modules.get("tools")
+        if package is None:
+            package = types.ModuleType("tools")
+            package.__path__ = [str(base)]
+            sys.modules["tools"] = package
+            return
+        if not hasattr(package, "__path__"):
+            package.__path__ = [str(base)]
 
     def _load_plugin_subprocess(
         self, subdir: Path, slug: str, data: dict, scope: str
@@ -364,12 +377,14 @@ class ToolRegistry:
                         continue
 
                     if f"tools.{slug}" in sys.modules:
+                        self._ensure_tools_package(subdir.parent)
                         module = importlib.reload(sys.modules[f"tools.{slug}"])
                     else:
                         spec = importlib.util.spec_from_file_location(f"tools.{slug}", module_path)
                         if spec is None or spec.loader is None:
                             statuses[slug] = "failed: could not create module spec"
                             continue
+                        self._ensure_tools_package(subdir.parent)
                         module = importlib.util.module_from_spec(spec)
                         sys.modules[f"tools.{slug}"] = module
                         spec.loader.exec_module(module)

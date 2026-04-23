@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import { programsRouter } from './routes/programs'
 import { sessionsRouter } from './routes/sessions'
 import { exercisesRouter } from './routes/exercises'
@@ -14,14 +15,21 @@ import { exportRouter } from './routes/export'
 import { importRouter } from './routes/import'
 import { templateRouter } from './routes/template'
 import { statsRouter } from './routes/stats'
+import { authRouter } from './routes/auth'
+import { settingsRouter } from './routes/settings'
 import { errorHandler } from './middleware/errorHandler'
+import { requireUserOptional, resolvePk } from './middleware/auth'
 
 const app = express()
 
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
+
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: FRONTEND_URL,
+  credentials: true,
 }))
+app.use(cookieParser())
 app.use(express.json())
 
 // Health check
@@ -29,7 +37,14 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// API routes
+// Auth routes (before identity middleware — callback handles its own flow)
+app.use('/api/auth', authRouter)
+
+// Identity resolution for all domain routes
+app.use(requireUserOptional, resolvePk)
+
+// Domain routes
+app.use('/api/settings', settingsRouter)
 app.use('/api/programs', programsRouter)
 app.use('/api/sessions', sessionsRouter)
 app.use('/api/exercises', exercisesRouter)

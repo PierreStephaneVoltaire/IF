@@ -10,6 +10,7 @@ sessionsRouter.get('/:version/:date/:index', async (req, res, next) => {
   try {
     const index = parseInt(req.params.index, 10)
     const session = await sessionController.getSession(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index
@@ -49,7 +50,7 @@ sessionsRouter.post('/:version', async (req, res, next) => {
       body_weight_kg: session.body_weight_kg || null,
     }
 
-    await sessionController.createSession(req.params.version, newSession)
+    await sessionController.createSession(req.effectivePk!, req.params.version, newSession)
     res.json({ data: { success: true, session: newSession }, error: null })
   } catch (err) {
     next(err)
@@ -61,6 +62,7 @@ sessionsRouter.delete('/:version/:date/:index', async (req, res, next) => {
   try {
     const index = parseInt(req.params.index, 10)
     await sessionController.deleteSession(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index
@@ -85,6 +87,7 @@ sessionsRouter.put('/:version/:date/:index', async (req, res, next) => {
     }
 
     await sessionController.updateSession(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index,
@@ -110,6 +113,7 @@ sessionsRouter.patch('/:version/:date/:index/reschedule', async (req, res, next)
     }
 
     await sessionController.rescheduleSession(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index,
@@ -137,6 +141,7 @@ sessionsRouter.patch('/:version/:date/:index/status', async (req, res, next) => 
     }
 
     await sessionController.updateSessionStatus(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index,
@@ -155,6 +160,7 @@ sessionsRouter.patch('/:version/:date/:index/complete', async (req, res, next) =
     const index = parseInt(req.params.index, 10)
 
     await sessionController.completeSession(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index,
@@ -185,6 +191,7 @@ sessionsRouter.post('/:version/:date/:index/exercise', async (req, res, next) =>
     }
 
     await sessionController.addExercise(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index,
@@ -211,6 +218,7 @@ sessionsRouter.patch('/:version/:date/:index/exercise/:exerciseIndex', async (re
     }
 
     await sessionController.updateExerciseField(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index,
@@ -231,6 +239,7 @@ sessionsRouter.delete('/:version/:date/:index/exercise/:exerciseIndex', async (r
     const exerciseIndex = parseInt(req.params.exerciseIndex, 10)
 
     await sessionController.removeExercise(
+      req.effectivePk!,
       req.params.version,
       req.params.date,
       index,

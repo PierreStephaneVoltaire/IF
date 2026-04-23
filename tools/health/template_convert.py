@@ -55,7 +55,7 @@ def convert_block_to_template(program: dict[str, Any], e1rm_map: dict[str, float
     sessions = []
     
     for session in program.get("sessions", []):
-        if session.get("completed"):
+        if session.get("completed") or session.get("status") in ("logged", "completed"):
             continue # Stripped per spec
             
         tpl_exercises = []

@@ -3,16 +3,14 @@ import { docClient, TABLE } from '../db/dynamo'
 import { AppError } from '../middleware/errorHandler'
 import type { MaxEntry, MaxHistoryStore } from '@powerlifting/types'
 
-const PK = 'operator'
-
 /**
  * Get max history for a program version
  */
-export async function getMaxHistory(version: string): Promise<MaxHistoryStore> {
+export async function getMaxHistory(pk: string, version: string): Promise<MaxHistoryStore> {
   const command = new GetCommand({
     TableName: TABLE,
     Key: {
-      pk: PK,
+      pk,
       sk: `max_history#${version}`,
     },
   })
@@ -22,7 +20,7 @@ export async function getMaxHistory(version: string): Promise<MaxHistoryStore> {
   if (!result.Item) {
     // Return empty history if not found
     return {
-      pk: PK,
+      pk,
       sk: `max_history#${version}`,
       entries: [],
       updated_at: new Date().toISOString(),
@@ -35,8 +33,8 @@ export async function getMaxHistory(version: string): Promise<MaxHistoryStore> {
 /**
  * Add a new max entry to history
  */
-export async function addMaxEntry(version: string, entry: MaxEntry): Promise<void> {
-  const history = await getMaxHistory(version)
+export async function addMaxEntry(pk: string, version: string, entry: MaxEntry): Promise<void> {
+  const history = await getMaxHistory(pk, version)
 
   history.entries.push(entry)
   history.entries.sort((a, b) => b.date.localeCompare(a.date)) // Sort descending by date
@@ -54,13 +52,14 @@ export async function addMaxEntry(version: string, entry: MaxEntry): Promise<voi
  * Update target maxes in program meta
  */
 export async function updateTargetMaxes(
+  pk: string,
   version: string,
   maxes: { squat_kg: number; bench_kg: number; deadlift_kg: number }
 ): Promise<void> {
   const command = new UpdateCommand({
     TableName: TABLE,
     Key: {
-      pk: PK,
+      pk,
       sk: `program#${version}`,
     },
     UpdateExpression: `SET
@@ -87,7 +86,7 @@ export async function updateTargetMaxes(
 /**
  * Get current target maxes from program meta
  */
-export async function getTargetMaxes(version: string): Promise<{
+export async function getTargetMaxes(pk: string, version: string): Promise<{
   squat_kg: number
   bench_kg: number
   deadlift_kg: number
@@ -96,7 +95,7 @@ export async function getTargetMaxes(version: string): Promise<{
   const command = new GetCommand({
     TableName: TABLE,
     Key: {
-      pk: PK,
+      pk,
       sk: `program#${version}`,
     },
     ProjectionExpression: '#meta.target_squat_kg, #meta.target_bench_kg, #meta.target_dl_kg, #meta.target_total_kg',

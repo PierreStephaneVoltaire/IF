@@ -3,16 +3,14 @@ import { docClient, TABLE } from '../db/dynamo'
 import { AppError } from '../middleware/errorHandler'
 import type { DietNote } from '@powerlifting/types'
 
-const PK = 'operator'
-
 /**
  * Resolve a version string to the actual SK.
  */
-async function resolveVersionSk(version: string): Promise<string> {
+async function resolveVersionSk(pk: string, version: string): Promise<string> {
   if (version === 'current') {
     const pointerCommand = new GetCommand({
       TableName: TABLE,
-      Key: { pk: PK, sk: 'program#current' },
+      Key: { pk, sk: 'program#current' },
     })
     const pointerResult = await docClient.send(pointerCommand)
     if (!pointerResult.Item) return 'program#v001'
@@ -25,14 +23,15 @@ async function resolveVersionSk(version: string): Promise<string> {
  * Update all diet notes
  */
 export async function updateDietNotes(
+  pk: string,
   version: string,
   dietNotes: DietNote[]
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET diet_notes = :notes, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -47,12 +46,12 @@ export async function updateDietNotes(
 /**
  * Get diet notes
  */
-export async function getDietNotes(version: string): Promise<DietNote[]> {
-  const sk = await resolveVersionSk(version)
+export async function getDietNotes(pk: string, version: string): Promise<DietNote[]> {
+  const sk = await resolveVersionSk(pk, version)
 
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'diet_notes',
   })
 

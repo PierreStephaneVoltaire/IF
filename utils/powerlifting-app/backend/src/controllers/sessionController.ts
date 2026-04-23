@@ -3,16 +3,14 @@ import { docClient, TABLE } from '../db/dynamo'
 import { AppError } from '../middleware/errorHandler'
 import type { Session, Exercise, Phase, SessionStatus } from '@powerlifting/types'
 
-const PK = 'operator'
-
 /**
  * Resolve a version string to the actual SK.
  */
-async function resolveVersionSk(version: string): Promise<string> {
+async function resolveVersionSk(pk: string, version: string): Promise<string> {
   if (version === 'current') {
     const pointerCommand = new GetCommand({
       TableName: TABLE,
-      Key: { pk: PK, sk: 'program#current' },
+      Key: { pk, sk: 'program#current' },
     })
     const pointerResult = await docClient.send(pointerCommand)
     if (!pointerResult.Item) return 'program#v001'
@@ -25,13 +23,14 @@ async function resolveVersionSk(version: string): Promise<string> {
  * Create a new session
  */
 export async function createSession(
+  pk: string,
   version: string,
   session: Session
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions, phases',
   })
 
@@ -77,7 +76,7 @@ export async function createSession(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -93,14 +92,15 @@ export async function createSession(
  * Delete a session by index
  */
 export async function deleteSession(
+  pk: string,
   version: string,
   date: string,
   index: number
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -123,7 +123,7 @@ export async function deleteSession(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -135,11 +135,11 @@ export async function deleteSession(
   await docClient.send(updateCommand)
 }
 
-export async function getSession(version: string, date: string, index: number): Promise<Session | null> {
-  const sk = await resolveVersionSk(version)
+export async function getSession(pk: string, version: string, date: string, index: number): Promise<Session | null> {
+  const sk = await resolveVersionSk(pk, version)
   const command = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -165,15 +165,16 @@ export async function getSession(version: string, date: string, index: number): 
  * Update an entire session at a specific index
  */
 export async function updateSession(
+  pk: string,
   version: string,
   date: string,
   index: number,
   session: Session
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -196,7 +197,7 @@ export async function updateSession(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -212,16 +213,17 @@ export async function updateSession(
  * Reschedule a session to a new date
  */
 export async function rescheduleSession(
+  pk: string,
   version: string,
   date: string,
   index: number,
   newDate: string,
   newDay: string
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -248,7 +250,7 @@ export async function rescheduleSession(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -264,15 +266,16 @@ export async function rescheduleSession(
  * Mark a session as complete with optional RPE and body weight
  */
 export async function completeSession(
+  pk: string,
   version: string,
   date: string,
   index: number,
   data: { rpe?: number; bodyWeightKg?: number; notes?: string }
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -301,7 +304,7 @@ export async function completeSession(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -317,15 +320,16 @@ export async function completeSession(
  * Update only the status field on a session
  */
 export async function updateSessionStatus(
+  pk: string,
   version: string,
   date: string,
   index: number,
   status: SessionStatus
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -352,7 +356,7 @@ export async function updateSessionStatus(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -368,15 +372,16 @@ export async function updateSessionStatus(
  * Add an exercise to a session
  */
 export async function addExercise(
+  pk: string,
   version: string,
   date: string,
   index: number,
   exercise: Exercise
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -399,7 +404,7 @@ export async function addExercise(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -415,15 +420,16 @@ export async function addExercise(
  * Remove an exercise from a session
  */
 export async function removeExercise(
+  pk: string,
   version: string,
   date: string,
   index: number,
   exerciseIndex: number
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -450,7 +456,7 @@ export async function removeExercise(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {
@@ -466,6 +472,7 @@ export async function removeExercise(
  * Update a single field on an exercise
  */
 export async function updateExerciseField(
+  pk: string,
   version: string,
   date: string,
   index: number,
@@ -473,10 +480,10 @@ export async function updateExerciseField(
   field: keyof Exercise,
   value: unknown
 ): Promise<void> {
-  const sk = await resolveVersionSk(version)
+  const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     ProjectionExpression: 'sessions',
   })
 
@@ -503,7 +510,7 @@ export async function updateExerciseField(
 
   const updateCommand = new UpdateCommand({
     TableName: TABLE,
-    Key: { pk: PK, sk },
+    Key: { pk, sk },
     UpdateExpression: 'SET sessions = :sessions, #meta.updated_at = :now',
     ExpressionAttributeNames: { '#meta': 'meta' },
     ExpressionAttributeValues: {

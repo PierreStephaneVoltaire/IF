@@ -30,10 +30,15 @@ import type {
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 })
+
+function templatePath(sk: string, suffix = ''): string {
+  return `/templates/${encodeURIComponent(sk)}${suffix}`
+}
 
 // ─── Programs ────────────────────────────────────────────────────────────────
 
@@ -353,11 +358,115 @@ export async function removeSessionVideo(
 
 // ─── Lift Profiles ────────────────────────────────────────────────────────────
 
+export interface LiftProfileReview {
+  lift: LiftProfile['lift']
+  completeness_score: number
+  ready_for_coefficient: boolean
+  score_explanation?: string
+  score_breakdown?: Record<string, {
+    score: number
+    max: number
+    notes?: string[]
+  }>
+  missing_details: string[]
+  suggestions: string[]
+  error?: string
+}
+
+export type LiftProfileRewriteEstimate = LiftProfile & {
+  stimulus_coefficient: number
+  stimulus_coefficient_confidence: 'low' | 'medium' | 'high'
+  stimulus_coefficient_reasoning: string
+  stimulus_coefficient_updated_at: string
+  missing_details?: string[]
+  error?: string
+}
+
+export type LiftProfileRewrite = Pick<
+  LiftProfile,
+  'lift' | 'style_notes' | 'sticking_points' | 'primary_muscle' | 'volume_tolerance'
+> & {
+  missing_details?: string[]
+  error?: string
+}
+
+export type LiftProfileStimulusEstimate = Pick<LiftProfile, 'lift'> & {
+  stimulus_coefficient: number
+  stimulus_coefficient_confidence: 'low' | 'medium' | 'high'
+  stimulus_coefficient_reasoning: string
+  stimulus_coefficient_updated_at: string
+  ready_for_estimate?: boolean
+  estimate_ready_threshold?: number
+  completeness_score?: number
+  missing_details?: string[]
+  error?: string
+}
+
+function normalizeLiftProfileReview(
+  data: Partial<LiftProfileReview> | null | undefined,
+  profile: LiftProfile
+): LiftProfileReview {
+  if (!data) throw new Error('Empty lift profile review response')
+  if (data?.error) throw new Error(String(data.error))
+  return {
+    lift: data?.lift ?? profile.lift,
+    completeness_score: typeof data?.completeness_score === 'number' ? data.completeness_score : 0,
+    ready_for_coefficient: Boolean(data?.ready_for_coefficient),
+    score_explanation: data?.score_explanation,
+    score_breakdown: data?.score_breakdown,
+    missing_details: Array.isArray(data?.missing_details) ? data.missing_details : [],
+    suggestions: Array.isArray(data?.suggestions) ? data.suggestions : [],
+  }
+}
+
 export async function updateLiftProfiles(
   version: string,
   liftProfiles: LiftProfile[]
 ): Promise<void> {
   await api.put(`/programs/${version}/lift-profiles`, { liftProfiles })
+}
+
+export async function reviewLiftProfile(profile: LiftProfile): Promise<LiftProfileReview> {
+  const res = await api.post<ApiResponse<LiftProfileReview>>(
+    '/analytics/lift-profile/review',
+    { profile }
+  )
+  if (res.data.error) throw new Error(String(res.data.error))
+  return normalizeLiftProfileReview(res.data.data, profile)
+}
+
+export async function rewriteLiftProfile(profile: LiftProfile): Promise<LiftProfileRewrite> {
+  const res = await api.post<ApiResponse<LiftProfileRewrite>>(
+    '/analytics/lift-profile/rewrite',
+    { profile }
+  )
+  if (res.data.error) throw new Error(String(res.data.error))
+  if (res.data.data?.error) throw new Error(String(res.data.data.error))
+  return res.data.data
+}
+
+export async function estimateLiftProfileStimulus(
+  profile: LiftProfile
+): Promise<LiftProfileStimulusEstimate> {
+  const res = await api.post<ApiResponse<LiftProfileStimulusEstimate>>(
+    '/analytics/lift-profile/estimate-stimulus',
+    { profile }
+  )
+  if (res.data.error) throw new Error(String(res.data.error))
+  if (res.data.data?.error) throw new Error(String(res.data.data.error))
+  return res.data.data
+}
+
+export async function rewriteAndEstimateLiftProfile(
+  profile: LiftProfile
+): Promise<LiftProfileRewriteEstimate> {
+  const res = await api.post<ApiResponse<LiftProfileRewriteEstimate>>(
+    '/analytics/lift-profile/rewrite-and-estimate',
+    { profile }
+  )
+  if (res.data.error) throw new Error(String(res.data.error))
+  if (res.data.data?.error) throw new Error(String(res.data.data.error))
+  return res.data.data
 }
 
 // ─── Fatigue Profile ──────────────────────────────────────────────────────────
@@ -428,7 +537,7 @@ export async function fetchTemplates(includeArchived: boolean = false): Promise<
 }
 
 export async function fetchTemplate(sk: string): Promise<Template> {
-  const res = await api.get(`/templates/${sk}`)
+  const res = await api.get(templatePath(sk))
   return res.data
 }
 
@@ -438,20 +547,20 @@ export async function createTemplateFromBlock(name: string, program_sk?: string)
 }
 
 export async function copyTemplate(sk: string, newName: string): Promise<{ sk: string }> {
-  const res = await api.post(`/templates/${sk}/copy`, { new_name: newName })
+  const res = await api.post(templatePath(sk, '/copy'), { new_name: newName })
   return res.data
 }
 
 export async function archiveTemplate(sk: string): Promise<void> {
-  await api.patch(`/templates/${sk}/archive`)
+  await api.patch(templatePath(sk, '/archive'))
 }
 
 export async function unarchiveTemplate(sk: string): Promise<void> {
-  await api.patch(`/templates/${sk}/unarchive`)
+  await api.patch(templatePath(sk, '/unarchive'))
 }
 
 export async function evaluateTemplate(sk: string): Promise<AiTemplateEvaluation> {
-  const res = await api.post(`/templates/${sk}/evaluate`)
+  const res = await api.post(templatePath(sk, '/evaluate'))
   return res.data
 }
 
@@ -460,7 +569,7 @@ export async function applyTemplate(sk: string, body: {
   start_date?: string;
   week_start_day: string;
 }): Promise<any> {
-  const res = await api.post(`/templates/${sk}/apply`, body)
+  const res = await api.post(templatePath(sk, '/apply'), body)
   return res.data
 }
 
@@ -469,7 +578,7 @@ export async function confirmApplyTemplate(sk: string, body: {
   start_date?: string;
   week_start_day: string;
 }): Promise<{ program_sk: string }> {
-  const res = await api.post(`/templates/${sk}/apply/confirm`, body)
+  const res = await api.post(templatePath(sk, '/apply/confirm'), body)
   return res.data
 }
 
@@ -484,7 +593,7 @@ export async function createBlankTemplate(body: {
 }
 
 export async function updateTemplate(sk: string, template: Template): Promise<void> {
-  await api.put(`/templates/${sk}`, template)
+  await api.put(templatePath(sk), template)
 }
 
 // ─── Archive & e1RM ─────────────────────────────────────────────────────────

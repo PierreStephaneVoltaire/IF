@@ -7,7 +7,7 @@ export const exercisesRouter = Router()
 // GET /api/exercises - Get full glossary
 exercisesRouter.get('/', async (req, res, next) => {
   try {
-    const glossary = await exerciseController.getGlossary()
+    const glossary = await exerciseController.getGlossary(req.effectivePk!)
     res.json({ data: glossary.exercises, error: null })
   } catch (err) {
     next(err)
@@ -26,7 +26,7 @@ exercisesRouter.get('/search', async (req, res, next) => {
       })
     }
 
-    const exercises = await exerciseController.searchExercises(query)
+    const exercises = await exerciseController.searchExercises(req.effectivePk!, query)
     res.json({ data: exercises, error: null })
   } catch (err) {
     next(err)
@@ -36,7 +36,7 @@ exercisesRouter.get('/search', async (req, res, next) => {
 // GET /api/exercises/:id - Get exercise by ID
 exercisesRouter.get('/:id', async (req, res, next) => {
   try {
-    const exercise = await exerciseController.getExerciseById(req.params.id)
+    const exercise = await exerciseController.getExerciseById(req.effectivePk!, req.params.id)
 
     if (!exercise) {
       return res.status(404).json({
@@ -63,7 +63,7 @@ exercisesRouter.post('/', async (req, res, next) => {
       })
     }
 
-    await exerciseController.upsertExercise(exercise)
+    await exerciseController.upsertExercise(req.effectivePk!, exercise)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -76,7 +76,7 @@ exercisesRouter.put('/:id', async (req, res, next) => {
     const exercise = req.body as GlossaryExercise
     exercise.id = req.params.id
 
-    await exerciseController.upsertExercise(exercise)
+    await exerciseController.upsertExercise(req.effectivePk!, exercise)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -86,7 +86,7 @@ exercisesRouter.put('/:id', async (req, res, next) => {
 // DELETE /api/exercises/:id - Remove exercise
 exercisesRouter.delete('/:id', async (req, res, next) => {
   try {
-    await exerciseController.removeExercise(req.params.id)
+    await exerciseController.removeExercise(req.effectivePk!, req.params.id)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -96,7 +96,7 @@ exercisesRouter.delete('/:id', async (req, res, next) => {
 // PATCH /api/exercises/:id/archive - Archive an exercise
 exercisesRouter.patch('/:id/archive', async (req, res, next) => {
   try {
-    await exerciseController.archiveExercise(req.params.id)
+    await exerciseController.archiveExercise(req.effectivePk!, req.params.id)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -106,7 +106,7 @@ exercisesRouter.patch('/:id/archive', async (req, res, next) => {
 // PATCH /api/exercises/:id/unarchive - Unarchive an exercise
 exercisesRouter.patch('/:id/unarchive', async (req, res, next) => {
   try {
-    await exerciseController.unarchiveExercise(req.params.id)
+    await exerciseController.unarchiveExercise(req.effectivePk!, req.params.id)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)
@@ -120,7 +120,7 @@ exercisesRouter.post('/:id/e1rm', async (req, res, next) => {
     if (typeof value_kg !== 'number') {
       return res.status(400).json({ data: null, error: 'value_kg must be a number' })
     }
-    await exerciseController.setE1rmEstimate(req.params.id, value_kg, method)
+    await exerciseController.setE1rmEstimate(req.effectivePk!, req.params.id, value_kg, method)
     res.json({ data: { success: true }, error: null })
   } catch (err) {
     next(err)

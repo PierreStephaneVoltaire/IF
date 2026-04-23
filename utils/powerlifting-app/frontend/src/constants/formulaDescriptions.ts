@@ -116,12 +116,14 @@ Note: skip_rate excluded — resting reduces fatigue, not increases it.`,
   {
     id: 'inol',
     title: 'INOL',
-    summary: 'Intensity and volume load metric per lift per week. Flags low stimulus and overreaching.',
-    formula: `INOL = sum(reps / (100 * (1 - I)))
+    summary: 'Stimulus-adjusted intensity and volume load metric per lift per week. Flags low stimulus and overreaching.',
+    formula: `raw_INOL = sum(reps / (100 * (1 - I)))
+adjusted_INOL = raw_INOL * lift_stimulus_coefficient
 I = weight / E_now (per set)`,
     variables: [
       { name: 'reps', description: 'Repetitions in the set' },
       { name: 'I', description: 'Intensity ratio (weight / estimated max)' },
+      { name: 'lift_stimulus_coefficient', description: 'Lift-profile multiplier from 1 to 2; baseline is 1.0' },
     ],
     thresholds: [
       { label: 'Low stimulus', value: '< 2.0', flag: 'Insufficient training stress' },
@@ -200,6 +202,17 @@ SR_broad = (SBD + secondary category) / total sets`,
       { name: 'total', description: 'Squat + Bench + Deadlift total (kg)' },
       { name: 'bw', description: 'Bodyweight in kg' },
       { name: 'a-e', description: 'Sex-specific polynomial coefficients' },
+    ],
+  },
+  {
+    id: 'ipf_gl_score',
+    title: 'IPF GL Score',
+    summary: 'IPF relative scoring coefficient for classic powerlifting totals or classic bench-only results.',
+    formula: `GL = result * 100 / (A - B * e^(-C * bw))`,
+    variables: [
+      { name: 'result', description: 'SBD total for classic powerlifting, or bench result for bench-only scoring' },
+      { name: 'bw', description: 'Bodyweight in kg' },
+      { name: 'A-C', description: 'Sex- and discipline-specific coefficients' },
     ],
   },
   {
