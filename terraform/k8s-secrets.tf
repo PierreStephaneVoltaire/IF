@@ -193,11 +193,17 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
   }
 
   data = {
-    AWS_REGION     = var.region
-    DYNAMODB_TABLE = var.dynamodb_powerlifting_table
-    NODE_ENV       = "production"
-    PORT           = "3005"
-    FRONTEND_URL   = "http://powerlifting-app-frontend:3001"
+    AWS_REGION            = var.region
+    DYNAMODB_TABLE        = var.dynamodb_powerlifting_table
+    NODE_ENV              = "production"
+    PORT                  = "3005"
+    FRONTEND_URL          = "http://powerlifting-app-frontend:3001"
+    DISCORD_CLIENT_ID     = var.discord_client_id
+    DISCORD_CLIENT_SECRET = var.discord_client_secret
+    DISCORD_REDIRECT_URI  = var.discord_redirect_uri
+    JWT_SECRET            = var.jwt_secret
+    COOKIE_DOMAIN         = var.cookie_domain
+    COOKIE_SECURE         = var.cookie_secure
   }
 }
 

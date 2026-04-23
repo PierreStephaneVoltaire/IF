@@ -304,7 +304,7 @@ def _build_user_message(program: dict[str, Any]) -> str:
     current_weeks = _analysis_weeks(program, sessions)
     window_start = _parse_date(meta.get("program_start"))
 
-    completed_weeks = sorted({int(s.get("week_number") or 0) for s in sessions if s.get("completed") and s.get("week_number")})
+    completed_weeks = sorted({int(s.get("week_number") or 0) for s in sessions if (s.get("completed") or s.get("status") in ("logged", "completed")) and s.get("week_number")})
     bodyweight_trend = summarize_bodyweight_trend(sessions, window_start=window_start)
     diet_context = summarize_diet_context(program, window_start=window_start, bodyweight_trend=bodyweight_trend)
     competitions = summarize_competitions(program)
@@ -316,7 +316,7 @@ def _build_user_message(program: dict[str, Any]) -> str:
     planned_sessions = summarize_planned_sessions(sessions)
     weekly_report = weekly_analysis(program, sessions, weeks=current_weeks, block="current")
     exercise_roi = summarize_exercise_roi(program, sessions=sessions, top_n=15)
-    current_block_completed_sessions = len([s for s in sessions if s.get("completed")])
+    current_block_completed_sessions = len([s for s in sessions if s.get("completed") or s.get("status") in ("logged", "completed")])
 
     payload = {
         "task": "Evaluate the current powerlifting block and judge how well it is directing the athlete toward the competition goals.",

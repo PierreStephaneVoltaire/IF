@@ -648,3 +648,37 @@ variable "grafana_admin_password" {
   default     = "admin"
 }
 
+variable "discord_client_id" {
+  description = "Discord Client ID for Powerlifting app"
+  type        = string
+}
+
+variable "discord_client_secret" {
+  description = "Discord Client Secret for Powerlifting app"
+  type        = string
+  sensitive   = true
+}
+
+variable "discord_redirect_uri" {
+  description = "Discord Redirect URI for Powerlifting app"
+  type        = string
+}
+
+variable "jwt_secret" {
+  description = "JWT Secret for Powerlifting app"
+  type        = string
+  sensitive   = true
+}
+
+variable "cookie_domain" {
+  description = "Cookie domain for Powerlifting app"
+  type        = string
+  default     = ""
+}
+
+variable "cookie_secure" {
+  description = "Whether cookie is secure for Powerlifting app"
+  type        = string
+  default     = "true"
+}
+

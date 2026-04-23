@@ -64,6 +64,18 @@ class ProgramStore:
         logger.debug(f"[ProgramStore] Initialized with table={table_name}, pk={pk}, region={region}")
 
     @property
+    def pk(self) -> str:
+        """Active DynamoDB partition key."""
+        return self._pk
+
+    @pk.setter
+    def pk(self, value: str) -> None:
+        """Switch active partition key and clear cached program data."""
+        if value != self._pk:
+            self._pk = value
+            self.invalidate_cache()
+
+    @property
     def table(self):
         """Lazy-load DynamoDB table resource."""
         if self._table is None:

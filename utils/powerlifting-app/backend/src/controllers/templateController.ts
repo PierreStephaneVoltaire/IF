@@ -2,6 +2,14 @@ import { Request, Response } from 'express'
 import { invokeToolDirect } from '../utils/agent'
 import { AppError } from '../middleware/errorHandler'
 
+function normalizeTemplateSk(sk: string): string {
+  try {
+    return decodeURIComponent(sk)
+  } catch {
+    return sk
+  }
+}
+
 export async function listTemplates(req: Request, res: Response) {
   const include_archived = req.query.includeArchived === 'true'
   try {
@@ -13,7 +21,7 @@ export async function listTemplates(req: Request, res: Response) {
 }
 
 export async function getTemplate(req: Request, res: Response) {
-  const { sk } = req.params
+  const sk = normalizeTemplateSk(req.params.sk)
   try {
     const data = await invokeToolDirect('template_get', { sk, pk: req.effectivePk })
     res.json(data)
@@ -50,7 +58,7 @@ export async function createBlankTemplate(req: Request, res: Response) {
 }
 
 export async function updateTemplate(req: Request, res: Response) {
-  const { sk } = req.params
+  const sk = normalizeTemplateSk(req.params.sk)
   const template = req.body
   try {
     const result = await invokeToolDirect('template_update', { sk, template, pk: req.effectivePk })
@@ -62,7 +70,7 @@ export async function updateTemplate(req: Request, res: Response) {
 }
 
 export async function copyTemplate(req: Request, res: Response) {
-  const { sk } = req.params
+  const sk = normalizeTemplateSk(req.params.sk)
   const { new_name } = req.body
   try {
     const result = await invokeToolDirect('template_copy', { sk, new_name, pk: req.effectivePk })
@@ -73,7 +81,7 @@ export async function copyTemplate(req: Request, res: Response) {
 }
 
 export async function archiveTemplate(req: Request, res: Response) {
-  const { sk } = req.params
+  const sk = normalizeTemplateSk(req.params.sk)
   try {
     const result = await invokeToolDirect('template_archive', { sk, pk: req.effectivePk })
     res.json(result)
@@ -83,7 +91,7 @@ export async function archiveTemplate(req: Request, res: Response) {
 }
 
 export async function unarchiveTemplate(req: Request, res: Response) {
-  const { sk } = req.params
+  const sk = normalizeTemplateSk(req.params.sk)
   try {
     const result = await invokeToolDirect('template_unarchive', { sk, pk: req.effectivePk })
     res.json(result)
@@ -93,7 +101,7 @@ export async function unarchiveTemplate(req: Request, res: Response) {
 }
 
 export async function evaluateTemplate(req: Request, res: Response) {
-  const { sk } = req.params
+  const sk = normalizeTemplateSk(req.params.sk)
   try {
     const result = await invokeToolDirect('template_evaluate', { sk, pk: req.effectivePk })
     res.json(result)
@@ -103,7 +111,7 @@ export async function evaluateTemplate(req: Request, res: Response) {
 }
 
 export async function applyTemplate(req: Request, res: Response) {
-  const { sk } = req.params
+  const sk = normalizeTemplateSk(req.params.sk)
   const { target, start_date, week_start_day } = req.body
   try {
     const result = await invokeToolDirect('template_apply', { sk, target, start_date, week_start_day, pk: req.effectivePk })
@@ -114,7 +122,7 @@ export async function applyTemplate(req: Request, res: Response) {
 }
 
 export async function confirmApplyTemplate(req: Request, res: Response) {
-  const { sk } = req.params
+  const sk = normalizeTemplateSk(req.params.sk)
   const { backfilled_maxes, start_date, week_start_day } = req.body
   try {
     const result = await invokeToolDirect('template_apply_confirm', {

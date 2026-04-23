@@ -138,7 +138,7 @@ def _build_weekly_e1rm(sessions: list[dict], cutoff_str: str) -> dict[int, dict[
     """Build weekly best e1RM estimates per big lift from sessions."""
     weekly: dict[int, dict[str, float]] = {}
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         if s.get("date", "") < cutoff_str:
             continue
@@ -184,7 +184,7 @@ def _build_weekly_accessory_volume(sessions: list[dict], cutoff_str: str) -> dic
     big_lift_names = frozenset(["squat", "bench", "bench press", "deadlift"])
 
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         if s.get("date", "") < cutoff_str:
             continue

@@ -184,7 +184,7 @@ def _get_exercise_sessions(sessions: list[dict], exercise_name: str) -> list[dic
     name_lower = exercise_name.lower()
     out = []
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         for ex in s.get("exercises", []):
             if ex.get("name", "").lower() == name_lower:
@@ -196,7 +196,7 @@ def _get_exercise_sessions(sessions: list[dict], exercise_name: str) -> list[dic
 def _compute_weekly_volume_load(sessions: list[dict], program_start: str) -> dict[int, float]:
     weekly: dict[int, float] = {}
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         wk = _session_week_num(s, program_start)
         if wk is None:
@@ -260,7 +260,7 @@ def _detect_deloads(
 
     week_sessions: dict[int, list[dict]] = {}
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         wk = _session_week_num(s, program_start)
         if wk is None:
@@ -412,7 +412,7 @@ def _weekly_fatigue_by_dimension(
     """Keyed by integer week_number."""
     weekly: dict[int, dict[str, float]] = {}
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         wk = _session_week_num(s, program_start)
         if wk is None:
@@ -616,7 +616,7 @@ def volume_intensity_correlation(sessions: list[dict], exercise_name: str, progr
     weekly_intensity: dict[int, float] = {}
     weekly_count: dict[int, int] = {}
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         wk = _session_week_num(s, program_start)
         if wk is None:
@@ -801,7 +801,7 @@ def fatigue_index(
     session_rpes = [
         _num(s.get("session_rpe"))
         for s in recent
-        if s.get("completed") and s.get("session_rpe") is not None
+        if (s.get("completed") or s.get("status") in ("logged", "completed")) and s.get("session_rpe") is not None
     ]
     if session_rpes:
         avg_rpe = sum(session_rpes) / len(session_rpes)
@@ -841,24 +841,20 @@ def fatigue_index(
     }
 
 
-def session_compliance(program: dict, weeks: int = 4) -> dict:
+def session_compliance(sessions: list[dict], phases: list[dict], program_start: str, weeks: int = 4) -> dict:
     """All weeks counted — no deload/break exclusions."""
-    sessions = program.get("sessions", [])
-    meta = program.get("meta", {})
-    program_start = meta.get("program_start", "")
-    current_week = _calculate_current_week(program_start)
+    current_week = _calculate_current_week(program_start, sessions)
     cutoff_week = max(1, current_week - weeks + 1)
 
     sessions_in_window = [
         s for s in sessions
-        if s.get("status") in ("planned", "logged", "completed", "skipped")
+        if (s.get("status") in ("planned", "logged", "completed", "skipped") or not s.get("status"))
         and cutoff_week <= int(s.get("week_number", 0)) <= current_week
     ]
     planned_count = len(sessions_in_window)
-    completed_count = sum(1 for s in sessions_in_window if s.get("status") in ("logged", "completed"))
+    completed_count = sum(1 for s in sessions_in_window if s.get("completed") or s.get("status") in ("logged", "completed"))
     compliance_pct = round((completed_count / planned_count) * 100, 1) if planned_count > 0 else 0
 
-    phases = program.get("phases", [])
     current_phase = _find_current_phase(phases, current_week)
     phase_name = current_phase.get("name", "Unknown") if current_phase else "Unknown"
 
@@ -982,7 +978,7 @@ def meet_projection(
     weeks_taper = 3 if weeks_to_comp >= 12 else (2 if weeks_to_comp >= 8 else 1)
 
     deload_info = _detect_deloads(sessions, program_start)
-    current_week_num = _calculate_current_week(program_start)
+    current_week_num = _calculate_current_week(program_start, sessions)
     comp_week = current_week_num + weeks_to_comp
     remaining_deloads = [w for w in deload_info if w["is_deload"] and current_week_num <= w["week_num"] <= comp_week]
     planned_deload_weeks = len(remaining_deloads)
@@ -1048,10 +1044,23 @@ def meet_projection(
     }
 
 
+def _lift_stimulus_coefficients(lift_profiles: list[dict] | None) -> dict[str, float]:
+    """Return per-lift INOL stimulus multipliers, defaulting to 1.0."""
+    coeffs = {"squat": 1.0, "bench": 1.0, "deadlift": 1.0}
+    for profile in lift_profiles or []:
+        lift = str(profile.get("lift", "")).lower().strip()
+        if lift not in coeffs:
+            continue
+        raw_coeff = profile.get("stimulus_coefficient")
+        coeffs[lift] = round(_clamp(_num(raw_coeff) if raw_coeff is not None else 1.0, 1.0, 2.0), 2)
+    return coeffs
+
+
 def compute_inol(
     sessions: list[dict],
     program_start: str = "",
     current_maxes: dict | None = None,
+    lift_profiles: list[dict] | None = None,
 ) -> dict:
     """INOL per lift per week. Returns avg_inol across the window. Flags on avg."""
     if not current_maxes:
@@ -1062,10 +1071,12 @@ def compute_inol(
         program_start = _infer_program_start(sessions)
 
     lift_names = {"squat": "squat", "bench press": "bench", "bench": "bench", "deadlift": "deadlift"}
+    stimulus_coefficients = _lift_stimulus_coefficients(lift_profiles)
+    raw_per_lift_per_week: dict[str, dict[int, float]] = {}
     per_lift_per_week: dict[str, dict[int, float]] = {}
 
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         wk = _session_week_num(s, program_start)
         if wk is None:
@@ -1085,12 +1096,21 @@ def compute_inol(
             I = kg / max_val
             denom = max(0.01, 1 - I) if I >= 1.0 else (1 - I)
             inol_contrib = (reps / (100 * denom)) * sets
+            coeff = stimulus_coefficients.get(canonical, 1.0)
+            adjusted_contrib = inol_contrib * coeff
+            raw_per_lift_per_week.setdefault(canonical, {})
+            raw_per_lift_per_week[canonical][wk] = raw_per_lift_per_week[canonical].get(wk, 0) + inol_contrib
             per_lift_per_week.setdefault(canonical, {})
-            per_lift_per_week[canonical][wk] = per_lift_per_week[canonical].get(wk, 0) + inol_contrib
+            per_lift_per_week[canonical][wk] = per_lift_per_week[canonical].get(wk, 0) + adjusted_contrib
 
     if not per_lift_per_week:
         return {**INSUFFICIENT_DATA, "reason": "No qualifying sets for INOL"}
 
+    raw_avg_inol = {
+        lift: round(sum(weeks_data.values()) / len(weeks_data), 2)
+        for lift, weeks_data in raw_per_lift_per_week.items()
+        if weeks_data
+    }
     avg_inol = {
         lift: round(sum(weeks_data.values()) / len(weeks_data), 2)
         for lift, weeks_data in per_lift_per_week.items()
@@ -1103,8 +1123,20 @@ def compute_inol(
     ]
     rounded = {lift: {str(w): round(v, 2) for w, v in sorted(weeks_data.items())}
                for lift, weeks_data in per_lift_per_week.items()}
+    raw_rounded = {lift: {str(w): round(v, 2) for w, v in sorted(weeks_data.items())}
+                   for lift, weeks_data in raw_per_lift_per_week.items()}
 
-    return {"per_lift_per_week": rounded, "avg_inol": avg_inol, "flags": flags}
+    return {
+        "per_lift_per_week": rounded,
+        "avg_inol": avg_inol,
+        "raw_per_lift_per_week": raw_rounded,
+        "raw_avg_inol": raw_avg_inol,
+        "stimulus_coefficients": {
+            lift: stimulus_coefficients.get(lift, 1.0)
+            for lift in avg_inol.keys()
+        },
+        "flags": flags,
+    }
 
 
 def compute_acwr(
@@ -1188,7 +1220,7 @@ def compute_ri_distribution(sessions: list[dict], current_maxes: dict | None = N
     overall: dict[str, int] = {"heavy": 0, "moderate": 0, "light": 0}
     per_lift: dict[str, dict[str, int]] = {}
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         for ex in s.get("exercises", []):
             canonical = lift_names.get(ex.get("name", "").lower().strip())
@@ -1227,7 +1259,7 @@ def compute_specificity_ratio(sessions: list[dict], glossary: list[dict] | None 
         for ex in glossary:
             category_lookup[ex.get("name", "").lower().strip()] = ex.get("category", "")
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         for ex in s.get("exercises", []):
             sets = int(_num(ex.get("sets", 0)))
@@ -1269,10 +1301,10 @@ def compute_readiness_score(
     ref = date.today()
     cutoff = ref - timedelta(days=14)
     recent_sessions = [s for s in sessions if (d := _parse_date(s.get("date", ""))) and d >= cutoff]
-    rpe_vals = [_num(s.get("session_rpe")) for s in recent_sessions if s.get("completed") and s.get("session_rpe") is not None]
+    rpe_vals = [_num(s.get("session_rpe")) for s in recent_sessions if (s.get("completed") or s.get("status") in ("logged", "completed")) and s.get("session_rpe") is not None]
     avg_rpe = sum(rpe_vals) / len(rpe_vals) if rpe_vals else 7.5
 
-    current_week = _calculate_current_week(program_start)
+    current_week = _calculate_current_week(program_start, sessions)
     current_phase = _find_current_phase(phases, current_week)
     target_rpe_mid = 7.5
     if current_phase:
@@ -1299,7 +1331,7 @@ def compute_readiness_score(
     failed_sets = sum(_count_failed_sets(ex) for s in recent_sessions for ex in s.get("exercises", []))
     m_rate = _clamp(failed_sets / total_sets, 0, 1) if total_sets > 0 else 0
 
-    c_pct = session_compliance(program, weeks=2).get("compliance_pct", 50)
+    c_pct = session_compliance(sessions, phases, program_start, weeks=2).get("compliance_pct", 50)
     score = round(_clamp((1 - (0.30 * f_norm + 0.25 * d_rpe + 0.20 * s_bw + 0.15 * m_rate + 0.10 * (1 - c_pct / 100))) * 100, 0, 100), 1)
     zone = "green" if score > 75 else ("yellow" if score >= 50 else "red")
 
@@ -1329,13 +1361,13 @@ def weekly_analysis(
     phases = program.get("phases", [])
     program_start = meta.get("program_start", "")
 
-    current_week = _calculate_current_week(program_start)
-    current_phase = _find_current_phase(phases, current_week)
-    phase_name = current_phase.get("name", "Unknown") if current_phase else "Unknown"
-
     # Block filter
     if block:
         sessions = [s for s in sessions if s.get("block", "current") == block]
+
+    current_week = _calculate_current_week(program_start, sessions)
+    current_phase = _find_current_phase(phases, current_week)
+    phase_name = current_phase.get("name", "Unknown") if current_phase else "Unknown"
 
     # Date-window filter → recent_sessions
     ref = _parse_date(ref_date) if ref_date else date.today()
@@ -1348,7 +1380,7 @@ def weekly_analysis(
 
     # Completed sessions in window — used by all windowed metrics
     # (INOL, ACWR, RI distribution, specificity, fatigue dimensions, readiness)
-    completed_in_window = [s for s in recent_sessions if s.get("status") in ("logged", "completed")]
+    completed_in_window = [s for s in recent_sessions if s.get("completed") or s.get("status") in ("logged", "completed")]
 
     # Exercise stats: completed sessions only, to avoid inflated counts from planned sessions
     exercise_stats: dict[str, dict[str, Any]] = {}
@@ -1437,7 +1469,7 @@ def weekly_analysis(
     if fatigue.get("flags"):
         all_flags.extend(fatigue["flags"])
 
-    compliance_result = session_compliance(program, weeks=min(weeks, 4))
+    compliance_result = session_compliance(sessions, phases, program_start, weeks=min(weeks, 4))
     compliance_obj = {
         "phase": compliance_result.get("phase", "Unknown"),
         "planned": compliance_result.get("planned_sessions", 0),
@@ -1535,7 +1567,7 @@ def weekly_analysis(
             "dimension_weights": {"axial": 0.30, "neural": 0.30, "peripheral": 0.25, "systemic": 0.15},
         }
 
-    inol_result = compute_inol(completed_in_window, program_start, current_maxes_raw)
+    inol_result = compute_inol(completed_in_window, program_start, current_maxes_raw, program.get("lift_profiles"))
     acwr_result = compute_acwr(completed_in_window, glossary, program_start, current_maxes_raw)
     ri_result = compute_ri_distribution(completed_in_window, current_maxes_raw)
     specificity_result = compute_specificity_ratio(completed_in_window, glossary)
@@ -1573,7 +1605,23 @@ def weekly_analysis(
 # Renderer helpers
 # ---------------------------------------------------------------------------
 
-def _calculate_current_week(program_start: str) -> int:
+def _calculate_current_week(program_start: str, sessions: list[dict] = None) -> int:
+    if sessions:
+        valid_weeks = []
+        today = date.today()
+        for s in sessions:
+            wn = s.get("week_number")
+            if wn is not None:
+                status = s.get("status")
+                d = _parse_date(s.get("date", ""))
+                if s.get("completed") or status in ("logged", "completed") or (d and d <= today):
+                    valid_weeks.append(int(wn))
+        if valid_weeks:
+            return max(valid_weeks)
+        all_weeks = [int(s.get("week_number")) for s in sessions if s.get("week_number") is not None]
+        if all_weeks:
+            return min(all_weeks)
+
     if not program_start:
         return 1
     try:

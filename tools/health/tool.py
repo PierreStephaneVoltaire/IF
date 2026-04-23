@@ -1484,8 +1484,8 @@ class AnalyzeProgressionExecutor(ToolExecutor[AnalyzeProgressionAction, AnalyzeP
         sessions = program.get("sessions", [])
         program_start = program.get("meta", {}).get("program_start", "")
 
-        if action.weeks:
-            cutoff_week = _calculate_current_week(program_start) - action.weeks
+        if action.weeks > 0:
+            cutoff_week = _calculate_current_week(program_start, sessions) - action.weeks
             start = _parse_date(program_start)
             if start:
                 cutoff_date = start + timedelta(weeks=cutoff_week)
@@ -1618,6 +1618,7 @@ class CalculateDotsTool(ToolDefinition[CalculateDotsAction, CalculateDotsObserva
 class WeeklyAnalysisAction(Action):
     weeks: int = Field(default=1, description="Number of weeks to analyze (default: 1)")
     block: str = Field(default="current", description="Program block filter (default 'current')")
+    refresh_program: bool = Field(default=True, description="Invalidate the program cache before analysis")
 
 
 class WeeklyAnalysisObservation(Observation):
@@ -1630,7 +1631,10 @@ class WeeklyAnalysisExecutor(ToolExecutor[WeeklyAnalysisAction, WeeklyAnalysisOb
         from analytics import weekly_analysis
         from config import IF_HEALTH_TABLE_NAME
 
-        program = _run_async(_get_store().get_program())
+        store = _get_store()
+        if action.refresh_program:
+            store.invalidate_cache()
+        program = _run_async(store.get_program())
         sessions = program.get("sessions", [])
         glossary = _get_glossary_sync(IF_HEALTH_TABLE_NAME)
         result = weekly_analysis(
@@ -1791,8 +1795,68 @@ class FatigueProfileEstimateTool(ToolDefinition[FatigueProfileEstimateAction, Fa
         )]
 
 
+class LiftProfileReviewAction(Action):
+    profile: dict = Field(description="Lift profile dict with lift, style_notes, sticking_points, primary_muscle, and volume_tolerance")
+
+
+class LiftProfileReviewObservation(Observation):
+    pass
+
+
+class LiftProfileReviewExecutor(ToolExecutor[LiftProfileReviewAction, LiftProfileReviewObservation]):
+    def __call__(self, action: LiftProfileReviewAction, conversation=None) -> LiftProfileReviewObservation:
+        from lift_profile_ai import review_lift_profile
+        result = _run_async(review_lift_profile(action.profile))
+        return LiftProfileReviewObservation.from_text(_format_result(result))
+
+
+class LiftProfileReviewTool(ToolDefinition[LiftProfileReviewAction, LiftProfileReviewObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["LiftProfileReviewTool"]:
+        return [cls(
+            description=(
+                "Review a squat/bench/deadlift style profile for missing biomechanical details "
+                "needed to estimate a lift-specific INOL stimulus coefficient."
+            ),
+            action_type=LiftProfileReviewAction,
+            observation_type=LiftProfileReviewObservation,
+            executor=LiftProfileReviewExecutor(),
+        )]
+
+
+class LiftProfileRewriteEstimateAction(Action):
+    profile: dict = Field(description="Lift profile dict to clean up and estimate a 1-2 INOL stimulus coefficient for")
+
+
+class LiftProfileRewriteEstimateObservation(Observation):
+    pass
+
+
+class LiftProfileRewriteEstimateExecutor(ToolExecutor[LiftProfileRewriteEstimateAction, LiftProfileRewriteEstimateObservation]):
+    def __call__(self, action: LiftProfileRewriteEstimateAction, conversation=None) -> LiftProfileRewriteEstimateObservation:
+        from lift_profile_ai import rewrite_and_estimate_lift_profile
+        result = _run_async(rewrite_and_estimate_lift_profile(action.profile))
+        return LiftProfileRewriteEstimateObservation.from_text(_format_result(result))
+
+
+class LiftProfileRewriteEstimateTool(ToolDefinition[LiftProfileRewriteEstimateAction, LiftProfileRewriteEstimateObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["LiftProfileRewriteEstimateTool"]:
+        return [cls(
+            description=(
+                "Rewrite a lift style profile for analysis clarity and estimate its 1-2 "
+                "INOL stimulus coefficient against a baseline of 1.0."
+            ),
+            action_type=LiftProfileRewriteEstimateAction,
+            observation_type=LiftProfileRewriteEstimateObservation,
+            executor=LiftProfileRewriteEstimateExecutor(),
+        )]
+
+
 register_tool("CorrelationAnalysisTool", CorrelationAnalysisTool)
 register_tool("FatigueProfileEstimateTool", FatigueProfileEstimateTool)
+register_tool("LiftProfileReviewTool", LiftProfileReviewTool)
+register_tool("LiftProfileRewriteEstimateTool", LiftProfileRewriteEstimateTool)
 
 
 # --- program_evaluation ---
@@ -1995,6 +2059,8 @@ def get_tools() -> List[Tool]:
         Tool(name="WeeklyAnalysisTool"),
         Tool(name="CorrelationAnalysisTool"),
         Tool(name="FatigueProfileEstimateTool"),
+        Tool(name="LiftProfileReviewTool"),
+        Tool(name="LiftProfileRewriteEstimateTool"),
         Tool(name="ProgramEvaluationTool"),
         Tool(name="ImportParseFileTool"),
         Tool(name="ImportApplyTool"),
@@ -2440,9 +2506,15 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "properties": {
                     "weeks": {"type": "integer", "description": "Number of weeks to analyze", "default": 1},
                     "block": {"type": "string", "description": "Program block filter", "default": "current"},
+                    "refresh_program": {"type": "boolean", "description": "Invalidate the program cache before analysis", "default": True},
                 },
                 "required": [],
             },
+        },
+        "health_invalidate_program_cache": {
+            "name": "health_invalidate_program_cache",
+            "description": "Clear the in-memory cached training program so the next read loads from DynamoDB.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
         "correlation_analysis": {
             "name": "correlation_analysis",
@@ -2485,6 +2557,71 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                     },
                 },
                 "required": ["exercise"],
+            },
+        },
+        "lift_profile_review": {
+            "name": "lift_profile_review",
+            "description": (
+                "Review a squat, bench, or deadlift style profile and return missing "
+                "biomechanical details needed to estimate a lift-specific INOL stimulus coefficient."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "profile": {
+                        "type": "object",
+                        "description": "Lift profile with lift, style_notes, sticking_points, primary_muscle, and volume_tolerance.",
+                    },
+                },
+                "required": ["profile"],
+            },
+        },
+        "lift_profile_rewrite_and_estimate": {
+            "name": "lift_profile_rewrite_and_estimate",
+            "description": (
+                "Rewrite a lift style profile for analysis clarity and estimate a 1-2 "
+                "INOL stimulus coefficient against a baseline of 1.0."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "profile": {
+                        "type": "object",
+                        "description": "Lift profile with lift, style_notes, sticking_points, primary_muscle, and volume_tolerance.",
+                    },
+                },
+                "required": ["profile"],
+            },
+        },
+        "lift_profile_rewrite": {
+            "name": "lift_profile_rewrite",
+            "description": "Rewrite lift profile text for analysis clarity without estimating stimulus coefficient.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "profile": {
+                        "type": "object",
+                        "description": "Lift profile with lift, style_notes, sticking_points, primary_muscle, and volume_tolerance.",
+                    },
+                },
+                "required": ["profile"],
+            },
+        },
+        "lift_profile_estimate_stimulus": {
+            "name": "lift_profile_estimate_stimulus",
+            "description": (
+                "Estimate a 1-2 INOL stimulus coefficient from an existing lift profile. "
+                "Requires profile completeness score >= 55."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "profile": {
+                        "type": "object",
+                        "description": "Lift profile with lift, style_notes, sticking_points, primary_muscle, and volume_tolerance.",
+                    },
+                },
+                "required": ["profile"],
             },
         },
         "program_evaluation": {
@@ -2816,13 +2953,22 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
 # Route helpers for analytics/export tools (non-agentic specialist path)
 # =============================================================================
 
-def _get_program_and_sessions():
+def _get_program_and_sessions(refresh_program: bool = False):
     """Fetch program from store, return (program, sessions, program_start)."""
     from core import _get_store
-    program = _run_async(_get_store().get_program())
+    store = _get_store()
+    if refresh_program:
+        store.invalidate_cache()
+    program = _run_async(store.get_program())
     sessions = program.get("sessions", [])
     program_start = program.get("meta", {}).get("program_start", "")
     return program, sessions, program_start
+
+
+def _do_health_invalidate_program_cache(args):
+    from core import _get_store
+    _get_store().invalidate_cache()
+    return {"success": True}
 
 
 def _do_export(args):
@@ -2875,7 +3021,7 @@ def _do_calculate_dots(args):
 def _do_weekly_analysis(args):
     from analytics import weekly_analysis
     from config import IF_HEALTH_TABLE_NAME
-    program, sessions, program_start = _get_program_and_sessions()
+    program, sessions, program_start = _get_program_and_sessions(refresh_program=args.get("refresh_program", True))
     glossary = _get_glossary_sync(IF_HEALTH_TABLE_NAME)
     return weekly_analysis(
         program,
@@ -2967,6 +3113,26 @@ def _do_fatigue_profile_estimate(args):
         program_meta=program_meta,
         lift_profiles=lift_profiles,
     ))
+
+
+def _do_lift_profile_review(args):
+    from lift_profile_ai import review_lift_profile
+    return _run_async(review_lift_profile(args["profile"]))
+
+
+def _do_lift_profile_rewrite_and_estimate(args):
+    from lift_profile_ai import rewrite_and_estimate_lift_profile
+    return _run_async(rewrite_and_estimate_lift_profile(args["profile"]))
+
+
+def _do_lift_profile_rewrite(args):
+    from lift_profile_ai import rewrite_lift_profile
+    return _run_async(rewrite_lift_profile(args["profile"]))
+
+
+def _do_lift_profile_estimate_stimulus(args):
+    from lift_profile_ai import estimate_lift_profile_stimulus
+    return _run_async(estimate_lift_profile_stimulus(args["profile"]))
 
 
 def _do_program_evaluation(args):
@@ -3082,6 +3248,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
 
     ROUTES = {
         "health_get_program": lambda: health_get_program(),
+        "health_invalidate_program_cache": lambda: _do_health_invalidate_program_cache(args),
         "health_get_session": lambda: health_get_session(args["date"]),
         "health_update_session": lambda: do_update_session(args["date"], args["patch"]),
         "health_new_version": lambda: do_new_version(args["change_reason"], args["patches"]),
@@ -3121,6 +3288,10 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "weekly_analysis": lambda: _do_weekly_analysis(args),
         "correlation_analysis": lambda: _do_correlation_analysis(args),
         "fatigue_profile_estimate": lambda: _do_fatigue_profile_estimate(args),
+        "lift_profile_review": lambda: _do_lift_profile_review(args),
+        "lift_profile_rewrite_and_estimate": lambda: _do_lift_profile_rewrite_and_estimate(args),
+        "lift_profile_rewrite": lambda: _do_lift_profile_rewrite(args),
+        "lift_profile_estimate_stimulus": lambda: _do_lift_profile_estimate_stimulus(args),
         "program_evaluation": lambda: _do_program_evaluation(args),
         "import_parse_file": lambda: import_parse_file(args["base64_content"], args["filename"]),
         "import_apply": lambda: import_apply(args["import_id"], args.get("merge_strategy", "append"), args.get("conflict_resolutions"), args.get("start_date")),

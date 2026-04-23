@@ -26,6 +26,7 @@ import TemplateEditPage from '@/pages/TemplateEditPage'
 import RankingsPage from '@/pages/RankingsPage'
 import LoginPage from '@/pages/LoginPage'
 import AuthCallbackPage from '@/pages/AuthCallbackPage'
+import LiftProfilePage from '@/pages/LiftProfilePage'
 
 // Tool Components
 import PlateCalculator from '@/components/tools/PlateCalculator'
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/" element={<Dashboard />} />
+          <Route path="/lift-profiles/:lift" element={<LiftProfilePage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/designer" element={<DesignerLanding />} />
           <Route path="/designer/phases" element={<DesignerPhases />} />

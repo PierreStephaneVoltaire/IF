@@ -11,6 +11,7 @@ import { fetchWeightLog, fetchGlossary } from '@/api/client'
 import { normalizeExerciseName } from '@/utils/volume'
 import { useSettingsStore } from '@/store/settingsStore'
 import { calculateDots } from '@/utils/dots'
+import { calculateIpfGl, getIpfGlModeLabel, type IpfGlMode } from '@/utils/ipfGl'
 import { toDisplayUnit, displayWeight } from '@/utils/units'
 import { FORMULA_DESCRIPTIONS } from '@/constants/formulaDescriptions'
 import type { WeightEntry, GlossaryExercise, ExerciseCategory } from '@powerlifting/types'
@@ -61,6 +62,17 @@ function compStatusBadge(status: string) {
 }
 
 const LIFT_LABELS: Record<string, string> = { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' }
+
+type TrendRow = {
+  week: number
+  squat: number | null
+  bench: number | null
+  deadlift: number | null
+  total: number | null
+  dots: number | null
+  ipfGl: number | null
+  ipfGlMode: IpfGlMode | null
+}
 
 // ─── Main component ────────────────────────────────────────────────────────────
 
@@ -302,13 +314,21 @@ export default function AnalysisPage() {
 
   const dotsTrend = useMemo(() => {
     if (!filteredSessions.length) return null
-    type WeekData = { squat: number; bench: number; deadlift: number; bw: number }
+    type WeekData = {
+      squat: number
+      bench: number
+      deadlift: number
+      bw: number
+      hasSquat: boolean
+      hasBench: boolean
+      hasDeadlift: boolean
+    }
     const byWeek = new Map<number, WeekData>()
 
     for (const s of filteredSessions) {
       const wn = s.week_number
       if (!wn) continue
-      if (!byWeek.has(wn)) byWeek.set(wn, { squat: 0, bench: 0, deadlift: 0, bw: 0 })
+      if (!byWeek.has(wn)) byWeek.set(wn, { squat: 0, bench: 0, deadlift: 0, bw: 0, hasSquat: false, hasBench: false, hasDeadlift: false })
       const w = byWeek.get(wn)!
 
       if (s.body_weight_kg && s.body_weight_kg > w.bw) w.bw = s.body_weight_kg
@@ -318,18 +338,22 @@ export default function AnalysisPage() {
         const kg = ex.kg || 0
         const reps = ex.reps || 0
         const e1rm = epleyE1rm(kg, reps)
-        if (name === 'squat' || (name.includes('squat') && !name.includes('hack') && !name.includes('split')))
+        if (name === 'squat' || (name.includes('squat') && !name.includes('hack') && !name.includes('split'))) {
           w.squat = Math.max(w.squat, e1rm)
-        else if (name === 'bench press' || name === 'bench')
+          w.hasSquat = true
+        } else if (name === 'bench press' || name === 'bench') {
           w.bench = Math.max(w.bench, e1rm)
-        else if (name === 'deadlift' || (name.includes('deadlift') && !name.includes('rdl') && !name.includes('romanian')))
+          w.hasBench = true
+        } else if (name === 'deadlift' || (name.includes('deadlift') && !name.includes('rdl') && !name.includes('romanian'))) {
           w.deadlift = Math.max(w.deadlift, e1rm)
+          w.hasDeadlift = true
+        }
       }
     }
 
     const sortedLog = [...weightLog].sort((a, b) => a.date.localeCompare(b.date))
 
-    const rows = Array.from(byWeek.entries())
+    const rows: TrendRow[] = Array.from(byWeek.entries())
       .sort(([a], [b]) => a - b)
       .map(([wn, d]) => {
         let bw = d.bw
@@ -337,6 +361,18 @@ export default function AnalysisPage() {
 
         const total = (d.squat > 0 ? d.squat : 0) + (d.bench > 0 ? d.bench : 0) + (d.deadlift > 0 ? d.deadlift : 0)
         const dots = total > 0 && bw > 0 ? calculateDots(total, bw, sex) : null
+        const hasFullSbd = d.hasSquat && d.hasBench && d.hasDeadlift
+        const hasBenchOnly = d.hasBench && !d.hasSquat && !d.hasDeadlift
+        const ipfGl = bw > 0 && hasFullSbd && total > 0
+          ? calculateIpfGl(total, bw, sex, 'classic_powerlifting')
+          : bw > 0 && hasBenchOnly && d.bench > 0
+            ? calculateIpfGl(d.bench, bw, sex, 'classic_bench')
+            : null
+        const ipfGlMode: IpfGlMode | null = hasFullSbd && total > 0
+          ? 'classic_powerlifting'
+          : hasBenchOnly && d.bench > 0
+            ? 'classic_bench'
+            : null
         return {
           week: wn,
           squat: d.squat > 0 ? Math.round(d.squat * 10) / 10 : null,
@@ -344,6 +380,8 @@ export default function AnalysisPage() {
           deadlift: d.deadlift > 0 ? Math.round(d.deadlift * 10) / 10 : null,
           total: total > 0 ? Math.round(total * 10) / 10 : null,
           dots,
+          ipfGl,
+          ipfGlMode,
         }
       })
       .filter(r => r.squat || r.bench || r.deadlift)
@@ -358,6 +396,16 @@ export default function AnalysisPage() {
 
     return { rows, dotsChange }
   }, [filteredSessions, weightLog, sex])
+
+  const ipfGlTrend = useMemo(() => {
+    if (!dotsTrend?.rows.length) return null
+    const comparable = dotsTrend.rows.filter((r): r is TrendRow & { ipfGl: number; ipfGlMode: IpfGlMode } => r.ipfGl !== null && r.ipfGlMode !== null)
+    if (comparable.length < 2) return null
+    const modes = new Set(comparable.map(r => r.ipfGlMode))
+    if (modes.size !== 1) return null
+    const change = Math.round(((comparable[comparable.length - 1].ipfGl - comparable[0].ipfGl) / Math.max(1, comparable.length - 1)) * 100) / 100
+    return { change, mode: comparable[0].ipfGlMode }
+  }, [dotsTrend])
 
   const highestMaxes = useMemo(() => {
     if (!dotsTrend || !dotsTrend.rows.length) return null
@@ -548,15 +596,19 @@ export default function AnalysisPage() {
           {/* INOL */}
           {data.inol && data.inol.avg_inol && (
             <Paper withBorder p="md">
-              <Text fw={500} mb="sm">INOL (Window Average)</Text>
+              <Text fw={500} mb="sm">Stimulus-Adjusted INOL (Window Average)</Text>
               <SimpleGrid cols={3} mb="sm">
-                {Object.entries(data.inol.avg_inol).map(([lift, val]) => (
-                  <Stack key={lift} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${val > 4.0 ? 'red' : val < 2.0 ? 'yellow' : 'green'}-light)` }}>
-                    <Text fz="xs" c="dimmed" tt="capitalize">{lift}</Text>
-                    <Text fz="xl" fw={700} c={val > 4.0 ? 'red' : val < 2.0 ? 'yellow' : 'green'}>{val.toFixed(2)}</Text>
-                    <Text fz="xs" c="dimmed">{val > 4.0 ? 'Overreaching' : val < 2.0 ? 'Low stimulus' : 'Productive'}</Text>
-                  </Stack>
-                ))}
+                {Object.entries(data.inol.avg_inol).map(([lift, val]) => {
+                  const coefficient = data.inol?.stimulus_coefficients?.[lift] ?? 1
+                  return (
+                    <Stack key={lift} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${val > 4.0 ? 'red' : val < 2.0 ? 'yellow' : 'green'}-light)` }}>
+                      <Text fz="xs" c="dimmed" tt="capitalize">{lift}</Text>
+                      <Text fz="xl" fw={700} c={val > 4.0 ? 'red' : val < 2.0 ? 'yellow' : 'green'}>{val.toFixed(2)}</Text>
+                      <Text fz="xs" c="dimmed">Stimulus x{coefficient.toFixed(2)}</Text>
+                      <Text fz="xs" c="dimmed">{val > 4.0 ? 'Overreaching' : val < 2.0 ? 'Low stimulus' : 'Productive'}</Text>
+                    </Stack>
+                  )
+                })}
               </SimpleGrid>
               {data.inol.flags.length > 0 && (
                 <Group gap="xs" wrap="wrap">
@@ -749,6 +801,11 @@ export default function AnalysisPage() {
                     {dotsTrend.dotsChange >= 0 ? '+' : ''}{dotsTrend.dotsChange} DOTS/wk
                   </Badge>
                 )}
+                {ipfGlTrend && (
+                  <Badge color={ipfGlTrend.change >= 0 ? 'green' : 'red'} variant="light" ml="xs">
+                    {ipfGlTrend.change >= 0 ? '+' : ''}{ipfGlTrend.change} {getIpfGlModeLabel(ipfGlTrend.mode)} GL/wk
+                  </Badge>
+                )}
               </Group>
               <Box style={{ overflowX: 'auto' }}>
                 <Table fz="sm">
@@ -760,6 +817,7 @@ export default function AnalysisPage() {
                       <Table.Th ta="right">Deadlift</Table.Th>
                       <Table.Th ta="right" visibleFrom="sm">Total</Table.Th>
                       <Table.Th ta="right">DOTS</Table.Th>
+                      <Table.Th ta="right">IPF GL</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -771,12 +829,24 @@ export default function AnalysisPage() {
                         <Table.Td ta="right">{r.deadlift !== null ? toDisplayUnit(r.deadlift, unit).toFixed(1) : '--'}</Table.Td>
                         <Table.Td ta="right" fw={500} visibleFrom="sm">{r.total !== null ? toDisplayUnit(r.total, unit).toFixed(1) : '--'}</Table.Td>
                         <Table.Td ta="right" fw={700} c="blue">{r.dots?.toFixed(2) ?? '--'}</Table.Td>
+                        <Table.Td ta="right">
+                          {r.ipfGl !== null && r.ipfGlMode !== null ? (
+                            <Stack gap={0} align="flex-end">
+                              <Text span fw={700} fz="sm">{r.ipfGl.toFixed(2)}</Text>
+                              <Text span fz="xs" c="dimmed">{getIpfGlModeLabel(r.ipfGlMode)}</Text>
+                            </Stack>
+                          ) : (
+                            <Text span fz="sm" c="dimmed">--</Text>
+                          )}
+                        </Table.Td>
                       </Table.Tr>
                     ))}
                   </Table.Tbody>
                 </Table>
               </Box>
-              <Text fz="xs" c="dimmed" mt="xs">DOTS calculated from estimated 1RM (Epley) and nearest bodyweight. Male coefficients used.</Text>
+              <Text fz="xs" c="dimmed" mt="xs">
+                DOTS uses estimated 1RM (Epley) and nearest bodyweight. IPF GL uses Classic Powerlifting for full SBD weeks and Classic Bench for bench-only weeks.
+              </Text>
             </Paper>
           )}
 

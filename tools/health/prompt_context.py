@@ -84,6 +84,7 @@ def summarize_lift_profiles(lift_profiles: list[dict[str, Any]] | None) -> list[
             "sticking_points": profile.get("sticking_points") or "",
             "primary_muscle": profile.get("primary_muscle") or "",
             "volume_tolerance": profile.get("volume_tolerance") or "moderate",
+            "stimulus_coefficient": profile.get("stimulus_coefficient", 1.0),
         })
     return ordered
 
@@ -171,7 +172,7 @@ def summarize_bodyweight_trend(
     reference_date = reference_date or date.today()
     points = []
     for session in sessions:
-        if not session.get("completed"):
+        if not (session.get("completed") or session.get("status") in ("logged", "completed")):
             continue
         bw = session.get("body_weight_kg")
         if bw is None:
@@ -308,7 +309,7 @@ def summarize_planned_sessions(
     sessions: list[dict[str, Any]],
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    planned = [s for s in sessions if not s.get("completed") and (s.get("status") in (None, "planned", "skipped") or not s.get("status"))]
+    planned = [s for s in sessions if not (s.get("completed") or s.get("status") in ("logged", "completed")) and (s.get("status") in (None, "planned", "skipped") or not s.get("status"))]
     planned.sort(key=lambda s: s.get("date", ""))
     if limit is not None:
         planned = planned[:limit]
@@ -333,7 +334,7 @@ def summarize_completed_sessions(
     sessions: list[dict[str, Any]],
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    completed = [s for s in sessions if s.get("completed")]
+    completed = [s for s in sessions if s.get("completed") or s.get("status") in ("logged", "completed")]
     completed.sort(key=lambda s: s.get("date", ""))
     if limit is not None:
         completed = completed[:limit]
@@ -425,7 +426,7 @@ def summarize_exercise_roi(
 
     exercise_names: set[str] = set()
     for s in sessions:
-        if not s.get("completed"):
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
             continue
         for ex in s.get("exercises", []):
             name = (ex.get("name") or "").strip()
@@ -462,7 +463,7 @@ HOW THE ANALYSIS PAGE METRICS ARE CALCULATED
 - Progression rate: Theil-Sen slope of e1RM over effective training weeks, with deload and break
   weeks excluded.
 - Fatigue index: 0.40 × failed compound set ratio + 0.35 × composite fatigue spike + 0.25 × RPE stress.
-- INOL: reps / (100 × (1 - intensity ratio)) aggregated per lift per week.
+- INOL: reps / (100 × (1 - intensity ratio)) aggregated per lift per week, then multiplied by the lift profile stimulus coefficient.
 - ACWR: acute workload divided by the previous 4-week chronic average, with a weighted composite.
 - Relative intensity distribution: sets bucketed by load ratio vs estimated 1RM.
 - Specificity ratio: SBD sets divided by total sets, plus a broader version that includes same-category work.
