@@ -261,24 +261,9 @@ export default function AnalysisPage() {
     return lookup
   }, [glossary])
 
-  const muscleGroupSets = useMemo(() => {
-    if (!glossaryMuscles.size || !filteredSessions.length) return {}
-    const mgSets: Record<string, number> = {}
-    for (const s of filteredSessions) {
-      for (const ex of s.exercises || []) {
-        const muscles = glossaryMuscles.get(normalizeExerciseName(ex.name))
-        if (!muscles) continue
-        const sets = ex.sets || 0
-        for (const m of muscles.primary) mgSets[m] = (mgSets[m] || 0) + sets
-        for (const m of muscles.secondary) mgSets[m] = (mgSets[m] || 0) + sets * 0.5
-      }
-    }
-    return mgSets
-  }, [glossaryMuscles, filteredSessions])
-
   const muscleGroupAvgWeekly = useMemo(() => {
     if (!glossaryMuscles.size || !filteredSessions.length) return { sets: {}, volume: {} }
-    const numWeeks = new Set(filteredSessions.map(s => s.week_number)).size || 1
+    const periodWeeks = Math.max(1, effectiveWeeks)
     const mgSets: Record<string, number> = {}
     const mgVol: Record<string, number> = {}
     for (const s of filteredSessions) {
@@ -294,11 +279,11 @@ export default function AnalysisPage() {
     const avgSets: Record<string, number> = {}
     const avgVol: Record<string, number> = {}
     for (const m of Object.keys(mgSets)) {
-      avgSets[m] = Math.round((mgSets[m] / numWeeks) * 10) / 10
-      avgVol[m] = Math.round(mgVol[m] / numWeeks)
+      avgSets[m] = Math.round((mgSets[m] / periodWeeks) * 10) / 10
+      avgVol[m] = Math.round(mgVol[m] / periodWeeks)
     }
     return { sets: avgSets, volume: avgVol }
-  }, [glossaryMuscles, filteredSessions])
+  }, [effectiveWeeks, glossaryMuscles, filteredSessions])
 
   const perLiftDetails = useMemo(() => {
     if (!glossaryCategory.size || !filteredSessions.length) return {}
@@ -1557,8 +1542,8 @@ export default function AnalysisPage() {
             data={data}
             viewMode={viewMode}
             perLiftDetails={perLiftDetails}
-            muscleGroupSets={muscleGroupSets}
             muscleGroupAvgWeekly={muscleGroupAvgWeekly}
+            analysisWeeks={effectiveWeeks}
             unit={unit}
           />
           <AiAnalysis effectiveWeeks={effectiveWeeks} weeksMode={weeksMode} />

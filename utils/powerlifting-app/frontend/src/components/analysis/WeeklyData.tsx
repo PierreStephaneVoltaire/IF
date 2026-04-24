@@ -4,6 +4,7 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip, B
 import type { WeeklyAnalysis } from '@/api/analytics';
 import { toDisplayUnit } from '@/utils/units';
 import { Unit } from '@/store/settingsStore';
+import { MuscleWorkloadMap } from '@/components/analysis/MuscleWorkloadMap';
 
 const CHART_COLORS = [
   '#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6',
@@ -21,12 +22,12 @@ interface WeeklyDataProps {
   data: WeeklyAnalysis;
   viewMode: 'raw' | 'graph';
   perLiftDetails: Record<string, { frequency: number; raw_sets: number; accessories: { name: string; sets: number; volume: number }[] }>;
-  muscleGroupSets: Record<string, number>;
   muscleGroupAvgWeekly: { sets: Record<string, number>; volume: Record<string, number> };
+  analysisWeeks: number;
   unit: Unit;
 }
 
-export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, muscleGroupAvgWeekly, unit }: WeeklyDataProps) {
+export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupAvgWeekly, analysisWeeks, unit }: WeeklyDataProps) {
   const [expandedLifts, setExpandedLifts] = useState<Set<string>>(new Set());
 
   return (
@@ -208,29 +209,10 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupSets, mu
         </Paper>
       )}
 
-      {/* Muscle Group Sets */}
-      {Object.keys(muscleGroupSets).length > 0 && (
+      {/* Muscle Workload */}
+      {Object.keys(muscleGroupAvgWeekly.sets).length > 0 && (
         <Paper withBorder p="md">
-          <Text fw={500} mb="sm">Sets by Muscle Group</Text>
-          {viewMode === 'raw' ? (
-            <SimpleGrid cols={{ base: 2, md: 4, lg: 5 }}>
-              {Object.entries(muscleGroupSets).sort((a, b) => b[1] - a[1]).map(([muscle, sets]) => (
-                <Stack key={muscle} gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
-                  <Text fz="xs" c="dimmed" tt="capitalize">{muscle.replace(/_/g, ' ')}</Text>
-                  <Text fz="lg" fw={700}>{Math.round(sets)}</Text>
-                </Stack>
-              ))}
-            </SimpleGrid>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie data={Object.entries(muscleGroupSets).sort((a, b) => b[1] - a[1]).map(([name, value], i) => ({ name: name.replace(/_/g, ' '), value, fill: CHART_COLORS[i % CHART_COLORS.length] }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
-                  {Object.entries(muscleGroupSets).sort((a, b) => b[1] - a[1]).map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                </Pie>
-                <RechartsTooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
+          <MuscleWorkloadMap setsPerWeek={muscleGroupAvgWeekly.sets} analysisWeeks={analysisWeeks} />
         </Paper>
       )}
 
