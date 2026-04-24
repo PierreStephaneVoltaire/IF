@@ -330,6 +330,12 @@ def _write_weekly_analysis_sheet(wb: Workbook, weekly: dict) -> None:
         ["Break Weeks", _fmt(deload.get("break_weeks"))],
         ["Effective Training Weeks", deload.get("effective_training_weeks", "")],
         ["Readiness Score", readiness.get("score", "") if isinstance(readiness, dict) else ""],
+        ["Readiness Zone", readiness.get("zone", "") if isinstance(readiness, dict) else ""],
+        ["Readiness - Fatigue", readiness.get("components", {}).get("fatigue_norm", "") if isinstance(readiness, dict) else ""],
+        ["Readiness - RPE Drift", readiness.get("components", {}).get("rpe_drift", "") if isinstance(readiness, dict) else ""],
+        ["Readiness - Wellness", readiness.get("components", {}).get("wellness", "") if isinstance(readiness, dict) else ""],
+        ["Readiness - Trend", readiness.get("components", {}).get("performance_trend", "") if isinstance(readiness, dict) else ""],
+        ["Readiness - BW Deviation", readiness.get("components", {}).get("bw_deviation", "") if isinstance(readiness, dict) else ""],
         ["Flags", _fmt(flags)],
     ]
     _write_sheet(ws, ["Field", "Value"], rows, col_widths={1: 32, 2: 60})
@@ -342,7 +348,7 @@ def _write_per_lift_metrics_sheet(wb: Workbook, weekly: dict) -> None:
     projections = (weekly or {}).get("projections") or []
 
     headers = [
-        "Lift", "Progression (kg/wk)", "R²", "Volume Change %",
+        "Lift", "Progression (kg/wk)", "Fit Quality", "Kendall τ", "Volume Change %",
         "Intensity Change %", "Failed Sets", "RPE Trend",
     ]
     for col_idx, h in enumerate(headers, 1):
@@ -357,10 +363,12 @@ def _write_per_lift_metrics_sheet(wb: Workbook, weekly: dict) -> None:
             values = [
                 name,
                 _fmt(data.get("progression_rate_kg_per_week")),
-                _fmt(data.get("r2")),
+                _fmt(data.get("fit_quality", data.get("r_squared", data.get("r2")))),
+                _fmt(data.get("kendall_tau")),
                 _fmt(data.get("volume_change_pct")),
                 _fmt(data.get("intensity_change_pct")),
                 _fmt(data.get("failed_sets")),
+                _fmt(data.get("rpe_trend")),
             ]
             for col_idx, v in enumerate(values, 1):
                 ws.cell(row=row_idx, column=col_idx, value=v)

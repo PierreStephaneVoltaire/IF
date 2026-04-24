@@ -27,8 +27,8 @@ export const EvaluationPanel: React.FC<Props> = ({ sk, evaluation, onRefresh }) 
   if (!evaluation && !loading) {
     return (
       <Card withBorder padding="lg" radius="md">
-        <Stack align="center" spacing="md">
-          <Text color="dimmed">No evaluation available yet.</Text>
+        <Stack align="center" gap="md">
+          <Text c="dimmed">No evaluation available yet.</Text>
           <Button onClick={handleEvaluate}>Generate AI Evaluation</Button>
         </Stack>
       </Card>
@@ -38,7 +38,7 @@ export const EvaluationPanel: React.FC<Props> = ({ sk, evaluation, onRefresh }) 
   if (loading) {
     return (
       <Card withBorder padding="lg" radius="md">
-        <Stack align="center" spacing="md">
+        <Stack align="center" gap="md">
           <Loader />
           <Text>AI is analyzing the program...</Text>
         </Stack>
@@ -48,9 +48,9 @@ export const EvaluationPanel: React.FC<Props> = ({ sk, evaluation, onRefresh }) 
 
   return (
     <Card withBorder padding="lg" radius="md">
-      <Stack spacing="md">
-        <Group position="apart">
-          <Text weight={700} size="lg">AI Evaluation</Text>
+      <Stack gap="md">
+        <Group justify="space-between">
+          <Text fw={700} size="lg">AI Evaluation</Text>
           <Badge color={evaluation?.stance === 'Recommended' ? 'green' : 'yellow'} size="lg">
             {evaluation?.stance || 'N/A'}
           </Badge>
@@ -59,24 +59,26 @@ export const EvaluationPanel: React.FC<Props> = ({ sk, evaluation, onRefresh }) 
         <Text size="sm">{evaluation?.summary}</Text>
 
         <Group grow align="flex-start">
-          <Stack spacing="xs">
-            <Text weight={600} size="sm" color="green">Strengths</Text>
+          <Stack gap="xs">
+            <Text fw={600} size="sm" c="green">Strengths</Text>
             <List size="xs">
               {evaluation?.strengths.map((s, i) => <List.Item key={i}>{s}</List.Item>)}
             </List>
           </Stack>
-          <Stack spacing="xs">
-            <Text weight={600} size="sm" color="red">Weaknesses</Text>
+          <Stack gap="xs">
+            <Text fw={600} size="sm" c="red">Weaknesses</Text>
             <List size="xs">
               {evaluation?.weaknesses.map((s, i) => <List.Item key={i}>{s}</List.Item>)}
             </List>
           </Stack>
         </Group>
 
-        <Stack spacing="xs">
-          <Text weight={600} size="sm" color="blue">Suggestions</Text>
+        <Stack gap="xs">
+          <Text fw={600} size="sm" c="blue">Suggestions</Text>
           <List size="xs">
-            {evaluation?.suggestions.map((s, i) => <List.Item key={i}>{s}</List.Item>)}
+            {evaluation?.suggestions.map((s, i) => (
+              <List.Item key={i}>{s.rationale}</List.Item>
+            ))}
           </List>
         </Stack>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
-import { Drawer, Button, Group, Stack, Paper, SimpleGrid, TextInput, NumberInput, Textarea, Autocomplete, ActionIcon, Text, Box, Table, Divider } from '@mantine/core'
+import { Drawer, Button, Group, Stack, Paper, SimpleGrid, TextInput, NumberInput, Textarea, Autocomplete, ActionIcon, Text, Box, Table, Divider, SegmentedControl, Slider } from '@mantine/core'
 import { DatePickerInput } from '@mantine/dates'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -8,10 +8,36 @@ import { formatDateLong, getDayOfWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
 import { fetchGlossary } from '@/api/client'
-import { X, Check, Save, RotateCcw, Plus, GripVertical, Trash2, Calendar, Film, Loader2 } from 'lucide-react'
-import type { Session, Exercise, SessionVideo } from '@powerlifting/types'
+import { X, Check, Save, RotateCcw, Plus, GripVertical, Trash2, Calendar, Film, Loader2, HeartPulse } from 'lucide-react'
+import type { Session, Exercise, SessionVideo, SessionWellness } from '@powerlifting/types'
 import VideoGrid from './VideoGrid'
 import VideoUploadModal from './VideoUploadModal'
+
+const WELLNESS_FIELDS: Array<{
+  key: keyof Omit<SessionWellness, 'recorded_at'>
+  label: string
+}> = [
+  { key: 'sleep', label: 'Sleep' },
+  { key: 'soreness', label: 'Soreness' },
+  { key: 'mood', label: 'Mood' },
+  { key: 'stress', label: 'Stress' },
+  { key: 'energy', label: 'Energy' },
+]
+
+function clampWellnessScore(value: number): 1 | 2 | 3 | 4 | 5 {
+  return Math.max(1, Math.min(5, Math.round(value))) as 1 | 2 | 3 | 4 | 5
+}
+
+function createDefaultWellness(existing?: SessionWellness | null): SessionWellness {
+  return {
+    sleep: clampWellnessScore(existing?.sleep ?? 3),
+    soreness: clampWellnessScore(existing?.soreness ?? 3),
+    mood: clampWellnessScore(existing?.mood ?? 3),
+    stress: clampWellnessScore(existing?.stress ?? 3),
+    energy: clampWellnessScore(existing?.energy ?? 3),
+    recorded_at: existing?.recorded_at ?? new Date().toISOString(),
+  }
+}
 
 interface SessionDrawerProps {
   isOpen: boolean
@@ -72,6 +98,7 @@ export default function SessionDrawer({
   }, [session])
 
   if (!session || !localSession || !program) return null
+  const wellness = localSession.wellness
 
   const handleSave = async () => {
     try {
@@ -201,6 +228,35 @@ export default function SessionDrawer({
 
   const updateNotes = (notes: string) => {
     setLocalSession((prev) => prev ? { ...prev, session_notes: notes } : prev)
+    setHasChanges(true)
+  }
+
+  const setWellnessMode = (enabled: boolean) => {
+    setLocalSession((prev) => {
+      if (!prev) return prev
+      if (!enabled) {
+        const next = { ...prev }
+        delete next.wellness
+        return next
+      }
+      return { ...prev, wellness: createDefaultWellness(prev.wellness) }
+    })
+    setHasChanges(true)
+  }
+
+  const updateWellness = (field: keyof Omit<SessionWellness, 'recorded_at'>, value: number) => {
+    setLocalSession((prev) => {
+      if (!prev) return prev
+      const current = prev.wellness ?? createDefaultWellness()
+      return {
+        ...prev,
+        wellness: {
+          ...current,
+          [field]: clampWellnessScore(value),
+          recorded_at: new Date().toISOString(),
+        },
+      }
+    })
     setHasChanges(true)
   }
 
@@ -557,6 +613,60 @@ export default function SessionDrawer({
             </Text>
           )}
         </Stack>
+
+        <Divider my="sm" />
+
+        {/* Subjective Wellness */}
+        <Paper withBorder p="sm" radius="md">
+          <Group justify="space-between" align="center" mb="sm">
+            <Group gap="xs">
+              <HeartPulse size={16} />
+              <Text size="sm" fw={500}>Subjective Wellness</Text>
+            </Group>
+            <SegmentedControl
+              size="xs"
+              value={localSession.wellness ? 'record' : 'skip'}
+              onChange={(value) => setWellnessMode(value === 'record')}
+              data={[
+                { label: 'Skip', value: 'skip' },
+                { label: 'Record', value: 'record' },
+              ]}
+            />
+          </Group>
+
+          {wellness ? (
+            <Stack gap="sm">
+              {WELLNESS_FIELDS.map((field) => (
+                <Box key={field.key}>
+                  <Group justify="space-between" mb={4}>
+                    <Text size="xs" c="dimmed">{field.label}</Text>
+                    <Text size="xs" fw={500}>{wellness[field.key] ?? 3}/5</Text>
+                  </Group>
+                  <Slider
+                    value={wellness[field.key]}
+                    onChange={(value) => updateWellness(field.key, value)}
+                    min={1}
+                    max={5}
+                    step={1}
+                    marks={[
+                      { value: 1, label: '1' },
+                      { value: 2, label: '2' },
+                      { value: 3, label: '3' },
+                      { value: 4, label: '4' },
+                      { value: 5, label: '5' },
+                    ]}
+                    color={field.key === 'soreness' || field.key === 'stress' ? 'orange' : 'blue'}
+                  />
+                </Box>
+              ))}
+              <Text size="xs" c="dimmed">
+                Higher scores are better. Soreness and stress are inverted in readiness math.
+              </Text>
+            </Stack>
+          ) : (
+            <Text size="xs" c="dimmed">No wellness captured for this session.</Text>
+          )}
+        </Paper>
 
         <Divider my="sm" />
 

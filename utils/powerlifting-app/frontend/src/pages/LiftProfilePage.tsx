@@ -204,7 +204,7 @@ export default function LiftProfilePage() {
             {Object.entries(review.score_breakdown).map(([key, part]) => (
               <Paper key={key} withBorder p="xs">
                 <Group justify="space-between" align="flex-start">
-                  <Text size="sm" fw={500} tt="capitalize">{key.replaceAll('_', ' ')}</Text>
+                  <Text size="sm" fw={500} tt="capitalize">{key.split('_').join(' ')}</Text>
                   <Text size="sm" fw={700}>{part.score}/{part.max}</Text>
                 </Group>
                 {(part.notes ?? []).slice(0, 2).map((note) => (
@@ -286,7 +286,7 @@ export default function LiftProfilePage() {
         {sidePanel}
       </Box>
 
-      <Grid gutter="lg" align="flex-start">
+      <Grid gap="lg" align="flex-start">
         <Grid.Col span={{ base: 12, lg: 8 }}>
           <Stack gap="lg" style={{ minWidth: 0 }}>
           <Paper withBorder p="md">

@@ -35,6 +35,7 @@ export const Step6_Apply: React.FC<Props> = ({ pendingImport, overrides, onPrev,
     setError(null)
     try {
       await applyImport(pendingImport.import_id, {
+        merge_strategy: pendingImport.merge_strategy || 'append',
         classification_override: overrides.classificationOverride || undefined,
         glossary_overrides:
           Object.keys(overrides.glossaryOverrides).length > 0
@@ -54,8 +55,8 @@ export const Step6_Apply: React.FC<Props> = ({ pendingImport, overrides, onPrev,
     return (
       <Stack py="xl" align="center">
         <CheckCircle size={48} color="green" />
-        <Text size="lg" weight={500}>Import Successful!</Text>
-        <Text color="dimmed">Your program has been added to the library.</Text>
+        <Text size="lg" fw={500}>Import Successful!</Text>
+        <Text c="dimmed">Your program has been added to the library.</Text>
         <Group mt="xl">
           <Button onClick={() => navigate(pendingImport.import_type === 'template' ? '/designer/templates' : '/calendar')}>
             Go to {pendingImport.import_type === 'template' ? 'Templates' : 'Calendar'}
@@ -98,7 +99,7 @@ export const Step6_Apply: React.FC<Props> = ({ pendingImport, overrides, onPrev,
         </Alert>
       )}
 
-      <Group position="apart" mt="xl">
+      <Group justify="space-between" mt="xl">
         <Button variant="outline" onClick={onPrev}>Back</Button>
         <Button size="lg" color="green" onClick={handleApply}>
           Apply Import

@@ -1,6 +1,6 @@
 import React from 'react'
 import { SimpleGrid, Paper, Text, Stack, Group, Badge } from '@mantine/core'
-import { Template, Session } from '@powerlifting/types'
+import { Template } from '@powerlifting/types'
 import { LoadTypeBadge } from '../shared/LoadTypeBadge'
 
 interface Props {
@@ -8,37 +8,39 @@ interface Props {
 }
 
 export const SessionGrid: React.FC<Props> = ({ template }) => {
-  const weeks = [...new Set(template.sessions.map(s => s.week || 0))].sort((a, b) => a - b)
+  const weeks = [...new Set(template.sessions.map(s => s.week_number || 0))].sort((a, b) => a - b)
   
   return (
-    <Stack spacing="xl">
+    <Stack gap="xl">
       {weeks.map(week => {
-        const weekSessions = template.sessions.filter(s => s.week === week).sort((a, b) => (a.day_of_week || 0) - (b.day_of_week || 0))
+        const weekSessions = template.sessions
+          .filter(s => s.week_number === week)
+          .sort((a, b) => (a.day_index || 0) - (b.day_index || 0))
         
         return (
-          <Stack key={week} spacing="sm">
-            <Text weight={700} size="lg">Week {week}</Text>
-            <SimpleGrid cols={3} breakpoints={[{ maxWidth: 'md', cols: 1 }, { maxWidth: 'lg', cols: 2 }]}>
+          <Stack key={week} gap="sm">
+            <Text fw={700} size="lg">Week {week}</Text>
+            <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }}>
               {weekSessions.map((session, idx) => (
                 <Paper key={idx} withBorder p="md" radius="md">
-                  <Stack spacing="xs">
-                    <Group position="apart">
-                      <Text weight={500}>Day {session.day_of_week || '?'}</Text>
+                  <Stack gap="xs">
+                    <Group justify="space-between">
+                      <Text fw={500}>Day {session.day_of_week || '?'}</Text>
                       {session.label && <Badge variant="light">{session.label}</Badge>}
                     </Group>
                     
                     {session.exercises.map((ex, exIdx) => (
-                      <Group key={exIdx} position="apart" noWrap spacing="xs">
-                        <Stack spacing={0} style={{ flex: 1, minWidth: 0 }}>
+                      <Group key={exIdx} justify="space-between" wrap="nowrap" gap="xs">
+                        <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
                           <Text size="sm" truncate>{ex.name}</Text>
-                          <Text size="xs" color="dimmed">
+                          <Text size="xs" c="dimmed">
                             {ex.sets}x{ex.reps}
-                            {ex.rpe_target && ` @ RPE ${ex.rpe_target}`}
-                            {ex.percentage_target && ` (${(ex.percentage_target * 100).toFixed(0)}%)`}
-                            {ex.load_kg ? ` ${ex.load_kg}kg` : ''}
+                            {ex.load_type === 'rpe' && ex.rpe_target != null && ` @ RPE ${ex.rpe_target}`}
+                            {ex.load_type === 'percentage' && ex.load_value != null && ` (${(ex.load_value * 100).toFixed(0)}%)`}
+                            {ex.load_type === 'absolute' && ex.load_value != null ? ` ${ex.load_value}kg` : ''}
                           </Text>
                         </Stack>
-                        {ex.load_source && <LoadTypeBadge source={ex.load_source} />}
+                        {ex.load_type && <LoadTypeBadge source={ex.load_type} />}
                       </Group>
                     ))}
                   </Stack>

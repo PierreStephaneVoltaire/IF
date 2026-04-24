@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Program, Session, Exercise, Phase, MaxEntry, WeightEntry, ProgramListItem, SupplementPhase, DietNote, Competition, SessionVideo, LiftResults, LiftProfile } from '@powerlifting/types'
+import type { Program, Session, Exercise, Phase, MaxEntry, WeightEntry, ProgramListItem, SupplementPhase, DietNote, Competition, SessionVideo, LiftResults, LiftProfile, Sex } from '@powerlifting/types'
 import * as api from '@/api/client'
 
 interface ProgramState {
@@ -32,7 +32,7 @@ interface ProgramState {
   markComplete: (
     date: string,
     index: number,
-    data: { rpe?: number; bodyWeightKg?: number; notes?: string }
+    data: { rpe?: number; bodyWeightKg?: number; notes?: string; wellness?: Session['wellness'] }
   ) => Promise<void>
   saveSession: (date: string, index: number) => Promise<void>
   updateMaxes: (maxes: {
@@ -203,6 +203,7 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
           session_rpe: data.rpe ?? sessions[index].session_rpe,
           body_weight_kg: data.bodyWeightKg ?? sessions[index].body_weight_kg,
           session_notes: data.notes ?? sessions[index].session_notes,
+          wellness: data.wellness ?? sessions[index].wellness,
         }
       }
       return { program: { ...state.program, sessions } }

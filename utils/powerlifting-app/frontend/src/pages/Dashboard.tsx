@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { differenceInCalendarDays, parse } from 'date-fns'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
@@ -7,7 +8,7 @@ import { fetchWeightLog, updateMetaField, reviewLiftProfile, rewriteLiftProfile,
 import { daysUntil, sessionsThisCalendarWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
-import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2, Download, Dumbbell, Ruler, Sparkles } from 'lucide-react'
+import { CalendarDays, Target, Scale, Trophy, TrendingUp, Edit2, Save, X, Plus, Trash2, Download, Dumbbell, Ruler, Sparkles, HeartPulse } from 'lucide-react'
 import {
   Stack,
   Group,
@@ -28,7 +29,7 @@ import {
   Alert,
   Divider,
 } from '@mantine/core'
-import type { Phase, WeightEntry, LiftProfile } from '@powerlifting/types'
+import type { Phase, WeightEntry, LiftProfile, Session, SessionWellness } from '@powerlifting/types'
 
 const LIFT_ORDER = ['squat', 'bench', 'deadlift'] as const
 const PROFILE_ESTIMATE_READY_SCORE = 55
@@ -71,6 +72,78 @@ const mergeLiftProfiles = (profiles: LiftProfile[] = []): LiftProfile[] =>
 
 const coefficientValue = (value: string | number): number =>
   typeof value === 'number' && Number.isFinite(value) ? Math.max(1, Math.min(2, value)) : 1
+
+const WELLNESS_METRICS: Array<{ key: keyof Omit<SessionWellness, 'recorded_at'>; label: string }> = [
+  { key: 'sleep', label: 'Sleep' },
+  { key: 'soreness', label: 'Soreness' },
+  { key: 'mood', label: 'Mood' },
+  { key: 'stress', label: 'Stress' },
+  { key: 'energy', label: 'Energy' },
+]
+
+function averageWellness(wellness?: SessionWellness | null): number | null {
+  if (!wellness) return null
+  const values = WELLNESS_METRICS.map(({ key }) => wellness[key]).filter((value) => typeof value === 'number') as number[]
+  if (values.length === 0) return null
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function buildWellnessTrend(sessions: Session[]): {
+  buckets: { label: string; average: number | null; count: number }[]
+  overallAverage: number | null
+  metricAverages: Record<keyof Omit<SessionWellness, 'recorded_at'>, number | null>
+} {
+  const today = new Date()
+  const buckets = [
+    { label: '4w ago', total: 0, count: 0 },
+    { label: '3w ago', total: 0, count: 0 },
+    { label: '2w ago', total: 0, count: 0 },
+    { label: 'This week', total: 0, count: 0 },
+  ]
+  const metricTotals = WELLNESS_METRICS.reduce((acc, { key }) => {
+    acc[key] = { total: 0, count: 0 }
+    return acc
+  }, {} as Record<keyof Omit<SessionWellness, 'recorded_at'>, { total: number; count: number }>)
+  let overallTotal = 0
+  let overallCount = 0
+
+  for (const session of sessions) {
+    const sessionAverage = averageWellness(session.wellness)
+    if (sessionAverage === null) continue
+    const sessionDate = parse(session.date, 'yyyy-MM-dd', new Date())
+    const daysAgo = differenceInCalendarDays(today, sessionDate)
+    if (daysAgo < 0 || daysAgo >= 28) continue
+    const bucketIndex = 3 - Math.min(3, Math.floor(daysAgo / 7))
+    buckets[bucketIndex].total += sessionAverage
+    buckets[bucketIndex].count += 1
+    overallTotal += sessionAverage
+    overallCount += 1
+
+    const wellness = session.wellness
+    if (!wellness) continue
+    for (const { key } of WELLNESS_METRICS) {
+      const value = wellness[key]
+      if (typeof value !== 'number') continue
+      metricTotals[key].total += value
+      metricTotals[key].count += 1
+    }
+  }
+
+  return {
+    buckets: buckets.map((bucket) => ({
+      label: bucket.label,
+      average: bucket.count > 0 ? bucket.total / bucket.count : null,
+      count: bucket.count,
+    })),
+    overallAverage: overallCount > 0 ? overallTotal / overallCount : null,
+    metricAverages: WELLNESS_METRICS.reduce((acc, { key }) => {
+      const total = metricTotals[key].total
+      const count = metricTotals[key].count
+      acc[key] = count > 0 ? total / count : null
+      return acc
+    }, {} as Record<keyof Omit<SessionWellness, 'recorded_at'>, number | null>),
+  }
+}
 
 export default function Dashboard() {
   const { program, version, isLoading, updateMaxes, updateBodyWeight, updatePhases, updateLiftProfiles } = useProgramStore()
@@ -145,6 +218,7 @@ export default function Dashboard() {
   }
 
   const currentPhase = thisWeekSessions[0]?.phase
+  const wellnessTrend = buildWellnessTrend(sessions)
 
   const startEditingMaxes = () => {
     setLocalMaxes({ squat: meta.target_squat_kg, bench: meta.target_bench_kg, deadlift: meta.target_dl_kg })
@@ -512,6 +586,53 @@ export default function Dashboard() {
           />
         </Paper>
 
+        <Paper withBorder p="md">
+          <Group justify="space-between" mb="sm" align="flex-start">
+            <Group gap="xs">
+              <HeartPulse size={20} />
+              <Text fw={500}>Subjective Wellness</Text>
+            </Group>
+            {wellnessTrend.overallAverage !== null && (
+              <Text size="xs" c="dimmed">
+                {wellnessTrend.overallAverage.toFixed(1)} / 5 avg
+              </Text>
+            )}
+          </Group>
+          {wellnessTrend.overallAverage !== null ? (
+            <Stack gap="xs">
+              <SimpleGrid cols={4} spacing="xs">
+                {wellnessTrend.buckets.map((bucket) => {
+                  const average = bucket.average
+                  const color = average === null ? 'gray' : average >= 4 ? 'green' : average >= 3 ? 'yellow' : 'red'
+                  return (
+                    <Stack key={bucket.label} gap={4}>
+                      <Text size="xs" c="dimmed">{bucket.label}</Text>
+                      <Progress value={average !== null ? (average / 5) * 100 : 0} color={color} size="sm" />
+                      <Text size="xs" fw={500}>{average !== null ? average.toFixed(1) : '—'}</Text>
+                    </Stack>
+                  )
+                })}
+              </SimpleGrid>
+              <Text size="xs" c="dimmed">Higher is better. Soreness is reversed in readiness math.</Text>
+              <SimpleGrid cols={{ base: 2, sm: 5 }} spacing="xs" mt="xs">
+                {WELLNESS_METRICS.map(({ key, label }) => {
+                  const average = wellnessTrend.metricAverages[key]
+                  const color = average === null ? 'gray' : average >= 4 ? 'green' : average >= 3 ? 'yellow' : 'red'
+                  return (
+                    <Stack key={key} gap={4}>
+                      <Text size="xs" c="dimmed">{label} avg</Text>
+                      <Progress value={average !== null ? (average / 5) * 100 : 0} color={color} size="sm" />
+                      <Text size="xs" fw={500}>{average !== null ? average.toFixed(1) : '—'}</Text>
+                    </Stack>
+                  )
+                })}
+              </SimpleGrid>
+            </Stack>
+          ) : (
+            <Text size="sm" c="dimmed">No wellness entries yet.</Text>
+          )}
+        </Paper>
+
         {/* Anthropometrics */}
         <Paper withBorder p="md">
           <Group justify="space-between" mb="sm">
@@ -860,7 +981,7 @@ export default function Dashboard() {
                   <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs" mb="xs">
                     {Object.entries(profileGuideReview.score_breakdown).map(([key, part]) => (
                       <Paper key={key} withBorder p="xs">
-                        <Text size="xs" fw={500} tt="capitalize">{key.replaceAll('_', ' ')}</Text>
+                        <Text size="xs" fw={500} tt="capitalize">{key.split('_').join(' ')}</Text>
                         <Text size="sm" fw={700}>{part.score}/{part.max}</Text>
                         {(part.notes ?? []).slice(0, 2).map((note) => (
                           <Text key={note} size="xs" c="dimmed">{note}</Text>

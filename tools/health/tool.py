@@ -1500,8 +1500,8 @@ class AnalyzeProgressionTool(ToolDefinition[AnalyzeProgressionAction, AnalyzePro
     def create(cls, conv_state=None, **params) -> Sequence["AnalyzeProgressionTool"]:
         return [cls(
             description=(
-                "Calculate the weekly progression rate (kg/week) for a specific lift using OLS regression "
-                "on top sets across completed sessions. Returns slope, R², and data points."
+                "Calculate the weekly progression rate (kg/week) for a specific lift using Theil-Sen regression "
+                "on top sets across completed sessions. Returns slope, Kendall tau, fit quality, and data points."
             ),
             action_type=AnalyzeProgressionAction,
             observation_type=AnalyzeProgressionObservation,
@@ -1653,8 +1653,9 @@ class WeeklyAnalysisTool(ToolDefinition[WeeklyAnalysisAction, WeeklyAnalysisObse
         return [cls(
             description=(
                 "Full weekly training analysis — runs progression rate, RPE drift, fatigue index, "
-                "periodization compliance, and meet projection for the specified number of weeks. "
-                "Returns structured JSON with per-lift breakdowns, flags, and projected total."
+                "periodization compliance, peaking metrics, and meet projection for the specified "
+                "number of weeks. Returns structured JSON with per-lift breakdowns, flags, and "
+                "projected total."
             ),
             action_type=WeeklyAnalysisAction,
             observation_type=WeeklyAnalysisObservation,
@@ -2443,8 +2444,8 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
         "analyze_progression": {
             "name": "analyze_progression",
             "description": (
-                "Calculate weekly progression rate (kg/week) for a lift via OLS regression on top sets. "
-                "Returns slope, R², and data points."
+                "Calculate weekly progression rate (kg/week) for a lift via Theil-Sen regression on top sets. "
+                "Returns slope, Kendall tau, fit quality, and data points."
             ),
             "parameters": {
                 "type": "object",

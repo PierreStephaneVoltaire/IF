@@ -10,7 +10,7 @@ interface Props {
 export const AmbiguityResolver: React.FC<Props> = ({ selected, onPick }) => {
   return (
     <Stack py="md">
-      <Text weight={500} size="sm" color="dimmed">
+      <Text fw={500} size="sm" c="dimmed">
         We couldn't automatically determine the file type. Please choose:
       </Text>
       <SimpleGrid cols={2} spacing="md">
@@ -23,9 +23,9 @@ export const AmbiguityResolver: React.FC<Props> = ({ selected, onPick }) => {
             borderWidth: selected === 'template' ? 2 : 1,
           }}
         >
-          <Stack align="center" spacing="sm">
+          <Stack align="center" gap="sm">
             <Badge color="blue" size="lg">Reusable Template</Badge>
-            <Text size="sm" align="center" color="dimmed">
+            <Text size="sm" ta="center" c="dimmed">
               Relative weeks/days, RPE or %-based loads, no calendar dates. Goes
               into your Template Library.
             </Text>
@@ -49,9 +49,9 @@ export const AmbiguityResolver: React.FC<Props> = ({ selected, onPick }) => {
             borderWidth: selected === 'session_import' ? 2 : 1,
           }}
         >
-          <Stack align="center" spacing="sm">
+          <Stack align="center" gap="sm">
             <Badge color="green" size="lg">Session Log</Badge>
-            <Text size="sm" align="center" color="dimmed">
+            <Text size="sm" ta="center" c="dimmed">
               Calendar dates and absolute kg values. Gets merged into your
               training history as a new program version.
             </Text>

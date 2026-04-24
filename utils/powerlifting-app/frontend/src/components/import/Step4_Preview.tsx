@@ -33,7 +33,7 @@ export const Step4_Preview: React.FC<Props> = ({ pendingImport, onNext, onPrev }
         </div>
       )}
 
-      <Group position="apart" mt="xl">
+      <Group justify="space-between" mt="xl">
         <Button variant="outline" onClick={onPrev}>Back</Button>
         <Button onClick={onNext}>Looks Good, Continue</Button>
       </Group>

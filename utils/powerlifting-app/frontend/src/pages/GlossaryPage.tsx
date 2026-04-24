@@ -349,7 +349,7 @@ export default function GlossaryPage() {
   async function handleBulkEstimateE1rm() {
     const toEstimate = exercises.filter(e => !e.e1rm_estimate)
     if (toEstimate.length === 0) {
-      pushToast({ message: 'All exercises already have e1RM estimates', type: 'info' })
+    pushToast({ message: 'All exercises already have e1RM estimates', type: 'warning' })
       return
     }
 

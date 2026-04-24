@@ -52,12 +52,12 @@ export const Step1_Upload: React.FC<Props> = ({ onUpload }) => {
         <LoadingOverlay visible={loading} />
         <input {...getInputProps()} />
         
-        <Group position="center" spacing="xl" style={{ minHeight: 120 }}>
-          <Stack align="center" spacing="xs">
-            <Text size="xl" weight={500}>
+        <Group justify="center" gap="xl" style={{ minHeight: 120 }}>
+          <Stack align="center" gap="xs">
+            <Text size="xl" fw={500}>
               {isDragActive ? 'Drop file here' : 'Click or drag training program here'}
             </Text>
-            <Text color="dimmed" size="sm">
+            <Text c="dimmed" size="sm">
               Supports .xlsx (Excel) and .csv files
             </Text>
           </Stack>
@@ -65,7 +65,7 @@ export const Step1_Upload: React.FC<Props> = ({ onUpload }) => {
       </Paper>
       
       {error && (
-        <Text color="red" align="center" size="sm">
+        <Text c="red" ta="center" size="sm">
           {error}
         </Text>
       )}

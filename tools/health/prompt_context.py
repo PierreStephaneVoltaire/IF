@@ -40,6 +40,15 @@ def _safe_dots(total_kg: float, bodyweight_kg: float, sex: str) -> float | None:
         return None
 
 
+def _serialize_wellness(wellness: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(wellness, dict):
+        return None
+    values = {key: wellness.get(key) for key in ("sleep", "soreness", "mood", "stress", "energy", "recorded_at")}
+    if all(values.get(key) is None for key in ("sleep", "soreness", "mood", "stress", "energy")):
+        return None
+    return values
+
+
 def summarize_program_meta(meta: dict[str, Any]) -> dict[str, Any]:
     last_comp = meta.get("last_comp") or {}
     last_results = last_comp.get("results") or {}
@@ -326,6 +335,7 @@ def summarize_planned_sessions(
             "status": session.get("status") or "planned",
             "exercises": serialized_exercises,
             "session_notes": session.get("session_notes") or "",
+            "wellness": _serialize_wellness(session.get("wellness")),
         })
     return rows
 
@@ -351,6 +361,7 @@ def summarize_completed_sessions(
             "session_rpe": session.get("session_rpe"),
             "body_weight_kg": session.get("body_weight_kg"),
             "notes": session.get("session_notes") or "",
+            "wellness": _serialize_wellness(session.get("wellness")),
             "exercises": [
                 {
                     "name": ex.get("name"),
@@ -461,13 +472,19 @@ HOW THE ANALYSIS PAGE METRICS ARE CALCULATED
   qualifying session e1RMs when no comp result is available. Current maxes are therefore
   estimated 1 rep maxes, not true tested maxes.
 - Progression rate: Theil-Sen slope of e1RM over effective training weeks, with deload and break
-  weeks excluded.
+  weeks excluded. Fit quality is normalized MAD; Kendall tau is reported alongside the slope.
+- RPE drift: Theil-Sen slope on raw or phase-residual RPE. Uses the same fit-quality reporting.
+- Fatigue model: axial and peripheral scale nonlinearly with load, neural uses an intensity gate
+  plus sqrt(load), systemic adds a modest absolute-load and intensity term.
 - Fatigue index: 0.40 × failed compound set ratio + 0.35 × composite fatigue spike + 0.25 × RPE stress.
-- INOL: reps / (100 × (1 - intensity ratio)) aggregated per lift per week, then multiplied by the lift profile stimulus coefficient.
-- ACWR: acute workload divided by the previous 4-week chronic average, with a weighted composite.
+  RPE stress = clamp((avg_session_rpe - 7.5) / 2.5, 0, 1).
+- INOL: reps / (100 × sqrt((1 - min(intensity ratio, 0.995))^2 + 0.02^2)) aggregated per lift per week,
+  then multiplied by the lift profile stimulus coefficient. Defaults are per-lift, with optional overrides.
+- ACWR: daily EWMA acute workload divided by daily EWMA chronic workload, with a weighted composite
+  and phase-aware planned-overreach labeling.
 - Relative intensity distribution: sets bucketed by load ratio vs estimated 1RM.
 - Specificity ratio: SBD sets divided by total sets, plus a broader version that includes same-category work.
-- Readiness score: weighted composite of fatigue, RPE drift, bodyweight stability, miss rate, and compliance.
+- Readiness score: weighted composite of fatigue, RPE drift, subjective wellness, short-term performance trend, and bodyweight deviation.
 - DOTS: 500 × total / polynomial(bodyweight) using the sex-specific coefficients.
 - Attempt selection: projected comp max × attempt percentages, rounded to the nearest 2.5 kg.
 """

@@ -1,7 +1,7 @@
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb'
 import { docClient, TABLE } from '../db/dynamo'
 import { AppError } from '../middleware/errorHandler'
-import type { Session, Exercise, Phase, SessionStatus } from '@powerlifting/types'
+import type { Session, Exercise, Phase, SessionStatus, SessionWellness } from '@powerlifting/types'
 
 /**
  * Resolve a version string to the actual SK.
@@ -270,7 +270,7 @@ export async function completeSession(
   version: string,
   date: string,
   index: number,
-  data: { rpe?: number; bodyWeightKg?: number; notes?: string }
+  data: { rpe?: number; bodyWeightKg?: number; notes?: string; wellness?: SessionWellness | undefined }
 ): Promise<void> {
   const sk = await resolveVersionSk(pk, version)
   const getCommand = new GetCommand({
@@ -300,6 +300,7 @@ export async function completeSession(
     session_rpe: data.rpe ?? sessions[index].session_rpe,
     body_weight_kg: data.bodyWeightKg ?? sessions[index].body_weight_kg,
     session_notes: data.notes ?? sessions[index].session_notes,
+    wellness: data.wellness ?? sessions[index].wellness,
   }
 
   const updateCommand = new UpdateCommand({

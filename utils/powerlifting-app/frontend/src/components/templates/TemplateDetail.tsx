@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Stack, Group, Title, Button, Text, Badge, Divider, LoadingOverlay } from '@mantine/core'
+import { Stack, Group, Title, Button, Text, Badge, Divider, LoadingOverlay, Grid } from '@mantine/core'
 import { Edit2 } from 'lucide-react'
 import { Template, AiTemplateEvaluation } from '@powerlifting/types'
 import { SessionGrid } from './SessionGrid'
@@ -49,15 +49,15 @@ export const TemplateDetail: React.FC<Props> = ({ template, onRefresh }) => {
   }
 
   return (
-    <Stack spacing="xl">
+    <Stack gap="xl">
       <LoadingOverlay visible={loading} />
-      <Group position="apart">
-        <Stack spacing={4}>
-          <Group spacing="sm">
+      <Group justify="space-between">
+        <Stack gap={4}>
+          <Group gap="sm">
             <Title order={2}>{template.meta.name}</Title>
             {template.meta.archived && <Badge color="gray">Archived</Badge>}
           </Group>
-          <Text size="sm" color="dimmed">
+          <Text size="sm" c="dimmed">
             {template.meta.estimated_weeks} Weeks • {template.meta.days_per_week} Days/Week
           </Text>
         </Stack>
@@ -76,21 +76,25 @@ export const TemplateDetail: React.FC<Props> = ({ template, onRefresh }) => {
 
       <Divider />
 
-      <Group grow align="flex-start" breakpoints={[{ maxWidth: 'md', cols: 1 }]}>
-        <Stack spacing="lg" style={{ flex: 2 }}>
+      <Grid gap="lg" align="flex-start">
+        <Grid.Col span={{ base: 12, md: 8 }}>
+          <Stack gap="lg">
           <Title order={3}>Sessions</Title>
           <SessionGrid template={template} />
-        </Stack>
-        
-        <Stack spacing="lg" style={{ flex: 1 }}>
+          </Stack>
+        </Grid.Col>
+
+        <Grid.Col span={{ base: 12, md: 4 }}>
+          <Stack gap="lg">
           <Title order={3}>AI Analysis</Title>
           <EvaluationPanel 
             sk={template.sk} 
-            evaluation={template.meta.evaluation} 
+            evaluation={template.meta.ai_evaluation ?? null}
             onRefresh={onRefresh}
           />
-        </Stack>
-      </Group>
+          </Stack>
+        </Grid.Col>
+      </Grid>
 
       <ApplyModal 
         opened={applyModalOpened} 

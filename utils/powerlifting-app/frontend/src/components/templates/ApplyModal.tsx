@@ -12,7 +12,7 @@ interface Props {
 
 export const ApplyModal: React.FC<Props> = ({ opened, onClose, sk, onApply }) => {
   const [target, setTarget] = useState<string>('new_block')
-  const [startDate, setStartDate] = useState<Date | null>(new Date())
+  const [startDate, setStartDate] = useState<string | null>(new Date().toISOString().split('T')[0])
   const [weekStartDay, setWeekStartDay] = useState<string>('Monday')
   const [loading, setLoading] = useState(false)
 
@@ -21,7 +21,7 @@ export const ApplyModal: React.FC<Props> = ({ opened, onClose, sk, onApply }) =>
     try {
       const res = await applyTemplate(sk, {
         target,
-        start_date: startDate?.toISOString().split('T')[0],
+        start_date: startDate || undefined,
         week_start_day: weekStartDay,
       })
       onApply(res)
@@ -34,7 +34,7 @@ export const ApplyModal: React.FC<Props> = ({ opened, onClose, sk, onApply }) =>
 
   return (
     <Modal opened={opened} onClose={onClose} title="Apply Template" size="md">
-      <Stack spacing="md">
+      <Stack gap="md">
         <Select 
           label="Apply Strategy" 
           value={target}
@@ -58,13 +58,13 @@ export const ApplyModal: React.FC<Props> = ({ opened, onClose, sk, onApply }) =>
           value={weekStartDay} 
           onChange={setWeekStartDay}
         >
-          <Group mt="xs">
+        <Group mt="xs">
             <Radio value="Monday" label="Monday" />
             <Radio value="Sunday" label="Sunday" />
           </Group>
         </Radio.Group>
 
-        <Group position="right" mt="xl">
+        <Group justify="flex-end" mt="xl">
           <Button variant="subtle" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSubmit} loading={loading}>Apply</Button>
         </Group>

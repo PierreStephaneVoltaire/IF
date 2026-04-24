@@ -15,6 +15,7 @@ import { calculateIpfGl, getIpfGlModeLabel, type IpfGlMode } from '@/utils/ipfGl
 import { toDisplayUnit, displayWeight } from '@/utils/units'
 import { FORMULA_DESCRIPTIONS } from '@/constants/formulaDescriptions'
 import type { WeightEntry, GlossaryExercise, ExerciseCategory } from '@powerlifting/types'
+import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, ReferenceLine, Legend } from 'recharts'
 import {
   Stack, Group, Paper, SimpleGrid, Text, Title, Badge, Table,
   Button, Center, Select, Progress, Accordion, SegmentedControl, Box, Loader,
@@ -51,6 +52,13 @@ function complianceBadgeColor(pct: number | null): string {
   return 'red'
 }
 
+function readinessZoneLabel(zone: string): string {
+  if (zone === 'green') return 'Ready'
+  if (zone === 'yellow') return 'Caution'
+  if (zone === 'red') return 'Recovery'
+  return zone.replace(/_/g, ' ')
+}
+
 function compStatusBadge(status: string) {
   const colors: Record<string, string> = {
     confirmed: 'green',
@@ -61,7 +69,71 @@ function compStatusBadge(status: string) {
   return <Badge variant="light" color={colors[status] || 'gray'} size="sm">{status}</Badge>
 }
 
+function isInsufficientData(value: unknown): value is { status: 'insufficient_data'; reason: string } {
+  return !!value && typeof value === 'object' && 'status' in value
+}
+
+function banisterBadgeColor(tsb: number) {
+  if (tsb < -30) return 'red'
+  if (tsb < -10) return 'orange'
+  if (tsb <= 5) return 'yellow'
+  if (tsb <= 15) return 'green'
+  return 'gray'
+}
+
+function decouplingBadgeColor(value: number) {
+  if (value < 0) return 'red'
+  if (value < 5) return 'yellow'
+  return 'green'
+}
+
+function taperQualityBadgeColor(label: string) {
+  if (label === 'excellent') return 'green'
+  if (label === 'good') return 'blue'
+  if (label === 'acceptable') return 'yellow'
+  return 'red'
+}
+
 const LIFT_LABELS: Record<string, string> = { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' }
+
+const DEFAULT_INOL_THRESHOLDS: Record<string, { low: number; high: number }> = {
+  squat: { low: 1.6, high: 3.5 },
+  bench: { low: 2.0, high: 5.0 },
+  deadlift: { low: 1.0, high: 2.5 },
+}
+
+const ACWR_ZONE_META: Record<string, { color: string; label: string }> = {
+  detraining_trend: { color: 'gray', label: 'Detraining trend' },
+  steady_load: { color: 'green', label: 'Steady load' },
+  rapid_increase: { color: 'yellow', label: 'Rapid increase' },
+  load_spike: { color: 'red', label: 'Load spike' },
+  undertraining: { color: 'gray', label: 'Detraining trend' },
+  optimal: { color: 'green', label: 'Steady load' },
+  caution: { color: 'yellow', label: 'Rapid increase' },
+  danger: { color: 'red', label: 'Load spike' },
+  unknown: { color: 'gray', label: 'Unknown' },
+}
+
+function getInolThresholds(lift: string, thresholds?: Record<string, { low: number; high: number }>) {
+  return thresholds?.[lift] ?? DEFAULT_INOL_THRESHOLDS[lift] ?? { low: 2.0, high: 4.0 }
+}
+
+function getInolZoneMeta(value: number, thresholds: { low: number; high: number }) {
+  if (value < thresholds.low) {
+    return { color: 'yellow', label: 'Low stimulus' }
+  }
+  if (value > thresholds.high) {
+    return { color: 'red', label: 'Overreaching' }
+  }
+  return { color: 'green', label: 'Productive' }
+}
+
+function getAcwrZoneMeta(zone?: string | null) {
+  return ACWR_ZONE_META[zone ?? 'unknown'] ?? {
+    color: 'gray',
+    label: zone ? zone.replace(/_/g, ' ') : 'Unknown',
+  }
+}
 
 type TrendRow = {
   week: number
@@ -101,6 +173,15 @@ export default function AnalysisPage() {
   const competitions = useMemo(() => {
     return (program?.competitions || []).sort((a, b) => a.date.localeCompare(b.date))
   }, [program?.competitions])
+
+  const upcomingCompetition = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    return competitions.find(c => (c.status === 'confirmed' || c.status === 'optional') && c.date >= today) || null
+  }, [competitions])
+
+  const banister = data?.banister && !isInsufficientData(data.banister) ? data.banister : null
+  const decoupling = data?.decoupling && !isInsufficientData(data.decoupling) ? data.decoupling : null
+  const taperQuality = data?.taper_quality && !isInsufficientData(data.taper_quality) ? data.taper_quality : null
 
   useEffect(() => {
     setLoading(true)
@@ -575,9 +656,16 @@ export default function AnalysisPage() {
             </Paper>
 
             <Paper withBorder p="md">
-              <Group gap="xs" mb="xs">
-                <Activity size={18} />
-                <Text fw={500}>Readiness</Text>
+              <Group gap="xs" mb="xs" justify="space-between" align="flex-start">
+                <Group gap="xs">
+                  <Activity size={18} />
+                  <Text fw={500}>Readiness</Text>
+                </Group>
+                {data.readiness_score && (
+                  <Badge variant="light" color={data.readiness_score.zone} size="sm">
+                    {readinessZoneLabel(data.readiness_score.zone)}
+                  </Badge>
+                )}
               </Group>
               {data.readiness_score ? (
                 <Stack gap={2}>
@@ -585,13 +673,204 @@ export default function AnalysisPage() {
                   <Text fz="xs" c="dimmed" lh="lg">
                     Fatigue: {((data.readiness_score.components.fatigue_norm ?? 0) * 100).toFixed(0)}%
                     &middot; RPE drift: {((data.readiness_score.components.rpe_drift ?? 0) * 100).toFixed(0)}%
-                    &middot; BW stability: {((data.readiness_score.components.bw_stability ?? 0) * 100).toFixed(0)}%
-                    &middot; Miss rate: {((data.readiness_score.components.miss_rate ?? 0) * 100).toFixed(0)}%
+                    &middot; Wellness: {((data.readiness_score.components.wellness ?? 0) * 100).toFixed(0)}%
+                    &middot; Trend: {((data.readiness_score.components.performance_trend ?? 0) * 100).toFixed(0)}%
+                    &middot; BW deviation: {((data.readiness_score.components.bw_deviation ?? 0) * 100).toFixed(0)}%
                   </Text>
                 </Stack>
               ) : <Text fz="sm" c="dimmed">N/A</Text>}
             </Paper>
           </SimpleGrid>
+
+          {/* Peaking Layer */}
+          {(data.banister || data.decoupling || taperQuality) && (
+            <Stack gap="md">
+              <Paper withBorder p="md">
+                <Group gap="xs" mb="sm" justify="space-between" align="flex-start">
+                  <Group gap="xs">
+                    <TrendingUp size={18} />
+                    <Text fw={500}>Form / Peaking Readiness</Text>
+                  </Group>
+                  {banister && (
+                    <Badge variant="light" color={banisterBadgeColor(banister.tsb_today)} size="sm">
+                      {banister.tsb_label}
+                    </Badge>
+                  )}
+                </Group>
+
+                {banister ? (
+                  <Stack gap="md">
+                    <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                      <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-orange-0)' }}>
+                        <Text fz="xs" c="dimmed">CTL / Fitness</Text>
+                        <Text fz="xl" fw={700}>{banister.ctl_today.toFixed(1)}</Text>
+                      </Stack>
+                      <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-red-0)' }}>
+                        <Text fz="xs" c="dimmed">ATL / Fatigue</Text>
+                        <Text fz="xl" fw={700}>{banister.atl_today.toFixed(1)}</Text>
+                      </Stack>
+                      <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-blue-0)' }}>
+                        <Text fz="xs" c="dimmed">TSB / Form</Text>
+                        <Text fz="xl" fw={700} c={banisterBadgeColor(banister.tsb_today)}>{banister.tsb_today.toFixed(1)}</Text>
+                      </Stack>
+                    </SimpleGrid>
+
+                    <Box style={{ width: '100%', height: 320 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={banister.series}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="date" tickFormatter={(value) => String(value).slice(5)} minTickGap={18} />
+                          <YAxis />
+                          <RechartsTooltip labelFormatter={(label) => `Date: ${String(label)}`} />
+                          <Legend />
+                          <Line type="monotone" dataKey="ctl" name="CTL" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="atl" name="ATL" stroke="#ef4444" strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="tsb" name="TSB" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                          {upcomingCompetition && (
+                            <ReferenceLine
+                              x={upcomingCompetition.date}
+                              stroke="#111827"
+                              strokeDasharray="4 4"
+                              label={{ value: 'Comp', position: 'insideTopRight' }}
+                            />
+                          )}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </Box>
+                    {upcomingCompetition && (
+                      <Text fz="xs" c="dimmed">
+                        Competition marker: {upcomingCompetition.name} on {upcomingCompetition.date}
+                      </Text>
+                    )}
+                  </Stack>
+                ) : (
+                  <Text fz="sm" c="dimmed">
+                    {isInsufficientData(data.banister) ? data.banister.reason : 'No Banister data available.'}
+                  </Text>
+                )}
+              </Paper>
+
+              <SimpleGrid cols={{ base: 1, lg: taperQuality ? 2 : 1 }} spacing="md">
+                <Paper withBorder p="md">
+                  <Group gap="xs" mb="sm" justify="space-between" align="flex-start">
+                    <Group gap="xs">
+                      <Dumbbell size={18} />
+                      <Text fw={500}>Strength-Fatigue Decoupling</Text>
+                    </Group>
+                    {decoupling && decoupling.current && (
+                      <Badge variant="light" color={decouplingBadgeColor(decoupling.current.decoupling)} size="sm">
+                        {decoupling.current.decoupling >= 0 ? 'Positive' : 'Negative'}
+                      </Badge>
+                    )}
+                  </Group>
+
+                  {decoupling ? (
+                    <Stack gap="sm">
+                      {decoupling.current ? (
+                        <>
+                          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                            <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                              <Text fz="xs" c="dimmed">Decoupling</Text>
+                              <Text fz="xl" fw={700} c={decouplingBadgeColor(decoupling.current.decoupling)}>
+                                {decoupling.current.decoupling.toFixed(2)}
+                              </Text>
+                            </Stack>
+                            <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                              <Text fz="xs" c="dimmed">e1RM slope</Text>
+                              <Text fz="xl" fw={700} c={decoupling.current.e1rm_slope_pct_per_week >= 0 ? 'green' : 'red'}>
+                                {decoupling.current.e1rm_slope_pct_per_week >= 0 ? '+' : ''}{decoupling.current.e1rm_slope_pct_per_week.toFixed(2)}%/wk
+                              </Text>
+                            </Stack>
+                            <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                              <Text fz="xs" c="dimmed">Fatigue slope</Text>
+                              <Text fz="xl" fw={700} c={decoupling.current.fi_slope_pct_points_per_week <= 0 ? 'green' : 'red'}>
+                                {decoupling.current.fi_slope_pct_points_per_week >= 0 ? '+' : ''}{decoupling.current.fi_slope_pct_points_per_week.toFixed(2)} pp/wk
+                              </Text>
+                            </Stack>
+                          </SimpleGrid>
+                          {decoupling.flags.length > 0 && (
+                            <Group gap="xs" wrap="wrap">
+                              {decoupling.flags.map(flag => (
+                                <Badge key={flag} color="yellow" variant="light">{flag}</Badge>
+                              ))}
+                            </Group>
+                          )}
+                          {decoupling.series.length > 0 && (
+                            <Box style={{ overflowX: 'auto' }}>
+                              <Table fz="sm">
+                                <Table.Thead>
+                                  <Table.Tr>
+                                    <Table.Th>Week Start</Table.Th>
+                                    <Table.Th ta="right">Decoupling</Table.Th>
+                                  </Table.Tr>
+                                </Table.Thead>
+                                <Table.Tbody>
+                                  {decoupling.series.slice(-4).map(point => (
+                                    <Table.Tr key={point.week_start}>
+                                      <Table.Td fw={500}>{point.week_start}</Table.Td>
+                                      <Table.Td ta="right" c={decouplingBadgeColor(point.decoupling)}>
+                                        {point.decoupling >= 0 ? '+' : ''}{point.decoupling.toFixed(2)}
+                                      </Table.Td>
+                                    </Table.Tr>
+                                  ))}
+                                </Table.Tbody>
+                              </Table>
+                            </Box>
+                          )}
+                        </>
+                      ) : (
+                        <Text fz="sm" c="dimmed">No decoupling window available yet.</Text>
+                      )}
+                    </Stack>
+                  ) : (
+                    <Text fz="sm" c="dimmed">
+                      {isInsufficientData(data.decoupling) ? data.decoupling.reason : 'No decoupling data available.'}
+                    </Text>
+                  )}
+                </Paper>
+
+                {taperQuality && (
+                  <Paper withBorder p="md">
+                    <Group gap="xs" mb="sm" justify="space-between" align="flex-start">
+                      <Group gap="xs">
+                        <Trophy size={18} />
+                        <Text fw={500}>Taper Quality Score</Text>
+                      </Group>
+                      <Badge variant="light" color={taperQualityBadgeColor(taperQuality.label)} size="sm">
+                        {taperQuality.label}
+                      </Badge>
+                    </Group>
+
+                    <Stack gap="sm">
+                      <Group align="baseline" gap="sm">
+                        <Text fz="2rem" fw={700}>{taperQuality.score.toFixed(0)}</Text>
+                        <Text fz="sm" c="dimmed">/ 100</Text>
+                      </Group>
+                      <Text fz="xs" c="dimmed">Weeks to comp: {taperQuality.weeks_to_comp.toFixed(1)}</Text>
+                      <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+                        <Stack gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                          <Text fz="xs" c="dimmed">Volume</Text>
+                          <Text fz="lg" fw={700}>{(taperQuality.components.volume_reduction * 100).toFixed(0)}%</Text>
+                        </Stack>
+                        <Stack gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                          <Text fz="xs" c="dimmed">Intensity</Text>
+                          <Text fz="lg" fw={700}>{(taperQuality.components.intensity_maintained * 100).toFixed(0)}%</Text>
+                        </Stack>
+                        <Stack gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                          <Text fz="xs" c="dimmed">Fatigue Trend</Text>
+                          <Text fz="lg" fw={700}>{(taperQuality.components.fatigue_trend * 100).toFixed(0)}%</Text>
+                        </Stack>
+                        <Stack gap={2} ta="center" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
+                          <Text fz="xs" c="dimmed">TSB</Text>
+                          <Text fz="lg" fw={700}>{(taperQuality.components.tsb * 100).toFixed(0)}%</Text>
+                        </Stack>
+                      </SimpleGrid>
+                    </Stack>
+                  </Paper>
+                )}
+              </SimpleGrid>
+            </Stack>
+          )}
 
           {/* INOL */}
           {data.inol && data.inol.avg_inol && (
@@ -600,12 +879,15 @@ export default function AnalysisPage() {
               <SimpleGrid cols={3} mb="sm">
                 {Object.entries(data.inol.avg_inol).map(([lift, val]) => {
                   const coefficient = data.inol?.stimulus_coefficients?.[lift] ?? 1
+                  const thresholds = getInolThresholds(lift, data.inol?.thresholds)
+                  const zoneMeta = getInolZoneMeta(val, thresholds)
                   return (
-                    <Stack key={lift} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${val > 4.0 ? 'red' : val < 2.0 ? 'yellow' : 'green'}-light)` }}>
+                    <Stack key={lift} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${zoneMeta.color}-light)` }}>
                       <Text fz="xs" c="dimmed" tt="capitalize">{lift}</Text>
-                      <Text fz="xl" fw={700} c={val > 4.0 ? 'red' : val < 2.0 ? 'yellow' : 'green'}>{val.toFixed(2)}</Text>
+                      <Text fz="xl" fw={700} c={zoneMeta.color}>{val.toFixed(2)}</Text>
                       <Text fz="xs" c="dimmed">Stimulus x{coefficient.toFixed(2)}</Text>
-                      <Text fz="xs" c="dimmed">{val > 4.0 ? 'Overreaching' : val < 2.0 ? 'Low stimulus' : 'Productive'}</Text>
+                      <Text fz="xs" c="dimmed">{zoneMeta.label}</Text>
+                      <Text fz="xs" c="dimmed">Range {thresholds.low.toFixed(1)} - {thresholds.high.toFixed(1)}</Text>
                     </Stack>
                   )
                 })}
@@ -624,22 +906,25 @@ export default function AnalysisPage() {
           {data.acwr && !('status' in data.acwr) && (
             <Paper withBorder p="md">
               <Group justify="space-between" mb="sm">
-                <Text fw={500}>ACWR (Acute:Chronic Workload Ratio)</Text>
+                <Text fw={500}>EWMA ACWR (daily workload ratio)</Text>
                 <Badge
-                  color={(data.acwr as any).composite_zone === 'optimal' ? 'green' : (data.acwr as any).composite_zone === 'caution' ? 'yellow' : (data.acwr as any).composite_zone === 'danger' ? 'red' : 'gray'}
+                  color={getAcwrZoneMeta((data.acwr as any).composite_zone).color}
                   variant="light"
                 >
-                  Composite: {(data.acwr as any).composite?.toFixed(2) ?? 'N/A'} ({(data.acwr as any).composite_zone})
+                  Composite: {(data.acwr as any).composite?.toFixed(2) ?? 'N/A'} ({(data.acwr as any).composite_label ?? getAcwrZoneMeta((data.acwr as any).composite_zone).label})
                 </Badge>
               </Group>
+              <Text fz="xs" c="dimmed" mb="sm">
+                Daily EWMA acute/chronic ratio. The labels describe workload pattern, not validated injury risk.
+              </Text>
               <SimpleGrid cols={4} spacing="md">
                 {Object.entries((data.acwr as any).dimensions).map(([dim, info]: [string, any]) => {
-                  const zoneColor = info.zone === 'optimal' ? 'green' : info.zone === 'caution' ? 'yellow' : info.zone === 'danger' ? 'red' : 'gray'
+                  const zoneMeta = getAcwrZoneMeta(info.zone)
                   return (
-                    <Stack key={dim} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${zoneColor}-light)` }}>
+                    <Stack key={dim} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${zoneMeta.color}-light)` }}>
                       <Text fz="xs" tt="capitalize">{dim}</Text>
                       <Text fz="xl" fw={700}>{info.value?.toFixed(2) ?? '--'}</Text>
-                      <Text fz="xs" tt="capitalize">{info.zone}</Text>
+                      <Text fz="xs">{info.label ?? zoneMeta.label}</Text>
                     </Stack>
                   )
                 })}
@@ -648,7 +933,7 @@ export default function AnalysisPage() {
           )}
           {data.acwr && 'status' in data.acwr && (
             <Paper withBorder p="md">
-              <Text fw={500} mb="xs">ACWR (Acute:Chronic Workload Ratio)</Text>
+              <Text fw={500} mb="xs">EWMA ACWR (daily workload ratio)</Text>
               <Text fz="sm" c="dimmed">{(data.acwr as any).reason ?? 'Not enough data yet. Keep logging sessions.'}</Text>
             </Paper>
           )}

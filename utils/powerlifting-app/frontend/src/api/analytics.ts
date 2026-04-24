@@ -1,11 +1,66 @@
 import api from './client'
 
+export interface InsufficientDataResponse {
+  status: 'insufficient_data'
+  reason: string
+}
+
+export interface BanisterSeriesPoint {
+  date: string
+  ctl: number
+  atl: number
+  tsb: number
+}
+
+export interface BanisterAnalysis {
+  ctl_today: number
+  atl_today: number
+  tsb_today: number
+  tsb_label: string
+  series: BanisterSeriesPoint[]
+}
+
+export interface MonotonyStrainRow {
+  week_start: string
+  monotony: number
+  strain: number
+  flags: string[]
+}
+
+export interface DecouplingPoint {
+  week_start: string
+  decoupling: number
+  e1rm_slope_pct_per_week: number
+  fi_slope_pct_points_per_week: number
+}
+
+export interface DecouplingAnalysis {
+  current: DecouplingPoint | null
+  series: DecouplingPoint[]
+  flags: string[]
+}
+
+export interface TaperQualityAnalysis {
+  score: number
+  label: 'poor' | 'acceptable' | 'good' | 'excellent'
+  weeks_to_comp: number
+  components: {
+    volume_reduction: number
+    intensity_maintained: number
+    fatigue_trend: number
+    tsb: number
+  }
+}
+
 export interface WeeklyAnalysis {
   week: number
   block: string
   lifts: Record<string, {
     progression_rate_kg_per_week?: number | null
+    fit_quality?: number | null
+    kendall_tau?: number | null
     r2?: number | null
+    r_squared?: number | null
     volume_change_pct?: number
     intensity_change_pct?: number
     failed_sets?: number
@@ -15,7 +70,7 @@ export interface WeeklyAnalysis {
   fatigue_components: {
     failed_compound_ratio?: number
     composite_spike?: number
-    /** RPE stress = clamp((avg_session_rpe - 6.0) / 4.0, 0, 1). Replaces skip_rate. */
+    /** RPE stress = clamp((avg_session_rpe - 7.5) / 2.5, 0, 1). Replaces skip_rate. */
     rpe_stress?: number
   } | null
   compliance: {
@@ -51,6 +106,10 @@ export interface WeeklyAnalysis {
     break_weeks: number[]
     effective_training_weeks: number
   }
+  banister?: BanisterAnalysis | InsufficientDataResponse
+  monotony_strain?: {
+    weekly: MonotonyStrainRow[]
+  }
   inol?: {
     per_lift_per_week: Record<string, Record<string, number>>
     /** Average INOL per lift across the analysis window. */
@@ -59,17 +118,20 @@ export interface WeeklyAnalysis {
     /** Average unadjusted INOL before lift-specific stimulus coefficients. */
     raw_avg_inol?: Record<string, number>
     stimulus_coefficients?: Record<string, number>
+    thresholds?: Record<string, { low: number; high: number }>
     flags: string[]
   } | null
   acwr?: {
-    composite: number
+    composite: number | null
     composite_zone: string
-    dimensions: Record<string, { value: number; zone: string }>
+    composite_label?: string | null
+    dimensions: Record<string, { value: number | null; zone: string; label?: string }>
   } | { status: 'insufficient_data'; reason: string } | null
   ri_distribution?: {
     overall: Record<string, { count: number; pct: number }>
     per_lift: Record<string, Record<string, { count: number; pct: number }>>
   }
+  decoupling?: DecouplingAnalysis | InsufficientDataResponse
   specificity_ratio?: {
     narrow: number
     broad: number
@@ -79,13 +141,20 @@ export interface WeeklyAnalysis {
   readiness_score?: {
     score: number
     zone: string
-    components: Record<string, number>
+    components: {
+      fatigue_norm?: number
+      rpe_drift?: number
+      wellness?: number
+      performance_trend?: number
+      bw_deviation?: number
+    }
   }
   fatigue_dimensions?: {
     weekly: Record<string, { axial: number; neural: number; peripheral: number; systemic: number }>
     acwr: Record<string, any>
     spike: Record<string, any>
   }
+  taper_quality?: TaperQualityAnalysis | InsufficientDataResponse | null
   attempt_selection?: Record<string, {
     opener: number
     second: number

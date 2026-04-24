@@ -19,6 +19,7 @@ import type {
   VideoLibraryResponse,
   FatigueProfile,
   LiftProfile,
+  SessionWellness,
   ImportPending,
   ImportType,
   MergeStrategy,
@@ -138,7 +139,7 @@ export async function completeSession(
   version: string,
   date: string,
   index: number,
-  data: { rpe?: number; bodyWeightKg?: number; notes?: string }
+  data: { rpe?: number; bodyWeightKg?: number; notes?: string; wellness?: SessionWellness | null }
 ): Promise<void> {
   await api.patch(`/sessions/${version}/${date}/${index}/complete`, data)
 }

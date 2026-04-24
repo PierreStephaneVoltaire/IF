@@ -63,7 +63,7 @@ export default function TemplateEditPage() {
           <Button
             variant="default"
             leftSection={<X size={16} />}
-            onClick={() => navigate(`/designer/templates/${encodeURIComponent(sk)}`)}
+            onClick={() => sk && navigate(`/designer/templates/${encodeURIComponent(sk)}`)}
             disabled={saving}
           >
             Cancel

@@ -33,8 +33,8 @@ export const Step2_Classification: React.FC<Props> = ({
   return (
     <Stack py="xl" align="center">
       <Paper withBorder p="lg" radius="md" style={{ width: '100%', maxWidth: 500 }}>
-        <Stack align="center" spacing="md">
-          <Text size="lg" weight={500}>
+        <Stack align="center" gap="md">
+          <Text size="lg" fw={500}>
             {classificationOverride ? 'Classification (manual)' : 'Classification Detected'}
           </Text>
 
@@ -42,7 +42,7 @@ export const Step2_Classification: React.FC<Props> = ({
             {classification === 'template' ? 'Reusable Template' : 'Session Log / Dated Import'}
           </Badge>
 
-          <Text size="sm" color="dimmed" align="center">
+          <Text size="sm" c="dimmed" ta="center">
             {classification === 'template'
               ? 'This file contains relative weeks/days and RPE/% based loads. It will be added to your Template Library.'
               : 'This file contains calendar dates and absolute kg values. It will be merged into your training history.'}

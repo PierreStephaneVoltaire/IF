@@ -326,9 +326,15 @@ def _section_trends(
         for lift_name in ("squat", "bench", "deadlift"):
             result = progression_rate(sessions, lift_name, program_start)
             slope = result.get("slope_kg_per_week")
-            r2 = result.get("r2")
+            fit_quality = result.get("fit_quality", result.get("r_squared", result.get("r2")))
+            tau = result.get("kendall_tau")
             if slope is not None:
-                e1rm_lines.append(f"  {lift_name.capitalize()}: {slope}kg/wk (R²={r2})")
+                parts = [f"{lift_name.capitalize()}: {slope}kg/wk"]
+                if fit_quality is not None:
+                    parts.append(f"fit={fit_quality}")
+                if tau is not None:
+                    parts.append(f"tau={tau}")
+                e1rm_lines.append("  " + "  |  ".join(parts))
         if e1rm_lines:
             lines.append("E1RM PROGRESSION (Theil-Sen slope):")
             lines.extend(e1rm_lines)
@@ -387,11 +393,14 @@ def _section_fatigue_readiness(
     compute_inol,
     compute_acwr,
     compute_readiness_score,
+    _calculate_current_week,
 ) -> str | None:
     try:
         meta = program.get("meta", {})
         program_start = meta.get("program_start", "")
         current_maxes = program.get("current_maxes", {})
+        phases = program.get("phases", [])
+        current_week = _calculate_current_week(program_start, sessions)
 
         # Try to read cached weekly_analysis from DynamoDB
         cached = None
@@ -441,13 +450,20 @@ def _section_fatigue_readiness(
 
         if acwr_data is None:
             try:
-                acwr_data = compute_acwr(sessions, None, program_start, current_maxes or None)
+                acwr_data = compute_acwr(
+                    sessions,
+                    None,
+                    program_start,
+                    current_maxes or None,
+                    phases=phases,
+                    current_week=current_week,
+                )
             except Exception:
                 pass
 
         if readiness_data is None:
             try:
-                readiness_data = compute_readiness_score(completed, program)
+                readiness_data = compute_readiness_score(sessions, program)
             except Exception:
                 pass
 
@@ -488,18 +504,23 @@ def _section_fatigue_readiness(
         if acwr_data and "composite" in acwr_data:
             composite = acwr_data.get("composite")
             composite_zone = acwr_data.get("composite_zone", "unknown")
+            composite_label = acwr_data.get("composite_label", composite_zone)
             dims = acwr_data.get("dimensions", {})
-            lines.append("ACWR (Acute:Chronic Workload Ratio):")
-            lines.append(f"  Composite: {composite} ({composite_zone})")
+            lines.append("ACWR (EWMA load ratio):")
+            lines.append(f"  Composite: {composite} ({composite_label})")
             dim_parts = []
             for dim in ("axial", "neural", "peripheral", "systemic"):
                 d = dims.get(dim, {})
                 val = d.get("value") if isinstance(d, dict) else d
-                zone = d.get("zone", "?") if isinstance(d, dict) else "?"
+                label = d.get("label", d.get("zone", "?")) if isinstance(d, dict) else "?"
                 if val is not None:
-                    dim_parts.append(f"{dim.capitalize()}: {val} ({zone})")
+                    dim_parts.append(f"{dim.capitalize()}: {val} ({label})")
             if dim_parts:
                 lines.append("  " + "  |  ".join(dim_parts))
+            lines.append("")
+        elif acwr_data and acwr_data.get("status") == "insufficient_data":
+            lines.append("ACWR (EWMA load ratio):")
+            lines.append(f"  Insufficient data: {acwr_data.get('reason', 'not enough training history')}")
             lines.append("")
 
         if readiness_data and "score" in readiness_data:
@@ -755,7 +776,7 @@ async def build_context(pk: str, task: str) -> str | None:
     if s4:
         sections.append(s4)
 
-    s5 = _section_fatigue_readiness(program, sessions, fatigue_index, compute_inol, compute_acwr, compute_readiness_score)
+    s5 = _section_fatigue_readiness(program, sessions, fatigue_index, compute_inol, compute_acwr, compute_readiness_score, _calculate_current_week)
     if s5:
         sections.append(s5)
 

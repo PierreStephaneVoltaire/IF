@@ -158,6 +158,17 @@ export interface PlannedExercise {
 
 export type SessionStatus = 'planned' | 'logged' | 'completed' | 'skipped'
 
+export type WellnessScore = 1 | 2 | 3 | 4 | 5
+
+export interface SessionWellness {
+  sleep: WellnessScore
+  soreness: WellnessScore
+  mood: WellnessScore
+  stress: WellnessScore
+  energy: WellnessScore
+  recorded_at: string
+}
+
 export interface Session {
   id?: string
   date: string              // YYYY-MM-DD
@@ -173,6 +184,7 @@ export interface Session {
   session_notes: string
   session_rpe: number | null
   body_weight_kg: number | null
+  wellness?: SessionWellness
   videos?: SessionVideo[]   // Optional video attachments
   pain_log?: unknown[]
 }
@@ -250,6 +262,8 @@ export interface LiftProfile {
   stimulus_coefficient_reasoning?: string
   stimulus_coefficient_confidence?: 'low' | 'medium' | 'high'
   stimulus_coefficient_updated_at?: string
+  inol_low_threshold?: number
+  inol_high_threshold?: number
 }
 
 export interface Supplement {
@@ -369,11 +383,22 @@ export interface TemplateMeta {
   ai_evaluation?: AiTemplateEvaluation
 }
 
+export interface TemplateEvaluationSuggestion {
+  type: string
+  week?: number | null
+  phase?: string | null
+  exercise?: string | null
+  rationale: string
+}
+
 export interface AiTemplateEvaluation {
   stance: string
+  summary: string
   strengths: string[]
   weaknesses: string[]
-  suggestions: string[]
+  suggestions: TemplateEvaluationSuggestion[]
+  projected_readiness_at_comp?: number
+  data_citations?: string[]
   context_snapshot: any
 }
 

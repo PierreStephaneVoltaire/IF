@@ -61,13 +61,13 @@ export const Step3_GlossaryReview: React.FC<Props> = ({
 
   return (
     <Stack py="xl">
-      <Text weight={500}>Exercise Resolution</Text>
-      <Text size="sm" color="dimmed">
+      <Text fw={500}>Exercise Resolution</Text>
+      <Text size="sm" c="dimmed">
         Verify that the exercises from your file match correctly. Override any
         incorrect match by picking a different glossary entry.
       </Text>
 
-      <Table withBorder withColumnBorders>
+      <Table withTableBorder withColumnBorders>
         <thead>
           <tr>
             <th>Name in File</th>
@@ -104,7 +104,7 @@ export const Step3_GlossaryReview: React.FC<Props> = ({
         </tbody>
       </Table>
 
-      <Group position="apart" mt="xl">
+      <Group justify="space-between" mt="xl">
         <Button variant="outline" onClick={onPrev}>Back</Button>
         <Button onClick={onNext}>Continue</Button>
       </Group>

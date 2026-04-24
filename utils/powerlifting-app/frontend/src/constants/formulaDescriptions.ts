@@ -27,22 +27,25 @@ export const FORMULA_DESCRIPTIONS: FormulaDescription[] = [
   {
     id: 'progression_rate',
     title: 'Progression Rate',
-    summary: 'Theil-Sen regression on e1RM per effective training week. Deloads and break weeks excluded.',
+    summary: 'Theil-Sen regression on e1RM per effective training week. Deloads and break weeks excluded; fit quality is reported with Kendall tau.',
     formula: `slope = theilsen_median(e1RM ~ effective_week)
-r² = 1 - SS_res / SS_tot`,
+kendall_tau = KendallTau(effective_week, e1RM)
+fit_quality = 1 - MAD(residuals) / MAD(series)`,
     variables: [
       { name: 'e1RM', description: 'Estimated 1RM per session' },
       { name: 'effective_week', description: 'Week index excluding deloads/breaks' },
       { name: 'slope', description: 'kg per week rate of change' },
-      { name: 'r²', description: 'Goodness of fit (0-1)' },
+      { name: 'kendall_tau', description: 'Rank correlation between effective week and e1RM (-1 to 1)' },
+      { name: 'fit_quality', description: 'Normalized MAD fit quality (0-1)' },
     ],
   },
   {
     id: 'competition_projection',
     title: 'Competition Projection',
-    summary: 'Diminishing-returns projection from current maxes. Clamped to [E_now, E_now * 1.10].',
+    summary: 'Diminishing-returns projection from current maxes. Clamped to a time-scaled ceiling that tops out at 30%.',
     formula: `C_max = [E_now + delta_w * lambda * (1 - lambda^n) / (1 - lambda)] * P
-clamped to [E_now, E_now * 1.10]
+ceiling_pct = 10% + 1% per 2 weeks beyond 8, capped at 30%
+clamped to [E_now, E_now * (1 + ceiling_pct)]
 
 lambda: DOTS < 300 -> 0.96, 300-400 -> 0.90, >= 400 -> 0.85
 P (peak): DOTS < 300 -> 1.01, 300-400 -> 1.03, >= 400 -> 1.05
@@ -77,29 +80,31 @@ round_to_2.5(v) = round(v / 2.5) * 2.5`,
   {
     id: 'fatigue_model',
     title: 'Fatigue Model',
-    summary: '4 dimensions (axial, neural, peripheral, systemic) per exercise. AI-estimated or manual. Per-set fatigue calculation.',
-    formula: `F_d = profile.d * weight * reps  (axial, peripheral, systemic)
-F_neural = profile.neural * reps * phi(I)
-phi(I) = (max(0, I - 0.60) / 0.40)^2
+    summary: '4 dimensions (axial, neural, peripheral, systemic) per exercise. Nonlinear load scaling with an intensity-gated neural term.',
+    formula: `F_axial = profile.axial * weight^1.30 * reps
+F_peripheral = profile.peripheral * weight^1.15 * reps
+F_systemic = profile.systemic * weight * reps * (1 + 0.30 * I)
+F_neural = profile.neural * reps * phi(I) * sqrt(weight / 100)
+phi(I) = ((max(0, I - 0.60) / 0.40)^3)
 I = weight / E_now (intensity ratio)`,
     variables: [
       { name: 'profile.d', description: 'Exercise fatigue coefficient per dimension (0-1)' },
       { name: 'weight', description: 'Load in kg' },
       { name: 'reps', description: 'Repetitions in the set' },
       { name: 'I', description: 'Intensity ratio (weight / estimated max)' },
-      { name: 'phi(I)', description: 'Neural scaling function, zero below 60% intensity' },
+      { name: 'phi(I)', description: 'Cubic neural scaling function, zero below 60% intensity' },
     ],
   },
   {
     id: 'fatigue_index',
     title: 'Fatigue Index',
-    summary: 'Composite fatigue score from failed compounds, volume spikes, and session skip rate.',
+    summary: 'Composite fatigue score from failed compounds, volume spikes, and RPE stress.',
     formula: `FI = 0.40 * failed_compound_ratio
    + 0.35 * composite_spike
    + 0.25 * rpe_stress
 
-rpe_stress = clamp((avg_session_rpe − 6.0) / 4.0, 0, 1)
-  RPE 6 → 0.0 | RPE 8 → 0.5 | RPE 10 → 1.0
+rpe_stress = clamp((avg_session_rpe − 7.5) / 2.5, 0, 1)
+  RPE 7.5 → 0.0 | RPE 8.0 → 0.2 | RPE 10 → 1.0
 
 Note: skip_rate excluded — resting reduces fatigue, not increases it.`,
     variables: [
@@ -116,9 +121,10 @@ Note: skip_rate excluded — resting reduces fatigue, not increases it.`,
   {
     id: 'inol',
     title: 'INOL',
-    summary: 'Stimulus-adjusted intensity and volume load metric per lift per week. Flags low stimulus and overreaching.',
-    formula: `raw_INOL = sum(reps / (100 * (1 - I)))
-adjusted_INOL = raw_INOL * lift_stimulus_coefficient
+    summary: 'Stimulus-adjusted intensity and volume load metric per lift per week. Uses smoothed singularity handling and per-lift productive ranges.',
+    formula: `raw_set_INOL = reps / (100 * sqrt((1 - min(I, 0.995))^2 + 0.02^2))
+raw_weekly_INOL = sum(raw_set_INOL * sets)
+adjusted_weekly_INOL = raw_weekly_INOL * lift_stimulus_coefficient
 I = weight / E_now (per set)`,
     variables: [
       { name: 'reps', description: 'Repetitions in the set' },
@@ -126,26 +132,108 @@ I = weight / E_now (per set)`,
       { name: 'lift_stimulus_coefficient', description: 'Lift-profile multiplier from 1 to 2; baseline is 1.0' },
     ],
     thresholds: [
-      { label: 'Low stimulus', value: '< 2.0', flag: 'Insufficient training stress' },
-      { label: 'Productive', value: '2.0 - 4.0', flag: 'Optimal range' },
-      { label: 'Overreaching', value: '> 4.0', flag: 'Excessive stress' },
+      { label: 'Squat', value: '1.6 - 3.5', flag: 'Default productive range; profile overrides may change this' },
+      { label: 'Bench', value: '2.0 - 5.0', flag: 'Default productive range; profile overrides may change this' },
+      { label: 'Deadlift', value: '1.0 - 2.5', flag: 'Default productive range; profile overrides may change this' },
     ],
   },
   {
     id: 'acwr',
     title: 'ACWR (Acute:Chronic Workload Ratio)',
-    summary: 'Per-dimension workload ratio with weighted composite. Compares this week to 4-week chronic average.',
-    formula: `ACWR_d = F_d_week / mean(F_d previous 4 non-deload weeks)
+    summary: 'Per-dimension workload ratio with weighted composite. Uses daily EWMA loads and labels that describe workload pattern, not injury prediction.',
+    formula: `EWMA_acute_d,t = 0.25 * load_d,t + 0.75 * EWMA_acute_d,t-1
+EWMA_chronic_d,t = (2/29) * load_d,t + (27/29) * EWMA_chronic_d,t-1
+ACWR_d = EWMA_acute_d,t / EWMA_chronic_d,t
 Composite = 0.30*axial + 0.30*neural + 0.25*peripheral + 0.15*systemic`,
     variables: [
-      { name: 'F_d_week', description: 'Fatigue in dimension d for current week' },
-      { name: 'F_d_prev', description: 'Fatigue in dimension d for previous weeks' },
+      { name: 'load_d,t', description: 'Daily load in dimension d on day t' },
+      { name: 'EWMA_acute', description: '7-day acute EWMA seeded from the first 7 days' },
+      { name: 'EWMA_chronic', description: '28-day chronic EWMA seeded from the first 7 days' },
     ],
     thresholds: [
-      { label: 'Undertraining', value: '< 0.80', flag: 'Detraining risk' },
-      { label: 'Optimal', value: '0.80 - 1.30', flag: 'Sweet spot' },
-      { label: 'Caution', value: '1.30 - 1.50', flag: 'Elevated injury risk' },
-      { label: 'Danger', value: '> 1.50', flag: 'High injury risk' },
+      { label: 'Detraining trend', value: '< 0.80', flag: 'Load is trending down' },
+      { label: 'Steady load', value: '0.80 - 1.30', flag: 'Stable workload pattern' },
+      { label: 'Rapid increase', value: '1.30 - 1.50', flag: 'Recent workload is rising quickly' },
+      { label: 'Load spike', value: '> 1.50', flag: 'Large short-term workload jump' },
+    ],
+  },
+  {
+    id: 'banister_ffm',
+    title: 'Banister Fitness-Fatigue Model',
+    summary: 'Daily composite load drives CTL (fitness), ATL (fatigue), and TSB (form) for peaking readiness.',
+    formula: `load_t = 0.30*F_axial + 0.30*F_neural + 0.25*F_peripheral + 0.15*F_systemic
+CTL_t = (2/43) * load_t + (1 - 2/43) * CTL_t-1
+ATL_t = (2/8) * load_t + (1 - 2/8) * ATL_t-1
+TSB_t = CTL_t - ATL_t
+CTL_0 = ATL_0 = mean(load first 14 days)`,
+    variables: [
+      { name: 'load_t', description: 'Composite daily fatigue load' },
+      { name: 'CTL', description: 'Chronic training load / fitness' },
+      { name: 'ATL', description: 'Acute training load / fatigue' },
+      { name: 'TSB', description: 'Training stress balance, or form' },
+    ],
+    thresholds: [
+      { label: 'Deep overload', value: '< -30', flag: 'Very high accumulated fatigue' },
+      { label: 'Productive overreach', value: '-30 to -10', flag: 'Heavy but useful overload' },
+      { label: 'Building', value: '-10 to +5', flag: 'Fitness is building' },
+      { label: 'Peaking window', value: '+5 to +15', flag: 'Best readiness for platform work' },
+      { label: 'Detraining risk', value: '> +15', flag: 'Too little stimulus / too much freshness' },
+    ],
+  },
+  {
+    id: 'monotony_strain',
+    title: 'Foster Monotony & Strain',
+    summary: 'Weekly load consistency and accumulated strain. Catches repeated moderate loading that ACWR can miss.',
+    formula: `Monotony_week = mean(daily_load_week) / (SD(daily_load_week) + 1e-6)
+Strain_week = weekly_load * Monotony_week`,
+    variables: [
+      { name: 'daily_load_week', description: 'Composite daily loads inside one training week' },
+      { name: 'weekly_load', description: 'Sum of daily loads for the week' },
+      { name: 'Monotony_week', description: 'Load consistency ratio for the week' },
+      { name: 'Strain_week', description: 'Weekly load multiplied by monotony' },
+    ],
+    thresholds: [
+      { label: 'High monotony', value: '> 2.0', flag: 'Repeated similar loading across the week' },
+      { label: 'Strain spike', value: '> rolling 4-week median x 1.5', flag: 'Weekly strain jumped sharply' },
+    ],
+  },
+  {
+    id: 'decoupling',
+    title: 'Strength-Fatigue Decoupling',
+    summary: 'Trailing 3-week divergence between SBD e1RM trend and fatigue-index trend.',
+    formula: `Decoupling = slope(e1RM_total, 3wk) - slope(FI, 3wk)
+e1RM slope is normalized to %/wk
+FI slope is normalized to percentage points / wk`,
+    variables: [
+      { name: 'e1RM_total', description: 'Weekly sum of best squat, bench, and deadlift e1RM estimates' },
+      { name: 'FI', description: 'Fatigue index score for the week-end window' },
+      { name: 'slope', description: 'Three-point linear slope over trailing weeks' },
+    ],
+    thresholds: [
+      { label: 'Fatigue dominant', value: '< 0', flag: 'Strength is not outpacing fatigue' },
+      { label: 'Sustained negative', value: '< 0 for 3 consecutive windows', flag: 'decoupling_fatigue_dominant' },
+    ],
+  },
+  {
+    id: 'taper_quality',
+    title: 'Taper Quality Score',
+    summary: 'Weighted score for how well the final taper preserves intensity while reducing volume and fatigue.',
+    formula: `TQS = 0.30 * V_reduction + 0.25 * I_maintained + 0.25 * F_trend + 0.20 * T_SB
+V_reduction = clamp((pre_taper_peak_volume - taper_weekly_volume) / (pre_taper_peak_volume * 0.5), 0, 1)
+I_maintained = 1 if taper top-set intensity >= 0.95 * pre-taper else linear falloff
+F_trend = 1 if fatigue is trending down, 0 if flat, negative if rising
+T_SB = clamp((TSB_today + 5) / 20, 0, 1)`,
+    variables: [
+      { name: 'pre_taper_peak_volume', description: 'Max weekly composite volume in the 4 weeks before taper start' },
+      { name: 'taper_weekly_volume', description: 'Average weekly composite volume during the taper window' },
+      { name: 'top_set_intensity', description: 'Highest relative intensity hit during taper vs. pre-taper' },
+      { name: 'TSB_today', description: 'Current Banister form score' },
+    ],
+    thresholds: [
+      { label: 'Poor', value: '< 40', flag: 'Taper is not producing a good peaking signal' },
+      { label: 'Acceptable', value: '40 - 59', flag: 'Serviceable but not ideal' },
+      { label: 'Good', value: '60 - 79', flag: 'Strong taper pattern' },
+      { label: 'Excellent', value: '>= 80', flag: 'Very strong taper pattern' },
     ],
   },
   {
@@ -177,15 +265,15 @@ SR_broad = (SBD + secondary category) / total sets`,
   {
     id: 'readiness_score',
     title: 'Readiness Score',
-    summary: 'Composite score predicting training readiness from fatigue, RPE drift, bodyweight stability, and compliance.',
-    formula: `R = (1 - (0.30*F_norm + 0.25*D_rpe + 0.20*S_bw
-         + 0.15*M_rate + 0.10*(1 - C_pct/100))) * 100`,
+    summary: 'Composite score predicting training readiness from fatigue, RPE drift, subjective wellness, short-term performance trend, and bodyweight deviation.',
+    formula: `R = (1 - (0.30*F_norm + 0.25*D_rpe + 0.20*W_subj
+         + 0.15*P_trend + 0.10*S_bw*)) * 100`,
     variables: [
       { name: 'F_norm', description: 'Normalized fatigue index (0-1)' },
       { name: 'D_rpe', description: 'RPE drift from phase target' },
-      { name: 'S_bw', description: 'Bodyweight coefficient of variation' },
-      { name: 'M_rate', description: 'Failed sets / total sets' },
-      { name: 'C_pct', description: 'Session compliance percentage' },
+      { name: 'W_subj', description: 'Subjective wellness (1 - mean wellness / 5)' },
+      { name: 'P_trend', description: 'Negative short-term e1RM trend penalty' },
+      { name: 'S_bw*', description: 'Cut-aware bodyweight deviation or stability penalty' },
     ],
     thresholds: [
       { label: 'Green', value: '> 75', flag: 'Ready to train' },
@@ -218,15 +306,19 @@ SR_broad = (SBD + secondary category) / total sets`,
   {
     id: 'rpe_drift',
     title: 'RPE Drift',
-    summary: 'Residual regression comparing actual RPE to phase target midpoint. Detects fatigue or adaptation trends.',
+    summary: 'Residual regression comparing actual RPE to phase target midpoint. Detects fatigue or adaptation trends and reports fit quality with Kendall tau.',
     formula: `residual = avg_rpe - phase_target_midpoint
-slope = OLS(residual ~ week)
+slope = Theil-Sen(residual ~ week)
+kendall_tau = KendallTau(week, residual)
+fit_quality = 1 - MAD(residuals) / MAD(series)
 slope >= 0.1 -> fatigue
 slope <= -0.1 -> adaptation`,
     variables: [
       { name: 'avg_rpe', description: 'Average session RPE' },
       { name: 'phase_target_midpoint', description: '(target_rpe_min + target_rpe_max) / 2' },
-      { name: 'slope', description: 'OLS regression slope over time' },
+      { name: 'slope', description: 'Theil-Sen regression slope over time' },
+      { name: 'kendall_tau', description: 'Rank correlation between week and RPE residuals' },
+      { name: 'fit_quality', description: 'Normalized MAD fit quality (0-1)' },
     ],
     thresholds: [
       { label: 'Fatigue', value: 'slope >= 0.1', flag: 'RPE rising at same loads' },
@@ -242,7 +334,7 @@ slope <= -0.1 -> adaptation`,
 All weeks included. A week with no planned sessions contributes nothing.`,
     variables: [
       { name: 'completed', description: 'Sessions with status logged or completed' },
-      { name: 'planned', description: 'Total sessions minus deload/break weeks' },
+      { name: 'planned', description: 'Total sessions in the selected compliance window; deloads and breaks are included' },
     ],
   },
 ]

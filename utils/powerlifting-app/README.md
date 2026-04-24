@@ -149,7 +149,7 @@ Phases matter to:
 - Logged work:
   `exercises[]`
 - Subjective/context fields:
-  `session_notes`, `session_rpe`, `body_weight_kg`, `pain_log`
+  `session_notes`, `session_rpe`, `body_weight_kg`, `wellness`, `pain_log`
 - Media:
   `videos[]`
 
@@ -257,8 +257,9 @@ These profiles are used in two different ways:
 1. As direct deterministic inputs through `stimulus_coefficient`, which modifies
    INOL
 2. As soft AI context for lift-profile review, lift-profile rewrite, stimulus
-   estimation, fatigue-profile estimation, correlation analysis, and program
-   evaluation
+   estimation, fatigue-profile estimation, correlation analysis, program
+   evaluation, accessory e1RM backfill, template evaluation, and spreadsheet
+   import
 
 ### Weight log and max history
 
@@ -448,7 +449,7 @@ Displayed:
 
 - readiness score on a 0-100 scale
 - normalized components:
-  fatigue, RPE drift, bodyweight stability, miss rate
+  fatigue, RPE drift, subjective wellness, short-term performance trend, bodyweight deviation
 
 Threshold colors are implicit through the backend zone:
 
@@ -479,17 +480,17 @@ Source: backend `compute_acwr`
 Displayed:
 
 - composite ACWR
-- composite zone
-- per-dimension ACWR for axial, neural, peripheral, systemic
+- composite zone / label
+- per-dimension EWMA ACWR for axial, neural, peripheral, systemic
 
 Zones:
 
-- `< 0.80` undertraining
-- `0.80 - 1.30` optimal
-- `1.30 - 1.50` caution
-- `> 1.50` danger
+- `< 0.80` detraining trend
+- `0.80 - 1.30` steady load
+- `1.30 - 1.50` rapid increase
+- `> 1.50` load spike
 
-If there are fewer than 5 completed weeks, the UI shows an insufficient-data
+If there are fewer than 25 calendar days of completed training, the UI shows an insufficient-data
 message instead of ratios.
 
 ### 7. Relative Intensity Distribution
@@ -791,7 +792,8 @@ For each effective training week:
   best_weekly_e1RM = max(qualifying e1RMs in that week)
 
 slope = Theil-Sen(best_weekly_e1RM ~ effective_week_index)
-R^2 = fit quality against the Theil-Sen line
+kendall_tau = KendallTau(effective_week_index, best_weekly_e1RM)
+fit_quality = 1 - MAD(residuals) / MAD(series)
 ```
 
 Important details:
@@ -843,6 +845,13 @@ Else:
   slope = Theil-Sen(actual_rpe ~ week)
 ```
 
+Fit quality:
+
+```text
+kendall_tau = KendallTau(week, residual_or_raw_rpe)
+fit_quality = 1 - MAD(residuals) / MAD(series)
+```
+
 Flags:
 
 - slope `>= 0.1` -> fatigue
@@ -853,11 +862,6 @@ Why this is customized:
 
 - it compares performance against the intended phase difficulty, not just raw RPE
 - it treats rising RPE at the same planned difficulty as a fatigue signal
-
-Important code/prose mismatch:
-
-- older formula text says OLS
-- current code uses Theil-Sen here as well
 
 ### Fatigue model and fatigue dimensions
 
@@ -871,13 +875,13 @@ Per-set model:
 
 ```text
 I = weight / e1RM
-phi(I) = 0                        if I <= 0.60
-phi(I) = ((I - 0.60) / 0.40)^2   otherwise
+phi(I) = 0                                if I <= 0.60
+phi(I) = ((I - 0.60) / 0.40)^3           otherwise
 
-axial      = profile.axial      * weight * reps
-neural     = profile.neural     * reps * phi(I)
-peripheral = profile.peripheral * weight * reps
-systemic   = profile.systemic   * weight * reps
+axial      = profile.axial      * weight^1.30 * reps
+neural     = profile.neural     * reps * phi(I) * sqrt(weight / 100)
+peripheral = profile.peripheral * weight^1.15 * reps
+systemic   = profile.systemic   * weight * reps * (1 + 0.30 * I)
 ```
 
 Implementation details:
@@ -909,7 +913,7 @@ FI = 0.40 * failed_compound_ratio
    + 0.35 * composite_spike
    + 0.25 * rpe_stress
 
-rpe_stress = clamp((avg_session_rpe - 6.0) / 4.0, 0, 1)
+rpe_stress = clamp((avg_session_rpe - 7.5) / 2.5, 0, 1)
 ```
 
 Component details:
@@ -920,7 +924,7 @@ Component details:
   preferred path: weighted dimensional spike from glossary fatigue math
   fallback path: recent tonnage spike vs recent-week average
 - `rpe_stress`
-  captures prolonged RPE 9-10 grinding even if failures never occur
+  captures prolonged RPE 8+ grinding even if failures never occur
 
 Flags:
 
@@ -949,9 +953,7 @@ Formula:
 
 ```text
 I = kg / current_max_for_lift
-denom = (1 - I), except if I >= 1 then denom = max(0.01, 1 - I)
-
-raw_set_INOL = reps / (100 * denom)
+raw_set_INOL = reps / (100 * sqrt((1 - min(I, 0.995))^2 + 0.02^2))
 raw_weekly_INOL = sum(raw_set_INOL * sets)
 adjusted_weekly_INOL = raw_weekly_INOL * stimulus_coefficient
 ```
@@ -967,6 +969,15 @@ Stimulus coefficient behavior:
 - default `1.0`
 - read from `lift_profiles[].stimulus_coefficient`
 - clamped to `[1.0, 2.0]`
+- optional lift-profile overrides:
+  - `lift_profiles[].inol_low_threshold`
+  - `lift_profiles[].inol_high_threshold`
+
+Default productive ranges:
+
+- squat: `1.6 - 3.5`
+- bench: `2.0 - 5.0`
+- deadlift: `1.0 - 2.5`
 
 Why this is customized:
 
@@ -991,20 +1002,22 @@ Where used:
 Formula:
 
 ```text
-ACWR_dim = mean(last 1 week dim load) / mean(previous 4 weeks dim load)
+EWMA_acute_d,t = 0.25 * load_d,t + 0.75 * EWMA_acute_d,t-1
+EWMA_chronic_d,t = (2/29) * load_d,t + (27/29) * EWMA_chronic_d,t-1
+ACWR_d = EWMA_acute_d,t / EWMA_chronic_d,t
 Composite = 0.30*axial + 0.30*neural + 0.25*peripheral + 0.15*systemic
 ```
 
 Requirements:
 
-- at least 5 completed weeks
+- at least 25 calendar days of completed training
 
 Zones:
 
-- `< 0.80` undertraining
-- `0.80 - 1.30` optimal
-- `1.30 - 1.50` caution
-- `> 1.50` danger
+- `< 0.80` detraining trend
+- `0.80 - 1.30` steady load
+- `1.30 - 1.50` rapid increase
+- `> 1.50` load spike
 
 Why this is customized:
 
@@ -1012,10 +1025,112 @@ Why this is customized:
 - code comment rationale: deload weeks are included for a more accurate chronic
   baseline
 
-Important code/prose mismatch:
+### Banister Fitness-Fatigue Model
 
-- older formula text says "previous 4 non-deload weeks"
-- current code includes deloads in the chronic baseline
+Where used:
+
+- Form / Peaking Readiness card
+
+Formula:
+
+```text
+load_t = 0.30*F_axial + 0.30*F_neural + 0.25*F_peripheral + 0.15*F_systemic
+CTL_t = (2/43) * load_t + (1 - 2/43) * CTL_t-1
+ATL_t = (2/8) * load_t + (1 - 2/8) * ATL_t-1
+TSB_t = CTL_t - ATL_t
+CTL_0 = ATL_0 = mean(load first 14 days)
+```
+
+Interpretation:
+
+- TSB `< -30` -> deep overload
+- TSB `-30 to -10` -> productive overreach
+- TSB `-10 to +5` -> building
+- TSB `+5 to +15` -> peaking window
+- TSB `> +15` -> detraining risk
+
+Why this is customized:
+
+- the daily load input comes from the same four-dimensional fatigue model used
+  everywhere else in the app
+- rest days are explicit zeros, so the model respects recovery gaps instead of
+  collapsing them into missing data
+
+### Foster Monotony & Strain
+
+Where used:
+
+- Monotony / Strain weekly card
+
+Formula:
+
+```text
+Monotony_week = mean(daily_load_week) / (SD(daily_load_week) + 1e-6)
+Strain_week = weekly_load * Monotony_week
+```
+
+Flags:
+
+- `high_monotony` when monotony `> 2.0`
+- `strain_spike` when strain exceeds the rolling 4-week median by 50%
+
+Why this is customized:
+
+- it uses the same composite daily load as Banister and ACWR
+- it catches "same moderate load every day" patterns that a ratio-based
+  workload metric can miss
+
+### Strength-Fatigue Decoupling
+
+Where used:
+
+- Decoupling card
+
+Formula:
+
+```text
+Decoupling = slope(e1RM_total, 3wk) - slope(FI, 3wk)
+```
+
+Notes:
+
+- `e1RM_total` is the weekly sum of best squat, bench, and deadlift e1RM
+  estimates
+- `FI` is the weekly fatigue-index score
+- both slopes are normalized to per-week units
+- negative decoupling for 3 consecutive windows triggers
+  `decoupling_fatigue_dominant`
+
+### Taper Quality Score
+
+Where used:
+
+- Taper Quality Score card
+
+Formula:
+
+```text
+TQS = 0.30 * V_reduction + 0.25 * I_maintained + 0.25 * F_trend + 0.20 * T_SB
+V_reduction = clamp((pre_taper_peak_volume - taper_weekly_volume) / (pre_taper_peak_volume * 0.5), 0, 1)
+I_maintained = 1 if taper top-set intensity >= 0.95 * pre-taper else linear falloff
+F_trend = 1 if fatigue index is trending down, 0 if flat, negative if rising
+T_SB = clamp((TSB_today + 5) / 20, 0, 1)
+```
+
+Interpretation:
+
+- `score < 40` -> poor
+- `40 - 59` -> acceptable
+- `60 - 79` -> good
+- `>= 80` -> excellent
+
+Windowing:
+
+- only shown inside the final 3 weeks before the next confirmed/optional
+  competition
+- taper start is the earlier of a named taper phase or 21 days pre-comp
+- pre-taper volume baseline is the max weekly volume in the 4 weeks before taper
+  start
 
 ### Relative intensity distribution
 
@@ -1063,9 +1178,9 @@ Formula:
 R = (1 - (
       0.30 * fatigue_norm
     + 0.25 * rpe_drift
-    + 0.20 * bw_stability
-    + 0.15 * miss_rate
-    + 0.10 * (1 - compliance_pct / 100)
+    + 0.20 * subjective_wellness
+    + 0.15 * performance_trend
+    + 0.10 * bodyweight_deviation
     )) * 100
 ```
 
@@ -1075,25 +1190,28 @@ Component construction:
   fatigue index over the last 14 days
 - `rpe_drift`
   `clamp((avg_rpe_last_14d - current_phase_target_midpoint) / 2, 0, 1)`
-- `bw_stability`
-  coefficient of variation of the last 7 session bodyweight entries,
+- `subjective_wellness`
+  `1 - mean(wellness values in the last 14 days) / 5`
+- `performance_trend`
+  `clamp((-slope(e1RM_last_14d)) / expected_weekly_delta, 0, 1)`
+- `bodyweight_deviation`
+  cut-aware trajectory deviation when a weight cut is in progress,
+  otherwise coefficient of variation of the last 7 session bodyweight entries
   normalized by `0.03`
-- `miss_rate`
-  failed sets / total sets in the last 14 days
-- `compliance_pct`
-  2-week compliance
 
 Fallbacks:
 
 - no fatigue data -> `0.5`
 - no recent RPEs -> `7.5`
-- no recent bodyweight series -> `0.5`
+- no wellness rows -> `0.5`
+- no e1RM trend -> `0.0`
+- no bodyweight series -> `0.5`
 
 Why this is customized:
 
 - it is a training-readiness model tied to actual logged training behavior
-- it blends stress, performance feel, bodyweight stability, misses, and
-  execution consistency instead of relying on a generic subjective readiness input
+- it blends stress, subjective wellness, short-term performance trend, and
+  bodyweight deviation instead of relying on a generic one-number readiness score
 
 ### DOTS and IPF GL
 
@@ -1167,11 +1285,6 @@ Why this is customized:
 - the ceiling is intentionally tighter for near-term meets and looser for far-out
   meets
 - taper and planned deloads are explicitly subtracted
-
-Important code/prose mismatch:
-
-- older formula text says a fixed 10 percent ceiling
-- current code uses a dynamic ceiling up to 30 percent
 
 ### Attempt selection
 
@@ -1540,54 +1653,28 @@ country, region, equipment, sex, age class, year, and event type.
 Videos are stored and displayed, but no computer-vision analysis is currently
 performed.
 
-## Known Mismatches, Rough Edges, And "Read The Code" Notes
+## Current Rough Edges And Read The Code Notes
 
-These are the main places where older prose or UI expectations diverge from the
-current implementation:
+These are the places where the UI, backend, or data model still have deliberate
+or temporary mismatches:
 
-1. Projection ceiling prose is stale.
-   Older descriptions say projections are clamped to 10 percent above current
-   max. Current code uses a time-scaled ceiling that can rise to 30 percent.
+1. Backend `weekly_analysis.estimated_dots` still depends on
+   `meta.bodyweight_kg` and `meta.sex`, not `meta.current_body_weight_kg`, while
+   frontend trend cards use `settingsStore.sex` and local weight-log / session
+   bodyweight sources. That is why backend DOTS can be null while the local
+   trend DOTS still renders.
+2. The top max card is not the same thing as backend `current_maxes`. It prefers
+   local Epley-based trend maxima when those exist, then falls back to backend
+   current maxes.
+3. `attempt_selection` is computed but not rendered on the Analysis page.
+4. Program-evaluation gating differs between frontend and backend.
+5. Template evaluation still passes mocked, minimal athlete context.
+6. The glossary fatigue-estimation path is rougher than the auto-add path.
 
-2. ACWR prose is stale.
-   Older formula text says chronic load is previous 4 non-deload weeks. Current
-   code includes deload weeks in the chronic baseline.
+Consistency rule:
 
-3. RPE drift prose is stale.
-   Older prose says OLS. Current code uses Theil-Sen.
-
-4. Compliance prose is partly stale.
-   Current code counts all weeks in the compliance window, including deloads and
-   breaks.
-
-5. The About page understates the AI surface area.
-   The current codebase has more than the originally-described three narrow AI
-   tools.
-
-6. Supplement usage prose is stale.
-   Some older prose says supplements are not fed into AI prompts. Program
-   evaluation currently includes supplement summary context.
-
-7. Backend `estimated_dots` is fragile.
-   It depends on `meta.bodyweight_kg` and `meta.sex`, while the current typed
-   schema mainly stores `current_body_weight_kg` and frontend sex in local
-   settings. Frontend local DOTS trends are often more complete than backend
-   `estimated_dots`.
-
-8. The top max card is not the same thing as backend current maxes.
-   The card prefers local Epley-based trend maxima when they exist.
-
-9. `attempt_selection` is computed but not rendered on the Analysis page.
-
-10. Program-evaluation gating differs between frontend and backend.
-
-11. Template evaluation is still partly scaffolded.
-    The current athlete context passed into the template-evaluation model is
-    mocked and minimal.
-
-12. The glossary fatigue-estimation path is rougher than the auto-add path.
-    The direct glossary estimate route currently hands less structured context
-    into `fatigue_ai`.
+- every formula-touching change must update `README.md`, `AboutPage.tsx`, and
+  `formulaDescriptions.ts` in the same PR
 
 ## Bottom Line
 

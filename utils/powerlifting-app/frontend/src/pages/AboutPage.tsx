@@ -55,12 +55,13 @@ export default function AboutPage() {
           <Stack gap="md">
             <Title order={2} size="h3">What this is</Title>
             <Text>
-              A personal performance portal focused on one question: will the current block
-              put the athlete on the platform ready to hit a planned total? It ingests
-              planned and logged sessions (sets, reps, kilograms, RPE, failed sets), per-session
-              bodyweight, competition attempts and results, per-lift style profiles, and
-              athlete body metrics. From those, it computes e1RM trajectories, DOTS progression,
-              fatigue dimensions, readiness, and attempt selection for the upcoming meet.
+            A personal performance portal focused on one question: will the current block
+            put the athlete on the platform ready to hit a planned total? It ingests
+            planned and logged sessions (sets, reps, kilograms, RPE, failed sets), per-session
+            bodyweight, pre-session wellness, competition attempts and results, per-lift style
+            profiles, and athlete body metrics. From those, it computes e1RM trajectories,
+            DOTS progression, fatigue dimensions, Banister form, weekly monotony/strain,
+            decoupling, taper quality, readiness, and attempt selection for the upcoming meet.
             </Text>
             <Alert icon={<ShieldCheck size={16} />} color="blue" title="Signal over friction">
               Per-meal macros, per-night sleep scores, continuous heart rate, and minute-level
@@ -85,15 +86,17 @@ export default function AboutPage() {
               }
             >
               <List.Item>
-                <b>Statistical engine.</b> Deterministic math: e1RM, DOTS, INOL, ACWR,
-                fatigue index, Theil-Sen progression, diminishing-returns projection,
-                attempt selection, readiness score.
+                <b>Statistical engine.</b> Deterministic math: e1RM, DOTS, INOL, EWMA ACWR,
+                fatigue index, Theil-Sen progression with fit quality, diminishing-returns
+                projection, attempt selection, readiness score.
               </List.Item>
               <List.Item>
-                <b>AI reasoning layer.</b> Three narrow tools: per-exercise fatigue profile
-                estimation (axial / neural / peripheral / systemic), accessory-to-lift
-                correlation analysis, and block-level program evaluation. Each is fed the
-                relevant subset of the program and athlete data — nothing else.
+                <b>AI reasoning layer.</b> Seven focused entry points: fatigue-profile
+                estimation; lift-profile review, rewrite, and stimulus estimation;
+                accessory-to-lift correlation analysis; block-level program evaluation;
+                accessory e1RM backfill; template evaluation; and spreadsheet import.
+                Each is fed the relevant subset of the program and athlete data — nothing
+                else.
               </List.Item>
             </List>
           </Stack>
@@ -117,8 +120,17 @@ export default function AboutPage() {
               <Text fw={600} size="sm" mb={4}>Sessions</Text>
               <Text size="sm" c="dimmed">
                 Sets, reps, kilograms, RPE, failed-set flags per exercise. Session-level
-                bodyweight and subjective RPE. Optional session notes. These are the raw
-                inputs to e1RM, INOL, volume, ACWR, fatigue index, and RPE drift.
+                bodyweight, subjective RPE, and an optional pre-session wellness snapshot.
+                Optional session notes. These are the raw inputs to e1RM, INOL, volume,
+                EWMA ACWR, fatigue index, RPE drift, and readiness.
+              </Text>
+            </Paper>
+            <Paper withBorder p="md">
+              <Text fw={600} size="sm" mb={4}>Subjective wellness</Text>
+              <Text size="sm" c="dimmed">
+                A compact 1-5 capture of sleep, soreness, mood, stress, and energy before
+                training. It is optional, fast to skip, and feeds the readiness score when
+                present.
               </Text>
             </Paper>
             <Paper withBorder p="md">
@@ -155,12 +167,12 @@ export default function AboutPage() {
               </Text>
             </Paper>
             <Paper withBorder p="md">
-              <Text fw={600} size="sm" mb={4}>Supplements (captured, not yet analyzed)</Text>
+              <Text fw={600} size="sm" mb={4}>Supplements (captured, summarized in evaluation)</Text>
               <Text size="sm" c="dimmed">
-                Current stack and dosing are stored, but not yet fed into the AI prompts.
-                Raw names and doses are too coarse to reason about — the planned Examine.com
-                integration will map each item to its evidence base before it reaches the
-                models.
+                Current stack and dosing are stored, and program evaluation already includes
+                supplement summary context. Raw names and doses are still too coarse to drive
+                deterministic formulas — the planned Examine.com integration will map each
+                item to its evidence base before it reaches the models.
               </Text>
             </Paper>
           </SimpleGrid>
@@ -178,9 +190,10 @@ export default function AboutPage() {
             Every number surfaced in the portal comes from one of the formulas below.
             They fall into five families: <b>scoring</b> (DOTS, estimated 1RM),{' '}
             <b>progression</b> (Theil-Sen regression on effective weeks, diminishing-returns
-            projection), <b>stress</b> (INOL, ACWR, fatigue index, RPE drift),{' '}
+            projection, fit quality), <b>stress</b> (INOL, EWMA ACWR, fatigue index, RPE drift),{' '}
             <b>quality</b> (specificity ratio, relative-intensity distribution, compliance),
-            and <b>peaking</b> (attempt selection, readiness score). Each card lists the
+            and <b>peaking</b> (Banister fitness-fatigue, monotony/strain, decoupling,
+            taper quality, attempt selection, readiness score). Each card lists the
             exact formula, its variables, and the thresholds used to interpret output.
           </Text>
 
@@ -258,9 +271,10 @@ export default function AboutPage() {
             <Paper withBorder p="md">
               <Text fw={600} size="sm" mb={4}>Supplementation</Text>
               <Text size="sm" c="dimmed">
-                Supplement stacks and doses are stored but not fed into any AI reasoning tool.
-                Raw names alone are too weak a signal. The planned Examine.com integration
-                will map each item to its evidence base before exposing it to the models.
+                Supplement stacks and doses are stored and summarized for program evaluation,
+                but they are still too coarse to drive deterministic formulas. The planned
+                Examine.com integration will map each item to its evidence base before
+                exposing it to the models.
               </Text>
             </Paper>
             <Paper withBorder p="md">

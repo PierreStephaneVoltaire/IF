@@ -13,7 +13,7 @@ export const MaxResolutionGate: React.FC<Props> = ({ missingMaxes, onResolved, o
   const [values, setValues] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState<Record<string, boolean>>({})
 
-  const handleManualChange = (exercise: string, val: number | '') => {
+  const handleManualChange = (exercise: string, val: number | string) => {
     setValues(prev => ({ ...prev, [exercise]: typeof val === 'number' ? val : 0 }))
   }
 
@@ -40,7 +40,7 @@ export const MaxResolutionGate: React.FC<Props> = ({ missingMaxes, onResolved, o
 
   return (
     <Modal opened={true} onClose={onCancel} title="Missing Exercise Maxes" size="lg">
-      <Stack spacing="md">
+      <Stack gap="md">
         <Alert icon={<Info size={16} />} color="blue">
           The following exercises are used in the template but don't have a recorded max. 
           Please provide an estimate for percentage-based calculations.
@@ -60,11 +60,11 @@ export const MaxResolutionGate: React.FC<Props> = ({ missingMaxes, onResolved, o
                 <td>{m}</td>
                 <td>
                   <NumberInput 
-                    value={values[m] || ''} 
+                    value={values[m] ?? ''}
                     onChange={(v) => handleManualChange(m, v)}
                     min={0}
                     placeholder="e.g. 140"
-                    precision={1}
+                    decimalScale={1}
                     step={2.5}
                   />
                 </td>
@@ -83,7 +83,7 @@ export const MaxResolutionGate: React.FC<Props> = ({ missingMaxes, onResolved, o
           </tbody>
         </Table>
 
-        <Group position="right" mt="xl">
+        <Group justify="flex-end" mt="xl">
           <Button variant="subtle" onClick={onCancel}>Cancel</Button>
           <Button disabled={!isComplete} onClick={() => onResolved(values)}>
             Confirm & Apply

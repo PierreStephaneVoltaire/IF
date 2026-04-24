@@ -15,7 +15,7 @@ from decimal import Decimal
 from statistics import median
 from typing import Any, Literal, Optional
 
-from scipy.stats import theilslopes
+from scipy.stats import kendalltau, theilslopes
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +66,48 @@ _DEFAULT_FATIGUE_PROFILE = {
     "systemic": 0.3,
 }
 
+_FATIGUE_AXIAL_EXPONENT = 1.30
+_FATIGUE_PERIPHERAL_EXPONENT = 1.15
+_FATIGUE_SYSTEMIC_BETA = 0.30
+_FATIGUE_NEURAL_FLOOR = 0.60
+_FATIGUE_NEURAL_CEILING = 0.995
+_FATIGUE_NEURAL_LOAD_SCALE = 100.0
+
+_INOL_EPSILON = 0.02
+_INOL_INTENSITY_CEILING = 0.995
+_DEFAULT_INOL_THRESHOLDS = {
+    "squat": {"low": 1.6, "high": 3.5},
+    "bench": {"low": 2.0, "high": 5.0},
+    "deadlift": {"low": 1.0, "high": 2.5},
+}
+
+_ACWR_ACUTE_LAMBDA = 2 / (7 + 1)
+_ACWR_CHRONIC_LAMBDA = 2 / (28 + 1)
+_ACWR_MIN_DAYS = 25
+_ACWR_ZONE_LABELS = {
+    "detraining_trend": "Detraining trend",
+    "steady_load": "Steady load",
+    "rapid_increase": "Rapid increase",
+    "load_spike": "Load spike",
+}
+
+_DIMENSION_WEIGHTS = {
+    "axial": 0.30,
+    "neural": 0.30,
+    "peripheral": 0.25,
+    "systemic": 0.15,
+}
+_BANISTER_CTL_LAMBDA = 2 / 43
+_BANISTER_ATL_LAMBDA = 2 / 8
+_BANISTER_SEED_DAYS = 14
+_MONOTONY_EPSILON = 1e-6
+_DECOUPLING_WINDOW_WEEKS = 3
+_TAPER_WINDOW_WEEKS = 3
+_TAPER_PRE_TAPER_WEEKS = 4
+_TAPER_INTENSITY_RATIO_FLOOR = 0.95
+_TAPER_FI_SLOPE_SCALE = 0.10
+_TAPER_FI_DIFF_SCALE = 0.20
+
 _CONSERVATIVE_REP_PCT: dict[int, float] = {
     1: 1.000,
     2: 0.955,
@@ -98,6 +140,48 @@ def _count_failed_sets(ex: dict) -> int:
     if ex.get("failed", False):
         return int(_num(ex.get("sets", 0)))
     return 0
+
+
+def _mad(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    center = median(values)
+    return median(abs(v - center) for v in values)
+
+
+def _fit_quality(xs: list[float], ys: list[float], slope: float, intercept: float) -> tuple[float, float]:
+    if len(xs) < 2:
+        return 0.0, 0.0
+    tau = kendalltau(xs, ys, nan_policy="omit").statistic
+    if tau is None or math.isnan(float(tau)):
+        tau = 0.0
+    predicted = [intercept + slope * x for x in xs]
+    residuals = [y - p for y, p in zip(ys, predicted)]
+    series_mad = _mad(ys)
+    residual_mad = _mad(residuals)
+    if series_mad <= 1e-12:
+        quality = 1.0 if residual_mad <= 1e-12 else 0.0
+    else:
+        quality = _clamp(1.0 - (residual_mad / series_mad), 0.0, 1.0)
+    return round(float(tau), 3), round(float(quality), 3)
+
+
+def _estimate_e1rm_from_set(weight_kg: float, reps: int, rpe: Any = None) -> float | None:
+    """Estimate 1RM from a single set using the same tables as the rest of the module."""
+    if rpe is not None:
+        try:
+            rpe_int = int(rpe)
+        except (ValueError, TypeError):
+            rpe_int = None
+        if rpe_int is not None and 1 <= reps <= 6 and 6 <= rpe_int <= 10:
+            pct = _RPE_TABLE_PRIMARY.get((reps, rpe_int))
+            if pct is not None:
+                return weight_kg / pct
+    elif 1 <= reps <= 5:
+        pct = _CONSERVATIVE_REP_PCT.get(reps)
+        if pct is not None:
+            return weight_kg / pct
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -388,18 +472,18 @@ def _get_fatigue_profile(exercise_name: str, glossary: list[dict] | None = None)
 
 
 def _neural_scaling(I: float) -> float:
-    if I <= 0.60:
+    if I <= _FATIGUE_NEURAL_FLOOR:
         return 0.0
-    return ((I - 0.60) / 0.40) ** 2
+    return ((I - _FATIGUE_NEURAL_FLOOR) / (_FATIGUE_NEURAL_CEILING - _FATIGUE_NEURAL_FLOOR)) ** 3
 
 
 def _per_set_fatigue(weight: float, reps: int, profile: dict, e1rm: float | None = None) -> dict:
     I = (weight / e1rm) if (e1rm and e1rm > 0) else 0.70
     return {
-        "axial": profile["axial"] * weight * reps,
-        "neural": profile["neural"] * reps * _neural_scaling(I),
-        "peripheral": profile["peripheral"] * weight * reps,
-        "systemic": profile["systemic"] * weight * reps,
+        "axial": profile["axial"] * (weight ** _FATIGUE_AXIAL_EXPONENT) * reps,
+        "neural": profile["neural"] * reps * _neural_scaling(I) * math.sqrt(max(weight, 0.0) / _FATIGUE_NEURAL_LOAD_SCALE),
+        "peripheral": profile["peripheral"] * (weight ** _FATIGUE_PERIPHERAL_EXPONENT) * reps,
+        "systemic": profile["systemic"] * weight * reps * (1 + _FATIGUE_SYSTEMIC_BETA * I),
     }
 
 
@@ -441,38 +525,207 @@ def _weekly_fatigue_by_dimension(
     return weekly
 
 
+def _daily_fatigue_by_dimension(
+    sessions: list[dict],
+    glossary: list[dict] | None,
+    program_start: str,
+    current_maxes: dict,
+) -> dict[date, dict[str, float]]:
+    """Keyed by calendar date for EWMA ACWR calculations."""
+    daily: dict[date, dict[str, float]] = {}
+    for s in sessions:
+        if not (s.get("completed") or s.get("status") in ("logged", "completed")):
+            continue
+        d = _parse_date(s.get("date", ""))
+        if d is None:
+            continue
+        day_dim = daily.setdefault(d, {"axial": 0.0, "neural": 0.0, "peripheral": 0.0, "systemic": 0.0})
+        for ex in s.get("exercises", []):
+            name = ex.get("name", "").strip()
+            kg = _num(ex.get("kg", 0))
+            sets = int(_num(ex.get("sets", 0)))
+            reps = int(_num(ex.get("reps", 0)))
+            if kg <= 0 or sets <= 0 or reps <= 0:
+                continue
+            profile = _get_fatigue_profile(name, glossary)
+            name_lower = name.lower()
+            e1rm = None
+            if name_lower == "squat":
+                e1rm = current_maxes.get("squat")
+            elif name_lower in ("bench press", "bench"):
+                e1rm = current_maxes.get("bench")
+            elif name_lower == "deadlift":
+                e1rm = current_maxes.get("deadlift")
+            sf = _per_set_fatigue(kg, reps, profile, e1rm)
+            for dim in ("axial", "neural", "peripheral", "systemic"):
+                day_dim[dim] += sf[dim] * sets
+    return daily
+
+
+def _composite_load_from_dimensions(dimensions: dict[str, float]) -> float:
+    return sum(dimensions.get(dim, 0.0) * weight for dim, weight in _DIMENSION_WEIGHTS.items())
+
+
+def _composite_daily_load_series(
+    sessions: list[dict],
+    glossary: list[dict] | None,
+    program_start: str,
+    current_maxes: dict,
+    ref_date: date | None = None,
+) -> tuple[list[dict[str, Any]], date | None]:
+    daily_fatigue = _daily_fatigue_by_dimension(sessions, glossary, program_start, current_maxes)
+    if not daily_fatigue:
+        return [], _parse_date(program_start) if program_start else None
+
+    start_day = _parse_date(program_start) if program_start else None
+    if start_day is None:
+        start_day = min(daily_fatigue.keys())
+    end_day = ref_date or date.today()
+    if end_day < start_day:
+        return [], start_day
+
+    series: list[dict[str, Any]] = []
+    day = start_day
+    while day <= end_day:
+        dims = daily_fatigue.get(day, {"axial": 0.0, "neural": 0.0, "peripheral": 0.0, "systemic": 0.0})
+        load = _composite_load_from_dimensions(dims)
+        series.append(
+            {
+                "date": day,
+                "load": load,
+                "axial": dims.get("axial", 0.0),
+                "neural": dims.get("neural", 0.0),
+                "peripheral": dims.get("peripheral", 0.0),
+                "systemic": dims.get("systemic", 0.0),
+            }
+        )
+        day += timedelta(days=1)
+
+    return series, start_day
+
+
+def _week_start_for_date(day: date, start_day: date) -> date:
+    offset = (day - start_day).days
+    return start_day + timedelta(days=(offset // 7) * 7)
+
+
+def _population_sd(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    mean_val = sum(values) / len(values)
+    return math.sqrt(sum((value - mean_val) ** 2 for value in values) / len(values))
+
+
+def _tsb_label(tsb: float) -> str:
+    if tsb < -30:
+        return "Deep overload"
+    if tsb < -10:
+        return "Productive overreach"
+    if tsb <= 5:
+        return "Building"
+    if tsb <= 15:
+        return "Peaking window"
+    return "Detraining risk"
+
+
+def _acwr_zone(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    if value < 0.8:
+        return "detraining_trend"
+    if value <= 1.3:
+        return "steady_load"
+    if value <= 1.5:
+        return "rapid_increase"
+    return "load_spike"
+
+
+def _acwr_label(zone: str, planned_overreach: bool = False) -> str:
+    base = _ACWR_ZONE_LABELS.get(zone, "Unknown")
+    if planned_overreach and zone != "unknown":
+        return f"{base} (expected during planned overreach)"
+    return base
+
+
+def _ewma_acwr_from_daily_loads(
+    daily_loads: list[float],
+    acute_lambda: float = _ACWR_ACUTE_LAMBDA,
+    chronic_lambda: float = _ACWR_CHRONIC_LAMBDA,
+) -> float | None:
+    if len(daily_loads) < _ACWR_MIN_DAYS:
+        return None
+    seed = daily_loads[:7]
+    seed_mean = sum(seed) / len(seed) if seed else 0.0
+    acute = seed_mean
+    chronic = seed_mean
+    for load in daily_loads[7:]:
+        acute = acute_lambda * load + (1 - acute_lambda) * acute
+        chronic = chronic_lambda * load + (1 - chronic_lambda) * chronic
+    if chronic <= 1e-12:
+        return None
+    return round(acute / chronic, 3)
+
+
 def _compute_dimensional_acwr(
-    weekly_fatigue: dict[int, dict[str, float]],
-    deload_weeks: list[int] | None = None,
-    acute_weeks: int = 1,
-    chronic_weeks: int = 4,
+    daily_fatigue: dict[date, dict[str, float]],
+    phases: list[dict] | None = None,
+    current_week: int | None = None,
+    program_start: str = "",
+    ref_date: date | None = None,
 ) -> dict:
-    """Per-dimension ACWR. Deloads included for accurate chronic baseline.
-    Returns insufficient_data if fewer than (acute + chronic) completed weeks exist.
-    """
-    sorted_weeks = sorted(weekly_fatigue.keys())
-    min_weeks_needed = acute_weeks + chronic_weeks
-    if len(sorted_weeks) < min_weeks_needed:
+    """EWMA-based per-dimension ACWR with daily loads and weighted composite."""
+    sorted_days = sorted(daily_fatigue.keys())
+    if not sorted_days:
         return {
             "status": "insufficient_data",
-            "reason": f"Need at least {min_weeks_needed} completed weeks for ACWR "
-                      f"({acute_weeks} acute + {chronic_weeks} chronic)",
+            "reason": f"Need at least {_ACWR_MIN_DAYS} calendar days of completed training for EWMA ACWR",
         }
-    dimensions = {}
+
+    ref = ref_date or date.today()
+    start_day = sorted_days[0]
+    if ref < start_day:
+        return {
+            "status": "insufficient_data",
+            "reason": "Reference date precedes available training data",
+        }
+
+    calendar_days = [start_day + timedelta(days=offset) for offset in range((ref - start_day).days + 1)]
+    if len(calendar_days) < _ACWR_MIN_DAYS:
+        return {
+            "status": "insufficient_data",
+            "reason": f"Need at least {_ACWR_MIN_DAYS} calendar days of completed training for EWMA ACWR",
+        }
+
+    planned_overreach = False
+    if phases:
+        wk = current_week if current_week is not None else _calculate_current_week(program_start)
+        current_phase = _find_current_phase(phases, wk)
+        if current_phase:
+            intent = str(current_phase.get("intent", "")).lower()
+            target_rpe_max = _num(current_phase.get("target_rpe_max"))
+            planned_overreach = "overreach" in intent or target_rpe_max >= 9.0
+
+    dimensions: dict[str, float | None] = {}
     for dim in ("axial", "neural", "peripheral", "systemic"):
-        vals = [weekly_fatigue[w].get(dim, 0.0) for w in sorted_weeks]
-        acute = vals[-acute_weeks:]
-        chronic_window = vals[-(acute_weeks + chronic_weeks):-acute_weeks]
-        if not chronic_window:
-            dimensions[dim] = None
-            continue
-        acute_mean = sum(acute) / len(acute)
-        chronic_mean = sum(chronic_window) / len(chronic_window)
-        dimensions[dim] = round(acute_mean / chronic_mean, 3) if chronic_mean > 0 else None
-    weights = {"axial": 0.30, "neural": 0.30, "peripheral": 0.25, "systemic": 0.15}
+        loads = [daily_fatigue.get(day, {}).get(dim, 0.0) for day in calendar_days]
+        dimensions[dim] = _ewma_acwr_from_daily_loads(loads)
+
     valid = {k: v for k, v in dimensions.items() if v is not None}
-    composite = round(sum(valid.get(k, 0) * weights[k] for k in weights if k in valid), 3) if valid else None
-    return {"dimensions": dimensions, "composite": composite}
+    composite = round(sum(valid.get(k, 0) * _DIMENSION_WEIGHTS[k] for k in _DIMENSION_WEIGHTS if k in valid), 3) if valid else None
+    composite_zone = _acwr_zone(composite)
+    return {
+        "composite": composite,
+        "composite_zone": composite_zone,
+        "composite_label": _acwr_label(composite_zone, planned_overreach),
+        "dimensions": {
+            dim: {
+                "value": dimensions[dim],
+                "zone": _acwr_zone(dimensions[dim]),
+                "label": _acwr_label(_acwr_zone(dimensions[dim]), planned_overreach),
+            }
+            for dim in ("axial", "neural", "peripheral", "systemic")
+        },
+    }
 
 
 def _compute_dimensional_spike(
@@ -490,9 +743,8 @@ def _compute_dimensional_spike(
         prev_mean = sum(prev) / len(prev) if prev else 0
         spike = _clamp((current - prev_mean) / prev_mean, 0.0, 1.0) if prev_mean > 0 else 0.0
         dimensions[dim] = round(spike, 3)
-    weights = {"axial": 0.30, "neural": 0.30, "peripheral": 0.25, "systemic": 0.15}
     valid = {k: v for k, v in dimensions.items() if v is not None}
-    composite = round(sum(valid.get(k, 0) * weights[k] for k in weights if k in valid), 3) if valid else None
+    composite = round(sum(valid.get(k, 0) * _DIMENSION_WEIGHTS[k] for k in _DIMENSION_WEIGHTS if k in valid), 3) if valid else None
     return {"dimensions": dimensions, "composite": composite}
 
 
@@ -593,15 +845,15 @@ def progression_rate(sessions: list[dict], exercise_name: str, program_start: st
 
     result = theilslopes(ys, xs)
     slope, intercept = result[0], result[1]
-    predicted = [intercept + slope * x for x in xs]
-    mean_y = sum(ys) / len(ys)
-    ss_tot = sum((y - mean_y) ** 2 for y in ys)
-    ss_res = sum((y - p) ** 2 for y, p in zip(ys, predicted))
-    r_squared = 1.0 - (ss_res / ss_tot) if abs(ss_tot) > 1e-12 else 0.0
+    kendall_tau, fit_quality = _fit_quality(xs, ys, slope, intercept)
 
     return {
         "slope_kg_per_week": round(slope, 2),
-        "r2": round(r_squared, 3),
+        "kendall_tau": kendall_tau,
+        "fit_quality": fit_quality,
+        # Backward compatibility for one release.
+        "r2": fit_quality,
+        "r_squared": fit_quality,
         "points": [(round(float(x), 1), round(y, 1)) for x, y in zip(xs, ys)],
         "method": "theilsen",
         "deload_weeks_excluded": deload_count,
@@ -716,13 +968,9 @@ def rpe_drift(
 
     if len(xs) >= 2:
         slope, intercept, _, _ = theilslopes(ys, xs)
-        predicted = [intercept + slope * x for x in xs]
-        mean_y = sum(ys) / len(ys)
-        ss_tot = sum((y - mean_y) ** 2 for y in ys)
-        ss_res = sum((y - p) ** 2 for y, p in zip(ys, predicted))
-        r2 = 1.0 - (ss_res / ss_tot) if abs(ss_tot) > 1e-12 else 0.0
+        kendall_tau, fit_quality = _fit_quality(xs, ys, slope, intercept)
     else:
-        slope, r2 = 0.0, 0.0
+        slope, kendall_tau, fit_quality = 0.0, 0.0, 0.0
 
     direction = "up" if slope >= 0.1 else ("down" if slope <= -0.1 else "stable")
     flag = "fatigue" if slope >= 0.1 else ("adaptation" if slope <= -0.1 else None)
@@ -731,7 +979,10 @@ def rpe_drift(
         "slope": round(slope, 3),
         "drift_direction": direction,
         "flag": flag,
-        "r2": round(r2, 3),
+        "kendall_tau": kendall_tau,
+        "fit_quality": fit_quality,
+        "r2": fit_quality,
+        "r_squared": fit_quality,
         "mode": "residual" if use_residual else "raw",
     }
 
@@ -742,13 +993,14 @@ def fatigue_index(
     glossary: list[dict] | None = None,
     current_maxes: dict | None = None,
     program_start: str = "",
+    ref_date: date | None = None,
 ) -> dict:
     """Composite fatigue: 0.40*failed_ratio + 0.35*composite_spike + 0.25*rpe_stress.
 
     skip_rate intentionally excluded — resting reduces fatigue, not increases it.
-    rpe_stress = clamp((avg_session_rpe - 6.0) / 4.0, 0, 1)
+    rpe_stress = clamp((avg_session_rpe - 7.5) / 2.5, 0, 1)
     """
-    ref = date.today()
+    ref = ref_date or date.today()
     cutoff = ref - timedelta(days=days)
     recent = [s for s in sessions if (d := _parse_date(s.get("date", ""))) is not None and d >= cutoff]
 
@@ -797,7 +1049,7 @@ def fatigue_index(
         avg_prev = sum(prev_weeks_load) / len(prev_weeks_load) if prev_weeks_load else 0
         composite_spike = _clamp((this_week_load - avg_prev) / avg_prev, 0, 1) if avg_prev > 0 else 0
 
-    # Component 3: RPE stress (25%) — captures RPE 9-10 grinding even without failures
+    # Component 3: RPE stress (25%) — only meaningful stress above 7.5, with 8+ rising quickly
     session_rpes = [
         _num(s.get("session_rpe"))
         for s in recent
@@ -805,7 +1057,7 @@ def fatigue_index(
     ]
     if session_rpes:
         avg_rpe = sum(session_rpes) / len(session_rpes)
-        rpe_stress = _clamp((avg_rpe - 6.0) / 4.0, 0.0, 1.0)
+        rpe_stress = _clamp((avg_rpe - 7.5) / 2.5, 0.0, 1.0)
     else:
         rpe_stress = 0.0
 
@@ -822,12 +1074,11 @@ def fatigue_index(
         flags.append("overreaching_risk")
 
     if glossary is not None and program_start:
-        weekly_fatigue = _weekly_fatigue_by_dimension(recent, glossary, program_start, current_maxes or {})
-        acwr_result = _compute_dimensional_acwr(weekly_fatigue)
+        acwr_result = compute_acwr(recent, glossary, program_start, current_maxes or {}, ref_date=ref)
         dims = acwr_result.get("dimensions", {})
-        if dims.get("neural") is not None and dims["neural"] > 1.3:
+        if dims.get("neural", {}).get("value") is not None and dims["neural"]["value"] > 1.3:
             flags.append("neural_overload")
-        if dims.get("axial") is not None and dims["axial"] > 1.3:
+        if dims.get("axial", {}).get("value") is not None and dims["axial"]["value"] > 1.3:
             flags.append("axial_overload")
 
     return {
@@ -863,6 +1114,199 @@ def session_compliance(sessions: list[dict], phases: list[dict], program_start: 
         "planned_sessions": planned_count,
         "completed_sessions": completed_count,
         "compliance_pct": compliance_pct,
+    }
+
+
+def _session_wellness_values(session: dict) -> list[float]:
+    wellness = session.get("wellness")
+    if not isinstance(wellness, dict):
+        return []
+    values: list[float] = []
+    for key in ("sleep", "soreness", "mood", "stress", "energy"):
+        value = wellness.get(key)
+        if value is None:
+            continue
+        num = _num(value)
+        if 1 <= num <= 5:
+            values.append(num)
+    return values
+
+
+def _readiness_wellness_component(
+    sessions: list[dict],
+    days: int = 14,
+    reference_date: date | None = None,
+) -> dict[str, Any]:
+    ref = reference_date or date.today()
+    cutoff = ref - timedelta(days=days)
+    values: list[float] = []
+    entries = 0
+    for session in sessions:
+        d = _parse_date(session.get("date", ""))
+        if d is None or d < cutoff or d > ref:
+            continue
+        session_values = _session_wellness_values(session)
+        if not session_values:
+            continue
+        entries += 1
+        values.extend(session_values)
+    if not values:
+        return {"mean": None, "penalty": 0.5, "entries": 0}
+    mean_value = sum(values) / len(values)
+    return {
+        "mean": round(mean_value, 3),
+        "penalty": round(_clamp(1.0 - (mean_value / 5.0), 0.0, 1.0), 3),
+        "entries": entries,
+    }
+
+
+def _readiness_performance_trend_component(
+    sessions: list[dict],
+    current_maxes: dict | None = None,
+    days: int = 14,
+    reference_date: date | None = None,
+) -> dict[str, Any]:
+    ref = reference_date or date.today()
+    cutoff = ref - timedelta(days=days)
+    day_points: dict[date, dict[str, float]] = {}
+
+    for session in sessions:
+        if not (session.get("completed") or session.get("status") in ("logged", "completed")):
+            continue
+        d = _parse_date(session.get("date", ""))
+        if d is None or d < cutoff or d > ref:
+            continue
+        day_lifts = day_points.setdefault(d, {})
+        session_rpe = session.get("session_rpe")
+        for ex in session.get("exercises", []):
+            name_lower = ex.get("name", "").lower().strip()
+            canonical = {"squat": "squat", "bench press": "bench", "bench": "bench", "deadlift": "deadlift"}.get(name_lower)
+            if canonical is None or _count_failed_sets(ex) > 0:
+                continue
+            kg = _num(ex.get("kg", 0))
+            reps = int(_num(ex.get("reps", 0)))
+            if kg <= 0 or reps <= 0:
+                continue
+            e1rm = _estimate_e1rm_from_set(kg, reps, session_rpe)
+            if e1rm is None:
+                continue
+            if e1rm > day_lifts.get(canonical, float("-inf")):
+                day_lifts[canonical] = e1rm
+
+    daily_series: list[tuple[date, float]] = []
+    for day, values in sorted(day_points.items()):
+        if values:
+            daily_series.append((day, sum(values.values()) / len(values)))
+
+    if len(daily_series) < 2:
+        return {"slope_kg_per_week": None, "denominator": None, "penalty": 0.5, "points": len(daily_series)}
+
+    xs = [(day - daily_series[0][0]).days / 7.0 for day, _ in daily_series]
+    ys = [value for _, value in daily_series]
+    slope = theilslopes(ys, xs)[0]
+
+    current_max_values = [
+        _num(value)
+        for value in (current_maxes or _estimate_maxes_from_sessions(sessions)).values()
+        if _num(value) > 0
+    ]
+    denominator = max(2.5, (sum(current_max_values) / len(current_max_values)) * 0.01) if current_max_values else 2.5
+    penalty = _clamp((-slope) / denominator, 0.0, 1.0) if slope < 0 else 0.0
+
+    return {
+        "slope_kg_per_week": round(float(slope), 3),
+        "denominator": round(float(denominator), 3),
+        "penalty": round(float(penalty), 3),
+        "points": len(daily_series),
+    }
+
+
+def _next_competition(program: dict, reference_date: date | None = None) -> dict[str, Any] | None:
+    ref = reference_date or date.today()
+    competitions = sorted(program.get("competitions", []), key=lambda c: c.get("date", ""))
+    for comp in competitions:
+        if comp.get("status") not in ("confirmed", "optional"):
+            continue
+        comp_date = _parse_date(comp.get("date", ""))
+        if comp_date is not None and comp_date > ref:
+            return comp
+    meta = program.get("meta", {})
+    meta_comp_date = _parse_date(meta.get("comp_date", ""))
+    if meta_comp_date is not None and meta_comp_date > ref:
+        return {
+            "date": meta.get("comp_date"),
+            "status": "confirmed",
+            "weight_class_kg": meta.get("weight_class_kg"),
+        }
+    return None
+
+
+def _readiness_bodyweight_component(
+    sessions: list[dict],
+    program: dict,
+    days: int = 14,
+    reference_date: date | None = None,
+) -> dict[str, Any]:
+    ref = reference_date or date.today()
+    cutoff = ref - timedelta(days=days)
+    entries: list[tuple[date, float]] = []
+    for session in sessions:
+        d = _parse_date(session.get("date", ""))
+        if d is None or d < cutoff or d > ref:
+            continue
+        bw = session.get("body_weight_kg")
+        if bw is None:
+            continue
+        entries.append((d, _num(bw)))
+
+    entries.sort(key=lambda item: item[0])
+    meta = program.get("meta", {})
+    latest_bodyweight = entries[-1][1] if entries else _num(meta.get("current_body_weight_kg", meta.get("bodyweight_kg", 0)))
+    if len(entries) < 2:
+        return {
+            "current_bodyweight_kg": round(latest_bodyweight, 3) if latest_bodyweight > 0 else None,
+            "mode": "fallback",
+            "expected_weekly_change_kg": None,
+            "actual_weekly_change_kg": None,
+            "penalty": 0.5,
+        }
+
+    recent_entries = entries[-7:]
+    xs = [(day - recent_entries[0][0]).days / 7.0 for day, _ in recent_entries]
+    ys = [value for _, value in recent_entries]
+    actual_weekly_change = theilslopes(ys, xs)[0] if len(recent_entries) >= 2 else 0.0
+
+    upcoming = _next_competition(program, reference_date=ref)
+    weight_class = _num(meta.get("weight_class_kg", 0))
+    current_bodyweight = recent_entries[-1][1]
+    comp_date = _parse_date(upcoming.get("date", "")) if upcoming is not None else None
+    if upcoming is not None and comp_date is not None and weight_class > 0 and current_bodyweight > weight_class:
+        weeks_to_comp = max((comp_date - ref).days / 7.0, 1 / 7.0)
+        if weeks_to_comp <= 6:
+            expected_weekly_change = (weight_class - current_bodyweight) / weeks_to_comp
+            penalty = _clamp(abs(actual_weekly_change - expected_weekly_change) / 0.5, 0.0, 1.0)
+            return {
+                "current_bodyweight_kg": round(current_bodyweight, 3),
+                "mode": "cut",
+                "expected_weekly_change_kg": round(expected_weekly_change, 3),
+                "actual_weekly_change_kg": round(float(actual_weekly_change), 3),
+                "penalty": round(float(penalty), 3),
+                "weeks_to_comp": round(float(weeks_to_comp), 3),
+            }
+
+    mean_bw = sum(value for _, value in recent_entries) / len(recent_entries)
+    if mean_bw <= 0:
+        penalty = 0.5
+    else:
+        cv = math.sqrt(sum((value - mean_bw) ** 2 for _, value in recent_entries) / len(recent_entries)) / mean_bw
+        penalty = _clamp(cv / 0.03, 0.0, 1.0)
+    return {
+        "current_bodyweight_kg": round(current_bodyweight, 3),
+        "mode": "stability",
+        "expected_weekly_change_kg": None,
+        "actual_weekly_change_kg": round(float(actual_weekly_change), 3),
+        "penalty": round(float(penalty), 3),
+        "weeks_to_comp": None,
     }
 
 
@@ -1005,7 +1449,7 @@ def meet_projection(
 
         prog = progression_rate(sessions, lift_name, program_start)
         delta_w = prog.get("slope_kg_per_week", 0)
-        r2 = prog.get("r2", 0)
+        fit_quality = prog.get("fit_quality", prog.get("r_squared", prog.get("r2", 0)))
         if prog.get("status") != "insufficient_data":
             has_real_progression = True
 
@@ -1020,7 +1464,7 @@ def meet_projection(
             "current": round(current_kg, 1),
             "projected": round(comp_max, 1),
             "slope_kg_per_week": delta_w,
-            "confidence": round(_clamp(r2, 0, 1), 2),
+            "confidence": round(_clamp(fit_quality, 0, 1), 2),
             "ceiling_clamped": clamped,
         }
 
@@ -1056,13 +1500,31 @@ def _lift_stimulus_coefficients(lift_profiles: list[dict] | None) -> dict[str, f
     return coeffs
 
 
+def _lift_inol_thresholds(lift_profiles: list[dict] | None) -> dict[str, dict[str, float]]:
+    """Return per-lift INOL thresholds, applying lift-profile overrides when present."""
+    thresholds = {lift: dict(bounds) for lift, bounds in _DEFAULT_INOL_THRESHOLDS.items()}
+    for profile in lift_profiles or []:
+        lift = str(profile.get("lift", "")).lower().strip()
+        if lift not in thresholds:
+            continue
+        low = profile.get("inol_low_threshold")
+        high = profile.get("inol_high_threshold")
+        if low is not None:
+            thresholds[lift]["low"] = round(max(0.0, _num(low)), 2)
+        if high is not None:
+            thresholds[lift]["high"] = round(max(thresholds[lift]["low"], _num(high)), 2)
+        if thresholds[lift]["high"] < thresholds[lift]["low"]:
+            thresholds[lift]["high"] = thresholds[lift]["low"]
+    return thresholds
+
+
 def compute_inol(
     sessions: list[dict],
     program_start: str = "",
     current_maxes: dict | None = None,
     lift_profiles: list[dict] | None = None,
 ) -> dict:
-    """INOL per lift per week. Returns avg_inol across the window. Flags on avg."""
+    """INOL per lift per week with smoothed singularity handling and per-lift ranges."""
     if not current_maxes:
         current_maxes = _estimate_maxes_from_sessions(sessions)
     if not current_maxes:
@@ -1072,6 +1534,7 @@ def compute_inol(
 
     lift_names = {"squat": "squat", "bench press": "bench", "bench": "bench", "deadlift": "deadlift"}
     stimulus_coefficients = _lift_stimulus_coefficients(lift_profiles)
+    thresholds = _lift_inol_thresholds(lift_profiles)
     raw_per_lift_per_week: dict[str, dict[int, float]] = {}
     per_lift_per_week: dict[str, dict[int, float]] = {}
 
@@ -1094,7 +1557,7 @@ def compute_inol(
             if kg <= 0 or reps <= 0:
                 continue
             I = kg / max_val
-            denom = max(0.01, 1 - I) if I >= 1.0 else (1 - I)
+            denom = math.sqrt(((1 - min(I, _INOL_INTENSITY_CEILING)) ** 2) + (_INOL_EPSILON ** 2))
             inol_contrib = (reps / (100 * denom)) * sets
             coeff = stimulus_coefficients.get(canonical, 1.0)
             adjusted_contrib = inol_contrib * coeff
@@ -1117,9 +1580,11 @@ def compute_inol(
         if weeks_data
     }
     flags = [
-        f"low_stimulus_{lift}" if v < 2.0 else f"overreaching_risk_{lift}"
+        f"low_stimulus_{lift}" if v < thresholds.get(lift, {}).get("low", _DEFAULT_INOL_THRESHOLDS[lift]["low"])
+        else f"overreaching_risk_{lift}"
         for lift, v in avg_inol.items()
-        if v < 2.0 or v > 4.0
+        if v < thresholds.get(lift, {}).get("low", _DEFAULT_INOL_THRESHOLDS[lift]["low"])
+        or v > thresholds.get(lift, {}).get("high", _DEFAULT_INOL_THRESHOLDS[lift]["high"])
     ]
     rounded = {lift: {str(w): round(v, 2) for w, v in sorted(weeks_data.items())}
                for lift, weeks_data in per_lift_per_week.items()}
@@ -1135,6 +1600,13 @@ def compute_inol(
             lift: stimulus_coefficients.get(lift, 1.0)
             for lift in avg_inol.keys()
         },
+        "thresholds": {
+            lift: {
+                "low": thresholds.get(lift, {}).get("low", _DEFAULT_INOL_THRESHOLDS[lift]["low"]),
+                "high": thresholds.get(lift, {}).get("high", _DEFAULT_INOL_THRESHOLDS[lift]["high"]),
+            }
+            for lift in avg_inol.keys()
+        },
         "flags": flags,
     }
 
@@ -1144,36 +1616,541 @@ def compute_acwr(
     glossary: list[dict] | None = None,
     program_start: str = "",
     current_maxes: dict | None = None,
+    phases: list[dict] | None = None,
+    current_week: int | None = None,
+    ref_date: date | None = None,
 ) -> dict:
-    """ACWR per dimension + composite. Deloads included. Returns insufficient_data if < 5 weeks."""
+    """EWMA ACWR per dimension + composite. Returns insufficient_data if < 25 days."""
     if not program_start:
         program_start = _infer_program_start(sessions)
     if not current_maxes:
         current_maxes = _estimate_maxes_from_sessions(sessions)
+    if current_week is None:
+        current_week = _calculate_current_week(program_start, sessions)
 
-    weekly_fatigue = _weekly_fatigue_by_dimension(sessions, glossary, program_start, current_maxes or {})
-    acwr_result = _compute_dimensional_acwr(weekly_fatigue)
+    daily_fatigue = _daily_fatigue_by_dimension(sessions, glossary, program_start, current_maxes or {})
+    acwr_result = _compute_dimensional_acwr(
+        daily_fatigue,
+        phases=phases,
+        current_week=current_week,
+        program_start=program_start,
+        ref_date=ref_date,
+    )
 
     if acwr_result.get("status") == "insufficient_data":
         return acwr_result
+    return acwr_result
 
-    def _zone(value: float | None) -> str:
-        if value is None:
-            return "unknown"
-        if value < 0.8:
-            return "undertraining"
-        if value <= 1.3:
-            return "optimal"
-        if value <= 1.5:
-            return "caution"
-        return "danger"
 
-    dimensions = {
-        dim: {"value": acwr_result.get("dimensions", {}).get(dim), "zone": _zone(acwr_result.get("dimensions", {}).get(dim))}
-        for dim in ("axial", "neural", "peripheral", "systemic")
+def compute_banister_ffm(
+    sessions: list[dict],
+    glossary: list[dict] | None = None,
+    program_start: str = "",
+    current_maxes: dict | None = None,
+    ref_date: date | None = None,
+) -> dict:
+    """Banister fitness-fatigue model on the composite daily load series."""
+    if not current_maxes:
+        current_maxes = _estimate_maxes_from_sessions(sessions)
+
+    daily_series, _ = _composite_daily_load_series(sessions, glossary, program_start, current_maxes or {}, ref_date=ref_date)
+    if not daily_series:
+        return {**INSUFFICIENT_DATA, "reason": "No completed training load available for Banister FFM"}
+
+    loads = [max(0.0, _num(row["load"])) for row in daily_series]
+    if not any(loads):
+        return {**INSUFFICIENT_DATA, "reason": "No completed training load available for Banister FFM"}
+
+    seed_days = min(_BANISTER_SEED_DAYS, len(loads))
+    seed = sum(loads[:seed_days]) / seed_days if seed_days else 0.0
+    ctl = seed
+    atl = seed
+
+    series: list[dict[str, Any]] = []
+    for idx, row in enumerate(daily_series):
+        load = loads[idx]
+        if idx == 0:
+            ctl = seed
+            atl = seed
+        else:
+            ctl = _BANISTER_CTL_LAMBDA * load + (1 - _BANISTER_CTL_LAMBDA) * ctl
+            atl = _BANISTER_ATL_LAMBDA * load + (1 - _BANISTER_ATL_LAMBDA) * atl
+        tsb = ctl - atl
+        series.append(
+            {
+                "date": row["date"].isoformat(),
+                "ctl": round(float(ctl), 3),
+                "atl": round(float(atl), 3),
+                "tsb": round(float(tsb), 3),
+            }
+        )
+
+    current = series[-1]
+    tsb_today = current["tsb"]
+    return {
+        "ctl_today": current["ctl"],
+        "atl_today": current["atl"],
+        "tsb_today": tsb_today,
+        "tsb_label": _tsb_label(tsb_today),
+        "series": series,
     }
-    composite = acwr_result.get("composite")
-    return {"composite": composite, "composite_zone": _zone(composite), "dimensions": dimensions}
+
+
+def compute_monotony_strain(
+    sessions: list[dict],
+    glossary: list[dict] | None = None,
+    program_start: str = "",
+    current_maxes: dict | None = None,
+    ref_date: date | None = None,
+) -> dict:
+    """Foster monotony and strain across program-week buckets."""
+    if not current_maxes:
+        current_maxes = _estimate_maxes_from_sessions(sessions)
+
+    daily_series, start_day = _composite_daily_load_series(sessions, glossary, program_start, current_maxes or {}, ref_date=ref_date)
+    if not daily_series or start_day is None:
+        return {"weekly": []}
+
+    week_map: dict[date, list[float]] = {}
+    for row in daily_series:
+        week_start = _week_start_for_date(row["date"], start_day)
+        week_map.setdefault(week_start, []).append(_num(row["load"]))
+
+    weekly: list[dict[str, Any]] = []
+    for week_start in sorted(week_map.keys()):
+        loads = week_map[week_start]
+        weekly_load = sum(loads)
+        mean_load = weekly_load / len(loads) if loads else 0.0
+        sd_load = _population_sd(loads)
+        monotony = mean_load / (sd_load + _MONOTONY_EPSILON) if loads else 0.0
+        strain = weekly_load * monotony
+        weekly.append(
+            {
+                "week_start": week_start.isoformat(),
+                "monotony": round(float(monotony), 3),
+                "strain": round(float(strain), 3),
+                "flags": [],
+            }
+        )
+
+    for idx, row in enumerate(weekly):
+        flags = row["flags"]
+        if row["monotony"] > 2.0:
+            flags.append("high_monotony")
+        prev_strains = [weekly[i]["strain"] for i in range(max(0, idx - 4), idx)]
+        if prev_strains:
+            prev_median = median(prev_strains)
+            if prev_median > 0 and row["strain"] > prev_median * 1.5:
+                flags.append("strain_spike")
+
+    return {"weekly": weekly}
+
+
+def _group_completed_sessions_by_week(
+    sessions: list[dict],
+    start_day: date,
+    ref_date: date,
+) -> dict[date, list[dict]]:
+    grouped: dict[date, list[dict]] = {}
+    for session in sessions:
+        if not (session.get("completed") or session.get("status") in ("logged", "completed")):
+            continue
+        d = _parse_date(session.get("date", ""))
+        if d is None or d < start_day or d > ref_date:
+            continue
+        week_start = _week_start_for_date(d, start_day)
+        grouped.setdefault(week_start, []).append(session)
+    return grouped
+
+
+def _canonical_lift_from_name(name: str) -> str | None:
+    return {"squat": "squat", "bench press": "bench", "bench": "bench", "deadlift": "deadlift"}.get(name.lower().strip())
+
+
+def _weekly_sbd_e1rm_total(week_sessions: list[dict]) -> float | None:
+    weekly_totals: dict[str, float] = {}
+    for session in week_sessions:
+        session_rpe = session.get("session_rpe")
+        for ex in session.get("exercises", []):
+            canonical = _canonical_lift_from_name(ex.get("name", ""))
+            if canonical is None:
+                continue
+            kg = _num(ex.get("kg", 0))
+            reps = int(_num(ex.get("reps", 0)))
+            if kg <= 0 or reps <= 0:
+                continue
+            e1rm = _estimate_e1rm_from_set(kg, reps, session_rpe)
+            if e1rm is None:
+                continue
+            weekly_totals[canonical] = max(weekly_totals.get(canonical, 0.0), float(e1rm))
+    if not weekly_totals:
+        return None
+    return sum(weekly_totals.values())
+
+
+def _weekly_top_intensity(week_sessions: list[dict], current_maxes: dict) -> float | None:
+    best = 0.0
+    for session in week_sessions:
+        for ex in session.get("exercises", []):
+            canonical = _canonical_lift_from_name(ex.get("name", ""))
+            if canonical is None:
+                continue
+            max_val = _num(current_maxes.get(canonical, 0))
+            if max_val <= 0:
+                continue
+            kg = _num(ex.get("kg", 0))
+            if kg <= 0:
+                continue
+            best = max(best, kg / max_val)
+    return best if best > 0 else None
+
+
+def compute_decoupling(
+    sessions: list[dict],
+    glossary: list[dict] | None = None,
+    program_start: str = "",
+    current_maxes: dict | None = None,
+    ref_date: date | None = None,
+) -> dict:
+    """Trailing 3-week strength-fatigue decoupling."""
+    if not current_maxes:
+        current_maxes = _estimate_maxes_from_sessions(sessions)
+
+    daily_series, start_day = _composite_daily_load_series(sessions, glossary, program_start, current_maxes or {}, ref_date=ref_date)
+    if not daily_series or start_day is None:
+        return {**INSUFFICIENT_DATA, "reason": "No completed training load available for decoupling"}
+
+    ref = ref_date or date.today()
+    week_sessions = _group_completed_sessions_by_week(sessions, start_day, ref)
+    week_starts: list[date] = []
+    cursor = start_day
+    while cursor <= ref:
+        week_starts.append(cursor)
+        cursor += timedelta(days=7)
+
+    if len(week_starts) < _DECOUPLING_WINDOW_WEEKS:
+        return {**INSUFFICIENT_DATA, "reason": "Need at least 3 weekly training windows for decoupling"}
+
+    points: list[dict[str, Any]] = []
+    for idx in range(len(week_starts)):
+        if idx + 1 < _DECOUPLING_WINDOW_WEEKS:
+            continue
+        window_starts = week_starts[idx + 1 - _DECOUPLING_WINDOW_WEEKS: idx + 1]
+        e1rm_series: list[float] = []
+        fi_series: list[float] = []
+        for ws in window_starts:
+            sessions_in_week = week_sessions.get(ws, [])
+            e1rm_total = _weekly_sbd_e1rm_total(sessions_in_week)
+            if e1rm_total is None:
+                e1rm_series = []
+                fi_series = []
+                break
+            week_end = min(ws + timedelta(days=6), ref)
+            fi_result = fatigue_index(
+                sessions,
+                days=14,
+                glossary=glossary,
+                current_maxes=current_maxes or {},
+                program_start=program_start,
+                ref_date=week_end,
+            )
+            if "status" in fi_result:
+                e1rm_series = []
+                fi_series = []
+                break
+            e1rm_series.append(float(e1rm_total))
+            fi_series.append(float(fi_result["score"]))
+        if len(e1rm_series) != _DECOUPLING_WINDOW_WEEKS or len(fi_series) != _DECOUPLING_WINDOW_WEEKS:
+            continue
+
+        xs = [0.0, 1.0, 2.0]
+        slope_e1rm, _, _ = _ols(xs, e1rm_series)
+        slope_fi, _, _ = _ols(xs, fi_series)
+        baseline_e1rm = e1rm_series[0] if abs(e1rm_series[0]) > 1e-12 else 1e-12
+        e1rm_pct = round((slope_e1rm / baseline_e1rm) * 100.0, 3)
+        fi_pct_points = round(slope_fi * 100.0, 3)
+        decoupling = round(e1rm_pct - fi_pct_points, 3)
+        points.append(
+            {
+                "week_start": window_starts[0].isoformat(),
+                "decoupling": decoupling,
+                "e1rm_slope_pct_per_week": e1rm_pct,
+                "fi_slope_pct_points_per_week": fi_pct_points,
+            }
+        )
+
+    if not points:
+        return {**INSUFFICIENT_DATA, "reason": "No qualifying 3-week windows for decoupling"}
+
+    flags: list[str] = []
+    if len(points) >= 3 and all(p["decoupling"] < 0 for p in points[-3:]):
+        flags.append("decoupling_fatigue_dominant")
+
+    return {
+        "current": points[-1],
+        "series": points,
+        "flags": flags,
+    }
+
+
+def _find_taper_start(
+    program: dict,
+    comp_date: date,
+    reference_date: date | None = None,
+    program_start: str = "",
+) -> date | None:
+    meta = program.get("meta", {})
+    resolved_program_start = _parse_date(meta.get("program_start", "") or program_start) or reference_date
+    if resolved_program_start is None:
+        return None
+
+    named_taper_start: date | None = None
+    for phase in sorted(program.get("phases", []), key=lambda p: int(p.get("start_week", 0) or 0)):
+        text = f"{phase.get('name', '')} {phase.get('intent', '')}".lower()
+        if "taper" not in text:
+            continue
+        try:
+            start_week = int(phase.get("start_week", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if start_week <= 0:
+            continue
+        phase_start = resolved_program_start + timedelta(weeks=start_week - 1)
+        named_taper_start = phase_start
+        break
+
+    comp_window_start = comp_date - timedelta(days=21)
+    if named_taper_start is None:
+        return comp_window_start
+    return min(named_taper_start, comp_window_start)
+
+
+def _window_sums_from_daily_series(
+    daily_series: list[dict[str, Any]],
+    window_start: date,
+    window_end: date,
+) -> float:
+    total = 0.0
+    for row in daily_series:
+        day = row["date"]
+        if window_start <= day <= window_end:
+            total += _num(row["load"])
+    return total
+
+
+def _max_relative_intensity_between(
+    sessions: list[dict],
+    window_start: date,
+    window_end: date,
+    current_maxes: dict,
+) -> float | None:
+    best = 0.0
+    for session in sessions:
+        if not (session.get("completed") or session.get("status") in ("logged", "completed")):
+            continue
+        d = _parse_date(session.get("date", ""))
+        if d is None or d < window_start or d > window_end:
+            continue
+        for ex in session.get("exercises", []):
+            canonical = _canonical_lift_from_name(ex.get("name", ""))
+            if canonical is None:
+                continue
+            max_val = _num(current_maxes.get(canonical, 0))
+            if max_val <= 0:
+                continue
+            kg = _num(ex.get("kg", 0))
+            if kg <= 0:
+                continue
+            best = max(best, kg / max_val)
+    return best if best > 0 else None
+
+
+def compute_taper_quality(
+    program: dict,
+    sessions: list[dict],
+    glossary: list[dict] | None = None,
+    current_maxes: dict | None = None,
+    program_start: str = "",
+    ref_date: date | None = None,
+) -> dict | None:
+    """Taper quality score for the final 3 weeks before competition."""
+    if not current_maxes:
+        current_maxes = _estimate_maxes_from_sessions(sessions)
+
+    ref = ref_date or date.today()
+    resolved_program_start = program_start or _infer_program_start(sessions)
+    upcoming = _next_competition(program, reference_date=ref)
+    if upcoming is None:
+        return None
+
+    comp_date = _parse_date(upcoming.get("date", ""))
+    if comp_date is None:
+        return {**INSUFFICIENT_DATA, "reason": "Invalid competition date for taper quality"}
+
+    weeks_to_comp = (comp_date - ref).days / 7.0
+    if weeks_to_comp > _TAPER_WINDOW_WEEKS:
+        return None
+    if weeks_to_comp <= 0:
+        return None
+
+    daily_series, _ = _composite_daily_load_series(sessions, glossary, resolved_program_start, current_maxes or {}, ref_date=ref)
+    if not daily_series:
+        return {**INSUFFICIENT_DATA, "reason": "No completed training load available for taper quality"}
+
+    taper_start = _find_taper_start(
+        program,
+        comp_date,
+        reference_date=_parse_date(resolved_program_start) or daily_series[0]["date"],
+        program_start=resolved_program_start,
+    )
+    if taper_start is None:
+        return {**INSUFFICIENT_DATA, "reason": "Could not determine taper start"}
+    if taper_start > ref:
+        taper_start = ref - timedelta(days=1)
+
+    pre_taper_week_windows: list[tuple[date, date]] = []
+    for idx in range(_TAPER_PRE_TAPER_WEEKS, 0, -1):
+        window_end = taper_start - timedelta(days=7 * (idx - 1) + 1)
+        window_start = window_end - timedelta(days=6)
+        pre_taper_week_windows.append((window_start, window_end))
+
+    taper_week_windows: list[tuple[date, date]] = []
+    current_start = taper_start
+    while current_start <= ref:
+        window_end = min(current_start + timedelta(days=6), ref)
+        taper_week_windows.append((current_start, window_end))
+        current_start = window_end + timedelta(days=1)
+
+    if not taper_week_windows:
+        return {**INSUFFICIENT_DATA, "reason": "No taper-period sessions available"}
+
+    pre_taper_week_volumes = []
+    for start, end in pre_taper_week_windows:
+        raw_volume = _window_sums_from_daily_series(daily_series, start, end)
+        window_days = max((end - start).days + 1, 1)
+        pre_taper_week_volumes.append(raw_volume * 7.0 / window_days)
+    pre_taper_peak_volume = max(pre_taper_week_volumes, default=0.0)
+    if pre_taper_peak_volume <= 0:
+        return {**INSUFFICIENT_DATA, "reason": "No pre-taper volume baseline available"}
+
+    taper_week_volumes = []
+    for start, end in taper_week_windows:
+        raw_volume = _window_sums_from_daily_series(daily_series, start, end)
+        window_days = max((end - start).days + 1, 1)
+        taper_week_volumes.append(raw_volume * 7.0 / window_days)
+    taper_weeks_observed = len(taper_week_volumes)
+    taper_weekly_volume = sum(taper_week_volumes) / taper_weeks_observed if taper_weeks_observed else 0.0
+
+    volume_reduction = _clamp(
+        (pre_taper_peak_volume - taper_weekly_volume) / (pre_taper_peak_volume * 0.5),
+        0.0,
+        1.0,
+    )
+
+    pre_taper_intensity = 0.0
+    for start, end in pre_taper_week_windows:
+        intensity = _max_relative_intensity_between(sessions, start, end, current_maxes or {})
+        if intensity is not None:
+            pre_taper_intensity = max(pre_taper_intensity, intensity)
+
+    taper_intensity = 0.0
+    for start, end in taper_week_windows:
+        intensity = _max_relative_intensity_between(sessions, start, end, current_maxes or {})
+        if intensity is not None:
+            taper_intensity = max(taper_intensity, intensity)
+
+    if pre_taper_intensity <= 0 or taper_intensity <= 0:
+        return {**INSUFFICIENT_DATA, "reason": "No taper intensity baseline available"}
+
+    if taper_intensity >= pre_taper_intensity * _TAPER_INTENSITY_RATIO_FLOOR:
+        intensity_maintained = 1.0
+    else:
+        intensity_maintained = _clamp(
+            taper_intensity / (pre_taper_intensity * _TAPER_INTENSITY_RATIO_FLOOR),
+            0.0,
+            1.0,
+        )
+
+    pre_taper_fi_points: list[float] = []
+    for start, end in pre_taper_week_windows:
+        fi = fatigue_index(
+            sessions,
+            days=14,
+            glossary=glossary,
+            current_maxes=current_maxes or {},
+            program_start=resolved_program_start,
+            ref_date=end,
+        )
+        if "status" not in fi:
+            pre_taper_fi_points.append(float(fi["score"]))
+
+    taper_fi_points: list[float] = []
+    for start, end in taper_week_windows:
+        fi = fatigue_index(
+            sessions,
+            days=14,
+            glossary=glossary,
+            current_maxes=current_maxes or {},
+            program_start=resolved_program_start,
+            ref_date=end,
+        )
+        if "status" not in fi:
+            taper_fi_points.append(float(fi["score"]))
+
+    if not taper_fi_points:
+        return {**INSUFFICIENT_DATA, "reason": "No taper fatigue data available"}
+
+    if len(taper_fi_points) >= 2:
+        xs = [float(i) for i in range(len(taper_fi_points))]
+        slope_fi, _, _ = _ols(xs, taper_fi_points)
+        fatigue_trend = _clamp((-slope_fi) / _TAPER_FI_SLOPE_SCALE, -1.0, 1.0)
+    else:
+        baseline_fi = median(pre_taper_fi_points) if pre_taper_fi_points else taper_fi_points[0]
+        current_fi = taper_fi_points[-1]
+        fatigue_trend = _clamp((baseline_fi - current_fi) / _TAPER_FI_DIFF_SCALE, -1.0, 1.0)
+
+    banister = compute_banister_ffm(
+        sessions,
+        glossary=glossary,
+        program_start=resolved_program_start,
+        current_maxes=current_maxes or {},
+        ref_date=ref,
+    )
+    if "status" in banister:
+        return banister
+    tsb_today = float(banister["tsb_today"])
+    tsb_component = _clamp((tsb_today + 5) / 20.0, 0.0, 1.0)
+
+    score = _clamp(
+        0.30 * volume_reduction
+        + 0.25 * intensity_maintained
+        + 0.25 * fatigue_trend
+        + 0.20 * tsb_component,
+        0.0,
+        1.0,
+    )
+    score_pct = round(score * 100.0, 1)
+
+    if score_pct < 40:
+        label = "poor"
+    elif score_pct < 60:
+        label = "acceptable"
+    elif score_pct < 80:
+        label = "good"
+    else:
+        label = "excellent"
+
+    return {
+        "score": score_pct,
+        "label": label,
+        "weeks_to_comp": round(float(weeks_to_comp), 3),
+        "components": {
+            "volume_reduction": round(float(volume_reduction), 3),
+            "intensity_maintained": round(float(intensity_maintained), 3),
+            "fatigue_trend": round(float(fatigue_trend), 3),
+            "tsb": round(float(tsb_component), 3),
+        },
+    }
 
 
 def compute_attempt_selection(projected_maxes: dict, attempt_pct: dict | None = None) -> dict | None:
@@ -1288,23 +2265,36 @@ def compute_readiness_score(
     glossary: list[dict] | None = None,
     program_start: str = "",
 ) -> dict:
-    """R = (1 - (0.30*F_norm + 0.25*D_rpe + 0.20*S_bw + 0.15*M_rate + 0.10*(1-C/100))) * 100"""
+    """R = (1 - (0.30*F_norm + 0.25*D_rpe + 0.20*W_subj + 0.15*P_trend + 0.10*S_bw*)) * 100"""
     if not program_start:
         program_start = program.get("meta", {}).get("program_start", "")
     phases = program.get("phases", [])
-
-    fatigue = fatigue_index(sessions, days=14, glossary=glossary,
-                            current_maxes=_estimate_maxes_from_sessions(sessions),
-                            program_start=program_start)
-    f_norm = fatigue.get("score", 0) if "score" in fatigue else 0.5
-
     ref = date.today()
-    cutoff = ref - timedelta(days=14)
-    recent_sessions = [s for s in sessions if (d := _parse_date(s.get("date", ""))) and d >= cutoff]
-    rpe_vals = [_num(s.get("session_rpe")) for s in recent_sessions if (s.get("completed") or s.get("status") in ("logged", "completed")) and s.get("session_rpe") is not None]
-    avg_rpe = sum(rpe_vals) / len(rpe_vals) if rpe_vals else 7.5
+    readiness_sessions = [
+        s for s in sessions
+        if (d := _parse_date(s.get("date", ""))) is not None and d <= ref
+    ]
+    current_maxes = _estimate_maxes_from_sessions(readiness_sessions)
 
-    current_week = _calculate_current_week(program_start, sessions)
+    fatigue = fatigue_index(readiness_sessions, days=14, glossary=glossary,
+                            current_maxes=current_maxes,
+                            program_start=program_start)
+    f_norm = fatigue.get("score") if "score" in fatigue else None
+    if f_norm is None:
+        f_norm = 0.5
+
+    cutoff = ref - timedelta(days=14)
+    recent_sessions = [
+        s for s in readiness_sessions
+        if (d := _parse_date(s.get("date", ""))) is not None and cutoff <= d <= ref
+    ]
+    rpe_vals = [
+        _num(s.get("session_rpe"))
+        for s in recent_sessions
+        if (s.get("completed") or s.get("status") in ("logged", "completed")) and s.get("session_rpe") is not None
+    ]
+
+    current_week = _calculate_current_week(program_start, readiness_sessions)
     current_phase = _find_current_phase(phases, current_week)
     target_rpe_mid = 7.5
     if current_phase:
@@ -1312,27 +2302,21 @@ def compute_readiness_score(
         t_max = current_phase.get("target_rpe_max")
         if t_min is not None and t_max is not None:
             target_rpe_mid = (_num(t_min) + _num(t_max)) / 2.0
-    d_rpe = _clamp((avg_rpe - target_rpe_mid) / 2, 0, 1)
-
-    bw_entries = sorted(
-        [(d, _num(s.get("body_weight_kg")))
-         for s in sessions
-         if s.get("body_weight_kg") is not None and (d := _parse_date(s.get("date", "")))]
-    )
-    recent_bw = [b for _, b in bw_entries[-7:]]
-    if len(recent_bw) >= 2:
-        mean_bw = sum(recent_bw) / len(recent_bw)
-        cv = math.sqrt(sum((b - mean_bw) ** 2 for b in recent_bw) / len(recent_bw)) / mean_bw if mean_bw > 0 else 0
-        s_bw = _clamp(cv / 0.03, 0, 1)
+    if rpe_vals:
+        avg_rpe = sum(rpe_vals) / len(rpe_vals)
+        d_rpe = _clamp((avg_rpe - target_rpe_mid) / 2, 0, 1)
     else:
-        s_bw = 0.5
+        d_rpe = 0.5
 
-    total_sets = sum(int(_num(ex.get("sets", 0))) for s in recent_sessions for ex in s.get("exercises", []) if int(_num(ex.get("sets", 0))) > 0)
-    failed_sets = sum(_count_failed_sets(ex) for s in recent_sessions for ex in s.get("exercises", []))
-    m_rate = _clamp(failed_sets / total_sets, 0, 1) if total_sets > 0 else 0
+    wellness = _readiness_wellness_component(readiness_sessions, days=14, reference_date=ref)
+    performance = _readiness_performance_trend_component(readiness_sessions, current_maxes=current_maxes, days=14, reference_date=ref)
+    bodyweight = _readiness_bodyweight_component(readiness_sessions, program, days=14, reference_date=ref)
 
-    c_pct = session_compliance(sessions, phases, program_start, weeks=2).get("compliance_pct", 50)
-    score = round(_clamp((1 - (0.30 * f_norm + 0.25 * d_rpe + 0.20 * s_bw + 0.15 * m_rate + 0.10 * (1 - c_pct / 100))) * 100, 0, 100), 1)
+    w_subj = wellness.get("penalty", 0.5)
+    p_trend = performance.get("penalty", 0.5)
+    s_bw = bodyweight.get("penalty", 0.5)
+
+    score = round(_clamp((1 - (0.30 * f_norm + 0.25 * d_rpe + 0.20 * w_subj + 0.15 * p_trend + 0.10 * s_bw)) * 100, 0, 100), 1)
     zone = "green" if score > 75 else ("yellow" if score >= 50 else "red")
 
     return {
@@ -1341,9 +2325,9 @@ def compute_readiness_score(
         "components": {
             "fatigue_norm": round(f_norm, 3),
             "rpe_drift": round(d_rpe, 3),
-            "bw_stability": round(s_bw, 3),
-            "miss_rate": round(m_rate, 3),
-            "compliance_pct": c_pct,
+            "wellness": round(w_subj, 3),
+            "performance_trend": round(p_trend, 3),
+            "bw_deviation": round(s_bw, 3),
         },
     }
 
@@ -1379,7 +2363,9 @@ def weekly_analysis(
     )
 
     # Completed sessions in window — used by all windowed metrics
-    # (INOL, ACWR, RI distribution, specificity, fatigue dimensions, readiness)
+    # (INOL, ACWR, RI distribution, specificity, fatigue dimensions).
+    # Readiness intentionally sees the full session list so planned wellness/RPE
+    # can influence the score before a session is marked complete.
     completed_in_window = [s for s in recent_sessions if s.get("completed") or s.get("status") in ("logged", "completed")]
 
     # Exercise stats: completed sessions only, to avoid inflated counts from planned sessions
@@ -1425,10 +2411,16 @@ def weekly_analysis(
         prog = progression_rate(sessions, ex_name, program_start)
         if "slope_kg_per_week" in prog:
             lift_data["progression_rate_kg_per_week"] = prog["slope_kg_per_week"]
-            lift_data["r2"] = prog.get("r2", 0)
+            lift_data["fit_quality"] = prog.get("fit_quality")
+            lift_data["kendall_tau"] = prog.get("kendall_tau")
+            lift_data["r2"] = prog.get("r2")
+            lift_data["r_squared"] = prog.get("r_squared")
         else:
             lift_data["progression_rate_kg_per_week"] = None
+            lift_data["fit_quality"] = None
+            lift_data["kendall_tau"] = None
             lift_data["r2"] = None
+            lift_data["r_squared"] = None
 
         vol_corr = volume_intensity_correlation(sessions, ex_name, program_start)
         if "volume_series" in vol_corr and len(vol_corr["volume_series"]) >= 2:
@@ -1469,7 +2461,7 @@ def weekly_analysis(
     if fatigue.get("flags"):
         all_flags.extend(fatigue["flags"])
 
-    compliance_result = session_compliance(sessions, phases, program_start, weeks=min(weeks, 4))
+    compliance_result = session_compliance(sessions, phases, program_start, weeks=weeks)
     compliance_obj = {
         "phase": compliance_result.get("phase", "Unknown"),
         "planned": compliance_result.get("planned_sessions", 0),
@@ -1555,26 +2547,84 @@ def weekly_analysis(
 
     # Fatigue dimensions
     fatigue_dimensions = None
+    banister = None
+    monotony_strain = None
+    decoupling = None
+    taper_quality = None
     if glossary is not None:
         weekly_dim = _weekly_fatigue_by_dimension(completed_in_window, glossary, program_start, current_maxes_raw or {})
-        acwr = _compute_dimensional_acwr(weekly_dim)
+        acwr = compute_acwr(
+            completed_in_window,
+            glossary,
+            program_start,
+            current_maxes_raw or {},
+            phases=phases,
+            current_week=current_week,
+            ref_date=ref,
+        )
         spike = _compute_dimensional_spike(weekly_dim)
         weekly_rounded = {wk: {k: round(v, 1) for k, v in dims.items()} for wk, dims in sorted(weekly_dim.items())}
         fatigue_dimensions = {
             "weekly": weekly_rounded,
             "acwr": acwr,
             "spike": spike,
-            "dimension_weights": {"axial": 0.30, "neural": 0.30, "peripheral": 0.25, "systemic": 0.15},
+            "dimension_weights": _DIMENSION_WEIGHTS,
         }
+        banister = compute_banister_ffm(
+            sessions,
+            glossary,
+            program_start,
+            current_maxes_raw or {},
+            ref_date=ref,
+        )
+        monotony_strain = compute_monotony_strain(
+            sessions,
+            glossary,
+            program_start,
+            current_maxes_raw or {},
+            ref_date=ref,
+        )
+        decoupling = compute_decoupling(
+            sessions,
+            glossary,
+            program_start,
+            current_maxes_raw or {},
+            ref_date=ref,
+        )
+        taper_quality = compute_taper_quality(
+            program,
+            sessions,
+            glossary,
+            current_maxes_raw or {},
+            program_start,
+            ref_date=ref,
+        )
 
     inol_result = compute_inol(completed_in_window, program_start, current_maxes_raw, program.get("lift_profiles"))
-    acwr_result = compute_acwr(completed_in_window, glossary, program_start, current_maxes_raw)
+    acwr_result = compute_acwr(
+        completed_in_window,
+        glossary,
+        program_start,
+        current_maxes_raw,
+        phases=phases,
+        current_week=current_week,
+        ref_date=ref,
+    )
     ri_result = compute_ri_distribution(completed_in_window, current_maxes_raw)
     specificity_result = compute_specificity_ratio(completed_in_window, glossary)
-    readiness_result = compute_readiness_score(completed_in_window, program, glossary, program_start)
+    readiness_result = compute_readiness_score(sessions, program, glossary, program_start)
 
     if "flags" in inol_result and inol_result["flags"]:
         all_flags.extend(inol_result["flags"])
+    if isinstance(monotony_strain, dict):
+        for row in monotony_strain.get("weekly", []):
+            for flag in row.get("flags", []):
+                if flag not in all_flags:
+                    all_flags.append(flag)
+    if isinstance(decoupling, dict) and "flags" in decoupling:
+        for flag in decoupling["flags"]:
+            if flag not in all_flags:
+                all_flags.append(flag)
 
     return {
         "week": current_week,
@@ -1593,11 +2643,15 @@ def weekly_analysis(
         "deload_info": deload_info,
         "fatigue_dimensions": fatigue_dimensions,
         "inol": inol_result if "status" not in inol_result else None,
-        "acwr": acwr_result if "status" not in acwr_result else None,
+        "acwr": acwr_result,
         "ri_distribution": ri_result if "status" not in ri_result else None,
         "specificity_ratio": specificity_result if "status" not in specificity_result else None,
         "readiness_score": readiness_result,
         "attempt_selection": attempt_selection,
+        "banister": banister,
+        "monotony_strain": monotony_strain,
+        "decoupling": decoupling,
+        "taper_quality": taper_quality,
     }
 
 

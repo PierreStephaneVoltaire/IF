@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import * as sessionController from '../controllers/sessionController'
-import type { Session, Exercise, SessionStatus } from '@powerlifting/types'
+import type { Session, Exercise, SessionStatus, SessionWellness } from '@powerlifting/types'
 
 export const sessionsRouter = Router({ mergeParams: true })
 
@@ -48,6 +48,7 @@ sessionsRouter.post('/:version', async (req, res, next) => {
       session_notes: session.session_notes || '',
       session_rpe: session.session_rpe || null,
       body_weight_kg: session.body_weight_kg || null,
+      wellness: session.wellness ?? undefined,
     }
 
     await sessionController.createSession(req.effectivePk!, req.params.version, newSession)
@@ -156,7 +157,12 @@ sessionsRouter.patch('/:version/:date/:index/status', async (req, res, next) => 
 // PATCH /api/sessions/:version/:date/:index/complete - Mark session complete
 sessionsRouter.patch('/:version/:date/:index/complete', async (req, res, next) => {
   try {
-    const { rpe, bodyWeightKg, notes } = req.body
+    const { rpe, bodyWeightKg, notes, wellness } = req.body as {
+      rpe?: number
+      bodyWeightKg?: number
+      notes?: string
+      wellness?: SessionWellness | null
+    }
     const index = parseInt(req.params.index, 10)
 
     await sessionController.completeSession(
@@ -164,7 +170,7 @@ sessionsRouter.patch('/:version/:date/:index/complete', async (req, res, next) =
       req.params.version,
       req.params.date,
       index,
-      { rpe, bodyWeightKg, notes }
+      { rpe, bodyWeightKg, notes, wellness: wellness ?? undefined }
     )
     res.json({ data: { success: true }, error: null })
   } catch (err) {

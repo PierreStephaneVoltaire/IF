@@ -29,7 +29,7 @@ export const AutoAddReview: React.FC<Props> = ({ drafts, onChange, onNext, onPre
   if (drafts.length === 0) {
     return (
       <Stack py="xl" align="center">
-        <Text color="dimmed">No new glossary entries to review.</Text>
+        <Text c="dimmed">No new glossary entries to review.</Text>
         <Group>
           <Button variant="outline" onClick={onPrev}>Back</Button>
           <Button onClick={onNext}>Continue</Button>
@@ -40,17 +40,17 @@ export const AutoAddReview: React.FC<Props> = ({ drafts, onChange, onNext, onPre
 
   return (
     <Stack py="xl">
-      <Text weight={500}>Proposed New Glossary Entries</Text>
-      <Text size="sm" color="dimmed">
+      <Text fw={500}>Proposed New Glossary Entries</Text>
+      <Text size="sm" c="dimmed">
         These exercises were not found in your glossary. Edit each entry before
         it is added, or skip to exclude it.
       </Text>
 
-      <Stack spacing="sm">
+      <Stack gap="sm">
         {drafts.map((d, idx) => (
           <Card key={idx} withBorder radius="md" padding="md">
-            <Group position="apart" align="flex-start">
-              <Stack spacing="xs" style={{ flex: 1 }}>
+            <Group justify="space-between" align="flex-start">
+              <Stack gap="xs" style={{ flex: 1 }}>
                 <Group>
                   <TextInput
                     label="Name"
@@ -78,7 +78,7 @@ export const AutoAddReview: React.FC<Props> = ({ drafts, onChange, onNext, onPre
         ))}
       </Stack>
 
-      <Group position="apart" mt="xl">
+      <Group justify="space-between" mt="xl">
         <Button variant="outline" onClick={onPrev}>Back</Button>
         <Button onClick={onNext}>Continue</Button>
       </Group>

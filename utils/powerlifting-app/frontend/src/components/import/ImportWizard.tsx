@@ -56,7 +56,7 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
       const autoAddedNames = action.payload.ai_parse_result
         ? (action.payload as any).glossary_resolution?.auto_added || []
         : []
-      const autoAdds = (autoAddedNames as string[]).map((n) => ({
+      const autoAdds = (autoAddedNames as string[]).map((n): AutoAddDraft => ({
         name: n,
         category: 'back',
         confirmed: true,
@@ -127,7 +127,7 @@ export const ImportWizard: React.FC = () => {
       </Group>
 
       <Paper withBorder p="xl" radius="md">
-        <Stepper active={state.activeStep} onStepClick={(step) => dispatch({ type: 'SET_STEP', payload: step })} breakpoint="sm">
+        <Stepper active={state.activeStep} onStepClick={(step) => dispatch({ type: 'SET_STEP', payload: step })}>
           <Stepper.Step label="Upload" description="Select file">
             <Step1_Upload onUpload={(id) => {
               dispatch({ type: 'UPLOAD_SUCCESS', payload: id })
