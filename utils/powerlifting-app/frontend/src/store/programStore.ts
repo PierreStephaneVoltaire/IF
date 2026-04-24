@@ -424,13 +424,13 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
 
   completeCompetition: async (date, results, bodyWeightKg) => {
     const { version } = get()
-    await api.completeCompetition(version, date, results, bodyWeightKg)
+    const updatedCompetition = await api.completeCompetition(version, date, results, bodyWeightKg)
 
     set((state) => {
       if (!state.program) return state
       const competitions = state.program.competitions.map((c) =>
         c.date === date
-          ? { ...c, status: 'completed' as const, results, body_weight_kg: bodyWeightKg }
+          ? updatedCompetition
           : c
       )
       return {

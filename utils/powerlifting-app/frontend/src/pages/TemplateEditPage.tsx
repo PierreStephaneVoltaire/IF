@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Save, X } from 'lucide-react'
 import {
   Stack, Group, Title, Text, Button, Alert, LoadingOverlay, Divider,
@@ -9,9 +9,12 @@ import { TemplateMetaEditor } from '../components/templates/TemplateMetaEditor'
 import { TemplatePhasesEditor } from '../components/templates/TemplatePhasesEditor'
 import { TemplateSessionsEditor } from '../components/templates/TemplateSessionsEditor'
 import type { Template } from '@powerlifting/types'
+import { templateDetailRoute } from '../utils/templateRoutes'
 
 export default function TemplateEditPage() {
   const { sk } = useParams<{ sk: string }>()
+  const [searchParams] = useSearchParams()
+  const resolvedSk = sk ?? searchParams.get('sk') ?? undefined
   const navigate = useNavigate()
   const [template, setTemplate] = useState<Template | null>(null)
   const [loading, setLoading] = useState(true)
@@ -19,15 +22,18 @@ export default function TemplateEditPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!sk) return
-    fetchTemplate(sk)
+    if (!resolvedSk) {
+      setLoading(false)
+      return
+    }
+    fetchTemplate(resolvedSk)
       .then(setTemplate)
       .catch((e) => setError(e?.message ?? 'Failed to load template'))
       .finally(() => setLoading(false))
-  }, [sk])
+  }, [resolvedSk])
 
   async function handleSave() {
-    if (!sk || !template) return
+    if (!resolvedSk || !template) return
     if (!template.meta.name.trim()) {
       setError('Template name is required')
       return
@@ -35,8 +41,8 @@ export default function TemplateEditPage() {
     setSaving(true)
     setError(null)
     try {
-      await updateTemplate(sk, template)
-      navigate(`/designer/templates/${encodeURIComponent(sk)}`)
+      await updateTemplate(resolvedSk, template)
+      navigate(templateDetailRoute(resolvedSk))
     } catch (e: any) {
       setError(e?.message ?? 'Failed to save template')
       setSaving(false)
@@ -63,7 +69,7 @@ export default function TemplateEditPage() {
           <Button
             variant="default"
             leftSection={<X size={16} />}
-            onClick={() => sk && navigate(`/designer/templates/${encodeURIComponent(sk)}`)}
+            onClick={() => resolvedSk && navigate(templateDetailRoute(resolvedSk))}
             disabled={saving}
           >
             Cancel

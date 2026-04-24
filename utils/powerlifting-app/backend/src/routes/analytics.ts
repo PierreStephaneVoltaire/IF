@@ -1,55 +1,24 @@
 import { Router } from 'express'
+import { invokeToolDirect } from '../utils/agent'
 
 export const analyticsRouter = Router()
-
-const IF_API_URL =
-  process.env.IF_API_URL || 'http://if-agent-api.if-portals.svc.cluster.local:8000'
-const AGENT_MODEL = process.env.AGENT_MODEL || 'if-prototype'
-
-function extractJson(text: string): unknown {
-  const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/)
-  if (!match) throw new Error(`No JSON in tool response: ${text.slice(0, 200)}`)
-  return JSON.parse(match[0])
-}
-
-function throwIfToolError(data: unknown): unknown {
-  if (data && typeof data === 'object' && 'error' in data) {
-    const error = (data as { error?: unknown }).error
-    if (error) throw new Error(String(error))
-  }
-  return data
-}
-
-async function invokeToolDirect(
-  toolName: string,
-  args: Record<string, unknown>,
-): Promise<unknown> {
-  const content = `/${toolName} ${JSON.stringify(args)}`
-  const response = await fetch(`${IF_API_URL}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Direct-Tool-Invoke': 'true',
-    },
-    body: JSON.stringify({
-      model: AGENT_MODEL,
-      messages: [{ role: 'user', content }],
-    }),
-  })
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`Agent API error ${response.status}: ${text}`)
-  }
-  const body = await response.json()
-  const rawContent: string = body?.choices?.[0]?.message?.content ?? ''
-  return throwIfToolError(extractJson(rawContent))
-}
 
 // GET /api/analytics/analysis/weekly?weeks=N&block=X
 analyticsRouter.get('/analysis/weekly', async (req, res) => {
   try {
     const weeks = parseInt(req.query.weeks as string) || 1
     const block = (req.query.block as string) || 'current'
+    const today = new Date().toISOString().slice(0, 10)
+    try {
+      await invokeToolDirect('health_snapshot_competition_projection', {
+        date: today,
+        version: 'current',
+        allow_retrospective: false,
+        pk: req.effectivePk,
+      })
+    } catch (snapshotErr) {
+      console.warn('Failed to snapshot competition projections before weekly analysis:', snapshotErr)
+    }
     const data = await invokeToolDirect('weekly_analysis', { weeks, block, refresh_program: true, pk: req.effectivePk })
     res.json({ data, error: null })
   } catch (err) {

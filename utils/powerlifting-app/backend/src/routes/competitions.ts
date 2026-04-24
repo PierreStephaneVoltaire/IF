@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import * as competitionController from '../controllers/competitionController'
 import type { Competition, LiftResults } from '@powerlifting/types'
+import { invokeToolDirect } from '../utils/agent'
 
 export const competitionsRouter = Router({ mergeParams: true })
 
@@ -59,14 +60,31 @@ competitionsRouter.patch('/:version/:date/complete', async (req, res, next) => {
       })
     }
 
-    await competitionController.completeCompetition(
-      req.effectivePk!,
-      req.params.version,
-      req.params.date,
-      results as LiftResults,
-      bodyWeightKg
-    )
-    res.json({ data: { success: true }, error: null })
+    const compDate = new Date(`${req.params.date}T00:00:00Z`)
+    compDate.setUTCDate(compDate.getUTCDate() - 7)
+    const snapshotDate = compDate.toISOString().slice(0, 10)
+
+    try {
+      await invokeToolDirect('health_snapshot_competition_projection', {
+        date: snapshotDate,
+        version: req.params.version,
+        allow_retrospective: true,
+        pk: req.effectivePk,
+      })
+    } catch (snapshotErr) {
+      console.warn('Failed to snapshot competition projection before completion:', snapshotErr)
+    }
+
+    const updatedCompetition = await invokeToolDirect('health_complete_competition', {
+      date: req.params.date,
+      results: results as LiftResults,
+      body_weight_kg: bodyWeightKg,
+      version: req.params.version,
+      allow_retrospective: true,
+      pk: req.effectivePk,
+    })
+
+    res.json({ data: updatedCompetition, error: null })
   } catch (err) {
     next(err)
   }

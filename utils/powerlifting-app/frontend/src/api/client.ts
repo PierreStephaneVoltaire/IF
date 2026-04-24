@@ -329,8 +329,9 @@ export async function completeCompetition(
   date: string,
   results: LiftResults,
   bodyWeightKg: number
-): Promise<void> {
-  await api.patch(`/competitions/${version}/${date}/complete`, { results, bodyWeightKg })
+): Promise<Competition> {
+  const res = await api.patch<ApiResponse<Competition>>(`/competitions/${version}/${date}/complete`, { results, bodyWeightKg })
+  return res.data.data
 }
 
 // ─── Videos ───────────────────────────────────────────────────────────────────
@@ -539,7 +540,7 @@ export async function fetchTemplates(includeArchived: boolean = false): Promise<
 
 export async function fetchTemplate(sk: string): Promise<Template> {
   const res = await api.get(templatePath(sk))
-  return res.data
+  return { ...res.data, sk: res.data?.sk ?? sk }
 }
 
 export async function createTemplateFromBlock(name: string, program_sk?: string): Promise<{ sk: string }> {

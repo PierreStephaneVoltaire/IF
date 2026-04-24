@@ -93,6 +93,146 @@ def _get_rag():
     return _rag
 
 
+def _get_table_and_pk():
+    store = _get_store()
+    return store.table, store.pk, store
+
+
+def _resolve_program_sk(table, pk: str, version: str) -> str:
+    if version == "current":
+        pointer = table.get_item(Key={"pk": pk, "sk": "program#current"}).get("Item")
+        if pointer:
+            return pointer.get("ref_sk", "program#v001")
+        return "program#v001"
+    return f"program#{version}"
+
+
+def _load_program_version(version: str, pk: str | None = None) -> tuple[dict, str, Any]:
+    table, default_pk, _store = _get_table_and_pk()
+    active_pk = pk or default_pk
+    sk = _resolve_program_sk(table, active_pk, version)
+    item = table.get_item(Key={"pk": active_pk, "sk": sk}).get("Item")
+    if not item:
+        raise ValueError(f"Program version {version} not found")
+    program = copy.deepcopy(item)
+    program.pop("pk", None)
+    program.pop("sk", None)
+    return program, sk, _store
+
+
+def _save_program_version(program: dict, sk: str, pk: str | None = None) -> None:
+    table, default_pk, store = _get_table_and_pk()
+    active_pk = pk or default_pk
+    item = copy.deepcopy(program)
+    item["pk"] = active_pk
+    item["sk"] = sk
+    table.put_item(Item=item)
+    store.invalidate_cache()
+
+
+def _competition_snapshot_payload(projection: dict, snapshot_date: date) -> dict:
+    return {
+        "squat_kg": projection.get("squat"),
+        "bench_kg": projection.get("bench"),
+        "deadlift_kg": projection.get("deadlift"),
+        "total_kg": projection.get("total"),
+    }
+
+
+def _snapshot_competitions_in_program(
+    program: dict,
+    snapshot_date: date,
+    allow_retrospective: bool = False,
+) -> tuple[dict, list[dict]]:
+    from analytics import meet_projection
+
+    competitions = program.get("competitions", []) or []
+    updated: list[dict] = []
+    target_comp_date = snapshot_date + timedelta(days=7)
+
+    for comp in competitions:
+        comp_date = None
+        if comp.get("date"):
+            try:
+                comp_date = datetime.strptime(comp.get("date", ""), "%Y-%m-%d").date()
+            except ValueError:
+                comp_date = None
+        if comp_date is None or comp_date != target_comp_date:
+            continue
+        if comp.get("projected_at_t_minus_1w") is not None:
+            continue
+        if comp.get("status") not in ("confirmed", "optional") and not allow_retrospective:
+            continue
+
+        projection = meet_projection(program, program.get("sessions", []), comp_date=comp.get("date"), ref_date=snapshot_date)
+        if "total" not in projection:
+            continue
+
+        snapshot = _competition_snapshot_payload(projection, snapshot_date)
+        comp["projected_at_t_minus_1w"] = snapshot
+        comp["projection_snapshot_date"] = snapshot_date.isoformat()
+        updated.append({
+            "date": comp.get("date"),
+            "name": comp.get("name"),
+            "projected_at_t_minus_1w": snapshot,
+            "projection_snapshot_date": snapshot_date.isoformat(),
+        })
+
+    if updated:
+        program["competitions"] = competitions
+        meta = program.setdefault("meta", {})
+        meta["updated_at"] = datetime.utcnow().isoformat()
+
+    return program, updated
+
+
+def _complete_competition_in_program(
+    program: dict,
+    comp_date: str,
+    results: dict,
+    body_weight_kg: float,
+    allow_retrospective: bool = True,
+) -> dict:
+    target = None
+    for comp in program.get("competitions", []) or []:
+        if comp.get("date") == comp_date:
+            target = comp
+            break
+    if target is None:
+        raise ValueError(f"Competition not found with date={comp_date}")
+
+    if target.get("projected_at_t_minus_1w") is None:
+        comp_dt = datetime.strptime(comp_date, "%Y-%m-%d").date()
+        snapshot_date = comp_dt - timedelta(days=7)
+        program, _ = _snapshot_competitions_in_program(program, snapshot_date, allow_retrospective=allow_retrospective)
+        for comp in program.get("competitions", []) or []:
+            if comp.get("date") == comp_date:
+                target = comp
+                break
+
+    snapshot = target.get("projected_at_t_minus_1w") or {}
+    from analytics import compute_prr
+    prr = compute_prr(results, snapshot)
+
+    completed_results = copy.deepcopy(results)
+    completed_results["projected_at_t_minus_1w"] = snapshot
+    completed_results["prr"] = prr
+
+    target.update({
+        "status": "completed",
+        "results": completed_results,
+        "body_weight_kg": body_weight_kg,
+    })
+    if snapshot:
+        target["projected_at_t_minus_1w"] = snapshot
+    if target.get("projection_snapshot_date") is None and snapshot:
+        target["projection_snapshot_date"] = (datetime.strptime(comp_date, "%Y-%m-%d").date() - timedelta(days=7)).isoformat()
+
+    meta = program.setdefault("meta", {})
+    meta["updated_at"] = datetime.utcnow().isoformat()
+    return target
+
+
 # =============================================================================
 # Tool Functions
 # =============================================================================
@@ -867,6 +1007,64 @@ async def health_update_competition(date: str, patch: dict) -> dict:
     await store._write_new_version(new_program, minor=True)
 
     return competitions[comp_idx]
+
+
+async def health_snapshot_competition_projection(
+    date: str,
+    version: str = "current",
+    allow_retrospective: bool = False,
+) -> dict:
+    """Snapshot projected maxes 7 days before competition day.
+
+    Args:
+        date: Snapshot date (YYYY-MM-DD). Competitions on date + 7 days are considered.
+        version: Program version to update.
+        allow_retrospective: Backfill completed competitions when the snapshot was missed.
+
+    Returns:
+        Summary dict with the updated competitions.
+    """
+    snapshot_date = datetime.strptime(date, "%Y-%m-%d").date()
+    program, sk, _store = _load_program_version(version)
+    program, updated = _snapshot_competitions_in_program(program, snapshot_date, allow_retrospective=allow_retrospective)
+    if updated:
+        _save_program_version(program, sk)
+    return {
+        "snapshot_date": snapshot_date.isoformat(),
+        "updated": len(updated),
+        "competitions": updated,
+    }
+
+
+async def health_complete_competition(
+    date: str,
+    results: dict,
+    body_weight_kg: float,
+    version: str = "current",
+    allow_retrospective: bool = True,
+) -> dict:
+    """Mark a competition as completed and compute PRR.
+
+    Args:
+        date: Competition date (YYYY-MM-DD)
+        results: Best successful lift attempts / totals.
+        body_weight_kg: Weigh-in body weight.
+        version: Program version to update.
+        allow_retrospective: Backfill a missing T-1 snapshot if needed.
+
+    Returns:
+        Updated competition object.
+    """
+    program, sk, _store = _load_program_version(version)
+    updated_comp = _complete_competition_in_program(
+        program,
+        date,
+        results,
+        body_weight_kg,
+        allow_retrospective=allow_retrospective,
+    )
+    _save_program_version(program, sk)
+    return updated_comp
 
 
 async def health_update_diet_note(date: str, notes: str) -> dict:

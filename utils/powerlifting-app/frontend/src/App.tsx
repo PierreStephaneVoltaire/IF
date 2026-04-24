@@ -75,6 +75,8 @@ export default function App() {
           <Route path="/designer/import" element={<ImportWizardPage />} />
           <Route path="/designer/templates" element={<TemplateLibraryPage />} />
           <Route path="/designer/templates/new" element={<TemplateCreatePage />} />
+          <Route path="/designer/template" element={<TemplateDetailPage />} />
+          <Route path="/designer/template/edit" element={<TemplateEditPage />} />
           <Route path="/designer/templates/:sk/edit" element={<TemplateEditPage />} />
           <Route path="/designer/templates/:sk" element={<TemplateDetailPage />} />
           <Route path="/about" element={<AboutPage />} />

@@ -2,6 +2,7 @@ import React from 'react'
 import { Card, Text, Group, Badge, Button, Stack } from '@mantine/core'
 import { useNavigate } from 'react-router-dom'
 import type { TemplateListEntry } from '@powerlifting/types'
+import { templateDetailRoute } from '../../utils/templateRoutes'
 
 interface Props {
   template: TemplateListEntry
@@ -27,7 +28,7 @@ export const TemplateCard: React.FC<Props> = ({ template }) => {
       </Stack>
 
       <Group grow>
-        <Button variant="light" onClick={() => navigate(`/designer/templates/${encodeURIComponent(template.sk)}`)}>
+        <Button variant="light" onClick={() => navigate(templateDetailRoute(template.sk))}>
           View Detail
         </Button>
       </Group>

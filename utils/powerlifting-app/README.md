@@ -22,7 +22,8 @@ If you want the current truth, treat these files as the real sources of truth:
 The powerlifting app is a single-athlete training portal that combines:
 
 - deterministic analytics for progress, workload, fatigue, readiness, scoring,
-  and competition projection
+  competition projection, PRR calibration, volume landmarks, and specificity
+  bands
 - narrow AI tools for fatigue-profile estimation, lift-profile cleanup and
   stimulus estimation, accessory ROI analysis, program evaluation, template
   evaluation, and spreadsheet import
@@ -198,7 +199,8 @@ Competition data drives:
 
 - current max fallback from actual meet results
 - weeks-to-comp context
-- meet projection selection
+- meet projection selection and projection snapshots
+- projection-to-result ratio calibration
 - attempt selection
 - DOTS/IPF GL interpretations
 - AI program evaluation competition-alignment output
@@ -517,6 +519,8 @@ Displayed:
 - narrow specificity = direct SBD sets / total sets
 - broad specificity = (SBD + same-category secondary work) / total sets
 - supporting counts: SBD sets and total sets
+- expected narrow/broad bands when a competition is on the calendar
+- flags when the current ratio is below or above the expected band
 
 ### 9. Fatigue Dimensions (Weekly)
 
@@ -541,6 +545,8 @@ Displayed:
 - weeks to competition
 - method
 - first and last upcoming competitions when multiple upcoming meets exist
+- calibration badge when recent completed meets provide a PRR history
+- 20% ceiling cap on projected gains, even for far-out meets
 
 If no eligible competition exists, the page shows a reason string instead.
 
@@ -548,6 +554,36 @@ Important hidden detail:
 
 - backend also computes `attempt_selection`
 - the Analysis page currently does not render it
+
+### 10a. Projection Calibration / PRR
+
+Source: backend `compute_prr` and projection calibration inside `meet_projection`
+
+Displayed:
+
+- projection-to-result ratio per lift when a meet has both the actual result and the T-1w snapshot
+- total PRR when all three lifts are valid
+- calibration badge when at least two completed meets provide usable total PRR
+- athlete-specific lambda multiplier derived from the median of recent total PRR values
+
+### 10b. Volume Landmarks
+
+Source: backend `compute_volume_landmarks`
+
+Displayed:
+
+- per-lift MV, MEV, MAV, and MRV estimates
+- confidence band from whole-program history length
+- only lifts with sufficient history are rendered in the UI
+
+Landmark rules:
+
+- weeks are bucketed into 2-set bins
+- deload and break weeks are excluded
+- MV is the first bin with non-negative week-over-week e1RM change
+- MEV is the first bin with a positive e1RM change
+- MAV is the bin with the largest e1RM change
+- MRV is the first bin with a high next-week fatigue index or negative e1RM change
 
 ### 11. e1RM Progression, DOTS, and IPF GL Trend
 
@@ -1275,7 +1311,7 @@ comp_max = (current_max + projected_gain) * peak_factor
 Ceiling clamp:
 
 ```text
-ceiling_pct = 10% + 1% per 2 weeks beyond 8, capped at 30%
+ceiling_pct = min(20%, 10% + 0.5% * max(0, weeks_to_comp - 8))
 comp_max is clamped to [current_max, current_max * (1 + ceiling_pct)]
 ```
 

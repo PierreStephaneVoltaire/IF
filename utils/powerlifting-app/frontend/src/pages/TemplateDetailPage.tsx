@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Container, LoadingOverlay } from '@mantine/core'
 import { fetchTemplate } from '../api/client'
 import { TemplateDetail } from '../components/templates/TemplateDetail'
@@ -7,21 +7,27 @@ import type { Template } from '@powerlifting/types'
 
 export default function TemplateDetailPage() {
   const { sk } = useParams<{ sk: string }>()
+  const [searchParams] = useSearchParams()
+  const resolvedSk = sk ?? searchParams.get('sk') ?? undefined
   const [template, setTemplate] = useState<Template | null>(null)
   const [loading, setLoading] = useState(true)
 
   const loadTemplate = () => {
-    if (sk) {
+    if (resolvedSk) {
       setLoading(true)
-      fetchTemplate(sk)
+      fetchTemplate(resolvedSk)
         .then(setTemplate)
+        .catch(() => setTemplate(null))
         .finally(() => setLoading(false))
+    } else {
+      setTemplate(null)
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     loadTemplate()
-  }, [sk])
+  }, [resolvedSk])
 
   if (!template && !loading) return <div>Template not found</div>
 
@@ -29,7 +35,11 @@ export default function TemplateDetailPage() {
     <Container size="lg" py="xl">
       <LoadingOverlay visible={loading} />
       {template && (
-        <TemplateDetail template={template} onRefresh={loadTemplate} />
+        <TemplateDetail
+          template={template}
+          templateSk={resolvedSk}
+          onRefresh={loadTemplate}
+        />
       )}
     </Container>
   )

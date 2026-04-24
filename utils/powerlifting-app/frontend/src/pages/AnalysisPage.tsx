@@ -21,6 +21,8 @@ import {
   Button, Center, Select, Progress, Accordion, SegmentedControl, Box, Loader,
 } from '@mantine/core'
 import { AiAnalysis } from '@/components/analysis/AiAnalysis'
+import { AlertsStrip } from '@/components/analysis/AlertsStrip'
+import { PeakingTimeline } from '@/components/analysis/PeakingTimeline'
 import { WeeklyData } from '@/components/analysis/WeeklyData'
 
 function epleyE1rm(kg: number, reps: number): number {
@@ -73,6 +75,12 @@ function isInsufficientData(value: unknown): value is { status: 'insufficient_da
   return !!value && typeof value === 'object' && 'status' in value
 }
 
+function getWindowCutoffStr(weeks: number): string {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - weeks * 7)
+  return cutoff.toISOString().slice(0, 10)
+}
+
 function banisterBadgeColor(tsb: number) {
   if (tsb < -30) return 'red'
   if (tsb < -10) return 'orange'
@@ -92,6 +100,27 @@ function taperQualityBadgeColor(label: string) {
   if (label === 'good') return 'blue'
   if (label === 'acceptable') return 'yellow'
   return 'red'
+}
+
+function specificityStatusBadgeColor(status?: string) {
+  if (status === 'within_expected') return 'green'
+  if (status === 'below_expected') return 'yellow'
+  if (status === 'above_expected') return 'red'
+  return 'gray'
+}
+
+function specificityStatusLabel(status?: string) {
+  if (status === 'within_expected') return 'Within expected range'
+  if (status === 'below_expected') return 'Below expected'
+  if (status === 'above_expected') return 'Above expected'
+  return 'No band'
+}
+
+function volumeConfidenceColor(confidence?: string) {
+  if (confidence === 'high') return 'green'
+  if (confidence === 'medium') return 'blue'
+  if (confidence === 'low') return 'yellow'
+  return 'gray'
 }
 
 const LIFT_LABELS: Record<string, string> = { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' }
@@ -179,9 +208,16 @@ export default function AnalysisPage() {
     return competitions.find(c => (c.status === 'confirmed' || c.status === 'optional') && c.date >= today) || null
   }, [competitions])
 
+  const analysisWindowStartStr = useMemo(() => getWindowCutoffStr(effectiveWeeks), [effectiveWeeks])
+
   const banister = data?.banister && !isInsufficientData(data.banister) ? data.banister : null
   const decoupling = data?.decoupling && !isInsufficientData(data.decoupling) ? data.decoupling : null
   const taperQuality = data?.taper_quality && !isInsufficientData(data.taper_quality) ? data.taper_quality : null
+  const projectionCalibration = data?.projection_calibration ?? null
+  const peakingTimeline = data?.peaking_timeline ?? null
+  const volumeLandmarkEntries = data?.volume_landmarks
+    ? (Object.entries(data.volume_landmarks).filter(([, value]) => !isInsufficientData(value)) as Array<[string, any]>)
+    : []
 
   useEffect(() => {
     setLoading(true)
@@ -199,15 +235,12 @@ export default function AnalysisPage() {
 
   const filteredSessions = useMemo(() => {
     if (!program?.sessions) return []
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - effectiveWeeks * 7)
-    const cutoffStr = cutoff.toISOString().slice(0, 10)
     return program.sessions.filter(s =>
       (s.block ?? 'current') === 'current' &&
       s.completed &&
-      s.date >= cutoffStr
+      s.date >= analysisWindowStartStr
     )
-  }, [program?.sessions, effectiveWeeks])
+  }, [program?.sessions, analysisWindowStartStr])
 
   const glossaryMuscles = useMemo(() => {
     const lookup = new Map<string, { primary: string[]; secondary: string[] }>()
@@ -305,10 +338,7 @@ export default function AnalysisPage() {
 
   const nutritionTrend = useMemo(() => {
     if (!program?.diet_notes?.length) return null
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - effectiveWeeks * 7)
-    const cutoffStr = cutoff.toISOString().slice(0, 10)
-    const inWindow = program.diet_notes.filter(n => n.date >= cutoffStr).sort((a, b) => a.date.localeCompare(b.date))
+    const inWindow = program.diet_notes.filter(n => n.date >= analysisWindowStartStr).sort((a, b) => a.date.localeCompare(b.date))
     if (!inWindow.length) return null
 
     const withCalories = inWindow.filter(n => n.avg_daily_calories != null)
@@ -378,20 +408,22 @@ export default function AnalysisPage() {
       consistencyPct: inWindow.length ? Math.round((consistent / inWindow.length) * 100) : null,
       entries: inWindow.length,
     }
-  }, [program?.diet_notes, effectiveWeeks])
+  }, [program?.diet_notes, analysisWindowStartStr])
 
   const weightTrend = useMemo(() => {
     if (weightLog.length < 2) return null
     const sorted = [...weightLog].sort((a, b) => a.date.localeCompare(b.date))
     const latest = sorted[sorted.length - 1].kg
-    const cutoffDate = new Date()
-    cutoffDate.setDate(cutoffDate.getDate() - effectiveWeeks * 7)
-    const cutoffStr = cutoffDate.toISOString().slice(0, 10)
-    const windowEntries = sorted.filter(e => e.date >= cutoffStr)
+    const windowEntries = sorted.filter(e => e.date >= analysisWindowStartStr)
     const oldest = windowEntries.length > 0 ? windowEntries[0].kg : sorted[0].kg
     const change = latest - oldest
     return { latest, change, entries: sorted.slice(-8) }
-  }, [weightLog, effectiveWeeks])
+  }, [weightLog, analysisWindowStartStr])
+
+  const banisterSeries = useMemo(() => {
+    if (!banister) return []
+    return banister.series.filter(point => point.date >= analysisWindowStartStr)
+  }, [banister, analysisWindowStartStr])
 
   const dotsTrend = useMemo(() => {
     if (!filteredSessions.length) return null
@@ -562,6 +594,8 @@ export default function AnalysisPage() {
 
       {data && !loading && (
         <>
+          <AlertsStrip alerts={data.alerts || []} />
+
           {/* Top summary cards */}
           <SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }} spacing="md">
             <Paper withBorder p="md">
@@ -701,54 +735,88 @@ export default function AnalysisPage() {
                 {banister ? (
                   <Stack gap="md">
                     <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
-                      <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-orange-0)' }}>
+                      <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-orange-light)' }}>
                         <Text fz="xs" c="dimmed">CTL / Fitness</Text>
-                        <Text fz="xl" fw={700}>{banister.ctl_today.toFixed(1)}</Text>
+                        <Text fz="xl" fw={700} c="var(--mantine-color-text)">{banister.ctl_today.toFixed(1)}</Text>
                       </Stack>
-                      <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-red-0)' }}>
+                      <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-red-light)' }}>
                         <Text fz="xs" c="dimmed">ATL / Fatigue</Text>
-                        <Text fz="xl" fw={700}>{banister.atl_today.toFixed(1)}</Text>
+                        <Text fz="xl" fw={700} c="var(--mantine-color-text)">{banister.atl_today.toFixed(1)}</Text>
                       </Stack>
-                      <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-blue-0)' }}>
+                      <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-blue-light)' }}>
                         <Text fz="xs" c="dimmed">TSB / Form</Text>
                         <Text fz="xl" fw={700} c={banisterBadgeColor(banister.tsb_today)}>{banister.tsb_today.toFixed(1)}</Text>
                       </Stack>
                     </SimpleGrid>
 
-                    <Box style={{ width: '100%', height: 320 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={banister.series}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis dataKey="date" tickFormatter={(value) => String(value).slice(5)} minTickGap={18} />
-                          <YAxis />
-                          <RechartsTooltip labelFormatter={(label) => `Date: ${String(label)}`} />
-                          <Legend />
-                          <Line type="monotone" dataKey="ctl" name="CTL" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="atl" name="ATL" stroke="#ef4444" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="tsb" name="TSB" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                          {upcomingCompetition && (
-                            <ReferenceLine
-                              x={upcomingCompetition.date}
-                              stroke="#111827"
-                              strokeDasharray="4 4"
-                              label={{ value: 'Comp', position: 'insideTopRight' }}
-                            />
-                          )}
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </Box>
-                    {upcomingCompetition && (
-                      <Text fz="xs" c="dimmed">
-                        Competition marker: {upcomingCompetition.name} on {upcomingCompetition.date}
-                      </Text>
+                    {banisterSeries.length > 0 ? (
+                      <>
+                        <Box style={{ width: '100%', height: 320 }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={banisterSeries}>
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                vertical={false}
+                                stroke="var(--mantine-color-default-border)"
+                              />
+                              <XAxis
+                                dataKey="date"
+                                tickFormatter={(value) => String(value).slice(5)}
+                                minTickGap={18}
+                                tick={{ fill: 'var(--mantine-color-dimmed)' }}
+                                axisLine={{ stroke: 'var(--mantine-color-default-border)' }}
+                                tickLine={{ stroke: 'var(--mantine-color-default-border)' }}
+                              />
+                              <YAxis
+                                tick={{ fill: 'var(--mantine-color-dimmed)' }}
+                                axisLine={{ stroke: 'var(--mantine-color-default-border)' }}
+                                tickLine={{ stroke: 'var(--mantine-color-default-border)' }}
+                              />
+                              <RechartsTooltip
+                                labelFormatter={(label) => `Date: ${String(label)}`}
+                                contentStyle={{
+                                  backgroundColor: 'var(--mantine-color-body)',
+                                  border: '1px solid var(--mantine-color-default-border)',
+                                  color: 'var(--mantine-color-text)',
+                                }}
+                                labelStyle={{ color: 'var(--mantine-color-text)' }}
+                                itemStyle={{ color: 'var(--mantine-color-text)' }}
+                              />
+                              <Legend />
+                              <Line type="monotone" dataKey="ctl" name="CTL" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                              <Line type="monotone" dataKey="atl" name="ATL" stroke="#ef4444" strokeWidth={2} dot={false} />
+                              <Line type="monotone" dataKey="tsb" name="TSB" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                              {upcomingCompetition && (
+                                <ReferenceLine
+                                  x={upcomingCompetition.date}
+                                  stroke="var(--mantine-color-dimmed)"
+                                  strokeDasharray="4 4"
+                                  label={{ value: 'Comp', position: 'insideTopRight' }}
+                                />
+                              )}
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </Box>
+                        {upcomingCompetition && (
+                          <Text fz="xs" c="dimmed">
+                            Competition marker: {upcomingCompetition.name} on {upcomingCompetition.date}
+                          </Text>
+                        )}
+                      </>
+                    ) : (
+                      <Text fz="sm" c="dimmed">No Banister datapoints fall inside the selected window.</Text>
                     )}
                   </Stack>
                 ) : (
                   <Text fz="sm" c="dimmed">
                     {isInsufficientData(data.banister) ? data.banister.reason : 'No Banister data available.'}
                   </Text>
-                )}
-              </Paper>
+              )}
+            </Paper>
+
+            {peakingTimeline && (
+              <PeakingTimeline data={peakingTimeline} />
+            )}
 
               <SimpleGrid cols={{ base: 1, lg: taperQuality ? 2 : 1 }} spacing="md">
                 <Paper withBorder p="md">
@@ -902,6 +970,51 @@ export default function AnalysisPage() {
             </Paper>
           )}
 
+          {volumeLandmarkEntries.length > 0 && (
+            <Paper withBorder p="md">
+              <Group gap="xs" mb="sm" justify="space-between" align="flex-start">
+                <Group gap="xs">
+                  <Dumbbell size={18} />
+                  <Text fw={500}>Volume Landmarks</Text>
+                </Group>
+                <Text fz="xs" c="dimmed">MEV / MAV / MRV from whole-program history</Text>
+              </Group>
+              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+                {volumeLandmarkEntries.map(([lift, landmark]) => (
+                  <Stack
+                    key={lift}
+                    gap="xs"
+                    p="sm"
+                    style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}
+                  >
+                    <Group justify="space-between" align="center">
+                      <Text fw={500} tt="capitalize">{lift}</Text>
+                      <Badge variant="light" color={volumeConfidenceColor(landmark.confidence)}>
+                        {landmark.confidence}
+                      </Badge>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text fz="xs" c="dimmed">MV</Text>
+                      <Text fz="sm" fw={700}>{landmark.mv !== null ? `${landmark.mv.toFixed(1)} sets` : '--'}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text fz="xs" c="dimmed">MEV</Text>
+                      <Text fz="sm" fw={700}>{landmark.mev !== null ? `${landmark.mev.toFixed(1)} sets` : '--'}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text fz="xs" c="dimmed">MAV</Text>
+                      <Text fz="sm" fw={700}>{landmark.mav !== null ? `${landmark.mav.toFixed(1)} sets` : '--'}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                      <Text fz="xs" c="dimmed">MRV</Text>
+                      <Text fz="sm" fw={700}>{landmark.mrv !== null ? `${landmark.mrv.toFixed(1)} sets` : '--'}</Text>
+                    </Group>
+                  </Stack>
+                ))}
+              </SimpleGrid>
+            </Paper>
+          )}
+
           {/* ACWR */}
           {data.acwr && !('status' in data.acwr) && (
             <Paper withBorder p="md">
@@ -978,7 +1091,27 @@ export default function AnalysisPage() {
           {/* Specificity Ratio */}
           {data.specificity_ratio && (
             <Paper withBorder p="md">
-              <Text fw={500} mb="sm">Specificity Ratio</Text>
+              <Group justify="space-between" align="flex-start" mb="sm">
+                <Text fw={500}>Specificity Ratio</Text>
+                {data.specificity_ratio.expected_band ? (
+                  <Group gap="xs" wrap="wrap" justify="flex-end">
+                    <Badge
+                      variant="light"
+                      color={specificityStatusBadgeColor(data.specificity_ratio.narrow_status)}
+                    >
+                      Narrow {specificityStatusLabel(data.specificity_ratio.narrow_status)}
+                    </Badge>
+                    <Badge
+                      variant="light"
+                      color={specificityStatusBadgeColor(data.specificity_ratio.broad_status)}
+                    >
+                      Broad {specificityStatusLabel(data.specificity_ratio.broad_status)}
+                    </Badge>
+                  </Group>
+                ) : (
+                  <Badge variant="light" color="gray">No upcoming comp band</Badge>
+                )}
+              </Group>
               <SimpleGrid cols={2} spacing="md">
                 <Stack gap="xs">
                   <Text fz="xs" c="dimmed">Narrow (SBD only)</Text>
@@ -991,7 +1124,22 @@ export default function AnalysisPage() {
                   <Text fz="sm" fw={500}>{(data.specificity_ratio.broad * 100).toFixed(1)}%</Text>
                 </Stack>
               </SimpleGrid>
+              {data.specificity_ratio.expected_band && (
+                <Text fz="xs" c="dimmed" mt="sm">
+                  Expected band at {data.specificity_ratio.expected_band.weeks_to_comp?.toFixed(1) ?? '--'} weeks out:
+                  {' '}
+                  narrow {data.specificity_ratio.expected_band.narrow.min.toFixed(2)} - {data.specificity_ratio.expected_band.narrow.max.toFixed(2)}
+                  {' '}| broad {data.specificity_ratio.expected_band.broad.min.toFixed(2)} - {data.specificity_ratio.expected_band.broad.max.toFixed(2)}
+                </Text>
+              )}
               <Text fz="xs" c="dimmed" mt="sm">{data.specificity_ratio.sbd_sets} SBD sets / {data.specificity_ratio.total_sets} total sets</Text>
+              {data.specificity_ratio.flags && data.specificity_ratio.flags.length > 0 && (
+                <Group gap="xs" wrap="wrap" mt="sm">
+                  {data.specificity_ratio.flags.map(flag => (
+                    <Badge key={flag} color="yellow" variant="light">{flag}</Badge>
+                  ))}
+                </Group>
+              )}
             </Paper>
           )}
 
@@ -1049,22 +1197,35 @@ export default function AnalysisPage() {
 
           {/* Projections */}
           {data.projections.filter(p => p && typeof p === 'object').length > 0 ? (
-            <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
-              {data.projections.filter(p => p && typeof p === 'object').map((proj, i) => (
-                <Paper key={i} withBorder p="md">
-                  <Group gap="xs" mb="xs">
-                    <TrendingUp size={18} />
-                    <Text fw={500}>{proj.comp_name || 'Projected Total'}</Text>
-                  </Group>
-                  <Text fz="2rem" fw={700}>{toDisplayUnit(proj.total || 0, unit).toFixed(1)} {unit}</Text>
-                  <Text fz="sm" c="dimmed" mt="xs">
-                    Confidence: {((proj.confidence || 0) * 100).toFixed(0)}%
-                    {typeof proj.weeks_to_comp === 'number' && ` (${proj.weeks_to_comp.toFixed(1)} wks out)`}
-                  </Text>
-                  {proj.method && <Text fz="xs" c="dimmed">via {proj.method === 'session_estimated' ? 'session e1RM' : proj.method}</Text>}
-                </Paper>
-              ))}
-            </SimpleGrid>
+            <Stack gap="sm">
+              <Group justify="space-between" align="center">
+                <Group gap="xs">
+                  <TrendingUp size={18} />
+                  <Text fw={500}>Projections</Text>
+                </Group>
+                {projectionCalibration?.calibrated && (
+                  <Badge variant="light" color="teal">
+                    Calibrated from {projectionCalibration.meets} meet{projectionCalibration.meets === 1 ? '' : 's'}
+                  </Badge>
+                )}
+              </Group>
+              <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
+                {data.projections.filter(p => p && typeof p === 'object').map((proj, i) => (
+                  <Paper key={i} withBorder p="md">
+                    <Group gap="xs" mb="xs">
+                      <TrendingUp size={18} />
+                      <Text fw={500}>{proj.comp_name || 'Projected Total'}</Text>
+                    </Group>
+                    <Text fz="2rem" fw={700}>{toDisplayUnit(proj.total || 0, unit).toFixed(1)} {unit}</Text>
+                    <Text fz="sm" c="dimmed" mt="xs">
+                      Confidence: {((proj.confidence || 0) * 100).toFixed(0)}%
+                      {typeof proj.weeks_to_comp === 'number' && ` (${proj.weeks_to_comp.toFixed(1)} wks out)`}
+                    </Text>
+                    {proj.method && <Text fz="xs" c="dimmed">via {proj.method === 'session_estimated' ? 'session e1RM' : proj.method}</Text>}
+                  </Paper>
+                ))}
+              </SimpleGrid>
+            </Stack>
           ) : (
             <Paper withBorder p="md">
               <Group gap="xs" mb="xs">
@@ -1403,7 +1564,7 @@ export default function AnalysisPage() {
           <AiAnalysis effectiveWeeks={effectiveWeeks} weeksMode={weeksMode} />
 
           {/* Formula Reference */}
-          <Accordion mt="xl" variant="separated">
+          <Accordion mt="xl" variant="separated" defaultValue="formulas-outer">
             <Accordion.Item value="formulas-outer">
               <Accordion.Control>
                 <Text size="sm" fw={500} c="dimmed">How These Numbers Are Calculated</Text>
@@ -1411,7 +1572,12 @@ export default function AnalysisPage() {
               <Accordion.Panel>
                 <Accordion variant="contained">
                   {FORMULA_DESCRIPTIONS.map(formula => (
-                    <Accordion.Item key={formula.id} value={formula.id}>
+                    <Accordion.Item
+                      key={formula.id}
+                      value={formula.id}
+                      id={`formula-${formula.id}`}
+                      style={{ scrollMarginTop: '6rem' }}
+                    >
                       <Accordion.Control>
                         <Text size="sm" fw={500}>{formula.title}</Text>
                       </Accordion.Control>

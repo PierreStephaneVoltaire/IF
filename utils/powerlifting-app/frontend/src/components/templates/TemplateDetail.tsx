@@ -1,25 +1,28 @@
 import React, { useState } from 'react'
 import { Stack, Group, Title, Button, Text, Badge, Divider, LoadingOverlay, Grid } from '@mantine/core'
 import { Edit2 } from 'lucide-react'
-import { Template, AiTemplateEvaluation } from '@powerlifting/types'
+import { Template } from '@powerlifting/types'
 import { SessionGrid } from './SessionGrid'
 import { EvaluationPanel } from './EvaluationPanel'
 import { ApplyModal } from './ApplyModal'
 import { MaxResolutionGate } from './MaxResolutionGate'
-import { confirmApplyTemplate, fetchTemplate } from '../../api/client'
+import { confirmApplyTemplate } from '../../api/client'
 import { useNavigate } from 'react-router-dom'
+import { templateEditRoute } from '../../utils/templateRoutes'
 
 interface Props {
   template: Template
+  templateSk?: string
   onRefresh: () => void
 }
 
-export const TemplateDetail: React.FC<Props> = ({ template, onRefresh }) => {
+export const TemplateDetail: React.FC<Props> = ({ template, templateSk, onRefresh }) => {
   const [applyModalOpened, setApplyModalOpened] = useState(false)
   const [missingMaxes, setMissingMaxes] = useState<string[] | null>(null)
   const [applyData, setApplyData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const resolvedTemplateSk = template.sk || templateSk
 
   const handleApply = (res: any) => {
     if (res.missing_maxes && res.missing_maxes.length > 0) {
@@ -33,9 +36,10 @@ export const TemplateDetail: React.FC<Props> = ({ template, onRefresh }) => {
   }
 
   const handleConfirmApply = async (backfilled_maxes: Record<string, number>) => {
+    if (!resolvedTemplateSk) return
     setLoading(true)
     try {
-      const res = await confirmApplyTemplate(template.sk, {
+      const res = await confirmApplyTemplate(resolvedTemplateSk, {
         backfilled_maxes,
         start_date: applyData.start_date,
         week_start_day: applyData.week_start_day,
@@ -66,11 +70,18 @@ export const TemplateDetail: React.FC<Props> = ({ template, onRefresh }) => {
           <Button
             variant="default"
             leftSection={<Edit2 size={16} />}
-            onClick={() => navigate(`/designer/templates/${encodeURIComponent(template.sk)}/edit`)}
+            onClick={() => resolvedTemplateSk && navigate(templateEditRoute(resolvedTemplateSk))}
+            disabled={!resolvedTemplateSk}
           >
             Edit
           </Button>
-          <Button size="lg" onClick={() => setApplyModalOpened(true)}>Apply Template</Button>
+          <Button
+            size="lg"
+            onClick={() => setApplyModalOpened(true)}
+            disabled={!resolvedTemplateSk}
+          >
+            Apply Template
+          </Button>
         </Group>
       </Group>
 
@@ -88,7 +99,7 @@ export const TemplateDetail: React.FC<Props> = ({ template, onRefresh }) => {
           <Stack gap="lg">
           <Title order={3}>AI Analysis</Title>
           <EvaluationPanel 
-            sk={template.sk} 
+            sk={resolvedTemplateSk ?? ''} 
             evaluation={template.meta.ai_evaluation ?? null}
             onRefresh={onRefresh}
           />
@@ -99,7 +110,7 @@ export const TemplateDetail: React.FC<Props> = ({ template, onRefresh }) => {
       <ApplyModal 
         opened={applyModalOpened} 
         onClose={() => setApplyModalOpened(false)} 
-        sk={template.sk}
+        sk={resolvedTemplateSk ?? ''}
         onApply={handleApply}
       />
 

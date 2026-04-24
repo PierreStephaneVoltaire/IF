@@ -867,6 +867,87 @@ class HealthUpdateCompetitionTool(ToolDefinition[HealthUpdateCompetitionAction, 
         )]
 
 
+# --- health_snapshot_competition_projection ---
+
+class HealthSnapshotCompetitionProjectionAction(Action):
+    date: str = Field(description="Snapshot date (YYYY-MM-DD). Competitions on date + 7 days are considered.")
+    version: str = Field(default="current", description="Program version to update")
+    allow_retrospective: bool = Field(
+        default=False,
+        description="Allow backfilling a missing snapshot for a completed competition",
+    )
+
+
+class HealthSnapshotCompetitionProjectionObservation(Observation):
+    pass
+
+
+class HealthSnapshotCompetitionProjectionExecutor(ToolExecutor[HealthSnapshotCompetitionProjectionAction, HealthSnapshotCompetitionProjectionObservation]):
+    def __call__(self, action: HealthSnapshotCompetitionProjectionAction, conversation=None) -> HealthSnapshotCompetitionProjectionObservation:
+        from core import health_snapshot_competition_projection
+        result = _run_async(health_snapshot_competition_projection(action.date, action.version, action.allow_retrospective))
+        return HealthSnapshotCompetitionProjectionObservation.from_text(_format_result(result))
+
+
+class HealthSnapshotCompetitionProjectionTool(ToolDefinition[HealthSnapshotCompetitionProjectionAction, HealthSnapshotCompetitionProjectionObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthSnapshotCompetitionProjectionTool"]:
+        return [cls(
+            description=(
+                "Snapshot projected competition maxes 7 days before a meet. "
+                "Use allow_retrospective=true to backfill a missed snapshot."
+            ),
+            action_type=HealthSnapshotCompetitionProjectionAction,
+            observation_type=HealthSnapshotCompetitionProjectionObservation,
+            executor=HealthSnapshotCompetitionProjectionExecutor(),
+        )]
+
+
+# --- health_complete_competition ---
+
+class HealthCompleteCompetitionAction(Action):
+    date: str = Field(description="Competition date to complete (YYYY-MM-DD)")
+    results: Dict[str, Any] = Field(description="Best successful lift attempts and total")
+    body_weight_kg: float = Field(description="Official weigh-in bodyweight in kg")
+    version: str = Field(default="current", description="Program version to update")
+    allow_retrospective: bool = Field(
+        default=True,
+        description="Backfill a missing T-1 snapshot if it was not captured before completion",
+    )
+
+
+class HealthCompleteCompetitionObservation(Observation):
+    pass
+
+
+class HealthCompleteCompetitionExecutor(ToolExecutor[HealthCompleteCompetitionAction, HealthCompleteCompetitionObservation]):
+    def __call__(self, action: HealthCompleteCompetitionAction, conversation=None) -> HealthCompleteCompetitionObservation:
+        from core import health_complete_competition
+        result = _run_async(
+            health_complete_competition(
+                action.date,
+                action.results,
+                action.body_weight_kg,
+                action.version,
+                action.allow_retrospective,
+            )
+        )
+        return HealthCompleteCompetitionObservation.from_text(_format_result(result))
+
+
+class HealthCompleteCompetitionTool(ToolDefinition[HealthCompleteCompetitionAction, HealthCompleteCompetitionObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthCompleteCompetitionTool"]:
+        return [cls(
+            description=(
+                "Mark a competition as completed, store results, and compute PRR from the pre-competition snapshot."
+            ),
+            action_type=HealthCompleteCompetitionAction,
+            observation_type=HealthCompleteCompetitionObservation,
+            executor=HealthCompleteCompetitionExecutor(),
+        )]
+
+
 # --- health_update_diet_note ---
 
 class HealthUpdateDietNoteAction(Action):
@@ -1288,6 +1369,8 @@ register_tool("HealthGetOperatorPrefsTool", HealthGetOperatorPrefsTool)
 register_tool("HealthGetBreaksTool", HealthGetBreaksTool)
 register_tool("DaysUntilTool", DaysUntilTool)
 register_tool("HealthUpdateCompetitionTool", HealthUpdateCompetitionTool)
+register_tool("HealthSnapshotCompetitionProjectionTool", HealthSnapshotCompetitionProjectionTool)
+register_tool("HealthCompleteCompetitionTool", HealthCompleteCompetitionTool)
 register_tool("HealthUpdateDietNoteTool", HealthUpdateDietNoteTool)
 register_tool("HealthUpdateSupplementsTool", HealthUpdateSupplementsTool)
 register_tool("HealthCreateSessionTool", HealthCreateSessionTool)
@@ -2039,6 +2122,8 @@ def get_tools() -> List[Tool]:
         Tool(name="HealthGetBreaksTool"),
         Tool(name="DaysUntilTool"),
         Tool(name="HealthUpdateCompetitionTool"),
+        Tool(name="HealthSnapshotCompetitionProjectionTool"),
+        Tool(name="HealthCompleteCompetitionTool"),
         Tool(name="HealthUpdateDietNoteTool"),
         Tool(name="HealthUpdateSupplementsTool"),
         Tool(name="HealthCreateSessionTool"),
@@ -2229,6 +2314,34 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                     "patch": {"type": "object", "description": "Fields to update (targets, status, notes, etc.)"},
                 },
                 "required": ["date", "patch"],
+            },
+        },
+        "health_snapshot_competition_projection": {
+            "name": "health_snapshot_competition_projection",
+            "description": "Snapshot projected maxes 7 days before a competition and optionally backfill missed snapshots.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Snapshot date (YYYY-MM-DD)"},
+                    "version": {"type": "string", "description": "Program version to update", "default": "current"},
+                    "allow_retrospective": {"type": "boolean", "description": "Allow backfilling a missed snapshot", "default": False},
+                },
+                "required": ["date"],
+            },
+        },
+        "health_complete_competition": {
+            "name": "health_complete_competition",
+            "description": "Mark a competition as completed and compute PRR from the stored snapshot.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "Competition date to complete (YYYY-MM-DD)"},
+                    "results": {"type": "object", "description": "Best successful lift attempts and total"},
+                    "body_weight_kg": {"type": "number", "description": "Official weigh-in bodyweight in kg"},
+                    "version": {"type": "string", "description": "Program version to update", "default": "current"},
+                    "allow_retrospective": {"type": "boolean", "description": "Allow backfilling a missing T-1 snapshot", "default": True},
+                },
+                "required": ["date", "results", "body_weight_kg"],
             },
         },
         "health_update_diet_note": {
@@ -3202,6 +3315,8 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         health_get_phases,
         health_get_current_maxes,
         health_update_competition as do_update_competition,
+        health_snapshot_competition_projection as do_snapshot_competition_projection,
+        health_complete_competition as do_complete_competition,
         health_update_diet_note as do_update_diet_note,
         health_update_supplements as do_update_supplements,
         health_create_session as do_create_session,
@@ -3262,6 +3377,8 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "health_get_phases": lambda: health_get_phases(),
         "health_get_current_maxes": lambda: health_get_current_maxes(),
         "health_update_competition": lambda: do_update_competition(args["date"], args["patch"]),
+        "health_snapshot_competition_projection": lambda: do_snapshot_competition_projection(args["date"], args.get("version", "current"), args.get("allow_retrospective", False)),
+        "health_complete_competition": lambda: do_complete_competition(args["date"], args["results"], args["body_weight_kg"], args.get("version", "current"), args.get("allow_retrospective", True)),
         "health_update_diet_note": lambda: do_update_diet_note(args["date"], args["notes"]),
         "health_update_supplements": lambda: do_update_supplements(args["patch"]),
         "health_create_session": lambda: do_create_session(args["date"], args["day"], args["week_number"], args.get("exercises"), args.get("session_notes", "")),

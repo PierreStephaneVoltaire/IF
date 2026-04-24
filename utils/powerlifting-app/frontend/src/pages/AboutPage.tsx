@@ -44,7 +44,10 @@ export default function AboutPage() {
           <Text size="lg" c="dimmed" maw={800}>
             A single-athlete portal for preparing powerlifting competitions. It quantifies
             readiness, peaking trajectory, and attempt selection from the data produced by
-            actual training — not from generic templates or coaching heuristics.
+            actual training — not from generic templates or coaching heuristics. The
+            current peaking layer also tracks projection calibration (PRR), volume
+            landmarks, and specificity bands so the meet build stays tied to recent meet
+            outcomes rather than stale assumptions.
           </Text>
         </Stack>
 
@@ -55,13 +58,14 @@ export default function AboutPage() {
           <Stack gap="md">
             <Title order={2} size="h3">What this is</Title>
             <Text>
-            A personal performance portal focused on one question: will the current block
-            put the athlete on the platform ready to hit a planned total? It ingests
-            planned and logged sessions (sets, reps, kilograms, RPE, failed sets), per-session
-            bodyweight, pre-session wellness, competition attempts and results, per-lift style
-            profiles, and athlete body metrics. From those, it computes e1RM trajectories,
-            DOTS progression, fatigue dimensions, Banister form, weekly monotony/strain,
-            decoupling, taper quality, readiness, and attempt selection for the upcoming meet.
+              A personal performance portal focused on one question: will the current block
+              put the athlete on the platform ready to hit a planned total? It ingests
+              planned and logged sessions (sets, reps, kilograms, RPE, failed sets), per-session
+              bodyweight, pre-session wellness, competition attempts and results, per-lift style
+              profiles, and athlete body metrics. From those, it computes e1RM trajectories,
+              DOTS progression, fatigue dimensions, Banister form, weekly monotony/strain,
+              decoupling, projection calibration, volume landmarks, specificity bands,
+              taper quality, readiness, and attempt selection for the upcoming meet.
             </Text>
             <Alert icon={<ShieldCheck size={16} />} color="blue" title="Signal over friction">
               Per-meal macros, per-night sleep scores, continuous heart rate, and minute-level
@@ -88,7 +92,8 @@ export default function AboutPage() {
               <List.Item>
                 <b>Statistical engine.</b> Deterministic math: e1RM, DOTS, INOL, EWMA ACWR,
                 fatigue index, Theil-Sen progression with fit quality, diminishing-returns
-                projection, attempt selection, readiness score.
+                projection, PRR calibration, volume landmarks, specificity bands, attempt
+                selection, readiness score.
               </List.Item>
               <List.Item>
                 <b>AI reasoning layer.</b> Seven focused entry points: fatigue-profile

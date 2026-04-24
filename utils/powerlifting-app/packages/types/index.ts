@@ -115,11 +115,25 @@ export interface Competition {
   weight_class_kg: number
   body_weight_kg?: number  // Actual weigh-in weight for completed competitions
   targets?: LiftResults    // For upcoming competitions
-  results?: LiftResults    // For completed competitions
+  projected_at_t_minus_1w?: LiftResults
+  projection_snapshot_date?: string
+  results?: CompetitionResults    // For completed competitions
   notes?: string
   decision_date?: string | null
   between_comp_plan?: BetweenCompPlan
   comp_day_protocol?: CompDayProtocol
+}
+
+export interface CompetitionPrr {
+  squat: number | null
+  bench: number | null
+  deadlift: number | null
+  total: number | null
+}
+
+export interface CompetitionResults extends LiftResults {
+  projected_at_t_minus_1w?: LiftResults
+  prr?: CompetitionPrr
 }
 
 export interface BetweenCompPlan {

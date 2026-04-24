@@ -52,6 +52,71 @@ export interface TaperQualityAnalysis {
   }
 }
 
+export interface ProjectionCalibration {
+  calibrated: boolean
+  meets: number
+  median_prr: number | null
+  lambda_multiplier: number | null
+}
+
+export interface VolumeLandmark {
+  mv: number | null
+  mev: number | null
+  mav: number | null
+  mrv: number | null
+  confidence: 'low' | 'medium' | 'high'
+}
+
+export interface AnalyticsAlert {
+  severity: 'info' | 'caution' | 'warning'
+  source: 'acwr' | 'fatigue' | 'readiness' | 'projection' | 'specificity' | 'banister' | 'decoupling' | 'monotony'
+  message: string
+  raw_detail: string
+}
+
+export interface PeakingTimelineSeriesPoint {
+  date: string
+  actual_tsb: number | null
+  projected_tsb: number | null
+}
+
+export interface PeakingTimelineSpecificityPoint {
+  date: string
+  narrow: number
+  broad: number
+  weeks_to_comp: number
+  expected_band?: {
+    weeks_to_comp: number | null
+    narrow: { min: number; max: number }
+    broad: { min: number; max: number }
+  } | null
+}
+
+export interface PeakingTimelineBandSegment {
+  label: string
+  start_date: string
+  end_date: string
+  narrow: { min: number; max: number }
+  broad: { min: number; max: number }
+}
+
+export interface PeakingTimeline {
+  status: 'on_track' | 'misaligned' | 'significant_deviation' | 'insufficient_data'
+  status_color: 'green' | 'yellow' | 'red' | 'gray'
+  status_label: string
+  status_message: string
+  reason?: string
+  comp_date: string | null
+  current_date: string
+  current_tsb: number | null
+  peak_date: string | null
+  peak_delta_days: number | null
+  peak_window: { min: number; max: number }
+  series: PeakingTimelineSeriesPoint[]
+  specificity_points: PeakingTimelineSpecificityPoint[]
+  specificity_bands: PeakingTimelineBandSegment[]
+}
+
 export interface WeeklyAnalysis {
   week: number
   block: string
@@ -94,6 +159,7 @@ export interface WeeklyAnalysis {
     comp_name?: string
   }>
   projection_reason: string | null
+  projection_calibration?: ProjectionCalibration
   flags: string[]
   sessions_analyzed: number
   exercise_stats: Record<string, {
@@ -137,7 +203,17 @@ export interface WeeklyAnalysis {
     broad: number
     total_sets: number
     sbd_sets: number
+    secondary_sets?: number
+    expected_band?: {
+      weeks_to_comp: number | null
+      narrow: { min: number; max: number }
+      broad: { min: number; max: number }
+    } | null
+    narrow_status?: 'below_expected' | 'within_expected' | 'above_expected' | 'unknown'
+    broad_status?: 'below_expected' | 'within_expected' | 'above_expected' | 'unknown'
+    flags?: string[]
   }
+  volume_landmarks?: Record<'squat' | 'bench' | 'deadlift', VolumeLandmark | InsufficientDataResponse>
   readiness_score?: {
     score: number
     zone: string
@@ -160,6 +236,8 @@ export interface WeeklyAnalysis {
     second: number
     third: number
   }> & { total?: number; attempt_pct_used?: { opener: number; second: number; third: number } }
+  alerts: AnalyticsAlert[]
+  peaking_timeline?: PeakingTimeline
 }
 
 export interface CorrelationFinding {

@@ -57,8 +57,8 @@ class TemplateStore:
         if "Item" not in resp:
             return None
         item = dict(resp["Item"])
-        item.pop("pk", None)
-        item.pop("sk", None)
+        item["pk"] = item.get("pk", self._pk)
+        item["sk"] = item.get("sk", sk)
         return item
 
     async def get_template(self, sk: str) -> dict | None:

@@ -42,9 +42,11 @@ fit_quality = 1 - MAD(residuals) / MAD(series)`,
   {
     id: 'competition_projection',
     title: 'Competition Projection',
-    summary: 'Diminishing-returns projection from current maxes. Clamped to a time-scaled ceiling that tops out at 30%.',
-    formula: `C_max = [E_now + delta_w * lambda * (1 - lambda^n) / (1 - lambda)] * P
-ceiling_pct = 10% + 1% per 2 weeks beyond 8, capped at 30%
+    summary: 'Diminishing-returns projection from current maxes. Uses PRR-calibrated lambda and clamps gain at a time-scaled ceiling that tops out at 20%.',
+    formula: `C_max = [E_now + delta_w * lambda_effective * (1 - lambda_effective^n) / (1 - lambda_effective)] * P
+lambda_effective = min(lambda_tier * lambda_multiplier, 0.995)
+lambda_multiplier = clamp(median(PRR_total over last 3 completed meets), 0.92, 1.05)
+ceiling_pct = min(20%, 10% + 0.5% * max(0, weeks_to_comp - 8))
 clamped to [E_now, E_now * (1 + ceiling_pct)]
 
 lambda: DOTS < 300 -> 0.96, 300-400 -> 0.90, >= 400 -> 0.85
@@ -56,6 +58,46 @@ n = weeks_remaining - taper_weeks - planned_deloads`,
       { name: 'lambda', description: 'Diminishing returns decay factor' },
       { name: 'P', description: 'Peaking factor based on DOTS level' },
       { name: 'n', description: 'Effective training weeks remaining' },
+    ],
+  },
+  {
+    id: 'projection_calibration',
+    title: 'Projection Calibration (PRR)',
+    summary: 'Post-meet calibration of projection decay using Projection-to-Result Ratio (PRR) from recent completed competitions.',
+    formula: `PRR_lift = actual_lift / projected_at_t_minus_1w_lift
+PRR_total = actual_total / projected_total (only when all 3 lifts are valid)
+lambda_multiplier = clamp(median(PRR_total over last 3 completed meets), 0.92, 1.05)
+Calibrated if at least 2 completed meets have valid total PRR`,
+    variables: [
+      { name: 'actual_lift', description: 'Completed meet result for one lift' },
+      { name: 'projected_at_t_minus_1w_lift', description: 'Snapshot projection taken 1 week before the meet' },
+      { name: 'PRR_total', description: 'Total PRR from the completed meet' },
+      { name: 'lambda_multiplier', description: 'Per-athlete projection multiplier derived from recent PRR' },
+    ],
+    thresholds: [
+      { label: 'Calibrated', value: '>= 2 completed meets', flag: 'Projection decay uses athlete-specific PRR history' },
+      { label: 'Clamp', value: '0.92 - 1.05', flag: 'Prevents overreacting to outlier meets' },
+    ],
+  },
+  {
+    id: 'volume_landmarks',
+    title: 'Volume Landmarks',
+    summary: 'Per-lift MV / MEV / MAV / MRV estimates from whole-program history, excluding deload and break weeks.',
+    formula: `weekly_sets_bin = floor(weekly_sets / 2) * 2
+MV = first bin with delta_e1rm >= 0
+MEV = first bin with delta_e1rm > 0
+MAV = bin with max delta_e1rm
+MRV = first bin where next_week_fi > 0.60 or delta_e1rm < 0`,
+    variables: [
+      { name: 'weekly_sets', description: 'Main-lift sets accumulated inside a training week' },
+      { name: 'delta_e1rm', description: 'Week-over-week main-lift e1RM change' },
+      { name: 'next_week_fi', description: 'Fatigue index for the following week' },
+      { name: 'history_weeks', description: 'Eligible weeks with lift data after excluding deloads and breaks' },
+    ],
+    thresholds: [
+      { label: 'Low confidence', value: '12 - 17 weeks', flag: 'Bare minimum history for a first-pass landmark estimate' },
+      { label: 'Medium confidence', value: '18 - 25 weeks', flag: 'More stable landmark estimate' },
+      { label: 'High confidence', value: '26+ weeks', flag: 'Best-supported landmark estimate' },
     ],
   },
   {
@@ -253,13 +295,20 @@ Light: RI < 0.70`,
   {
     id: 'specificity_ratio',
     title: 'Specificity Ratio',
-    summary: 'Measures how much training is directly sport-specific (SBD) vs general.',
+    summary: 'Measures how much training is directly sport-specific (SBD) vs broad support work, and shows an expected band when weeks-to-comp is known.',
     formula: `SR_narrow = SBD sets / total sets
-SR_broad = (SBD + secondary category) / total sets`,
+SR_broad = (SBD + secondary category) / total sets
+Expected band selected by weeks_to_comp:
+  16+ weeks  -> narrow 0.30-0.50, broad 0.60-0.75
+  12-16 weeks -> narrow 0.40-0.55, broad 0.65-0.80
+  8-12 weeks  -> narrow 0.50-0.65, broad 0.75-0.85
+  4-8 weeks   -> narrow 0.60-0.75, broad 0.80-0.90
+  0-4 weeks   -> narrow 0.70-0.85, broad 0.85-0.95`,
     variables: [
       { name: 'SBD sets', description: 'Sets of squat, bench, or deadlift' },
       { name: 'secondary', description: 'Same-category exercises (e.g. close-grip bench)' },
       { name: 'total sets', description: 'All working sets across all exercises' },
+      { name: 'weeks_to_comp', description: 'Weeks remaining until the next competition, if one exists' },
     ],
   },
   {
