@@ -1,0 +1,342 @@
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useProgramStore } from '@/store/programStore'
+import { useSettingsStore } from '@/store/settingsStore'
+import { useUiStore } from '@/store/uiStore'
+import { groupSessionsByWeek, formatDateShort, getDayOfWeek } from '@/utils/dates'
+import { displayWeight } from '@/utils/units'
+import { phaseColor } from '@/utils/phases'
+import { normalizeExerciseName } from '@/utils/volume'
+import { Check, Dumbbell, Plus } from 'lucide-react'
+import {
+  Paper, Title, Text, Group, Stack, Button, ActionIcon,
+  Select, Modal, Loader, Center, Box,
+} from '@mantine/core'
+import { DatePickerInput } from '@mantine/dates'
+import type { Session } from '@powerlifting/types'
+
+function countUniqueExerciseNames(session: Session): number {
+  const entries = session.exercises.length > 0 ? session.exercises : session.planned_exercises ?? []
+  return new Set(entries.map((exercise) => normalizeExerciseName(exercise.name))).size
+}
+
+interface SessionsCompactViewProps {
+  backTo?: string
+}
+
+export function SessionsCompactView({ backTo = '/sessions?view=Compact' }: SessionsCompactViewProps) {
+  const { program, isLoading, createSession } = useProgramStore()
+  const { unit } = useSettingsStore()
+  const { pushToast } = useUiStore()
+  const navigate = useNavigate()
+  const [block, setBlock] = useState('current')
+  const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(new Set())
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newDate, setNewDate] = useState<string>('')
+
+  const availableBlocks = useMemo(() => {
+    if (!program) return ['current']
+    const blocks = new Set<string>()
+    for (const s of program.sessions) blocks.add(s.block ?? 'current')
+    return Array.from(blocks).sort()
+  }, [program])
+
+  const handleAddSession = async () => {
+    if (!newDate) {
+      pushToast({ message: 'Please select a date', type: 'error' })
+      return
+    }
+
+    try {
+      const dayOfWeek = getDayOfWeek(newDate)
+      const createdSession = await createSession({
+        date: newDate,
+        day: dayOfWeek,
+        exercises: [],
+      })
+      const currentSessions = useProgramStore.getState().program?.sessions ?? []
+      const createdIndex = createdSession.id
+        ? currentSessions.findIndex((session) => session.id === createdSession.id)
+        : currentSessions.reduce(
+            (found, session, idx) => (session.date === createdSession.date ? idx : found),
+            -1
+          )
+
+      pushToast({ message: 'Session created', type: 'success' })
+      setShowAddModal(false)
+      setNewDate('')
+      navigate(createdIndex >= 0 ? `/session/${createdSession.date}/${createdIndex}` : `/session/${createdSession.date}`, {
+        state: { backTo },
+      })
+    } catch {
+      pushToast({ message: 'Failed to create session', type: 'error' })
+    }
+  }
+
+  const toggleWeek = (week: number) => {
+    setExpandedWeeks((prev) => {
+      const next = new Set(prev)
+      if (next.has(week)) next.delete(week)
+      else next.add(week)
+      return next
+    })
+  }
+
+  if (isLoading || !program) {
+    return (
+      <Center mih="50vh">
+        <Loader />
+      </Center>
+    )
+  }
+
+  const sessionsByWeek = groupSessionsByWeek(program.sessions, block)
+
+  return (
+    <Stack gap="md" style={{ position: 'relative' }}>
+      <Box
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          background: 'var(--mantine-color-body)',
+          borderBottom: '1px solid var(--mantine-color-default-border)',
+          paddingBottom: 8,
+          marginBottom: 0,
+        }}
+      >
+        <Group justify="space-between" wrap="nowrap">
+          <Title order={2}>Sessions by Week</Title>
+          <Group gap="xs" wrap="nowrap">
+            {availableBlocks.length > 1 && (
+              <Select
+                value={block}
+                onChange={(v) => setBlock(v || 'current')}
+                data={availableBlocks.map((b) => ({
+                  value: b,
+                  label: b === 'current' ? 'Current Block' : b,
+                }))}
+                size="sm"
+                style={{ width: 160 }}
+              />
+            )}
+            <Button
+              size="sm"
+              leftSection={<Plus size={16} />}
+              onClick={() => setShowAddModal(true)}
+              visibleFrom="sm"
+            >
+              Add Session
+            </Button>
+          </Group>
+        </Group>
+      </Box>
+
+      <ActionIcon
+        size="xl"
+        radius="xl"
+        variant="filled"
+        hiddenFrom="sm"
+        onClick={() => setShowAddModal(true)}
+        aria-label="Add Session"
+        style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 40,
+          width: 56,
+          height: 56,
+        }}
+      >
+        <Plus size={24} />
+      </ActionIcon>
+
+      <Modal
+        opened={showAddModal}
+        onClose={() => {
+          setShowAddModal(false)
+          setNewDate('')
+        }}
+        title="Add New Session"
+        centered
+      >
+        <Stack gap="md">
+          <Box>
+            <Text size="sm" c="dimmed" mb={4}>Date</Text>
+            <DatePickerInput
+              value={newDate || null}
+              valueFormat="YYYY-MM-DD"
+              onChange={(d) => setNewDate(d || '')}
+            />
+          </Box>
+          <Group justify="flex-end" gap="xs">
+            <Button
+              variant="default"
+              onClick={() => {
+                setShowAddModal(false)
+                setNewDate('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleAddSession}>
+              Create Session
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Stack gap="xs">
+        {Array.from(sessionsByWeek.entries()).map(([week, sessions]) => {
+          const firstSession = sessions[0]
+          const phase = firstSession?.phase
+          const isExpanded = expandedWeeks.has(week)
+          const completedCount = sessions.filter((s) => s.completed).length
+          const phaseColorValue = phase ? phaseColor(phase, program.phases) : undefined
+
+          return (
+            <Paper key={week} withBorder>
+              <Box
+                component="button"
+                onClick={() => toggleWeek(week)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: 16,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <Text
+                  fw={500}
+                  style={{
+                    transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                    transition: 'transform 150ms ease',
+                    lineHeight: 1,
+                  }}
+                >
+                  &#9662;
+                </Text>
+
+                {phase && (
+                  <Box
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      backgroundColor: phaseColorValue,
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+
+                <Text fw={500}>Week {week}</Text>
+                <Text size="sm" c="dimmed">
+                  {phase?.name}
+                </Text>
+
+                <Box style={{ marginLeft: 'auto' }}>
+                  <Text size="sm" c="dimmed">
+                    {completedCount}/{sessions.length} completed
+                  </Text>
+                </Box>
+              </Box>
+
+              {isExpanded && (
+                <Box style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+                  {sessions.map((session) => {
+                    const previewExercises = session.exercises.length > 0 ? session.exercises : session.planned_exercises || []
+                    const isPlanned = session.exercises.length === 0 && (session.planned_exercises?.length ?? 0) > 0
+                    const uniqueExerciseCount = countUniqueExerciseNames(session)
+
+                    return (
+                      <Box
+                        key={`${session.date}-${session.id ?? session.week_number}`}
+                        component="button"
+                        onClick={() => navigate(program.sessions.indexOf(session) >= 0 ? `/session/${session.date}/${program.sessions.indexOf(session)}` : `/session/${session.date}`, {
+                          state: { backTo },
+                        })}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: 12,
+                          background: 'none',
+                          border: 'none',
+                          borderBottom: '1px solid var(--mantine-color-default-border)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <Box
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: 'var(--mantine-color-default)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {session.completed ? (
+                            <Check size={16} style={{ color: 'var(--mantine-color-primary-filled)' }} />
+                          ) : (
+                            <Dumbbell size={16} style={{ opacity: 0.6 }} />
+                          )}
+                        </Box>
+
+                        <Box style={{ flex: 1 }}>
+                          <Text fw={500}>{session.day}</Text>
+                          <Text size="sm" c="dimmed">
+                            {formatDateShort(session.date)}
+                          </Text>
+                        </Box>
+
+                        <Box style={{ flex: 1, textAlign: 'right' }}>
+                          <Text size="sm">
+                            {session.exercises.length > 0
+                              ? `${uniqueExerciseCount} exercise${uniqueExerciseCount !== 1 ? 's' : ''}`
+                              : isPlanned
+                                ? `${uniqueExerciseCount} planned`
+                                : 'No exercises'}
+                          </Text>
+                          {session.session_rpe !== null && (
+                            <Text size="xs" c="dimmed">
+                              RPE {session.session_rpe}
+                            </Text>
+                          )}
+                        </Box>
+
+                        <Box style={{ flex: 1, textAlign: 'right' }} visibleFrom="lg">
+                          {previewExercises.slice(0, 3).map((ex, idx) => (
+                            <Text key={idx} size="sm" c="dimmed" component="span">
+                              {ex.name}
+                              {ex.kg !== null && ` @ ${displayWeight(ex.kg, unit)}`}
+                              {idx < Math.min(previewExercises.length, 3) - 1 && ', '}
+                            </Text>
+                          ))}
+                          {previewExercises.length > 3 && (
+                            <Text size="sm" c="dimmed" component="span">
+                              {' '}+{previewExercises.length - 3} more
+                            </Text>
+                          )}
+                        </Box>
+                      </Box>
+                    )
+                  })}
+                </Box>
+              )}
+            </Paper>
+          )
+        })}
+      </Stack>
+    </Stack>
+  )
+}

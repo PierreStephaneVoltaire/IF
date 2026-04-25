@@ -2,6 +2,10 @@ import { KG_PLATES, LB_PLATES, KG_PLATE_COLORS, LB_PLATE_COLORS } from '@/consta
 import type { PlateLoadout } from '@powerlifting/types'
 import { kgToLb, lbToKg } from './units'
 
+function kgToLbExact(kg: number): number {
+  return parseFloat((kg * 2.20462).toFixed(2))
+}
+
 /**
  * Calculate the plate loadout for a target weight using a greedy algorithm.
  * All weights are in kg internally.
@@ -44,7 +48,8 @@ export function getPlateLoadout(
  */
 export function closestLbLoadout(
   targetKg: number,
-  barKg: number = 20
+  barKg: number = 20,
+  plates: readonly number[] = LB_PLATES
 ): {
   loadout: PlateLoadout
   targetLb: number
@@ -54,7 +59,7 @@ export function closestLbLoadout(
 } {
   const targetLb = kgToLb(targetKg)
   // Convert lb plates to kg for the greedy algorithm
-  const lbPlatesAsKg = LB_PLATES.map(lbToKg)
+  const lbPlatesAsKg = plates.map(lbToKg)
   const loadout = getPlateLoadout(targetKg, barKg, lbPlatesAsKg)
 
   return {
@@ -71,11 +76,17 @@ export function closestLbLoadout(
  */
 export function getPlateColor(plateKg: number, unit: 'kg' | 'lb' = 'kg'): string {
   if (unit === 'lb') {
-    // Convert back to lb to look up color
-    const lbPlate = Math.round(kgToLb(plateKg))
+    const lbPlate = kgToLbExact(plateKg)
     return LB_PLATE_COLORS[lbPlate] || '#6b7280'
   }
   return KG_PLATE_COLORS[plateKg] || '#6b7280'
+}
+
+export function formatPlateDenomination(plateKg: number, unit: 'kg' | 'lb' = 'kg'): string {
+  if (unit === 'lb') {
+    return kgToLbExact(plateKg).toString()
+  }
+  return plateKg.toString()
 }
 
 /**

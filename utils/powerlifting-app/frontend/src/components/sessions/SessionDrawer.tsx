@@ -1,17 +1,19 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
-import { Drawer, Button, Group, Stack, Paper, SimpleGrid, TextInput, NumberInput, Textarea, Autocomplete, ActionIcon, Text, Box, Table, Divider, SegmentedControl, Slider } from '@mantine/core'
+import { Drawer, Button, Group, Stack, Paper, SimpleGrid, NumberInput, Textarea, Autocomplete, ActionIcon, Text, Box, Table, Divider, SegmentedControl, Slider, Modal } from '@mantine/core'
 import { DatePickerInput } from '@mantine/dates'
 import { useProgramStore } from '@/store/programStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
-import { formatDateLong, getDayOfWeek } from '@/utils/dates'
+import { getDayOfWeek } from '@/utils/dates'
 import { displayWeight, toDisplayUnit, fromDisplayUnit } from '@/utils/units'
 import { phaseColor } from '@/utils/phases'
 import { fetchGlossary } from '@/api/client'
-import { X, Check, Save, RotateCcw, Plus, GripVertical, Trash2, Calendar, Film, Loader2, HeartPulse } from 'lucide-react'
-import type { Session, Exercise, SessionVideo, SessionWellness } from '@powerlifting/types'
+import { X, Check, Save, RotateCcw, Plus, GripVertical, Trash2, Calendar, Film, HeartPulse, ArrowLeft, Calculator } from 'lucide-react'
+import type { Session, Exercise, SessionVideo, SessionWellness, GlossaryExercise } from '@powerlifting/types'
 import VideoGrid from './VideoGrid'
 import VideoUploadModal from './VideoUploadModal'
+import SessionToolkitModal from './SessionToolkitModal'
+import { normalizeExerciseName } from '@/utils/volume'
 
 const WELLNESS_FIELDS: Array<{
   key: keyof Omit<SessionWellness, 'recorded_at'>
@@ -45,30 +47,49 @@ interface SessionDrawerProps {
   session: Session | null
   sessionIndex: number
   sessionArrayIndex: number
+  mode?: 'drawer' | 'page'
+  onSaveSuccess?: () => void
+  onDeleteSuccess?: () => void
 }
 
 export default function SessionDrawer({
   isOpen,
   onClose,
   session,
-  sessionIndex,
   sessionArrayIndex,
+  mode = 'drawer',
+  onSaveSuccess,
 }: SessionDrawerProps) {
-  const { program, updateSession, saveSession, rescheduleSession, deleteSession } = useProgramStore()
+  const { program, updateSession, saveSession, rescheduleSession } = useProgramStore()
   const { unit } = useSettingsStore()
   const { pushToast } = useUiStore()
   const [localSession, setLocalSession] = useState<Session | null>(null)
   const [originalDate, setOriginalDate] = useState<string>('')
   const [hasChanges, setHasChanges] = useState(false)
   const [showVideoUpload, setShowVideoUpload] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [glossaryNames, setGlossaryNames] = useState<string[]>([])
+  const [discardIntent, setDiscardIntent] = useState<'reset' | 'close' | null>(null)
+  const [glossary, setGlossary] = useState<GlossaryExercise[]>([])
+  const [toolkitExercise, setToolkitExercise] = useState<{
+    name: string
+    targetKg: number | null
+    reps: number | null
+    isBarbell: boolean
+  } | null>(null)
 
   useEffect(() => {
     fetchGlossary()
-      .then((exercises) => setGlossaryNames(exercises.map((e) => e.name).sort()))
+      .then((exercises) => setGlossary(exercises))
       .catch(() => {})
   }, [])
+
+  const glossaryNames = useMemo(() => glossary.map((e) => e.name).sort(), [glossary])
+  const glossaryLookup = useMemo(() => {
+    const lookup = new Map<string, GlossaryExercise>()
+    for (const exercise of glossary) {
+      lookup.set(normalizeExerciseName(exercise.name), exercise)
+    }
+    return lookup
+  }, [glossary])
 
   // Initialize local state when session changes
   useEffect(() => {
@@ -97,6 +118,8 @@ export default function SessionDrawer({
     }
   }, [session])
 
+  const phaseColorValue = session && program ? phaseColor(session.phase, program.phases) : 'var(--mantine-color-gray-6)'
+
   if (!session || !localSession || !program) return null
   const wellness = localSession.wellness
 
@@ -114,8 +137,13 @@ export default function SessionDrawer({
       await saveSession(localSession.date, sessionArrayIndex)
 
       setHasChanges(false)
+      setOriginalDate(localSession.date)
       pushToast({ message: 'Session saved successfully', type: 'success' })
-      onClose()
+      if (onSaveSuccess) {
+        onSaveSuccess()
+      } else if (mode === 'drawer') {
+        onClose()
+      }
     } catch (err) {
       console.error(err)
       pushToast({ message: 'Failed to save session', type: 'error' })
@@ -127,12 +155,19 @@ export default function SessionDrawer({
     setHasChanges(false)
   }
 
+  const confirmDiscard = () => {
+    if (discardIntent === 'reset') {
+      handleDiscard()
+    } else if (discardIntent === 'close') {
+      handleDiscard()
+      onClose()
+    }
+    setDiscardIntent(null)
+  }
+
   const handleCloseWithCheck = () => {
     if (hasChanges) {
-      if (confirm('You have unsaved changes. Discard them?')) {
-        handleDiscard()
-        onClose()
-      }
+      setDiscardIntent('close')
     } else {
       onClose()
     }
@@ -260,88 +295,114 @@ export default function SessionDrawer({
     setHasChanges(true)
   }
 
-  const handleDelete = async () => {
-    if (!confirm('Delete this entire session? This cannot be undone.')) return
-    setIsDeleting(true)
-    try {
-      await deleteSession(originalDate, sessionArrayIndex)
-      pushToast({ message: 'Session deleted', type: 'success' })
-      onClose()
-    } catch (err) {
-      console.error(err)
-      pushToast({ message: 'Failed to delete session', type: 'error' })
-    } finally {
-      setIsDeleting(false)
-    }
+  const openToolkitForExercise = (exercise: Exercise) => {
+    const match = glossaryLookup.get(normalizeExerciseName(exercise.name))
+    setToolkitExercise({
+      name: exercise.name,
+      targetKg: exercise.kg,
+      reps: exercise.reps,
+      isBarbell: match ? ['barbell', 'hex_bar'].includes(match.equipment) : true,
+    })
   }
 
-  const phaseColorValue = phaseColor(session.phase, program.phases)
-
-  // Helper to parse date string "YYYY-MM-DD" to Date
-  const parseDateString = (ds: string): Date | null => {
-    if (!ds) return null
-    const parts = ds.split('-')
-    if (parts.length !== 3) return null
-    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
-  }
-
-  return (
-    <>
-      <Drawer
-        opened={isOpen}
-        onClose={handleCloseWithCheck}
-        position="right"
-        size="xl"
-        withCloseButton={false}
-        overlayProps={{ backgroundOpacity: 0.25 }}
-      >
-        {/* Header */}
-        <Box>
-          <Group justify="space-between" wrap="nowrap" align="flex-start">
-            <Group gap="sm" align="flex-start">
-              <Box
-                w={12}
-                h={12}
-                mt={4}
-                style={{ borderRadius: '50%', backgroundColor: phaseColorValue }}
-              />
-              <Box>
-                <Text fw={500}>{localSession.week}</Text>
-                <Group gap="xs">
-                  <Calendar size={16} style={{ opacity: 0.6 }} />
-                  <DatePickerInput
-                    value={localSession.date}
-                    valueFormat="YYYY-MM-DD"
-                    onChange={(d) => {
-                      if (d) updateDate(d as string)
-                    }}
-                    size="xs"
-                    style={{ width: 'auto' }}
-                  />
-                  <Text size="xs" c="dimmed">{localSession.day}</Text>
-                </Group>
-              </Box>
-            </Group>
-            <Group gap="xs">
-              <Button
-                variant={localSession.completed ? 'filled' : 'default'}
-                size="xs"
-                onClick={toggleComplete}
-                leftSection={localSession.completed ? <Check size={16} /> : undefined}
-              >
-                {localSession.completed ? 'Done' : 'Mark Done'}
-              </Button>
-              <ActionIcon variant="subtle" onClick={handleCloseWithCheck} size="lg">
-                <X size={20} />
-              </ActionIcon>
-            </Group>
+  const editorContent = (
+      <Stack gap="lg">
+        <Group justify="space-between" wrap="nowrap" align="flex-start">
+          <Group gap="sm" align="flex-start">
+            <Box
+              w={12}
+              h={12}
+              mt={6}
+              style={{ borderRadius: '50%', backgroundColor: phaseColorValue }}
+            />
+            <Box>
+              <Group gap="xs" align="center">
+                <Calendar size={16} style={{ opacity: 0.6 }} />
+                <DatePickerInput
+                  value={localSession.date}
+                  valueFormat="YYYY-MM-DD"
+                  onChange={(d) => {
+                    if (d) updateDate(d as string)
+                  }}
+                  size="sm"
+                  style={{ width: 'auto' }}
+                />
+              </Group>
+              <Text size="sm" c="dimmed" mt={4}>
+                {localSession.day}
+                {localSession.phase?.name ? ` • ${localSession.phase.name}` : ''}
+              </Text>
+            </Box>
           </Group>
-        </Box>
+          <ActionIcon variant="subtle" onClick={handleCloseWithCheck} size="lg" title={mode === 'page' ? 'Back' : 'Close'}>
+            {mode === 'page' ? <ArrowLeft size={20} /> : <X size={20} />}
+          </ActionIcon>
+        </Group>
 
-        <Divider my="sm" />
+        <Paper withBorder p="md" radius="md">
+          <Group justify="space-between" align="center" mb="sm">
+            <Group gap="xs">
+              <HeartPulse size={16} />
+              <Text size="sm" fw={600}>Subjective Wellness</Text>
+            </Group>
+            <SegmentedControl
+              size="xs"
+              value={localSession.wellness ? 'record' : 'skip'}
+              onChange={(value) => setWellnessMode(value === 'record')}
+              data={[
+                { label: 'Skip', value: 'skip' },
+                { label: 'Record', value: 'record' },
+              ]}
+            />
+          </Group>
 
-        {/* Exercises */}
-        <Stack gap="sm" style={{ flex: 1, overflowY: 'auto' }}>
+          {wellness ? (
+            <Stack gap="sm">
+              {WELLNESS_FIELDS.map((field) => (
+                <Box key={field.key}>
+                  <Group justify="space-between" mb={4}>
+                    <Text size="xs" c="dimmed">{field.label}</Text>
+                    <Text size="xs" fw={500}>{wellness[field.key] ?? 3}/5</Text>
+                  </Group>
+                  <Slider
+                    value={wellness[field.key]}
+                    onChange={(value) => updateWellness(field.key, value)}
+                    min={1}
+                    max={5}
+                    step={1}
+                    marks={[
+                      { value: 1, label: '1' },
+                      { value: 2, label: '2' },
+                      { value: 3, label: '3' },
+                      { value: 4, label: '4' },
+                      { value: 5, label: '5' },
+                    ]}
+                    color={field.key === 'soreness' || field.key === 'stress' ? 'orange' : 'blue'}
+                  />
+                </Box>
+              ))}
+              <Text size="xs" c="dimmed">
+                Higher scores are better. Soreness and stress are inverted in readiness math.
+              </Text>
+            </Stack>
+          ) : (
+            <Text size="xs" c="dimmed">No wellness captured for this session.</Text>
+          )}
+        </Paper>
+
+        <Paper withBorder p="md" radius="md">
+          <Group justify="space-between" align="center" mb="md">
+            <Text size="sm" fw={600}>Workout</Text>
+            <Button
+              variant="dashed"
+              onClick={addExercise}
+              leftSection={<Plus size={16} />}
+            >
+              Add Exercise
+            </Button>
+          </Group>
+
+          <Stack gap="sm">
           {/* Planned exercises reference */}
           {(localSession.planned_exercises?.length ?? 0) > 0 && (
             <Paper bg="var(--mantine-color-default)" p="xs" radius="md">
@@ -390,24 +451,35 @@ export default function SessionDrawer({
                     style={{ flex: 1 }}
                   />
                   {group.entries.length === 1 && (
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      onClick={() => removeExercise(group.entries[0].originalIndex)}
-                    >
-                      <Trash2 size={16} />
-                    </ActionIcon>
+                    <Group gap={4} wrap="nowrap">
+                      <ActionIcon
+                        variant="subtle"
+                        color="blue"
+                        onClick={() => openToolkitForExercise(group.entries[0].exercise)}
+                        title="Open toolkit"
+                      >
+                        <Calculator size={16} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        onClick={() => removeExercise(group.entries[0].originalIndex)}
+                      >
+                        <Trash2 size={16} />
+                      </ActionIcon>
+                    </Group>
                   )}
                 </Group>
                 {group.entries.length > 1 ? (
                   <Box style={{ overflowX: 'auto' }}>
-                    <Table fz="sm" mb={4} style={{ minWidth: 320 }}>
+                    <Table fz="sm" mb={4} style={{ minWidth: 360 }}>
                       <Table.Thead>
                         <Table.Tr>
                           <Table.Th w={80}>Sets</Table.Th>
                           <Table.Th w={80}>Reps</Table.Th>
                           <Table.Th w={96}>{unit}</Table.Th>
                           <Table.Th w={120} visibleFrom="sm">Failed Set</Table.Th>
+                          <Table.Th w={40} />
                           <Table.Th w={40} />
                         </Table.Tr>
                       </Table.Thead>
@@ -458,6 +530,17 @@ export default function SessionDrawer({
                               <Table.Td>
                                 <ActionIcon
                                   variant="subtle"
+                                  color="blue"
+                                  size="sm"
+                                  onClick={() => openToolkitForExercise(entry.exercise)}
+                                  title="Open toolkit"
+                                >
+                                  <Calculator size={14} />
+                                </ActionIcon>
+                              </Table.Td>
+                              <Table.Td>
+                                <ActionIcon
+                                  variant="subtle"
                                   color="red"
                                   size="sm"
                                   onClick={() => removeExercise(entry.originalIndex)}
@@ -467,7 +550,7 @@ export default function SessionDrawer({
                               </Table.Td>
                             </Table.Tr>
                             <Table.Tr>
-                              <Table.Td colSpan={5} pt={4} pb={12} style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+                              <Table.Td colSpan={6} pt={4} pb={12} style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
                                 {(entry.exercise.failed_sets || []).length > 0 && (
                                   <Box hiddenFrom="sm" mb="xs">
                                     <Group gap="xs">
@@ -508,7 +591,8 @@ export default function SessionDrawer({
                   </Box>
                 ) : (
                   <Box>
-                    <SimpleGrid cols={{ base: 3, sm: 3 }} spacing="xs" mb="xs">
+                    <Group justify="space-between" align="flex-start" mb="xs" wrap="nowrap">
+                      <SimpleGrid cols={{ base: 3, sm: 3 }} spacing="xs" style={{ flex: 1 }}>
                       <Box>
                         <Text size="xs" c="dimmed">Sets</Text>
                         <NumberInput
@@ -536,7 +620,16 @@ export default function SessionDrawer({
                           decimalScale={2}
                         />
                       </Box>
-                    </SimpleGrid>
+                      </SimpleGrid>
+                      <ActionIcon
+                        variant="subtle"
+                        color="blue"
+                        onClick={() => openToolkitForExercise(group.entries[0].exercise)}
+                        title="Open toolkit"
+                      >
+                        <Calculator size={16} />
+                      </ActionIcon>
+                    </Group>
                     
                     <Box mt="xs">
                       <Text size="xs" c="dimmed">Notes</Text>
@@ -576,17 +669,8 @@ export default function SessionDrawer({
             ))
           })()}
 
-          <Button
-            variant="dashed"
-            fullWidth
-            onClick={addExercise}
-            leftSection={<Plus size={16} />}
-          >
-            Add Exercise
-          </Button>
-
           {/* Videos Section */}
-          <Divider my="md" />
+          <Divider my="sm" />
           <Group justify="space-between" mb="sm">
             <Group gap="xs">
               <Film size={16} />
@@ -612,66 +696,12 @@ export default function SessionDrawer({
               No videos uploaded for this session
             </Text>
           )}
-        </Stack>
-
-        <Divider my="sm" />
-
-        {/* Subjective Wellness */}
-        <Paper withBorder p="sm" radius="md">
-          <Group justify="space-between" align="center" mb="sm">
-            <Group gap="xs">
-              <HeartPulse size={16} />
-              <Text size="sm" fw={500}>Subjective Wellness</Text>
-            </Group>
-            <SegmentedControl
-              size="xs"
-              value={localSession.wellness ? 'record' : 'skip'}
-              onChange={(value) => setWellnessMode(value === 'record')}
-              data={[
-                { label: 'Skip', value: 'skip' },
-                { label: 'Record', value: 'record' },
-              ]}
-            />
-          </Group>
-
-          {wellness ? (
-            <Stack gap="sm">
-              {WELLNESS_FIELDS.map((field) => (
-                <Box key={field.key}>
-                  <Group justify="space-between" mb={4}>
-                    <Text size="xs" c="dimmed">{field.label}</Text>
-                    <Text size="xs" fw={500}>{wellness[field.key] ?? 3}/5</Text>
-                  </Group>
-                  <Slider
-                    value={wellness[field.key]}
-                    onChange={(value) => updateWellness(field.key, value)}
-                    min={1}
-                    max={5}
-                    step={1}
-                    marks={[
-                      { value: 1, label: '1' },
-                      { value: 2, label: '2' },
-                      { value: 3, label: '3' },
-                      { value: 4, label: '4' },
-                      { value: 5, label: '5' },
-                    ]}
-                    color={field.key === 'soreness' || field.key === 'stress' ? 'orange' : 'blue'}
-                  />
-                </Box>
-              ))}
-              <Text size="xs" c="dimmed">
-                Higher scores are better. Soreness and stress are inverted in readiness math.
-              </Text>
-            </Stack>
-          ) : (
-            <Text size="xs" c="dimmed">No wellness captured for this session.</Text>
-          )}
+          </Stack>
         </Paper>
 
-        <Divider my="sm" />
-
-        {/* Footer */}
-        <Stack gap="sm">
+        <Paper withBorder p="md" radius="md">
+          <Stack gap="sm">
+            <Text size="sm" fw={600}>Session Summary</Text>
           <SimpleGrid cols={2} spacing="sm">
             <Box>
               <Text size="xs" c="dimmed">Session RPE</Text>
@@ -713,38 +743,74 @@ export default function SessionDrawer({
               size="sm"
             />
           </Box>
+          </Stack>
+        </Paper>
 
-          {/* Actions */}
-          <Group>
-            <ActionIcon
-              variant="subtle"
-              color="red"
-              onClick={handleDelete}
-              disabled={isDeleting}
-              size="lg"
-            >
-              {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
-            </ActionIcon>
-            <Button
-              variant="default"
-              onClick={handleDiscard}
-              disabled={!hasChanges}
-              leftSection={<RotateCcw size={16} />}
-              style={{ flex: 1 }}
-            >
-              Discard
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={!hasChanges}
-              leftSection={<Save size={16} />}
-              style={{ flex: 1 }}
-            >
-              Save
-            </Button>
+        <Group justify="flex-end" wrap="wrap">
+          <Button
+            variant="default"
+            color="gray"
+            onClick={() => setDiscardIntent('reset')}
+            disabled={!hasChanges}
+            leftSection={<RotateCcw size={16} />}
+          >
+            Discard
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={!hasChanges}
+            leftSection={<Save size={16} />}
+          >
+            Save
+          </Button>
+          <Button
+            variant={localSession.completed ? 'filled' : 'default'}
+            onClick={toggleComplete}
+            leftSection={<Check size={16} />}
+          >
+            {localSession.completed ? 'Done' : 'Mark Done'}
+          </Button>
+        </Group>
+      </Stack>
+  )
+
+  return (
+    <>
+      {mode === 'drawer' ? (
+        <Drawer
+          opened={isOpen}
+          onClose={handleCloseWithCheck}
+          position="right"
+          size="xl"
+          withCloseButton={false}
+          overlayProps={{ backgroundOpacity: 0.25 }}
+        >
+          {editorContent}
+        </Drawer>
+      ) : (
+        <Box>
+          {editorContent}
+        </Box>
+      )}
+
+      <Modal
+        opened={discardIntent !== null}
+        onClose={() => setDiscardIntent(null)}
+        title="Discard changes?"
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            {discardIntent === 'close'
+              ? 'You have unsaved changes. Discard them and leave this page?'
+              : 'Discard all unsaved changes to this session?'}
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDiscardIntent(null)}>Cancel</Button>
+            <Button color="red" onClick={confirmDiscard}>Discard</Button>
           </Group>
         </Stack>
-      </Drawer>
+      </Modal>
 
       {/* Video Upload Modal */}
       <VideoUploadModal
@@ -765,6 +831,15 @@ export default function SessionDrawer({
           })
           setShowVideoUpload(false)
         }}
+      />
+
+      <SessionToolkitModal
+        opened={toolkitExercise !== null}
+        onClose={() => setToolkitExercise(null)}
+        exerciseName={toolkitExercise?.name || ''}
+        targetKg={toolkitExercise?.targetKg ?? null}
+        reps={toolkitExercise?.reps ?? null}
+        isBarbell={toolkitExercise?.isBarbell ?? true}
       />
     </>
   )

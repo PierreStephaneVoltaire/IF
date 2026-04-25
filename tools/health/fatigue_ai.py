@@ -1,6 +1,6 @@
 """LLM-based 4-dimensional fatigue profile estimation for exercises.
 
-Uses OpenRouter to call a fast model with tool calling to get structured
+Uses OpenRouter to call an extended-thinking model with tool calling to get structured
 fatigue profile estimates (axial, neural, peripheral, systemic).
 """
 from __future__ import annotations
@@ -10,7 +10,13 @@ import logging
 
 import httpx
 
-from config import LLM_BASE_URL, OPENROUTER_API_KEY, MODEL_ROUTER_MODEL
+from config import (
+    ESTIMATE_MODEL,
+    ESTIMATE_MODEL_REASONING_EFFORT,
+    ESTIMATE_MODEL_VERBOSITY,
+    LLM_BASE_URL,
+    OPENROUTER_API_KEY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +179,8 @@ def _build_user_message(
         parts.append(f"Primary muscles: {', '.join(exercise['primary_muscles'])}")
     if exercise.get("secondary_muscles"):
         parts.append(f"Secondary muscles: {', '.join(exercise['secondary_muscles'])}")
+    if exercise.get("tertiary_muscles"):
+        parts.append(f"Tertiary muscles: {', '.join(exercise['tertiary_muscles'])}")
     if exercise.get("cues"):
         parts.append(f"Cues: {', '.join(exercise['cues'])}")
     if exercise.get("notes"):
@@ -197,7 +205,7 @@ async def estimate_fatigue_profile(
     """
     try:
         user_msg = _build_user_message(exercise, program_meta=program_meta, lift_profiles=lift_profiles)
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 f"{LLM_BASE_URL}/chat/completions",
                 headers={
@@ -205,11 +213,16 @@ async def estimate_fatigue_profile(
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": MODEL_ROUTER_MODEL,
+                    "model": ESTIMATE_MODEL,
                     "messages": [
                         {"role": "system", "content": _SYSTEM_PROMPT},
                         {"role": "user", "content": user_msg},
                     ],
+                    "reasoning": {
+                        "enabled": True,
+                        "effort": ESTIMATE_MODEL_REASONING_EFFORT,
+                    },
+                    "verbosity": ESTIMATE_MODEL_VERBOSITY,
                     "tools": [_TOOL_SCHEMA],
                     "tool_choice": {"type": "function", "function": {"name": "estimate_fatigue_profile"}},
                 },

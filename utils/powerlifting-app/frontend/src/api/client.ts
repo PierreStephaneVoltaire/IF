@@ -479,6 +479,7 @@ export async function estimateFatigueProfile(exercise: {
   equipment?: string
   primary_muscles?: string[]
   secondary_muscles?: string[]
+  tertiary_muscles?: string[]
   cues?: string[]
   notes?: string
 }): Promise<FatigueProfile & { reasoning: string }> {
@@ -486,6 +487,35 @@ export async function estimateFatigueProfile(exercise: {
     '/analytics/fatigue-profile/estimate',
     exercise
   )
+  return res.data.data
+}
+
+export async function estimateMuscleGroups(exercise: {
+  name: string
+  category?: string
+  equipment?: string
+  cues?: string[]
+  notes?: string
+  primary_muscles?: string[]
+  secondary_muscles?: string[]
+  tertiary_muscles?: string[]
+  lift_profiles?: LiftProfile[]
+}): Promise<{
+  primary_muscles: string[]
+  secondary_muscles: string[]
+  tertiary_muscles: string[]
+  reasoning: string
+}> {
+  const { lift_profiles, ...exercisePayload } = exercise
+  const res = await api.post<ApiResponse<{
+    primary_muscles: string[]
+    secondary_muscles: string[]
+    tertiary_muscles: string[]
+    reasoning: string
+  }>>('/analytics/muscle-groups/estimate', {
+    exercise: exercisePayload,
+    lift_profiles,
+  })
   return res.data.data
 }
 
@@ -627,6 +657,11 @@ export async function estimateExerciseE1rm(id: string): Promise<any> {
 
 export async function estimateExerciseFatigue(id: string): Promise<any> {
   const res = await api.post(`/exercises/${id}/estimate-fatigue`)
+  return res.data.data
+}
+
+export async function estimateExerciseMuscles(id: string): Promise<any> {
+  const res = await api.post(`/exercises/${id}/estimate-muscles`)
   return res.data.data
 }
 

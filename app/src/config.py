@@ -342,6 +342,14 @@ MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() =
 ANALYSIS_MODEL = os.getenv("ANALYSIS_MODEL", "anthropic/claude-sonnet-4-6")
 ANALYSIS_MODEL_THINKING_BUDGET = int(os.getenv("ANALYSIS_MODEL_THINKING_BUDGET", "16000"))
 
+# Model settings for user-facing health estimate flows (fatigue, muscle groups,
+# accessory e1RM backfill, lift-profile stimulus). These callers hit the raw
+# OpenRouter chat API directly, so they use reasoning.effort plus verbosity
+# rather than the SDK-only reasoning_effort field.
+ESTIMATE_MODEL = os.getenv("ESTIMATE_MODEL", ANALYSIS_MODEL)
+ESTIMATE_MODEL_REASONING_EFFORT = os.getenv("ESTIMATE_MODEL_REASONING_EFFORT", "xhigh")
+ESTIMATE_MODEL_VERBOSITY = os.getenv("ESTIMATE_MODEL_VERBOSITY", "max")
+
 # Fast model for import classification and resolution
 IMPORT_FAST_MODEL = os.getenv("IMPORT_FAST_MODEL", "anthropic/claude-haiku-4.5")
 
@@ -353,4 +361,3 @@ MODEL_SEED_INTERVAL = int(os.getenv("MODEL_SEED_INTERVAL", "3600"))  # 1 hour
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOG_FILE = os.getenv("LOG_FILE", "./logs/app.log")
-

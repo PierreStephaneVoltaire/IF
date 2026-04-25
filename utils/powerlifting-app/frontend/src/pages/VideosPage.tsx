@@ -83,12 +83,12 @@ export default function VideosPage() {
             <Text fw={500} c="dimmed">No videos uploaded yet</Text>
             <Box
               component="a"
-              href="/calendar"
+              href="/sessions"
               style={{ textDecoration: 'none' }}
             >
               <Group gap={4}>
                 <Calendar size={14} />
-                <Text size="sm" c="blue">Go to Calendar</Text>
+                <Text size="sm" c="blue">Go to Sessions</Text>
               </Group>
             </Box>
           </Stack>

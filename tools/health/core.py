@@ -1444,7 +1444,7 @@ async def health_update_meta(updates: dict) -> dict:
     """Update program metadata fields.
 
     Allowed fields: program_name, comp_date, target_squat_kg, target_bench_kg,
-    target_dl_kg, target_total_kg, weight_class_kg, current_body_weight_kg,
+    target_dl_kg, target_total_kg, sex, weight_class_kg, current_body_weight_kg,
     federation, practicing_for, program_start.
 
     Args:
@@ -1459,7 +1459,7 @@ async def health_update_meta(updates: dict) -> dict:
     import copy
     allowed = {
         "program_name", "comp_date", "target_squat_kg", "target_bench_kg",
-        "target_dl_kg", "target_total_kg", "weight_class_kg",
+        "target_dl_kg", "target_total_kg", "sex", "weight_class_kg",
         "current_body_weight_kg", "federation", "practicing_for", "program_start",
     }
     unknown = set(updates.keys()) - allowed
@@ -2066,11 +2066,14 @@ async def program_unarchive(sk: str) -> dict:
 
 async def glossary_add(exercise: dict) -> dict:
     glossary_store = _get_glossary_store()
+    exercise.setdefault("tertiary_muscles", [])
     eid = await glossary_store.add_exercise(exercise)
     return {"status": "added", "id": eid}
 
 async def glossary_update(exercise_id: str, fields: dict) -> dict:
     glossary_store = _get_glossary_store()
+    if "tertiary_muscles" in fields and fields["tertiary_muscles"] is None:
+        fields["tertiary_muscles"] = []
     await glossary_store.update_exercise(exercise_id, fields)
     return {"status": "updated", "id": exercise_id}
 
@@ -2146,13 +2149,63 @@ async def glossary_estimate_fatigue(exercise_id: str) -> dict:
     program = await store.get_program()
     
     profile = await estimate_fatigue_profile(
-        ex["name"], 
+        ex,
         program_meta=program.get("meta", {}),
         lift_profiles=program.get("lift_profiles", [])
     )
     
     await glossary_store.update_exercise(exercise_id, {
-        "fatigue_profile": profile,
-        "fatigue_profile_source": "ai_estimated"
+        "fatigue_profile": {
+            "axial": profile.get("axial"),
+            "neural": profile.get("neural"),
+            "peripheral": profile.get("peripheral"),
+            "systemic": profile.get("systemic"),
+        },
+        "fatigue_profile_source": "ai_estimated",
+        "fatigue_profile_reasoning": profile.get("reasoning"),
     })
-    return {"status": "fatigue_estimated", "id": exercise_id, "profile": profile}
+    return {
+        "status": "fatigue_estimated",
+        "id": exercise_id,
+        "profile": profile,
+        "fatigue_profile": {
+            "axial": profile.get("axial"),
+            "neural": profile.get("neural"),
+            "peripheral": profile.get("peripheral"),
+            "systemic": profile.get("systemic"),
+        },
+        "reasoning": profile.get("reasoning"),
+    }
+
+async def glossary_estimate_muscles(exercise_id: str) -> dict:
+    from muscle_group_ai import estimate_muscle_groups
+
+    glossary_store = _get_glossary_store()
+    glossary = await glossary_store.get_glossary()
+    ex = next((e for e in glossary if e["id"] == exercise_id), None)
+    if not ex:
+        raise ValueError(f"Exercise not found: {exercise_id}")
+
+    store = _get_store()
+    program = await store.get_program()
+
+    estimate = await estimate_muscle_groups(
+        ex,
+        program_meta=program.get("meta", {}),
+        lift_profiles=program.get("lift_profiles", []),
+    )
+
+    await glossary_store.update_exercise(exercise_id, {
+        "primary_muscles": estimate.get("primary_muscles", []),
+        "secondary_muscles": estimate.get("secondary_muscles", []),
+        "tertiary_muscles": estimate.get("tertiary_muscles", []),
+    })
+
+    return {
+        "status": "muscles_estimated",
+        "id": exercise_id,
+        "primary_muscles": estimate.get("primary_muscles", []),
+        "secondary_muscles": estimate.get("secondary_muscles", []),
+        "tertiary_muscles": estimate.get("tertiary_muscles", []),
+        "reasoning": estimate.get("reasoning", ""),
+    }

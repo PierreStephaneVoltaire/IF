@@ -1373,10 +1373,16 @@ Current model/config variables:
   correlation analysis, program evaluation, template evaluation, import parsing
 - `ANALYSIS_MODEL_THINKING_BUDGET`
   thinking budget for those heavier calls
+- `ESTIMATE_MODEL`
+  fatigue estimation, muscle-group estimation, lift-profile estimate flows, accessory e1RM backfill
+- `ESTIMATE_MODEL_REASONING_EFFORT`
+  reasoning effort for those estimate calls, default `xhigh`
+- `ESTIMATE_MODEL_VERBOSITY`
+  output effort/detail for those estimate calls, default `max`
 - `MODEL_ROUTER_MODEL`
-  lift-profile review/rewrite/estimate and fatigue-profile estimation
+  lightweight routing and non-estimate health helpers
 - `IMPORT_FAST_MODEL`
-  import classification, glossary resolution, accessory e1RM backfill
+  import classification and glossary resolution
 
 ### 1. Exercise fatigue-profile estimation
 

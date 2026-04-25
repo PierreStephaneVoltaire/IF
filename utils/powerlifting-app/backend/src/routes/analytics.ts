@@ -42,7 +42,25 @@ analyticsRouter.get('/correlation', async (req, res) => {
 // POST /api/analytics/fatigue-profile/estimate
 analyticsRouter.post('/fatigue-profile/estimate', async (req, res) => {
   try {
-    const data = await invokeToolDirect('fatigue_profile_estimate', { exercise: req.body })
+    const exercise = req.body?.exercise ?? req.body
+    const data = await invokeToolDirect('fatigue_profile_estimate', { exercise, pk: req.effectivePk })
+    res.json({ data, error: null })
+  } catch (err) {
+    res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })
+  }
+})
+
+// POST /api/analytics/muscle-groups/estimate
+analyticsRouter.post('/muscle-groups/estimate', async (req, res) => {
+  try {
+    const body = req.body ?? {}
+    const exercise = body.exercise ?? body
+    const lift_profiles = Array.isArray(body.lift_profiles) ? body.lift_profiles : undefined
+    const data = await invokeToolDirect('muscle_group_estimate', {
+      exercise,
+      ...(lift_profiles ? { lift_profiles } : {}),
+      pk: req.effectivePk,
+    })
     res.json({ data, error: null })
   } catch (err) {
     res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })

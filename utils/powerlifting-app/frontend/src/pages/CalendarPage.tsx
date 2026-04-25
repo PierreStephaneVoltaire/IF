@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Group,
   Badge,
@@ -7,7 +8,6 @@ import {
   Text,
   SegmentedControl,
   Box,
-  ScrollArea,
   ThemeIcon,
   UnstyledButton,
   Center,
@@ -15,54 +15,57 @@ import {
 import { Calendar } from '@mantine/dates'
 import { useProgramStore } from '@/store/programStore'
 import { phaseColor } from '@/utils/phases'
-import SessionDrawer from '@/components/sessions/SessionDrawer'
 import { startOfWeek, format } from 'date-fns'
+import { normalizeExerciseName } from '@/utils/volume'
 import { Check } from 'lucide-react'
 import dayjs from 'dayjs'
+import type { Session } from '@powerlifting/types'
 import MuscleVolumeChart from '@/components/charts/MuscleVolumeChart'
+import { SessionsCompactView } from '@/components/sessions/SessionsCompactView'
 
-type ViewType = 'Month' | 'Agenda'
+type ViewType = 'Month' | 'Agenda' | 'Compact'
+
+function countUniqueExerciseNames(session: Session): number {
+  const entries = session.exercises.length > 0 ? session.exercises : session.planned_exercises ?? []
+  return new Set(entries.map((exercise) => normalizeExerciseName(exercise.name))).size
+}
+
+function sessionRoute(session: Session, index: number): string {
+  return index >= 0 ? `/session/${session.date}/${index}` : `/session/${session.date}`
+}
 
 export default function CalendarPage() {
   const { program, isLoading } = useProgramStore()
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [view, setView] = useState<ViewType>('Agenda')
-  const [isMobile, setIsMobile] = useState(
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false
-  )
-  const [monthDate, setMonthDate] = useState<string>(new Date().toISOString().slice(0, 10))
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view = (() => {
+    const raw = searchParams.get('view')
+    return raw === 'Month' || raw === 'Compact' || raw === 'Agenda' ? raw : 'Agenda'
+  })() as ViewType
 
-  useEffect(() => {
-    const mql = window.matchMedia('(max-width: 639px)')
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
-    mql.addEventListener('change', handler)
-    return () => mql.removeEventListener('change', handler)
-  }, [])
-
-  useEffect(() => {
-    if (isMobile && view === 'Month') setView('Agenda')
-  }, [isMobile, view])
-
-  // Build a map of date string -> session for fast lookup
   const sessionsByDate = useMemo(() => {
-    const map = new Map<string, typeof program extends null ? never : NonNullable<typeof program>['sessions'][number]>()
+    const map = new Map<string, Session>()
     if (!program) return map
     for (const session of program.sessions) {
-      map.set(session.date, session)
+      if ((session.block ?? 'current') === 'current') {
+        map.set(session.date, session)
+      }
     }
     return map
   }, [program])
 
-  // Group sessions by week for agenda view
-  const weeklyGroups = useMemo(() => {
+  const currentSessions = useMemo(() => {
     if (!program) return []
-    const groups = new Map<string, typeof program['sessions']>()
-
-    const sorted = [...program.sessions]
-      .filter(s => (s.block ?? 'current') === 'current')
+    return program.sessions
+      .filter((session) => (session.block ?? 'current') === 'current')
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [program])
 
-    for (const session of sorted) {
+  const weeklyGroups = useMemo(() => {
+    if (!currentSessions.length) return []
+    const groups = new Map<string, Session[]>()
+
+    for (const session of currentSessions) {
       const weekStart = format(startOfWeek(new Date(session.date), { weekStartsOn: 0 }), 'yyyy-MM-dd')
       const existing = groups.get(weekStart)
       if (existing) {
@@ -77,24 +80,18 @@ export default function CalendarPage() {
       weekLabel: format(new Date(weekStart), 'MMM d'),
       sessions,
     }))
-  }, [program])
+  }, [currentSessions])
 
-  const selectedSession = selectedDate ? sessionsByDate.get(selectedDate) ?? null : null
-  const selectedSessionIndex = selectedDate
-    ? program?.sessions.findIndex((s) => s.date === selectedDate) ?? -1
-    : -1
-
-  // Map date -> phase color for the month view dots
   const dateColorMap = useMemo(() => {
     const map = new Map<string, string>()
     if (!program) return map
-    for (const session of program.sessions) {
+    for (const session of currentSessions) {
       const phase = program.phases.find((p) => p.name === session.phase?.name)
       const color = phase ? phaseColor(phase, program.phases) : '#94a3b8'
       map.set(session.date, color)
     }
     return map
-  }, [program])
+  }, [currentSessions, program])
 
   if (isLoading || !program) {
     return (
@@ -104,15 +101,12 @@ export default function CalendarPage() {
     )
   }
 
-  const handleDayClick = (dateStr: string) => {
-    const session = sessionsByDate.get(dateStr)
-    if (session) {
-      setSelectedDate(dateStr)
-    }
+  const openSession = (session: Session) => {
+    navigate(sessionRoute(session, program.sessions.indexOf(session)), {
+      state: { backTo: `/sessions?view=${view}` },
+    })
   }
 
-  // renderDay receives a DateStringValue (YYYY-MM-DD string), not a Date
-  // The Day component already wraps children in UnstyledButton, so we only return visual content
   const renderDay = (date: string) => {
     const color = dateColorMap.get(date)
     const session = sessionsByDate.get(date)
@@ -135,42 +129,95 @@ export default function CalendarPage() {
     )
   }
 
-  // getDayProps handles click events on day cells
   const getDayProps = (date: string) => {
     const session = sessionsByDate.get(date)
     return {
-      onClick: () => handleDayClick(date),
+      onClick: () => session && openSession(session),
       disabled: !session,
     }
   }
 
-  return (
-    <Stack gap="sm" style={{ height: 'calc(100dvh - 200px)' }}>
-      {/* Header */}
-      <Group justify="space-between" wrap="nowrap">
-        <Text size="xl" fw={700}>Calendar</Text>
+  const renderSessionRow = (session: Session, compact = false) => {
+    const phase = program.phases.find((p) => p.name === session.phase?.name)
+    const color = phase ? phaseColor(phase, program.phases) : '#94a3b8'
+    const previewExercises = session.exercises.length > 0 ? session.exercises : session.planned_exercises ?? []
+    const uniqueExerciseCount = countUniqueExerciseNames(session)
+    const previewNames = Array.from(new Set(previewExercises.map((exercise) => exercise.name))).slice(0, compact ? 2 : 3).join(', ') || 'Rest Day'
 
-        <Group gap="xs" wrap="nowrap">
-          {!isMobile && (
-            <SegmentedControl
-              size="xs"
-              data={['Month', 'Agenda']}
-              value={view}
-              onChange={(val) => setView(val as ViewType)}
-            />
+    return (
+      <UnstyledButton key={`${session.date}-${session.id ?? session.week_number}`} onClick={() => openSession(session)}>
+        <Paper
+          withBorder
+          p={compact ? 'xs' : 'sm'}
+          style={{
+            borderLeft: `4px solid ${color}`,
+            opacity: session.completed ? 1 : 0.8,
+          }}
+        >
+          <Group justify="space-between" wrap="nowrap" align="flex-start">
+            <Group gap="xs" wrap="nowrap" align="flex-start" style={{ minWidth: 0, flex: 1 }}>
+              <Text size="sm" fw={500} style={{ minWidth: compact ? 56 : 64 }}>
+                {format(new Date(session.date), compact ? 'MMM d' : 'EEE, MMM d')}
+              </Text>
+              <Badge size="xs" variant="filled" color={color}>
+                {session.phase?.name || 'Unknown'}
+              </Badge>
+              {!compact && (
+                <Text size="sm" c="dimmed" lineClamp={1} style={{ minWidth: 0 }}>
+                  {previewNames}
+                </Text>
+              )}
+            </Group>
+
+            <Group gap="sm" wrap="nowrap" align="center">
+              <Stack gap={0} align="flex-end">
+                <Text size="sm">
+                  {uniqueExerciseCount} exercise{uniqueExerciseCount !== 1 ? 's' : ''}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {session.session_rpe !== null ? `RPE ${session.session_rpe}` : 'RPE --'}
+                </Text>
+              </Stack>
+              {session.completed && (
+                <ThemeIcon size="sm" variant="subtle" color="green" radius="xl">
+                  <Check size={14} />
+                </ThemeIcon>
+              )}
+            </Group>
+          </Group>
+
+          {compact && (
+            <Text size="xs" c="dimmed" mt={6} lineClamp={1}>
+              {previewNames}
+            </Text>
           )}
-        </Group>
+        </Paper>
+      </UnstyledButton>
+    )
+  }
+
+  return (
+    <Stack gap="md">
+      <Group justify="space-between" wrap="nowrap">
+        <Text size="xl" fw={700}>Sessions</Text>
+        <SegmentedControl
+          size="xs"
+          data={['Month', 'Agenda', 'Compact']}
+          value={view}
+          onChange={(value) => setSearchParams(value === 'Agenda' ? {} : { view: value })}
+        />
       </Group>
 
-      {/* Calendar Content */}
-      <Paper withBorder p={isMobile ? 'xs' : 'md'} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        <ScrollArea h="100%">
+      {view === 'Compact' ? (
+        <SessionsCompactView backTo="/sessions?view=Compact" />
+      ) : (
+        <Paper withBorder p={{ base: 'xs', sm: 'md' }}>
           {view === 'Month' ? (
             <Center>
               <Calendar
                 renderDay={renderDay}
                 getDayProps={getDayProps}
-                size={isMobile ? 'sm' : 'md'}
+                size="md"
               />
             </Center>
           ) : (
@@ -180,75 +227,15 @@ export default function CalendarPage() {
                   <Text size="sm" fw={600} c="dimmed">
                     Week of {weekLabel}
                   </Text>
-                  {sessions.map((session) => {
-                    const phase = program.phases.find((p) => p.name === session.phase?.name)
-                    const color = phase ? phaseColor(phase, program.phases) : '#94a3b8'
-                    const exerciseNames = session.exercises.length > 0
-                      ? session.exercises.map((e) => e.name).join(', ')
-                      : 'Rest Day'
-
-                    return (
-                      <UnstyledButton
-                        key={session.date}
-                        onClick={() => setSelectedDate(session.date)}
-                      >
-                        <Paper
-                          withBorder
-                          p="xs"
-                          style={{
-                            borderLeft: `4px solid ${color}`,
-                            opacity: session.completed ? 1 : 0.7,
-                          }}
-                        >
-                          <Group justify="space-between" wrap="nowrap">
-                            <Group gap="xs" wrap="nowrap">
-                              <Text size="sm" fw={500} style={{ minWidth: 60 }}>
-                                {format(new Date(session.date), 'MMM d')}
-                              </Text>
-                              <Badge
-                                size="xs"
-                                variant="filled"
-                                color={color}
-                              >
-                                {session.phase?.name || 'Unknown'}
-                              </Badge>
-                              <Text
-                                size="sm"
-                                c="dimmed"
-                                lineClamp={1}
-                                style={{ maxWidth: isMobile ? 120 : 300 }}
-                              >
-                                {exerciseNames}
-                              </Text>
-                            </Group>
-                            {session.completed && (
-                              <ThemeIcon size="sm" variant="subtle" color="green" radius="xl">
-                                <Check size={14} />
-                              </ThemeIcon>
-                            )}
-                          </Group>
-                        </Paper>
-                      </UnstyledButton>
-                    )
-                  })}
+                  {sessions.map((session) => renderSessionRow(session))}
                 </Stack>
               ))}
-              <Box mt="lg">
-                <MuscleVolumeChart />
-              </Box>
             </Stack>
           )}
-        </ScrollArea>
-      </Paper>
+        </Paper>
+      )}
 
-      {/* Session Drawer */}
-      <SessionDrawer
-        isOpen={selectedDate !== null}
-        onClose={() => setSelectedDate(null)}
-        session={selectedSession ?? null}
-        sessionIndex={selectedSessionIndex}
-        sessionArrayIndex={selectedSessionIndex}
-      />
+      <MuscleVolumeChart />
     </Stack>
   )
 }

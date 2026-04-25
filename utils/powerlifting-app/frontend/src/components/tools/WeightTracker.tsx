@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
 import { displayWeight, toDisplayUnit, fromDisplayUnit, kgToLb } from '@/utils/units'
 import { daysUntil, formatDateShort } from '@/utils/dates'
+import { format, parse, subDays } from 'date-fns'
 import {
   Paper,
   Button,
@@ -51,7 +52,20 @@ export default function WeightTracker() {
   const meta = program?.meta
   const currentBW = meta?.current_body_weight_kg || entries[0]?.kg || 0
   const targetClass = meta?.weight_class_kg || 74
-  const confirmBy = meta?.weight_class_confirm_by
+
+  const confirmBy = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    const nextCompetition = [...(program?.competitions ?? [])]
+      .filter((comp) => comp.status !== 'skipped' && comp.status !== 'completed' && comp.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date))[0]
+
+    if (!nextCompetition?.date) return null
+
+    return format(
+      subDays(parse(nextCompetition.date, 'yyyy-MM-dd', new Date()), 30),
+      'yyyy-MM-dd',
+    )
+  }, [program?.competitions])
 
   // Calculate weight delta
   const weightDelta = useMemo(() => {

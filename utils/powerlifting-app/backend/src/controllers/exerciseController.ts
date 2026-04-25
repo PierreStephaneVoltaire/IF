@@ -5,7 +5,6 @@ import type { GlossaryExercise, GlossaryStore } from '@powerlifting/types'
 import { v4 as uuidv4 } from 'uuid'
 
 const GLOSSARY_SK = 'glossary#v1'
-const INTERNAL_API_URL = process.env.INTERNAL_API_URL || 'http://localhost:3002'
 
 /**
  * Get the exercise glossary
@@ -39,6 +38,7 @@ export async function getGlossary(pk: string): Promise<GlossaryStore> {
  */
 export async function upsertExercise(pk: string, exercise: GlossaryExercise): Promise<void> {
   const glossary = await getGlossary(pk)
+  exercise.tertiary_muscles = exercise.tertiary_muscles ?? []
 
   // Generate ID if not provided
   if (!exercise.id) {
@@ -69,21 +69,20 @@ export async function upsertExercise(pk: string, exercise: GlossaryExercise): Pr
 
   // Fire-and-forget AI fatigue profile estimation if profile is missing and not manually set
   if (!exercise.fatigue_profile && exercise.fatigue_profile_source !== 'manual') {
-    fetch(`${INTERNAL_API_URL}/api/analytics/fatigue-profile/estimate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    invokeToolDirect('fatigue_profile_estimate', {
+      exercise: {
         name: exercise.name,
         category: exercise.category,
         equipment: exercise.equipment,
         primary_muscles: exercise.primary_muscles,
         secondary_muscles: exercise.secondary_muscles,
+        tertiary_muscles: exercise.tertiary_muscles,
         cues: exercise.cues,
         notes: exercise.notes,
-      }),
+      },
+      pk,
     })
-      .then(res => res.json())
-      .then(({ data: profile }) => {
+      .then((profile) => {
         if (!profile) return
         return updateExerciseProfile(pk, exercise.id, {
           fatigue_profile: { axial: profile.axial, neural: profile.neural, peripheral: profile.peripheral, systemic: profile.systemic },
@@ -148,7 +147,9 @@ export async function searchExercises(pk: string, query: string): Promise<Glossa
 
   return glossary.exercises.filter(e =>
     e.name.toLowerCase().includes(lowerQuery) ||
-    e.primary_muscles.some(m => m.toLowerCase().includes(lowerQuery))
+    e.primary_muscles.some(m => m.toLowerCase().includes(lowerQuery)) ||
+    e.secondary_muscles.some(m => m.toLowerCase().includes(lowerQuery)) ||
+    (e.tertiary_muscles ?? []).some(m => m.toLowerCase().includes(lowerQuery))
   )
 }
 
@@ -209,13 +210,20 @@ export async function setE1rmEstimate(
 /**
  * AI estimate e1RM for an exercise
  */
-export async function estimateExerciseE1rm(id: string): Promise<any> {
-  return invokeToolDirect('glossary_estimate_e1rm', { id })
+export async function estimateExerciseE1rm(pk: string, id: string): Promise<any> {
+  return invokeToolDirect('glossary_estimate_e1rm', { id, pk })
 }
 
 /**
  * AI estimate fatigue profile for an exercise
  */
-export async function estimateExerciseFatigue(id: string): Promise<any> {
-  return invokeToolDirect('glossary_estimate_fatigue', { id })
+export async function estimateExerciseFatigue(pk: string, id: string): Promise<any> {
+  return invokeToolDirect('glossary_estimate_fatigue', { id, pk })
+}
+
+/**
+ * AI estimate muscle groups for an exercise
+ */
+export async function estimateExerciseMuscles(pk: string, id: string): Promise<any> {
+  return invokeToolDirect('glossary_estimate_muscles', { id, pk })
 }

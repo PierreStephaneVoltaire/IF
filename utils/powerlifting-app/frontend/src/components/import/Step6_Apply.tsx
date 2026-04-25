@@ -58,8 +58,8 @@ export const Step6_Apply: React.FC<Props> = ({ pendingImport, overrides, onPrev,
         <Text size="lg" fw={500}>Import Successful!</Text>
         <Text c="dimmed">Your program has been added to the library.</Text>
         <Group mt="xl">
-          <Button onClick={() => navigate(pendingImport.import_type === 'template' ? '/designer/templates' : '/calendar')}>
-            Go to {pendingImport.import_type === 'template' ? 'Templates' : 'Calendar'}
+          <Button onClick={() => navigate(pendingImport.import_type === 'template' ? '/designer/templates' : '/sessions')}>
+            Go to {pendingImport.import_type === 'template' ? 'Templates' : 'Sessions'}
           </Button>
           <Button variant="outline" onClick={onReset}>Import Another</Button>
         </Group>

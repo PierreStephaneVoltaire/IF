@@ -283,13 +283,14 @@ export function weeklyVolumeByCategory(
  */
 function buildGlossaryLookup(
   glossary: GlossaryExercise[]
-): Map<string, { primary: MuscleGroup[]; secondary: MuscleGroup[] }> {
-  const lookup = new Map<string, { primary: MuscleGroup[]; secondary: MuscleGroup[] }>()
+): Map<string, { primary: MuscleGroup[]; secondary: MuscleGroup[]; tertiary: MuscleGroup[] }> {
+  const lookup = new Map<string, { primary: MuscleGroup[]; secondary: MuscleGroup[]; tertiary: MuscleGroup[] }>()
   for (const ex of glossary) {
     const key = normalizeExerciseName(ex.name)
     lookup.set(key, {
       primary: ex.primary_muscles,
       secondary: ex.secondary_muscles,
+      tertiary: ex.tertiary_muscles ?? [],
     })
   }
   return lookup
@@ -297,7 +298,8 @@ function buildGlossaryLookup(
 
 /**
  * Calculate total volume (sets * reps * kg) per muscle group.
- * Primary muscles get full weight, secondary muscles get half weight.
+ * Primary muscles get full weight, secondary muscles get half weight,
+ * and tertiary muscles get quarter weight.
  * Exercises not found in the glossary are skipped.
  */
 export function volumeByMuscleGroup(
@@ -321,6 +323,9 @@ export function volumeByMuscleGroup(
       for (const m of muscles.secondary) {
         volumes[m] = (volumes[m] ?? 0) + vol * 0.5
       }
+      for (const m of muscles.tertiary) {
+        volumes[m] = (volumes[m] ?? 0) + vol * 0.25
+      }
     }
   }
 
@@ -329,7 +334,8 @@ export function volumeByMuscleGroup(
 
 /**
  * Calculate weekly sets per muscle group.
- * Primary muscles get full set credit, secondary muscles get half set credit.
+ * Primary muscles get full set credit, secondary muscles get half set credit,
+ * and tertiary muscles get quarter set credit.
  * Exercises not found in the glossary are skipped.
  */
 export function weeklySetsByMuscleGroup(
@@ -345,6 +351,7 @@ export function weeklySetsByMuscleGroup(
   for (const ex of glossary) {
     for (const m of ex.primary_muscles) allMuscles.add(m)
     for (const m of ex.secondary_muscles) allMuscles.add(m)
+    for (const m of ex.tertiary_muscles ?? []) allMuscles.add(m)
   }
 
   for (const session of filterByBlock(sessions, block)) {
@@ -365,6 +372,9 @@ export function weeklySetsByMuscleGroup(
       }
       for (const m of muscles.secondary) {
         weekData[m] = (weekData[m] ?? 0) + sets * 0.5
+      }
+      for (const m of muscles.tertiary) {
+        weekData[m] = (weekData[m] ?? 0) + sets * 0.25
       }
     }
   }
@@ -440,7 +450,8 @@ export function maxByCategoryInWindow(
 
 /**
  * Calculate weekly volume per muscle group.
- * Primary muscles get full volume, secondary muscles get half volume.
+ * Primary muscles get full volume, secondary muscles get half volume,
+ * and tertiary muscles get quarter volume.
  * Exercises not found in the glossary are skipped.
  */
 export function weeklyVolumeByMuscleGroup(
@@ -469,6 +480,9 @@ export function weeklyVolumeByMuscleGroup(
       }
       for (const m of muscles.secondary) {
         weekData[m] = (weekData[m] ?? 0) + vol * 0.5
+      }
+      for (const m of muscles.tertiary) {
+        weekData[m] = (weekData[m] ?? 0) + vol * 0.25
       }
     }
   }

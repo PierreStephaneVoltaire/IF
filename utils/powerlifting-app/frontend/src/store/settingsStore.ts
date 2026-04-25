@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Sex } from '@powerlifting/types'
+import { normalizePlateInventory } from '@/utils/plateInventory'
+import { lbToKg } from '@/utils/units'
 
 export type Unit = 'kg' | 'lb'
 export type Theme = 'light' | 'dark' | 'system'
@@ -8,14 +10,39 @@ export type Theme = 'light' | 'dark' | 'system'
 interface SettingsState {
   unit: Unit
   barWeightKg: number
+  barWeightCustomized: boolean
   sex: Sex
   theme: Theme
+  plateInventoryKg: number[]
+  plateInventoryLb: number[]
 
   // Actions
   toggleUnit: () => void
   setBarWeight: (kg: number) => void
   setSex: (sex: Sex) => void
   setTheme: (theme: Theme) => void
+  setPlateInventoryKg: (plates: number[]) => void
+  setPlateInventoryLb: (plates: number[]) => void
+}
+
+const DEFAULT_BAR_WEIGHT_KG: Record<Unit, number> = {
+  kg: 20,
+  lb: lbToKg(45),
+}
+
+function isNear(value: number, target: number, tolerance = 0.02): boolean {
+  return Math.abs(value - target) <= tolerance
+}
+
+export function defaultBarWeightKgForUnit(unit: Unit): number {
+  return DEFAULT_BAR_WEIGHT_KG[unit]
+}
+
+function inferBarWeightCustomized(barWeightKg: unknown): boolean {
+  if (typeof barWeightKg !== 'number' || !Number.isFinite(barWeightKg) || barWeightKg <= 0) {
+    return false
+  }
+  return !isNear(barWeightKg, DEFAULT_BAR_WEIGHT_KG.kg) && !isNear(barWeightKg, DEFAULT_BAR_WEIGHT_KG.lb)
 }
 
 function applyTheme(theme: Theme) {
@@ -39,14 +66,29 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       unit: 'kg',
-      barWeightKg: 20,
+      barWeightKg: defaultBarWeightKgForUnit('kg'),
+      barWeightCustomized: false,
       sex: 'male',
       theme: 'system',
+      plateInventoryKg: [],
+      plateInventoryLb: [],
 
       toggleUnit: () =>
-        set((s) => ({ unit: s.unit === 'kg' ? 'lb' : 'kg' })),
+        set((s) => {
+          const nextUnit: Unit = s.unit === 'kg' ? 'lb' : 'kg'
+          return {
+            unit: nextUnit,
+            barWeightKg: s.barWeightCustomized
+              ? s.barWeightKg
+              : defaultBarWeightKgForUnit(nextUnit),
+          }
+        }),
 
-      setBarWeight: (kg) => set({ barWeightKg: kg }),
+      setBarWeight: (kg) =>
+        set((s) => ({
+          barWeightKg: kg,
+          barWeightCustomized: !isNear(kg, defaultBarWeightKgForUnit(s.unit)),
+        })),
 
       setSex: (sex) => set({ sex }),
 
@@ -54,9 +96,32 @@ export const useSettingsStore = create<SettingsState>()(
         applyTheme(theme)
         set({ theme })
       },
+
+      setPlateInventoryKg: (plates) => set({ plateInventoryKg: normalizePlateInventory(plates) }),
+
+      setPlateInventoryLb: (plates) => set({ plateInventoryLb: normalizePlateInventory(plates) }),
     }),
     {
       name: 'pl-settings',
+      version: 2,
+      migrate: (persistedState: unknown) => {
+        const state = (persistedState ?? {}) as Partial<SettingsState>
+        const unit: Unit = state.unit === 'lb' ? 'lb' : 'kg'
+        const customized = typeof state.barWeightCustomized === 'boolean'
+          ? state.barWeightCustomized
+          : inferBarWeightCustomized(state.barWeightKg)
+
+        return {
+          ...state,
+          unit,
+          barWeightCustomized: customized,
+          barWeightKg: customized
+            ? (typeof state.barWeightKg === 'number' && Number.isFinite(state.barWeightKg)
+                ? state.barWeightKg
+                : defaultBarWeightKgForUnit(unit))
+            : defaultBarWeightKgForUnit(unit),
+        }
+      },
       onRehydrateStorage: () => (state) => {
         // Apply theme on load
         if (state?.theme) {

@@ -59,6 +59,7 @@ def summarize_program_meta(meta: dict[str, Any]) -> dict[str, Any]:
         "federation": meta.get("federation"),
         "practicing_for": meta.get("practicing_for"),
         "version_label": meta.get("version_label"),
+        "sex": meta.get("sex"),
         "weight_class_kg": meta.get("weight_class_kg"),
         "current_body_weight_kg": meta.get("current_body_weight_kg"),
         "current_body_weight_lb": meta.get("current_body_weight_lb"),

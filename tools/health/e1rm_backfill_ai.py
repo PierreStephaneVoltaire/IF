@@ -12,7 +12,13 @@ from typing import Any
 
 import httpx
 
-from config import LLM_BASE_URL, OPENROUTER_API_KEY, IMPORT_FAST_MODEL
+from config import (
+    ESTIMATE_MODEL,
+    ESTIMATE_MODEL_REASONING_EFFORT,
+    ESTIMATE_MODEL_VERBOSITY,
+    LLM_BASE_URL,
+    OPENROUTER_API_KEY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,10 +103,10 @@ async def generate_e1rm_backfill_report(
         "past_instances": past_instances or {}
     }, indent=2, default=_json_default)
 
-    logger.info(f"[E1rmBackfillAI] model={IMPORT_FAST_MODEL} payload_chars={len(user_msg)}")
+    logger.info(f"[E1rmBackfillAI] model={ESTIMATE_MODEL} payload_chars={len(user_msg)}")
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             resp = await client.post(
                 f"{LLM_BASE_URL}/chat/completions",
                 headers={
@@ -108,11 +114,16 @@ async def generate_e1rm_backfill_report(
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": IMPORT_FAST_MODEL,
+                    "model": ESTIMATE_MODEL,
                     "messages": [
                         {"role": "system", "content": _SYSTEM_PROMPT},
                         {"role": "user", "content": user_msg},
                     ],
+                    "reasoning": {
+                        "enabled": True,
+                        "effort": ESTIMATE_MODEL_REASONING_EFFORT,
+                    },
+                    "verbosity": ESTIMATE_MODEL_VERBOSITY,
                     "tools": [_TOOL_SCHEMA],
                     "tool_choice": {"type": "function", "function": {"name": "report_e1rm_estimates"}},
                 },

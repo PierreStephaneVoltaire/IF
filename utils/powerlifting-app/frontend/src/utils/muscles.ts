@@ -155,7 +155,9 @@ export const MUSCLE_DISPLAY_NAMES: Record<MuscleGroup, string> = {
   hamstrings: 'Hamstrings',
   glutes: 'Glutes',
   calves: 'Calves',
+  tibialis_anterior: 'Tibialis Anterior',
   hip_flexors: 'Hip Flexors',
+  adductors: 'Adductors',
   chest: 'Chest',
   triceps: 'Triceps',
   front_delts: 'Front Delts',
@@ -171,4 +173,5 @@ export const MUSCLE_DISPLAY_NAMES: Record<MuscleGroup, string> = {
   lower_back: 'Lower Back',
   core: 'Core',
   obliques: 'Obliques',
+  serratus: 'Serratus',
 }

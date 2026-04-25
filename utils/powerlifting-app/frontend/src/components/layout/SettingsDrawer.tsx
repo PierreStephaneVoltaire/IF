@@ -1,7 +1,8 @@
 import { Drawer, SegmentedControl, NumberInput, Text, Stack, Group, Button } from '@mantine/core'
 import { useUiStore } from '@/store/uiStore'
-import { useSettingsStore, type Theme } from '@/store/settingsStore'
+import { defaultBarWeightKgForUnit, useSettingsStore, type Theme } from '@/store/settingsStore'
 import { useProgramStore } from '@/store/programStore'
+import { fromDisplayUnit, toDisplayUnit } from '@/utils/units'
 import { Sun, Moon, Monitor } from 'lucide-react'
 
 const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
@@ -12,7 +13,7 @@ const themeOptions: { value: Theme; label: string; icon: typeof Sun }[] = [
 
 export default function SettingsDrawer() {
   const { drawerOpen, drawerType, closeDrawer } = useUiStore()
-  const { theme, setTheme, sex, setSex, barWeightKg, setBarWeight } = useSettingsStore()
+  const { unit, theme, setTheme, sex, setSex, barWeightKg, setBarWeight } = useSettingsStore()
   const { setSex: programSetSex } = useProgramStore()
 
   const isOpen = drawerOpen && drawerType === 'settings'
@@ -74,17 +75,23 @@ export default function SettingsDrawer() {
         {/* Bar Weight */}
         <div>
           <Text size="sm" fw={500} mb="xs">
-            Bar Weight (kg)
+            Bar Weight ({unit})
           </Text>
           <NumberInput
-            value={barWeightKg}
-            onChange={(val) => setBarWeight(typeof val === 'number' ? val : 20)}
+            value={toDisplayUnit(barWeightKg, unit)}
+            onChange={(val) => setBarWeight(
+              typeof val === 'number'
+                ? fromDisplayUnit(val, unit)
+                : defaultBarWeightKgForUnit(unit),
+            )}
             min={0}
-            max={50}
-            step={0.25}
+            max={unit === 'kg' ? 50 : 120}
+            step={unit === 'kg' ? 0.25 : 0.5}
+            decimalScale={2}
+            hideControls
           />
           <Text size="xs" c="dimmed" mt={4}>
-            Used for plate calculator. Standard: 20kg (men's), 15kg (women's)
+            Used for plate calculator. Default is 20kg in metric mode and 45lb in imperial mode.
           </Text>
         </div>
       </Stack>

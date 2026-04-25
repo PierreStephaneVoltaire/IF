@@ -38,7 +38,9 @@ const MUSCLE_LABELS: Record<string, string> = {
   hamstrings: 'Hamstrings',
   glutes: 'Glutes',
   calves: 'Calves',
+  tibialis_anterior: 'Tibialis Anterior',
   hip_flexors: 'Hip Flexors',
+  adductors: 'Adductors',
   chest: 'Chest',
   triceps: 'Triceps',
   front_delts: 'Front Delts',
@@ -54,6 +56,7 @@ const MUSCLE_LABELS: Record<string, string> = {
   lower_back: 'Lower Back',
   core: 'Core',
   obliques: 'Obliques',
+  serratus: 'Serratus',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -266,11 +269,12 @@ export default function DesignerPage() {
 
   const plannedMuscleVolume = useMemo(() => {
     const mgSets: Record<string, number> = {}
-    const lookup = new Map<string, { primary: string[]; secondary: string[] }>()
+    const lookup = new Map<string, { primary: string[]; secondary: string[]; tertiary: string[] }>()
     for (const ex of glossary) {
       lookup.set(normalizeExerciseName(ex.name), {
         primary: ex.primary_muscles,
         secondary: ex.secondary_muscles,
+        tertiary: ex.tertiary_muscles ?? [],
       })
     }
 
@@ -281,6 +285,7 @@ export default function DesignerPage() {
         const sets = ex.sets || 0
         for (const m of muscles.primary) mgSets[m] = (mgSets[m] || 0) + sets
         for (const m of muscles.secondary) mgSets[m] = (mgSets[m] || 0) + sets * 0.5
+        for (const m of muscles.tertiary) mgSets[m] = (mgSets[m] || 0) + sets * 0.25
       }
     }
 

@@ -161,7 +161,7 @@ export async function updateMetaField(
 ): Promise<void> {
   const allowedFields = [
     'program_name', 'program_start', 'comp_date', 'federation', 'practicing_for',
-    'version_label', 'weight_class_kg', 'weight_class_confirm_by',
+    'version_label', 'sex', 'weight_class_kg', 'weight_class_confirm_by',
     'current_body_weight_kg', 'current_body_weight_lb',
     'target_squat_kg', 'target_bench_kg', 'target_dl_kg', 'target_total_kg',
     'attempt_pct', 'height_cm', 'arm_wingspan_cm', 'leg_length_cm',

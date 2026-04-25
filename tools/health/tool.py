@@ -131,6 +131,18 @@ def _get_glossary_sync(table_name: str) -> list[dict]:
     return _sanitize_decimals(item.get("exercises", []))
 
 
+def _get_versioned_item_sync(table_name: str, pk: str, sk: str) -> dict | None:
+    import boto3
+
+    dynamodb = boto3.resource("dynamodb", region_name="ca-central-1")
+    table = dynamodb.Table(table_name)
+    resp = table.get_item(Key={"pk": pk, "sk": sk})
+    item = resp.get("Item")
+    if not item:
+        return None
+    return _sanitize_decimals(item)
+
+
 # =============================================================================
 # SDK Tool Classes (migrated from agent/tools/health_tools.py)
 # =============================================================================
@@ -1252,7 +1264,7 @@ class HealthDeleteDietNoteTool(ToolDefinition[HealthDeleteDietNoteAction, Health
 class HealthUpdateMetaAction(Action):
     updates: Dict[str, Any] = Field(
         description="Dict of meta fields to update. Allowed: program_name, comp_date, target_squat_kg, "
-                    "target_bench_kg, target_dl_kg, target_total_kg, weight_class_kg, "
+                    "target_bench_kg, target_dl_kg, target_total_kg, sex, weight_class_kg, "
                     "current_body_weight_kg, federation, practicing_for, program_start"
     )
 
@@ -1273,8 +1285,8 @@ class HealthUpdateMetaTool(ToolDefinition[HealthUpdateMetaAction, HealthUpdateMe
     def create(cls, conv_state=None, **params) -> Sequence["HealthUpdateMetaTool"]:
         return [cls(
             description=(
-                "Update program metadata fields: comp_date, target maxes, body weight, weight_class_kg, "
-                "federation, program_start, program_name. Pass only the fields you want to change."
+                "Update program metadata fields: comp_date, target maxes, sex, body weight, "
+                "weight_class_kg, federation, program_start, program_name. Pass only the fields you want to change."
             ),
             action_type=HealthUpdateMetaAction,
             observation_type=HealthUpdateMetaObservation,
@@ -1406,12 +1418,19 @@ def _build_analysis_bundle(program: dict, sessions: list[dict]) -> dict:
     from prompt_context import summarize_lift_profiles
 
     logger = logging.getLogger(__name__)
+    store = _get_store()
+    active_pk = store.pk
+    cache_version = getattr(store, "_cache_version", None)
+    version_token = f"v{int(cache_version):03d}" if isinstance(cache_version, int) and cache_version > 0 else ""
 
     bundle: dict[str, Any] = {
         "weekly": None,
         "correlation": None,
         "program_evaluation": None,
         "lift_profiles": summarize_lift_profiles(program.get("lift_profiles")),
+        "pk": active_pk,
+        "version": version_token,
+        "sex": str((program.get("meta") or {}).get("sex") or "male").lower(),
     }
 
     try:
@@ -1419,6 +1438,28 @@ def _build_analysis_bundle(program: dict, sessions: list[dict]) -> dict:
     except Exception as e:
         logger.warning("export: glossary fetch failed (%s); continuing without it", e)
         glossary = []
+
+    bundle["glossary"] = glossary
+
+    try:
+        if version_token:
+            weight_log_item = _get_versioned_item_sync(IF_HEALTH_TABLE_NAME, active_pk, f"weight_log#{version_token}")
+            bundle["weight_log"] = (weight_log_item or {}).get("entries", [])
+        else:
+            bundle["weight_log"] = []
+    except Exception as e:
+        logger.warning("export: weight log fetch failed (%s); continuing without it", e)
+        bundle["weight_log"] = []
+
+    try:
+        if version_token:
+            max_history_item = _get_versioned_item_sync(IF_HEALTH_TABLE_NAME, active_pk, f"max_history#{version_token}")
+            bundle["max_history"] = (max_history_item or {}).get("entries", [])
+        else:
+            bundle["max_history"] = []
+    except Exception as e:
+        logger.warning("export: max history fetch failed (%s); continuing without it", e)
+        bundle["max_history"] = []
 
     try:
         from datetime import datetime
@@ -1519,7 +1560,7 @@ class ExportProgramHistoryExecutor(ToolExecutor[ExportProgramHistoryAction, Expo
 
         out_path = os.path.join(work_dir, filename)
         analysis = _build_analysis_bundle(program, sessions)
-        build_program_xlsx(program, out_path, analysis=analysis)
+        build_program_xlsx(program, out_path, analysis=analysis, export_context=analysis)
 
         return ExportProgramHistoryObservation.from_text(
             f"Exported program history to {filename}.\n"
@@ -1845,7 +1886,7 @@ class CorrelationAnalysisTool(ToolDefinition[CorrelationAnalysisAction, Correlat
 
 class FatigueProfileEstimateAction(Action):
     exercise: dict = Field(
-        description="Exercise metadata: name, category, equipment, primary_muscles, secondary_muscles, cues, notes"
+        description="Exercise metadata: name, category, equipment, primary_muscles, secondary_muscles, tertiary_muscles, cues, notes"
     )
 
 
@@ -1876,6 +1917,43 @@ class FatigueProfileEstimateTool(ToolDefinition[FatigueProfileEstimateAction, Fa
             action_type=FatigueProfileEstimateAction,
             observation_type=FatigueProfileEstimateObservation,
             executor=FatigueProfileEstimateExecutor(),
+        )]
+
+
+class MuscleGroupEstimateAction(Action):
+    exercise: dict = Field(
+        description="Exercise metadata: name, category, equipment, cues, notes, and any existing muscle annotations"
+    )
+    lift_profiles: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Optional squat/bench/deadlift lift profiles to use as immediate context for the estimate",
+    )
+
+
+class MuscleGroupEstimateObservation(Observation):
+    pass
+
+
+class MuscleGroupEstimateExecutor(ToolExecutor[MuscleGroupEstimateAction, MuscleGroupEstimateObservation]):
+    def __call__(self, action: MuscleGroupEstimateAction, conversation=None) -> MuscleGroupEstimateObservation:
+        result = _do_muscle_group_estimate({
+            "exercise": action.exercise,
+            "lift_profiles": action.lift_profiles,
+        })
+        return MuscleGroupEstimateObservation.from_text(_format_result(result))
+
+
+class MuscleGroupEstimateTool(ToolDefinition[MuscleGroupEstimateAction, MuscleGroupEstimateObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["MuscleGroupEstimateTool"]:
+        return [cls(
+            description=(
+                "Estimate the primary, secondary, and tertiary muscle groups for an exercise "
+                "using AI analysis of movement pattern and athlete lift profile context."
+            ),
+            action_type=MuscleGroupEstimateAction,
+            observation_type=MuscleGroupEstimateObservation,
+            executor=MuscleGroupEstimateExecutor(),
         )]
 
 
@@ -1939,6 +2017,7 @@ class LiftProfileRewriteEstimateTool(ToolDefinition[LiftProfileRewriteEstimateAc
 
 register_tool("CorrelationAnalysisTool", CorrelationAnalysisTool)
 register_tool("FatigueProfileEstimateTool", FatigueProfileEstimateTool)
+register_tool("MuscleGroupEstimateTool", MuscleGroupEstimateTool)
 register_tool("LiftProfileReviewTool", LiftProfileReviewTool)
 register_tool("LiftProfileRewriteEstimateTool", LiftProfileRewriteEstimateTool)
 
@@ -2145,6 +2224,7 @@ def get_tools() -> List[Tool]:
         Tool(name="WeeklyAnalysisTool"),
         Tool(name="CorrelationAnalysisTool"),
         Tool(name="FatigueProfileEstimateTool"),
+        Tool(name="MuscleGroupEstimateTool"),
         Tool(name="LiftProfileReviewTool"),
         Tool(name="LiftProfileRewriteEstimateTool"),
         Tool(name="ProgramEvaluationTool"),
@@ -2171,6 +2251,7 @@ def get_tools() -> List[Tool]:
         Tool(name="GlossarySetE1rmTool"),
         Tool(name="GlossaryEstimateE1rmTool"),
         Tool(name="GlossaryEstimateFatigueTool"),
+        Tool(name="GlossaryEstimateMusclesTool"),
         Tool(name="PowerliftingFilterCategoriesTool"),
         Tool(name="AnalyzePowerliftingStatsTool"),
     ]
@@ -2454,7 +2535,7 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
         },
         "health_update_meta": {
             "name": "health_update_meta",
-            "description": "Update program metadata fields.",
+            "description": "Update program metadata fields, including sex for DOTS calculations.",
             "parameters": {
                 "type": "object",
                 "properties": {"updates": {"type": "object", "description": "Dict of meta fields to update"}},
@@ -2665,8 +2746,50 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                             "equipment": {"type": "string"},
                             "primary_muscles": {"type": "array", "items": {"type": "string"}},
                             "secondary_muscles": {"type": "array", "items": {"type": "string"}},
+                            "tertiary_muscles": {"type": "array", "items": {"type": "string"}},
                             "cues": {"type": "array", "items": {"type": "string"}},
                             "notes": {"type": "string"},
+                        },
+                    },
+                },
+                "required": ["exercise"],
+            },
+        },
+        "muscle_group_estimate": {
+            "name": "muscle_group_estimate",
+            "description": (
+                "Estimate the primary, secondary, and tertiary muscle groups for an exercise "
+                "using AI analysis of the movement and the user's lift profiles."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "exercise": {
+                        "type": "object",
+                        "description": "Exercise metadata dict",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "category": {"type": "string"},
+                            "equipment": {"type": "string"},
+                            "primary_muscles": {"type": "array", "items": {"type": "string"}},
+                            "secondary_muscles": {"type": "array", "items": {"type": "string"}},
+                            "tertiary_muscles": {"type": "array", "items": {"type": "string"}},
+                            "cues": {"type": "array", "items": {"type": "string"}},
+                            "notes": {"type": "string"},
+                        },
+                    },
+                    "lift_profiles": {
+                        "type": "array",
+                        "description": "Optional squat/bench/deadlift lift profiles to pass through to the estimator",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "lift": {"type": "string"},
+                                "style_notes": {"type": "string"},
+                                "sticking_points": {"type": "string"},
+                                "primary_muscle": {"type": "string"},
+                                "volume_tolerance": {"type": "string"},
+                            },
                         },
                     },
                 },
@@ -3027,6 +3150,17 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "required": ["id"],
             },
         },
+        "glossary_estimate_muscles": {
+            "name": "glossary_estimate_muscles",
+            "description": "AI muscle group estimation for one glossary exercise.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"}
+                },
+                "required": ["id"],
+            },
+        },
         "powerlifting_filter_categories": {
             "name": "powerlifting_filter_categories",
             "description": "Retrieves the unique options available for filtering the OpenPowerlifting dataset.",
@@ -3101,7 +3235,7 @@ def _do_export(args):
     filename = "program_history.xlsx"
     out_path = os.path.join(out_dir, filename)
     analysis = _build_analysis_bundle(program, sessions)
-    build_program_xlsx(program, out_path, analysis=analysis)
+    build_program_xlsx(program, out_path, analysis=analysis, export_context=analysis)
 
     payload = json.dumps({
         "filename": filename,
@@ -3223,6 +3357,19 @@ def _do_fatigue_profile_estimate(args):
     from fatigue_ai import estimate_fatigue_profile
     program_meta, lift_profiles = _fatigue_context()
     return _run_async(estimate_fatigue_profile(
+        args["exercise"],
+        program_meta=program_meta,
+        lift_profiles=lift_profiles,
+    ))
+
+
+def _do_muscle_group_estimate(args):
+    from muscle_group_ai import estimate_muscle_groups
+    program_meta, stored_lift_profiles = _fatigue_context()
+    lift_profiles = args.get("lift_profiles")
+    if not isinstance(lift_profiles, list) or not lift_profiles:
+        lift_profiles = stored_lift_profiles
+    return _run_async(estimate_muscle_groups(
         args["exercise"],
         program_meta=program_meta,
         lift_profiles=lift_profiles,
@@ -3360,6 +3507,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         glossary_set_e1rm,
         glossary_estimate_e1rm,
         glossary_estimate_fatigue,
+        glossary_estimate_muscles,
     )
 
     ROUTES = {
@@ -3406,6 +3554,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "weekly_analysis": lambda: _do_weekly_analysis(args),
         "correlation_analysis": lambda: _do_correlation_analysis(args),
         "fatigue_profile_estimate": lambda: _do_fatigue_profile_estimate(args),
+        "muscle_group_estimate": lambda: _do_muscle_group_estimate(args),
         "lift_profile_review": lambda: _do_lift_profile_review(args),
         "lift_profile_rewrite_and_estimate": lambda: _do_lift_profile_rewrite_and_estimate(args),
         "lift_profile_rewrite": lambda: _do_lift_profile_rewrite(args),
@@ -3434,6 +3583,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "glossary_set_e1rm": lambda: glossary_set_e1rm(args["id"], args["value_kg"], args.get("method", "manual")),
         "glossary_estimate_e1rm": lambda: glossary_estimate_e1rm(args["id"]),
         "glossary_estimate_fatigue": lambda: glossary_estimate_fatigue(args["id"]),
+        "glossary_estimate_muscles": lambda: glossary_estimate_muscles(args["id"]),
         "powerlifting_filter_categories": lambda: asyncio.to_thread(_do_powerlifting_filter_categories, args),
         "analyze_powerlifting_stats": lambda: asyncio.to_thread(_do_analyze_powerlifting_stats, args),
     }
@@ -4116,3 +4266,35 @@ class GlossaryEstimateFatigueTool(ToolDefinition[GlossaryEstimateFatigueAction, 
             observation_type=GlossaryEstimateFatigueObservation,
             executor=GlossaryEstimateFatigueExecutor(),
         )]
+
+
+class GlossaryEstimateMusclesAction(Action):
+    id: str = Field(description="Exercise ID to estimate muscle groups for")
+
+
+class GlossaryEstimateMusclesObservation(Observation):
+    pass
+
+
+class GlossaryEstimateMusclesExecutor(ToolExecutor[GlossaryEstimateMusclesAction, GlossaryEstimateMusclesObservation]):
+    def __call__(self, action: GlossaryEstimateMusclesAction, conversation=None) -> GlossaryEstimateMusclesObservation:
+        from core import glossary_estimate_muscles
+        result = _run_async(glossary_estimate_muscles(action.id))
+        return GlossaryEstimateMusclesObservation.from_text(_format_result(result))
+
+
+class GlossaryEstimateMusclesTool(ToolDefinition[GlossaryEstimateMusclesAction, GlossaryEstimateMusclesObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["GlossaryEstimateMusclesTool"]:
+        return [cls(
+            description="AI muscle group estimation for one exercise.",
+            action_type=GlossaryEstimateMusclesAction,
+            observation_type=GlossaryEstimateMusclesObservation,
+            executor=GlossaryEstimateMusclesExecutor(),
+        )]
+
+
+register_tool("GlossarySetE1rmTool", GlossarySetE1rmTool)
+register_tool("GlossaryEstimateE1rmTool", GlossaryEstimateE1rmTool)
+register_tool("GlossaryEstimateFatigueTool", GlossaryEstimateFatigueTool)
+register_tool("GlossaryEstimateMusclesTool", GlossaryEstimateMusclesTool)

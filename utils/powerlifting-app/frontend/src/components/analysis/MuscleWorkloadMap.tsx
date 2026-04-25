@@ -15,8 +15,8 @@ const LEGEND_ITEMS = [
 const ALL_MUSCLE_GROUPS = Object.keys(MUSCLE_DISPLAY_NAMES) as MuscleGroup[]
 
 const MUSCLE_REGION_MAP: Partial<Record<MuscleGroup, MuscleId[]>> = {
-  quads: ['quads-left', 'quads-right'],
-  hamstrings: ['hamstrings-medial-left', 'hamstrings-lateral-left', 'hamstrings-medial-right', 'hamstrings-lateral-right'],
+  quads: ['quads-left', 'quads-right', 'knee-left', 'knee-right'],
+  hamstrings: ['hamstrings-medial-left', 'hamstrings-lateral-left', 'hamstrings-medial-right', 'hamstrings-lateral-right', 'knee-back-left', 'knee-back-right'],
   glutes: ['gluteus-medius-left', 'gluteus-maximus-left', 'gluteus-medius-right', 'gluteus-maximus-right'],
   calves: [
     'calves-gastroc-medial-left',
@@ -26,7 +26,9 @@ const MUSCLE_REGION_MAP: Partial<Record<MuscleGroup, MuscleId[]>> = {
     'calves-gastroc-lateral-right',
     'calves-soleus-right',
   ],
+  tibialis_anterior: ['tibialis-anterior-left', 'tibialis-anterior-right'],
   hip_flexors: ['hip-flexor-left', 'hip-flexor-right'],
+  adductors: ['adductors-left', 'adductors-right'],
   chest: ['chest-upper-left', 'chest-lower-left', 'chest-upper-right', 'chest-lower-right'],
   triceps: ['triceps-long-left', 'triceps-lateral-left', 'triceps-long-right', 'triceps-lateral-right'],
   front_delts: ['shoulder-front-left', 'shoulder-front-right'],
@@ -42,6 +44,7 @@ const MUSCLE_REGION_MAP: Partial<Record<MuscleGroup, MuscleId[]>> = {
   lower_back: ['spine', 'lower-back-erectors-left', 'lower-back-ql-left', 'lower-back-erectors-right', 'lower-back-ql-right'],
   core: ['abs-upper-left', 'abs-lower-left', 'abs-upper-right', 'abs-lower-right'],
   obliques: ['obliques-left', 'obliques-right'],
+  serratus: ['serratus-anterior-left', 'serratus-anterior-right'],
 }
 
 type WorkloadBand = {
@@ -53,6 +56,8 @@ type WorkloadBand = {
 interface MuscleWorkloadMapProps {
   setsPerWeek: Partial<Record<MuscleGroup, number>>
   analysisWeeks: number
+  title?: string
+  subtitle?: string
 }
 
 function getWorkloadBand(setsPerWeek: number): WorkloadBand {
@@ -116,7 +121,7 @@ function useBodyChart(
   }, [bodyState])
 }
 
-export function MuscleWorkloadMap({ setsPerWeek, analysisWeeks }: MuscleWorkloadMapProps) {
+export function MuscleWorkloadMap({ setsPerWeek, analysisWeeks, title = 'Muscle Workload Map', subtitle }: MuscleWorkloadMapProps) {
   const frontRef = useRef<HTMLDivElement | null>(null)
   const backRef = useRef<HTMLDivElement | null>(null)
 
@@ -128,15 +133,29 @@ export function MuscleWorkloadMap({ setsPerWeek, analysisWeeks }: MuscleWorkload
         .sort((a, b) => b.sets - a.sets || MUSCLE_DISPLAY_NAMES[a.muscle].localeCompare(MUSCLE_DISPLAY_NAMES[b.muscle])),
     [setsPerWeek]
   )
+  const hasWorkload = rankedMuscles.some((row) => row.sets > 0)
 
   useBodyChart(frontRef, ViewSide.FRONT, bodyState, 'Anterior muscle workload map')
   useBodyChart(backRef, ViewSide.BACK, bodyState, 'Posterior muscle workload map')
 
+  if (!hasWorkload) {
+    return (
+      <Stack gap="xs">
+        <Text fw={500}>{title}</Text>
+        <Text size="sm" c="dimmed">
+          No glossary matches were found for this session.
+        </Text>
+      </Stack>
+    )
+  }
+
+  const resolvedSubtitle = subtitle ?? `Weighted sets per week across ${analysisWeeks} week${analysisWeeks === 1 ? '' : 's'}`
+
   return (
     <Stack gap="md">
       <Group justify="space-between" align="flex-end" wrap="wrap">
-        <Text fw={500}>Muscle Workload Map</Text>
-        <Text size="xs" c="dimmed">Weighted sets per week across {analysisWeeks} week{analysisWeeks === 1 ? '' : 's'}</Text>
+        <Text fw={500}>{title}</Text>
+        <Text size="xs" c="dimmed">{resolvedSubtitle}</Text>
       </Group>
 
       <SimpleGrid cols={{ base: 1, xl: 3 }} spacing="lg">

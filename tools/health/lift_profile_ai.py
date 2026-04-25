@@ -8,7 +8,13 @@ from typing import Any
 
 import httpx
 
-from config import LLM_BASE_URL, MODEL_ROUTER_MODEL, OPENROUTER_API_KEY
+from config import (
+    ESTIMATE_MODEL,
+    ESTIMATE_MODEL_REASONING_EFFORT,
+    ESTIMATE_MODEL_VERBOSITY,
+    LLM_BASE_URL,
+    OPENROUTER_API_KEY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -382,7 +388,7 @@ async def _call_tool(system_prompt: str, user_msg: str, tool_schema: dict[str, A
     if not OPENROUTER_API_KEY:
         return None
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=90.0) as client:
         resp = await client.post(
             f"{LLM_BASE_URL}/chat/completions",
             headers={
@@ -390,11 +396,16 @@ async def _call_tool(system_prompt: str, user_msg: str, tool_schema: dict[str, A
                 "Content-Type": "application/json",
             },
             json={
-                "model": MODEL_ROUTER_MODEL,
+                "model": ESTIMATE_MODEL,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_msg},
                 ],
+                "reasoning": {
+                    "enabled": True,
+                    "effort": ESTIMATE_MODEL_REASONING_EFFORT,
+                },
+                "verbosity": ESTIMATE_MODEL_VERBOSITY,
                 "tools": [tool_schema],
                 "tool_choice": {"type": "function", "function": {"name": tool_name}},
             },

@@ -10,7 +10,6 @@ import {
 import {
   LayoutDashboard,
   Calendar,
-  List,
   BarChart3,
   Wrench,
   Pill,
@@ -37,9 +36,8 @@ interface NavItem {
 
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/calendar', icon: Calendar, label: 'Calendar' },
+  { to: '/sessions', icon: Calendar, label: 'Sessions' },
   { to: '/designer', icon: ClipboardList, label: 'Designer' },
-  { to: '/list', icon: List, label: 'List' },
   { to: '/charts', icon: BarChart3, label: 'Charts' },
   { to: '/analysis', icon: Activity, label: 'Analysis' },
   { to: '/rankings', icon: Trophy, label: 'Rankings' },
@@ -55,9 +53,8 @@ const SECONDARY_NAV_ITEMS: NavItem[] = [
 
 const ALL_NAV_ITEMS: NavItem[] = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/calendar', icon: Calendar, label: 'Calendar' },
+  { to: '/sessions', icon: Calendar, label: 'Sessions' },
   { to: '/designer', icon: ClipboardList, label: 'Designer' },
-  { to: '/list', icon: List, label: 'List' },
   { to: '/analysis', icon: Activity, label: 'Analysis' },
   { to: '/rankings', icon: Trophy, label: 'Rankings' },
   { to: '/supplements', icon: Pill, label: 'Supplements' },
@@ -72,7 +69,11 @@ function DesktopSidebar() {
   const location = useLocation()
 
   return (
-    <ScrollArea h="100%" offsetScrollbars>
+    <ScrollArea
+      h="calc(var(--vh, 1vh) * 100 - 60px)"
+      offsetScrollbars
+      style={{ minHeight: 0 }}
+    >
       <Stack gap={4} p="md">
         {ALL_NAV_ITEMS.map(({ to, icon: Icon, label }) => {
           const isActive =
@@ -124,7 +125,7 @@ function MobileMoreMenu() {
       </Menu.Target>
 
       <Menu.Dropdown>
-        {ALL_NAV_ITEMS.filter(item => !['/', '/designer', '/list', '/analysis'].includes(item.to)).map(({ to, icon: Icon, label }) => {
+        {ALL_NAV_ITEMS.filter(item => !['/', '/designer', '/sessions', '/analysis'].includes(item.to)).map(({ to, icon: Icon, label }) => {
           const isActive =
             to === '/'
               ? location.pathname === '/'
@@ -150,7 +151,7 @@ function MobileMoreMenu() {
 function MobileSidebar() {
   const location = useLocation()
   
-  const MOBILE_MAIN_ITEMS = ALL_NAV_ITEMS.filter(item => ['/', '/designer', '/list', '/analysis'].includes(item.to))
+  const MOBILE_MAIN_ITEMS = ALL_NAV_ITEMS.filter(item => ['/', '/designer', '/sessions', '/analysis'].includes(item.to))
 
   return (
     <Group justify="space-around" wrap="nowrap" p="xs">

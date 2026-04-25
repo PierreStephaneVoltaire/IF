@@ -22,8 +22,10 @@ import {
   Divider,
   Tooltip,
   SegmentedControl,
+  Progress,
 } from '@mantine/core'
 import * as api from '@/api/client'
+import { useProgramStore } from '@/store/programStore'
 import { useUiStore } from '@/store/uiStore'
 import type { GlossaryExercise, MuscleGroup, ExerciseCategory, Equipment, FatigueProfile, FatigueProfileSource } from '@powerlifting/types'
 
@@ -64,7 +66,9 @@ const MUSCLE_LABELS: Record<MuscleGroup, string> = {
   hamstrings: 'Hamstrings',
   glutes: 'Glutes',
   calves: 'Calves',
+  tibialis_anterior: 'Tibialis Anterior',
   hip_flexors: 'Hip Flexors',
+  adductors: 'Adductors',
   chest: 'Chest',
   triceps: 'Triceps',
   front_delts: 'Front Delts',
@@ -80,6 +84,7 @@ const MUSCLE_LABELS: Record<MuscleGroup, string> = {
   lower_back: 'Lower Back',
   core: 'Core',
   obliques: 'Obliques',
+  serratus: 'Serratus',
 }
 
 const CATEGORY_LABELS: Record<ExerciseCategory, string> = {
@@ -107,6 +112,7 @@ const EQUIPMENT_LABELS: Record<Equipment, string> = {
 
 export default function GlossaryPage() {
   const { pushToast } = useUiStore()
+  const liftProfiles = useProgramStore((state) => state.program?.lift_profiles ?? [])
   const [exercises, setExercises] = useState<GlossaryExercise[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -120,6 +126,7 @@ export default function GlossaryPage() {
     category: 'squat',
     primary_muscles: [],
     secondary_muscles: [],
+    tertiary_muscles: [],
     equipment: 'barbell',
     cues: [],
     notes: '',
@@ -132,10 +139,12 @@ export default function GlossaryPage() {
   const [showArchived, setShowArchived] = useState(false)
   const [hasE1rmFilter, setHasE1rmFilter] = useState<'all' | 'with' | 'without'>('all')
   const [isEstimating, setIsEstimating] = useState(false)
+  const [isEstimatingMuscles, setIsEstimatingMuscles] = useState(false)
   const [isEstimatingE1rm, setIsEstimatingE1rm] = useState(false)
   const [isBulkEstimatingFatigue, setIsBulkEstimatingFatigue] = useState(false)
   const [isBulkEstimatingE1rm, setIsBulkEstimatingE1rm] = useState(false)
-  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null)
+  const [isBulkEstimatingMuscles, setIsBulkEstimatingMuscles] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; label: string } | null>(null)
 
   useEffect(() => {
     loadExercises()
@@ -183,6 +192,7 @@ export default function GlossaryPage() {
         fatigue_category: (isEditing as GlossaryExercise | null)?.fatigue_category || 'accessory',
         primary_muscles: formData.primary_muscles || [],
         secondary_muscles: formData.secondary_muscles || [],
+        tertiary_muscles: formData.tertiary_muscles || [],
         equipment: formData.equipment || 'barbell',
         cues: formData.cues || [],
         notes: formData.notes || '',
@@ -204,6 +214,7 @@ export default function GlossaryPage() {
         category: 'squat',
         primary_muscles: [],
         secondary_muscles: [],
+        tertiary_muscles: [],
         equipment: 'barbell',
         cues: [],
         notes: '',
@@ -237,6 +248,7 @@ export default function GlossaryPage() {
       category: exercise.category,
       primary_muscles: exercise.primary_muscles,
       secondary_muscles: exercise.secondary_muscles,
+      tertiary_muscles: exercise.tertiary_muscles ?? [],
       equipment: exercise.equipment,
       cues: exercise.cues,
       notes: exercise.notes,
@@ -264,7 +276,7 @@ export default function GlossaryPage() {
     }))
   }
 
-  function toggleMuscle(muscle: MuscleGroup, field: 'primary_muscles' | 'secondary_muscles') {
+  function toggleMuscle(muscle: MuscleGroup, field: 'primary_muscles' | 'secondary_muscles' | 'tertiary_muscles') {
     setFormData((prev) => {
       const current = prev[field] || []
       const exists = current.includes(muscle)
@@ -297,6 +309,7 @@ export default function GlossaryPage() {
         equipment: formData.equipment,
         primary_muscles: formData.primary_muscles,
         secondary_muscles: formData.secondary_muscles,
+        tertiary_muscles: formData.tertiary_muscles,
         cues: formData.cues,
         notes: formData.notes,
       })
@@ -315,6 +328,33 @@ export default function GlossaryPage() {
     }
   }
 
+  async function handleEstimateMuscles() {
+    setIsEstimatingMuscles(true)
+    try {
+      const result = await api.estimateMuscleGroups({
+        name: formData.name || '',
+        category: formData.category,
+        equipment: formData.equipment,
+        primary_muscles: formData.primary_muscles,
+        secondary_muscles: formData.secondary_muscles,
+        tertiary_muscles: formData.tertiary_muscles,
+        cues: formData.cues,
+        notes: formData.notes,
+        lift_profiles: liftProfiles,
+      })
+      setFormData((prev) => ({
+        ...prev,
+        primary_muscles: result.primary_muscles as MuscleGroup[],
+        secondary_muscles: result.secondary_muscles as MuscleGroup[],
+        tertiary_muscles: result.tertiary_muscles as MuscleGroup[],
+      }))
+    } catch {
+      pushToast({ message: 'Muscle group estimation failed', type: 'error' })
+    } finally {
+      setIsEstimatingMuscles(false)
+    }
+  }
+
   async function handleBulkEstimateFatigue() {
     const toEstimate = exercises.filter(e => !e.fatigue_profile || e.fatigue_profile_source !== 'ai_estimated')
     if (toEstimate.length === 0) {
@@ -325,14 +365,14 @@ export default function GlossaryPage() {
     if (!confirm(`Estimate fatigue profiles for ${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
 
     setIsBulkEstimatingFatigue(true)
-    setBulkProgress({ current: 0, total: toEstimate.length })
+    setBulkProgress({ current: 0, total: toEstimate.length, label: 'Estimating fatigue profiles' })
 
     let successCount = 0
     for (let i = 0; i < toEstimate.length; i++) {
-      setBulkProgress({ current: i + 1, total: toEstimate.length })
+      setBulkProgress({ current: i + 1, total: toEstimate.length, label: 'Estimating fatigue profiles' })
       try {
         const res = await api.estimateExerciseFatigue(toEstimate[i].id)
-        if (res?.fatigue_profile) {
+        if (res?.fatigue_profile || res?.profile) {
           successCount++
         }
       } catch (err) {
@@ -349,18 +389,18 @@ export default function GlossaryPage() {
   async function handleBulkEstimateE1rm() {
     const toEstimate = exercises.filter(e => !e.e1rm_estimate)
     if (toEstimate.length === 0) {
-    pushToast({ message: 'All exercises already have e1RM estimates', type: 'warning' })
+      pushToast({ message: 'All exercises already have e1RM estimates', type: 'warning' })
       return
     }
 
-    if (!window.confirm(`Estimate e1RM for $${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
+    if (!window.confirm(`Estimate e1RM for ${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
 
     setIsBulkEstimatingE1rm(true)
-    setBulkProgress({ current: 0, total: toEstimate.length })
+    setBulkProgress({ current: 0, total: toEstimate.length, label: 'Estimating e1RM values' })
 
     let successCount = 0
     for (let i = 0; i < toEstimate.length; i++) {
-      setBulkProgress({ current: i + 1, total: toEstimate.length })
+      setBulkProgress({ current: i + 1, total: toEstimate.length, label: 'Estimating e1RM values' })
       try {
         const res = await api.estimateExerciseE1rm(toEstimate[i].id)
         if (res?.estimate) {
@@ -373,6 +413,37 @@ export default function GlossaryPage() {
 
     pushToast({ message: `Successfully estimated e1RM for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
     setIsBulkEstimatingE1rm(false)
+    setBulkProgress(null)
+    loadExercises()
+  }
+
+  async function handleBulkEstimateMuscles() {
+    const toEstimate = exercises.filter((e) => e.tertiary_muscles == null)
+    if (toEstimate.length === 0) {
+      pushToast({ message: 'All exercises already have tertiary muscle groups', type: 'success' })
+      return
+    }
+
+    if (!confirm(`Estimate muscle groups for ${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
+
+    setIsBulkEstimatingMuscles(true)
+    setBulkProgress({ current: 0, total: toEstimate.length, label: 'Estimating muscle groups' })
+
+    let successCount = 0
+    for (let i = 0; i < toEstimate.length; i++) {
+      setBulkProgress({ current: i + 1, total: toEstimate.length, label: 'Estimating muscle groups' })
+      try {
+        const res = await api.estimateExerciseMuscles(toEstimate[i].id)
+        if (Array.isArray(res?.primary_muscles) && Array.isArray(res?.secondary_muscles) && Array.isArray(res?.tertiary_muscles)) {
+          successCount++
+        }
+      } catch (err) {
+        console.error(`Failed to estimate muscles for ${toEstimate[i].name}`, err)
+      }
+    }
+
+    pushToast({ message: `Successfully estimated muscle groups for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
+    setIsBulkEstimatingMuscles(false)
     setBulkProgress(null)
     loadExercises()
   }
@@ -393,7 +464,9 @@ export default function GlossaryPage() {
       (e) =>
         e.name.toLowerCase().includes(query) ||
         e.category.toLowerCase().includes(query) ||
-        e.primary_muscles.some((m) => m.toLowerCase().includes(query))
+        e.primary_muscles.some((m) => m.toLowerCase().includes(query)) ||
+        e.secondary_muscles.some((m) => m.toLowerCase().includes(query)) ||
+        (e.tertiary_muscles ?? []).some((m) => m.toLowerCase().includes(query))
     )
   }, [exercises, searchQuery, showArchived, hasE1rmFilter])
 
@@ -443,9 +516,19 @@ export default function GlossaryPage() {
             leftSection={<RefreshCw size={16} />}
             onClick={handleBulkEstimateFatigue}
             loading={isBulkEstimatingFatigue}
-            disabled={isBulkEstimatingFatigue || isBulkEstimatingE1rm}
+            disabled={isBulkEstimatingFatigue || isBulkEstimatingE1rm || isBulkEstimatingMuscles}
           >
             {isBulkEstimatingFatigue && bulkProgress ? `Fatigue (${bulkProgress.current}/${bulkProgress.total})` : 'Estimate Fatigue'}
+          </Button>
+          <Button
+            variant="light"
+            color="cyan"
+            leftSection={<RefreshCw size={16} />}
+            onClick={handleBulkEstimateMuscles}
+            loading={isBulkEstimatingMuscles}
+            disabled={isBulkEstimatingFatigue || isBulkEstimatingE1rm || isBulkEstimatingMuscles}
+          >
+            {isBulkEstimatingMuscles && bulkProgress ? `Muscles (${bulkProgress.current}/${bulkProgress.total})` : 'Estimate Muscles'}
           </Button>
           <Button
             variant="light"
@@ -453,7 +536,7 @@ export default function GlossaryPage() {
             leftSection={<RefreshCw size={16} />}
             onClick={handleBulkEstimateE1rm}
             loading={isBulkEstimatingE1rm}
-            disabled={isBulkEstimatingFatigue || isBulkEstimatingE1rm}
+            disabled={isBulkEstimatingFatigue || isBulkEstimatingE1rm || isBulkEstimatingMuscles}
           >
             {isBulkEstimatingE1rm && bulkProgress ? `e1RM (${bulkProgress.current}/${bulkProgress.total})` : 'Estimate e1RM'}
           </Button>
@@ -467,6 +550,7 @@ export default function GlossaryPage() {
                 category: 'squat',
                 primary_muscles: [],
                 secondary_muscles: [],
+                tertiary_muscles: [],
                 equipment: 'barbell',
                 cues: [],
                 notes: '',
@@ -506,6 +590,18 @@ export default function GlossaryPage() {
           {showArchived ? 'Hide Archived' : 'Show Archived'}
         </Button>
       </Group>
+
+      {bulkProgress && (
+        <Paper withBorder p="sm">
+          <Stack gap={6}>
+            <Group justify="space-between" gap="sm">
+              <Text size="sm" fw={500}>{bulkProgress.label}</Text>
+              <Text size="sm" c="dimmed">{bulkProgress.current}/{bulkProgress.total}</Text>
+            </Group>
+            <Progress value={bulkProgress.total > 0 ? (bulkProgress.current / bulkProgress.total) * 100 : 0} />
+          </Stack>
+        </Paper>
+      )}
 
       {/* Add/Edit Form Modal */}
       <Modal
@@ -690,7 +786,19 @@ export default function GlossaryPage() {
 
           <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
             <Stack gap={4}>
-              <Text size="sm" fw={500}>Primary Muscles</Text>
+              <Group justify="space-between" gap="xs">
+                <Text size="sm" fw={500}>Primary Muscles</Text>
+                <Button
+                  size="compact-xs"
+                  variant="light"
+                  color="blue"
+                  onClick={handleEstimateMuscles}
+                  disabled={isEstimatingMuscles || !formData.name}
+                  leftSection={isEstimatingMuscles ? <Loader size={12} /> : <RefreshCw size={12} />}
+                >
+                  {isEstimatingMuscles ? 'Estimating...' : 'AI Estimate'}
+                </Button>
+              </Group>
               <Paper withBorder p="xs" h={180} style={{ overflowY: 'auto' }}>
                 <Group gap={4}>
                   {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
@@ -726,6 +834,25 @@ export default function GlossaryPage() {
               </Paper>
             </Stack>
           </SimpleGrid>
+
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>Tertiary Muscles</Text>
+            <Paper withBorder p="xs" h={140} style={{ overflowY: 'auto' }}>
+              <Group gap={4}>
+                {Object.entries(MUSCLE_LABELS).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    size="compact-xs"
+                    variant={formData.tertiary_muscles?.includes(value as MuscleGroup) ? 'filled' : 'light'}
+                    color={formData.tertiary_muscles?.includes(value as MuscleGroup) ? 'blue' : 'gray'}
+                    onClick={() => toggleMuscle(value as MuscleGroup, 'tertiary_muscles')}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </Group>
+            </Paper>
+          </Stack>
 
           <div>
             <Text size="sm" fw={500} mb={4}>Training Cues</Text>
@@ -846,6 +973,18 @@ export default function GlossaryPage() {
                             <Group gap={4}>
                               {exercise.secondary_muscles.map((m) => (
                                 <Badge key={m} variant="outline" size="sm">
+                                  {MUSCLE_LABELS[m]}
+                                </Badge>
+                              ))}
+                            </Group>
+                          </div>
+                        )}
+                        {(exercise.tertiary_muscles?.length ?? 0) > 0 && (
+                          <div>
+                            <Text size="xs" c="dimmed" mb={4}>Tertiary Muscles</Text>
+                            <Group gap={4}>
+                              {(exercise.tertiary_muscles ?? []).map((m) => (
+                                <Badge key={m} variant="dot" size="sm">
                                   {MUSCLE_LABELS[m]}
                                 </Badge>
                               ))}

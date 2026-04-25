@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { useProgramStore } from '@/store/programStore'
 import { AuthProvider } from '@/auth/AuthProvider'
 import AppShell from '@/components/layout/AppShell'
@@ -9,6 +9,7 @@ import DesignerPage from '@/pages/DesignerPage'
 import DesignerLanding from '@/pages/DesignerLanding'
 import DesignerPhases from '@/pages/DesignerPhases'
 import ListPage from '@/pages/ListPage'
+import SessionDetailPage from '@/pages/SessionDetailPage'
 import AnalysisPage from '@/pages/AnalysisPage'
 import GlossaryPage from '@/pages/GlossaryPage'
 import ToolsPage from '@/pages/ToolsPage'
@@ -51,11 +52,14 @@ export default function App() {
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/" element={<Dashboard />} />
           <Route path="/lift-profiles/:lift" element={<LiftProfilePage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/calendar" element={<Navigate to="/sessions" replace />} />
+          <Route path="/sessions" element={<CalendarPage />} />
           <Route path="/designer" element={<DesignerLanding />} />
           <Route path="/designer/phases" element={<DesignerPhases />} />
           <Route path="/designer/sessions" element={<DesignerPage />} />
           <Route path="/list" element={<ListPage />} />
+          <Route path="/session/:date/:index?" element={<SessionDetailPage />} />
+          <Route path="/list/:date/:index?" element={<SessionDetailPage />} />
           <Route path="/analysis" element={<AnalysisPage />} />
           <Route path="/rankings" element={<RankingsPage />} />
           <Route path="/supplements" element={<SupplementsPage />} />

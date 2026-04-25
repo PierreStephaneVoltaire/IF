@@ -16,7 +16,7 @@ interface ProgramState {
   loadProgram: (version: string) => Promise<void>
   loadVersions: () => Promise<void>
   setActiveSession: (date: string | null, index: number | null) => void
-  createSession: (session: Partial<Session> & { date: string }) => Promise<void>
+  createSession: (session: Partial<Session> & { date: string }) => Promise<Session>
   deleteSession: (date: string, index: number) => Promise<void>
   updateSession: (date: string, index: number, session: Session) => void
   updateExercise: (
@@ -105,10 +105,11 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
 
   createSession: async (sessionData) => {
     const { version } = get()
-    await api.createSession(version, sessionData)
+    const session = await api.createSession(version, sessionData)
 
     // Reload program to get updated sessions with derived fields
     await get().loadProgram(version)
+    return session
   },
 
   deleteSession: async (date, index) => {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Activity, Download, AlertTriangle, CheckCircle, TrendingUp, Dumbbell, Trophy,
-  Scale, Moon, Beef, Ruler, Utensils,
+  Scale, Moon, Beef, Ruler, Utensils, Info,
 } from 'lucide-react'
 import {
   fetchWeeklyAnalysis, type WeeklyAnalysis,
@@ -18,7 +18,7 @@ import type { WeightEntry, GlossaryExercise, ExerciseCategory } from '@powerlift
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, ReferenceLine, Legend } from 'recharts'
 import {
   Stack, Group, Paper, SimpleGrid, Text, Title, Badge, Table,
-  Button, Center, Select, Progress, Accordion, SegmentedControl, Box, Loader,
+  Button, Center, Select, Progress, Accordion, SegmentedControl, Box, Loader, Tooltip,
 } from '@mantine/core'
 import { AiAnalysis } from '@/components/analysis/AiAnalysis'
 import { AlertsStrip } from '@/components/analysis/AlertsStrip'
@@ -175,6 +175,17 @@ type TrendRow = {
   ipfGlMode: IpfGlMode | null
 }
 
+function InfoLabel({ label, help }: { label: string; help: string }) {
+  return (
+    <Group gap={4} justify="center" wrap="nowrap">
+      <Text fz="xs" c="dimmed">{label}</Text>
+      <Tooltip label={help} withArrow multiline w={260}>
+        <Info size={12} style={{ cursor: 'help', color: 'var(--mantine-color-gray-6)' }} />
+      </Tooltip>
+    </Group>
+  )
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function AnalysisPage() {
@@ -243,11 +254,12 @@ export default function AnalysisPage() {
   }, [program?.sessions, analysisWindowStartStr])
 
   const glossaryMuscles = useMemo(() => {
-    const lookup = new Map<string, { primary: string[]; secondary: string[] }>()
+    const lookup = new Map<string, { primary: string[]; secondary: string[]; tertiary: string[] }>()
     for (const ex of glossary) {
       lookup.set(normalizeExerciseName(ex.name), {
         primary: ex.primary_muscles,
         secondary: ex.secondary_muscles,
+        tertiary: ex.tertiary_muscles ?? [],
       })
     }
     return lookup
@@ -274,6 +286,7 @@ export default function AnalysisPage() {
         const vol = sets * (ex.reps || 0) * (ex.kg || 0)
         for (const m of muscles.primary) { mgSets[m] = (mgSets[m] || 0) + sets; mgVol[m] = (mgVol[m] || 0) + vol }
         for (const m of muscles.secondary) { mgSets[m] = (mgSets[m] || 0) + sets * 0.5; mgVol[m] = (mgVol[m] || 0) + vol * 0.5 }
+        for (const m of muscles.tertiary) { mgSets[m] = (mgSets[m] || 0) + sets * 0.25; mgVol[m] = (mgVol[m] || 0) + vol * 0.25 }
       }
     }
     const avgSets: Record<string, number> = {}
@@ -721,15 +734,15 @@ export default function AnalysisPage() {
                   <Stack gap="md">
                     <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
                       <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-orange-light)' }}>
-                        <Text fz="xs" c="dimmed">CTL / Fitness</Text>
+                        <InfoLabel label="CTL / Fitness" help="Chronic training load. A longer-horizon fitness signal built from your recent workload history." />
                         <Text fz="xl" fw={700} c="var(--mantine-color-text)">{banister.ctl_today.toFixed(1)}</Text>
                       </Stack>
                       <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-red-light)' }}>
-                        <Text fz="xs" c="dimmed">ATL / Fatigue</Text>
+                        <InfoLabel label="ATL / Fatigue" help="Acute training load. A shorter-horizon fatigue signal that reacts faster to recent hard training." />
                         <Text fz="xl" fw={700} c="var(--mantine-color-text)">{banister.atl_today.toFixed(1)}</Text>
                       </Stack>
                       <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-blue-light)' }}>
-                        <Text fz="xs" c="dimmed">TSB / Form</Text>
+                        <InfoLabel label="TSB / Form" help="Training stress balance. CTL minus ATL. Higher values usually mean fresher; very negative values usually mean accumulated fatigue." />
                         <Text fz="xl" fw={700} c={banisterBadgeColor(banister.tsb_today)}>{banister.tsb_today.toFixed(1)}</Text>
                       </Stack>
                     </SimpleGrid>
@@ -928,7 +941,12 @@ export default function AnalysisPage() {
           {/* INOL */}
           {data.inol && data.inol.avg_inol && (
             <Paper withBorder p="md">
-              <Text fw={500} mb="sm">Stimulus-Adjusted INOL (Window Average)</Text>
+              <Group gap="xs" mb="sm">
+                <Text fw={500}>Stimulus-Adjusted INOL (Window Average)</Text>
+                <Tooltip label="INOL means intensity-number-of-lifts. Here it is adjusted by your lift-profile stimulus coefficient to reflect how hard the same workload is for you." withArrow multiline w={320}>
+                  <Info size={14} style={{ cursor: 'help', color: 'var(--mantine-color-gray-6)' }} />
+                </Tooltip>
+              </Group>
               <SimpleGrid cols={3} mb="sm">
                 {Object.entries(data.inol.avg_inol).map(([lift, val]) => {
                   const coefficient = data.inol?.stimulus_coefficients?.[lift] ?? 1
@@ -1004,7 +1022,12 @@ export default function AnalysisPage() {
           {data.acwr && !('status' in data.acwr) && (
             <Paper withBorder p="md">
               <Group justify="space-between" mb="sm">
-                <Text fw={500}>EWMA ACWR (daily workload ratio)</Text>
+                <Group gap="xs">
+                  <Text fw={500}>EWMA ACWR (daily workload ratio)</Text>
+                  <Tooltip label="EWMA ACWR means exponentially weighted moving average acute:chronic workload ratio. It compares short-term load to longer-term load while weighting recent work more heavily." withArrow multiline w={340}>
+                    <Info size={14} style={{ cursor: 'help', color: 'var(--mantine-color-gray-6)' }} />
+                  </Tooltip>
+                </Group>
                 <Badge
                   color={getAcwrZoneMeta((data.acwr as any).composite_zone).color}
                   variant="light"
@@ -1031,7 +1054,12 @@ export default function AnalysisPage() {
           )}
           {data.acwr && 'status' in data.acwr && (
             <Paper withBorder p="md">
-              <Text fw={500} mb="xs">EWMA ACWR (daily workload ratio)</Text>
+              <Group gap="xs" mb="xs">
+                <Text fw={500}>EWMA ACWR (daily workload ratio)</Text>
+                <Tooltip label="EWMA ACWR means exponentially weighted moving average acute:chronic workload ratio. It compares short-term load to longer-term load while weighting recent work more heavily." withArrow multiline w={340}>
+                  <Info size={14} style={{ cursor: 'help', color: 'var(--mantine-color-gray-6)' }} />
+                </Tooltip>
+              </Group>
               <Text fz="sm" c="dimmed">{(data.acwr as any).reason ?? 'Not enough data yet. Keep logging sessions.'}</Text>
             </Paper>
           )}
@@ -1077,7 +1105,12 @@ export default function AnalysisPage() {
           {data.specificity_ratio && (
             <Paper withBorder p="md">
               <Group justify="space-between" align="flex-start" mb="sm">
-                <Text fw={500}>Specificity Ratio</Text>
+                <Group gap="xs">
+                  <Text fw={500}>Specificity Ratio</Text>
+                  <Tooltip label="Specificity ratio shows how much of your work is directly specific to competition. Narrow counts only SBD sets. Broad counts SBD plus closely related secondary work." withArrow multiline w={320}>
+                    <Info size={14} style={{ cursor: 'help', color: 'var(--mantine-color-gray-6)' }} />
+                  </Tooltip>
+                </Group>
                 {data.specificity_ratio.expected_band ? (
                   <Group gap="xs" wrap="wrap" justify="flex-end">
                     <Badge

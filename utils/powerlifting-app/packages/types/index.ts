@@ -7,6 +7,7 @@ export interface ProgramMeta {
   federation: string
   practicing_for: string
   version_label: string
+  sex?: Sex
   weight_class_kg: number
   weight_class_confirm_by: string
   current_body_weight_kg: number
@@ -318,11 +319,11 @@ export interface WeightEntry {
 // ─── Glossary ─────────────────────────────────────────────────────────────────
 
 export type MuscleGroup =
-  | 'quads' | 'hamstrings' | 'glutes' | 'calves' | 'hip_flexors'
+  | 'quads' | 'hamstrings' | 'glutes' | 'calves' | 'tibialis_anterior' | 'hip_flexors' | 'adductors'
   | 'chest' | 'triceps' | 'front_delts' | 'side_delts' | 'rear_delts'
   | 'lats' | 'traps' | 'rhomboids' | 'teres_major'
   | 'biceps' | 'forearms'
-  | 'erectors' | 'lower_back' | 'core' | 'obliques'
+  | 'erectors' | 'lower_back' | 'core' | 'obliques' | 'serratus'
 
 export type ExerciseCategory =
   | 'squat' | 'bench' | 'deadlift'
@@ -359,6 +360,7 @@ export interface GlossaryExercise {
   fatigue_category: FatigueCategory
   primary_muscles: MuscleGroup[]
   secondary_muscles: MuscleGroup[]
+  tertiary_muscles?: MuscleGroup[]
   equipment: Equipment
   cues: string[]
   notes: string

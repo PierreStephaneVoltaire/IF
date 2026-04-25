@@ -28,7 +28,10 @@ export default function AppShell({ children }: AppShellProps) {
         breakpoint: 'md',
         collapsed: { mobile: true },
       }}
-      footer={{ height: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}
+      footer={{
+        height: 'calc(60px + env(safe-area-inset-bottom, 0px))',
+        offset: false,
+      }}
       padding="md"
       style={{ 
         minHeight: '100dvh',
@@ -41,7 +44,12 @@ export default function AppShell({ children }: AppShellProps) {
         <TopBar />
       </MantineAppShell.Header>
 
-      <MantineAppShell.Navbar>
+      <MantineAppShell.Navbar
+        style={{
+          height: 'calc(var(--vh, 1vh) * 100 - 60px)',
+          maxHeight: 'calc(var(--vh, 1vh) * 100 - 60px)',
+        }}
+      >
         <Sidebar />
       </MantineAppShell.Navbar>
 

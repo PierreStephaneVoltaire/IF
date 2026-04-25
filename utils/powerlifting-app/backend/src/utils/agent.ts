@@ -7,10 +7,7 @@ function extractJson(text: string): any {
   return JSON.parse(match[0])
 }
 
-/**
- * Invoke a Python tool directly via the Agent API.
- */
-export async function invokeToolDirect(
+async function invokeRawTool(
   toolName: string,
   args: Record<string, unknown>,
 ): Promise<any> {
@@ -33,4 +30,37 @@ export async function invokeToolDirect(
   const body: any = await response.json()
   const rawContent: string = body?.choices?.[0]?.message?.content ?? ''
   return extractJson(rawContent)
+}
+
+async function reloadIfTools(): Promise<void> {
+  const response = await fetch(`${IF_API_URL}/admin/reload-tools`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`IF tool reload failed ${response.status}: ${text}`)
+  }
+}
+
+/**
+ * Invoke a Python tool directly via the Agent API.
+ */
+export async function invokeToolDirect(
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<any> {
+  try {
+    return await invokeRawTool(toolName, args)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes(`Unknown tool: ${toolName}`)) {
+      throw error
+    }
+  }
+
+  await reloadIfTools()
+  return invokeRawTool(toolName, args)
 }
