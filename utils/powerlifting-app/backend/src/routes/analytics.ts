@@ -8,6 +8,9 @@ analyticsRouter.get('/analysis/weekly', async (req, res) => {
   try {
     const weeks = parseInt(req.query.weeks as string) || 1
     const block = (req.query.block as string) || 'current'
+    const windowStart = (req.query.windowStart as string) || undefined
+    const windowEnd = (req.query.windowEnd as string) || undefined
+    const refDate = (req.query.refDate as string) || undefined
     const today = new Date().toISOString().slice(0, 10)
     try {
       await invokeToolDirect('health_snapshot_competition_projection', {
@@ -19,7 +22,15 @@ analyticsRouter.get('/analysis/weekly', async (req, res) => {
     } catch (snapshotErr) {
       console.warn('Failed to snapshot competition projections before weekly analysis:', snapshotErr)
     }
-    const data = await invokeToolDirect('weekly_analysis', { weeks, block, refresh_program: true, pk: req.effectivePk })
+    const data = await invokeToolDirect('weekly_analysis', {
+      weeks,
+      block,
+      window_start: windowStart,
+      window_end: windowEnd,
+      ref_date: refDate,
+      refresh_program: true,
+      pk: req.effectivePk,
+    })
     res.json({ data, error: null })
   } catch (err) {
     res.status(502).json({ data: null, error: `Tool invocation error: ${err}` })

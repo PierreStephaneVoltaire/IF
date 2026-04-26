@@ -16,6 +16,8 @@ import ToolsPage from '@/pages/ToolsPage'
 import SupplementsPage from '@/pages/SupplementsPage'
 import BiometricsPage from '@/pages/BiometricsPage'
 import CompetitionsPage from '@/pages/CompetitionsPage'
+import GoalsPage from '@/pages/GoalsPage'
+import FederationsPage from '@/pages/FederationsPage'
 import MaxesPage from '@/pages/MaxesPage'
 import VideosPage from '@/pages/VideosPage'
 import AboutPage from '@/pages/AboutPage'
@@ -57,6 +59,8 @@ export default function App() {
           <Route path="/designer" element={<DesignerLanding />} />
           <Route path="/designer/phases" element={<DesignerPhases />} />
           <Route path="/designer/sessions" element={<DesignerPage />} />
+          <Route path="/designer/goals" element={<GoalsPage />} />
+          <Route path="/designer/federations" element={<FederationsPage />} />
           <Route path="/list" element={<ListPage />} />
           <Route path="/session/:date/:index?" element={<SessionDetailPage />} />
           <Route path="/list/:date/:index?" element={<SessionDetailPage />} />

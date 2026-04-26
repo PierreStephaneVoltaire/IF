@@ -104,17 +104,110 @@ export interface Phase {
   block?: string   // Training block identifier. Default: "current". Mirrors Session.block.
 }
 
+// ─── Goals & Federations ─────────────────────────────────────────────────────
+
+export type GoalType =
+  | 'qualify_for_federation'
+  | 'hit_total'
+  | 'peak_for_meet'
+  | 'make_podium'
+  | 'conservative_pr'
+  | 'train_through'
+  | 'rank_percentile'
+  | 'improve_dots'
+  | 'maintain_weight_class'
+  | 'coach_defined'
+
+export type GoalPriority = 'primary' | 'secondary' | 'optional'
+export type RiskTolerance = 'low' | 'medium' | 'high'
+
+export type AttemptStrategyMode =
+  | 'max_total'
+  | 'qualify'
+  | 'minimum_total'
+  | 'podium'
+  | 'train_through'
+  | 'conservative_pr'
+
+export interface AthleteGoal {
+  id: string
+  title: string
+  goal_type: GoalType
+  priority: GoalPriority
+  target_competition_dates?: string[]
+  target_competition_date?: string
+  target_date?: string
+  target_federation_id?: string
+  target_standard_ids?: string[]
+  target_standard_id?: string
+  target_total_kg?: number
+  target_dots?: number
+  target_ipf_gl?: number
+  target_weight_class_kg?: number
+  acceptable_weight_classes_kg?: number[]
+  strategy_mode: AttemptStrategyMode
+  risk_tolerance: RiskTolerance
+  max_acceptable_bodyweight_loss_pct?: number
+  max_acceptable_water_cut_pct?: number
+  notes?: string
+}
+
+export interface FederationRecord {
+  id: string
+  name: string
+  abbreviation?: string
+  region?: string
+  notes?: string
+  status: 'active' | 'archived'
+  created_at: string
+  updated_at: string
+}
+
+export interface QualificationStandard {
+  id: string
+  federation_id: string
+  competition_name?: string
+  season_year: number
+  sex: 'male' | 'female'
+  equipment: 'raw' | 'wraps' | 'single-ply' | 'multi-ply'
+  event: 'sbd' | 'bench-only' | 'deadlift-only'
+  age_class?: string
+  division?: string
+  weight_class_kg: number
+  required_total_kg: number
+  qualifying_start_date?: string
+  qualifying_end_date?: string
+  source_url?: string
+  source_label?: string
+  source_type: 'user_entered'
+  status: 'active' | 'archived'
+  updated_at: string
+}
+
+export interface FederationLibrary {
+  pk: string
+  sk: string
+  updated_at: string
+  federations: FederationRecord[]
+  qualification_standards: QualificationStandard[]
+}
+
 // ─── Competition ─────────────────────────────────────────────────────────────
 
 export interface Competition {
   name: string
   date: string
   federation: string
+  federation_id?: string  // Host federation for the meet itself
+  counts_toward_federation_ids?: string[]  // Extra federations that accept this meet for goal eligibility
   location?: string
   hotel_required?: boolean
   status: 'confirmed' | 'optional' | 'completed' | 'skipped'
   weight_class_kg: number
   body_weight_kg?: number  // Actual weigh-in weight for completed competitions
+  qualifying_standard_id?: string  // deprecated: goals own qualification standards
+  qualifying_total_kg?: number  // deprecated: goals own qualifying totals
+  attempt_strategy_mode?: AttemptStrategyMode  // deprecated: goals own meet strategy
   targets?: LiftResults    // For upcoming competitions
   projected_at_t_minus_1w?: LiftResults
   projection_snapshot_date?: string
@@ -245,6 +338,7 @@ export interface Program {
   meta: ProgramMeta
   phases: Phase[]
   sessions: Session[]
+  goals: AthleteGoal[]
   competitions: Competition[]
   diet_notes: DietNote[]
   supplements: Supplement[]

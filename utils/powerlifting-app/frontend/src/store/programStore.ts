@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Program, Session, Exercise, Phase, MaxEntry, WeightEntry, ProgramListItem, SupplementPhase, DietNote, Competition, SessionVideo, LiftResults, LiftProfile, Sex } from '@powerlifting/types'
+import type { Program, Session, Exercise, Phase, MaxEntry, WeightEntry, ProgramListItem, SupplementPhase, DietNote, Competition, SessionVideo, LiftResults, LiftProfile, Sex, AthleteGoal } from '@powerlifting/types'
 import * as api from '@/api/client'
 
 interface ProgramState {
@@ -65,6 +65,7 @@ interface ProgramState {
   updateCompetitions: (competitions: Competition[]) => Promise<void>
   migrateLastComp: () => Promise<void>
   completeCompetition: (date: string, results: LiftResults, bodyWeightKg: number) => Promise<void>
+  updateGoals: (goals: AthleteGoal[]) => Promise<void>
 
   // Videos
   removeSessionVideo: (sessionDate: string, videoId: string) => void
@@ -438,6 +439,21 @@ export const useProgramStore = create<ProgramState>((set, get) => ({
         program: {
           ...state.program,
           competitions,
+        },
+      }
+    })
+  },
+
+  updateGoals: async (goals) => {
+    const { version } = get()
+    await api.updateGoals(version, goals)
+
+    set((state) => {
+      if (!state.program) return state
+      return {
+        program: {
+          ...state.program,
+          goals,
         },
       }
     })

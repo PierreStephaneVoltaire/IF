@@ -119,12 +119,13 @@ def _sanitize_decimals(obj: Any) -> Any:
 
 
 def _get_glossary_sync(table_name: str) -> list[dict]:
-    """Fetch glossary from DynamoDB (pk='operator', sk='glossary#v1')."""
+    """Fetch glossary from DynamoDB for the active health partition."""
     import boto3
+    from core import _get_store
 
     dynamodb = boto3.resource("dynamodb", region_name="ca-central-1")
     table = dynamodb.Table(table_name)
-    resp = table.get_item(Key={"pk": "operator", "sk": "glossary#v1"})
+    resp = table.get_item(Key={"pk": _get_store().pk, "sk": "glossary#v1"})
     item = resp.get("Item")
     if not item:
         return []
@@ -751,6 +752,138 @@ class HealthGetCurrentMaxesTool(ToolDefinition[HealthGetCurrentMaxesAction, Heal
         )]
 
 
+# --- health_get_goals ---
+
+class HealthGetGoalsAction(Action):
+    pass
+
+
+class HealthGetGoalsObservation(Observation):
+    pass
+
+
+class HealthGetGoalsExecutor(ToolExecutor[HealthGetGoalsAction, HealthGetGoalsObservation]):
+    def __call__(self, action: HealthGetGoalsAction, conversation=None) -> HealthGetGoalsObservation:
+        from core import health_get_goals
+        result = _run_async(health_get_goals())
+        return HealthGetGoalsObservation.from_text(_format_result(result))
+
+
+class HealthGetGoalsTool(ToolDefinition[HealthGetGoalsAction, HealthGetGoalsObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthGetGoalsTool"]:
+        return [cls(
+            description=(
+                "Get the explicit goals for the current training block. "
+                "Returns the full goals array used by goal-aware program evaluation."
+            ),
+            action_type=HealthGetGoalsAction,
+            observation_type=HealthGetGoalsObservation,
+            executor=HealthGetGoalsExecutor(),
+        )]
+
+
+# --- health_update_goals ---
+
+class HealthUpdateGoalsAction(Action):
+    goals: List[Dict[str, Any]] = Field(
+        description="Complete explicit goals array to write onto the current program block"
+    )
+
+
+class HealthUpdateGoalsObservation(Observation):
+    pass
+
+
+class HealthUpdateGoalsExecutor(ToolExecutor[HealthUpdateGoalsAction, HealthUpdateGoalsObservation]):
+    def __call__(self, action: HealthUpdateGoalsAction, conversation=None) -> HealthUpdateGoalsObservation:
+        from core import health_update_goals
+        result = _run_async(health_update_goals(action.goals))
+        return HealthUpdateGoalsObservation.from_text(_format_result(result))
+
+
+class HealthUpdateGoalsTool(ToolDefinition[HealthUpdateGoalsAction, HealthUpdateGoalsObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthUpdateGoalsTool"]:
+        return [cls(
+            description=(
+                "Replace the current block's explicit goals array. "
+                "This writes a new minor program version and validates goal types, priorities, dates, and strategy modes."
+            ),
+            action_type=HealthUpdateGoalsAction,
+            observation_type=HealthUpdateGoalsObservation,
+            executor=HealthUpdateGoalsExecutor(),
+        )]
+
+
+# --- health_get_federation_library ---
+
+class HealthGetFederationLibraryAction(Action):
+    pass
+
+
+class HealthGetFederationLibraryObservation(Observation):
+    pass
+
+
+class HealthGetFederationLibraryExecutor(ToolExecutor[HealthGetFederationLibraryAction, HealthGetFederationLibraryObservation]):
+    def __call__(self, action: HealthGetFederationLibraryAction, conversation=None) -> HealthGetFederationLibraryObservation:
+        from core import health_get_federation_library
+        result = _run_async(health_get_federation_library())
+        return HealthGetFederationLibraryObservation.from_text(_format_result(result))
+
+
+class HealthGetFederationLibraryTool(ToolDefinition[HealthGetFederationLibraryAction, HealthGetFederationLibraryObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthGetFederationLibraryTool"]:
+        return [cls(
+            description=(
+                "Get the shared federation library, including federations and qualification standards. "
+                "Use this when comparing goals or competitions against qualifying totals."
+            ),
+            action_type=HealthGetFederationLibraryAction,
+            observation_type=HealthGetFederationLibraryObservation,
+            executor=HealthGetFederationLibraryExecutor(),
+        )]
+
+
+# --- health_update_federation_library ---
+
+class HealthUpdateFederationLibraryAction(Action):
+    federations: List[Dict[str, Any]] = Field(description="Complete federation records array")
+    qualification_standards: List[Dict[str, Any]] = Field(
+        description="Complete qualification standards array linked to the federation ids above"
+    )
+
+
+class HealthUpdateFederationLibraryObservation(Observation):
+    pass
+
+
+class HealthUpdateFederationLibraryExecutor(ToolExecutor[HealthUpdateFederationLibraryAction, HealthUpdateFederationLibraryObservation]):
+    def __call__(self, action: HealthUpdateFederationLibraryAction, conversation=None) -> HealthUpdateFederationLibraryObservation:
+        from core import health_update_federation_library
+        result = _run_async(health_update_federation_library({
+            "federations": action.federations,
+            "qualification_standards": action.qualification_standards,
+        }))
+        return HealthUpdateFederationLibraryObservation.from_text(_format_result(result))
+
+
+class HealthUpdateFederationLibraryTool(ToolDefinition[HealthUpdateFederationLibraryAction, HealthUpdateFederationLibraryObservation]):
+    @classmethod
+    def create(cls, conv_state=None, **params) -> Sequence["HealthUpdateFederationLibraryTool"]:
+        return [cls(
+            description=(
+                "Replace the shared federation library document. "
+                "Validates federation ids and qualification-standard metadata before writing the new record."
+            ),
+            action_type=HealthUpdateFederationLibraryAction,
+            observation_type=HealthUpdateFederationLibraryObservation,
+            executor=HealthUpdateFederationLibraryExecutor(),
+        )]
+
+
 # --- health_get_operator_prefs ---
 
 class HealthGetOperatorPrefsAction(Action):
@@ -1177,7 +1310,8 @@ class HealthRemoveExerciseTool(ToolDefinition[HealthRemoveExerciseAction, Health
 class HealthCreateCompetitionAction(Action):
     competition: Dict[str, Any] = Field(
         description="Competition dict: name (required), date YYYY-MM-DD (required), federation (required), "
-                    "status (confirmed/optional/skipped), weight_class_kg, location, targets {squat_kg, bench_kg, deadlift_kg, total_kg}, notes"
+                    "federation_id, counts_toward_federation_ids, status (confirmed/optional/skipped), "
+                    "weight_class_kg, location, targets {squat_kg, bench_kg, deadlift_kg, total_kg}, notes"
     )
 
 
@@ -1196,7 +1330,7 @@ class HealthCreateCompetitionTool(ToolDefinition[HealthCreateCompetitionAction, 
     @classmethod
     def create(cls, conv_state=None, **params) -> Sequence["HealthCreateCompetitionTool"]:
         return [cls(
-            description="Create a new competition entry. Required: name, date, federation. Optional: status, weight_class_kg, location, targets, notes.",
+            description="Create a new competition entry. Required: name, date, federation. Optional: federation_id, counts_toward_federation_ids, status, weight_class_kg, location, targets, notes.",
             action_type=HealthCreateCompetitionAction,
             observation_type=HealthCreateCompetitionObservation,
             executor=HealthCreateCompetitionExecutor(),
@@ -1377,6 +1511,10 @@ register_tool("HealthGetSupplementsTool", HealthGetSupplementsTool)
 register_tool("HealthGetMetaTool", HealthGetMetaTool)
 register_tool("HealthGetPhasesTool", HealthGetPhasesTool)
 register_tool("HealthGetCurrentMaxesTool", HealthGetCurrentMaxesTool)
+register_tool("HealthGetGoalsTool", HealthGetGoalsTool)
+register_tool("HealthUpdateGoalsTool", HealthUpdateGoalsTool)
+register_tool("HealthGetFederationLibraryTool", HealthGetFederationLibraryTool)
+register_tool("HealthUpdateFederationLibraryTool", HealthUpdateFederationLibraryTool)
 register_tool("HealthGetOperatorPrefsTool", HealthGetOperatorPrefsTool)
 register_tool("HealthGetBreaksTool", HealthGetBreaksTool)
 register_tool("DaysUntilTool", DaysUntilTool)
@@ -1440,6 +1578,24 @@ def _build_analysis_bundle(program: dict, sessions: list[dict]) -> dict:
         glossary = []
 
     bundle["glossary"] = glossary
+
+    try:
+        bundle["federation_library"] = _get_versioned_item_sync(IF_HEALTH_TABLE_NAME, active_pk, "federations#v1") or {
+            "pk": active_pk,
+            "sk": "federations#v1",
+            "updated_at": "",
+            "federations": [],
+            "qualification_standards": [],
+        }
+    except Exception as e:
+        logger.warning("export: federation library fetch failed (%s); continuing without it", e)
+        bundle["federation_library"] = {
+            "pk": active_pk,
+            "sk": "federations#v1",
+            "updated_at": "",
+            "federations": [],
+            "qualification_standards": [],
+        }
 
     try:
         if version_token:
@@ -2197,6 +2353,10 @@ def get_tools() -> List[Tool]:
         Tool(name="HealthGetMetaTool"),
         Tool(name="HealthGetPhasesTool"),
         Tool(name="HealthGetCurrentMaxesTool"),
+        Tool(name="HealthGetGoalsTool"),
+        Tool(name="HealthUpdateGoalsTool"),
+        Tool(name="HealthGetFederationLibraryTool"),
+        Tool(name="HealthUpdateFederationLibraryTool"),
         Tool(name="HealthGetOperatorPrefsTool"),
         Tool(name="HealthGetBreaksTool"),
         Tool(name="DaysUntilTool"),
@@ -2385,6 +2545,51 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
             "description": "Get current training maxes (squat, bench, deadlift).",
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
+        "health_get_goals": {
+            "name": "health_get_goals",
+            "description": "Get the explicit goals for the current training block.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+        "health_update_goals": {
+            "name": "health_update_goals",
+            "description": "Replace the explicit goals array for the current training block.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "goals": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Complete goals array to write to the current block",
+                    },
+                },
+                "required": ["goals"],
+            },
+        },
+        "health_get_federation_library": {
+            "name": "health_get_federation_library",
+            "description": "Get the shared federation and qualification-standards library.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+        "health_update_federation_library": {
+            "name": "health_update_federation_library",
+            "description": "Replace the shared federation-library document.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "federations": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Complete federation records array",
+                    },
+                    "qualification_standards": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Complete qualification standards array",
+                    },
+                },
+                "required": ["federations", "qualification_standards"],
+            },
+        },
         "health_update_competition": {
             "name": "health_update_competition",
             "description": "Update competition fields by date.",
@@ -2511,7 +2716,7 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
             "description": "Create a new competition entry.",
             "parameters": {
                 "type": "object",
-                "properties": {"competition": {"type": "object", "description": "Competition dict: name, date, federation, status, weight_class_kg, location, targets, notes"}},
+                "properties": {"competition": {"type": "object", "description": "Competition dict: name, date, federation, federation_id, counts_toward_federation_ids, status, weight_class_kg, location, targets, notes"}},
                 "required": ["competition"],
             },
         },
@@ -3274,6 +3479,9 @@ def _do_weekly_analysis(args):
     return weekly_analysis(
         program,
         sessions,
+        window_start=args.get("window_start"),
+        window_end=args.get("window_end"),
+        ref_date=args.get("ref_date"),
         weeks=args.get("weeks", 1),
         block=args.get("block", "current"),
         glossary=glossary,
@@ -3461,6 +3669,10 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         health_get_meta,
         health_get_phases,
         health_get_current_maxes,
+        health_get_goals,
+        health_update_goals as do_update_goals,
+        health_get_federation_library,
+        health_update_federation_library as do_update_federation_library,
         health_update_competition as do_update_competition,
         health_snapshot_competition_projection as do_snapshot_competition_projection,
         health_complete_competition as do_complete_competition,
@@ -3524,6 +3736,13 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "health_get_meta": lambda: health_get_meta(),
         "health_get_phases": lambda: health_get_phases(),
         "health_get_current_maxes": lambda: health_get_current_maxes(),
+        "health_get_goals": lambda: health_get_goals(),
+        "health_update_goals": lambda: do_update_goals(args["goals"]),
+        "health_get_federation_library": lambda: health_get_federation_library(),
+        "health_update_federation_library": lambda: do_update_federation_library({
+            "federations": args["federations"],
+            "qualification_standards": args["qualification_standards"],
+        }),
         "health_update_competition": lambda: do_update_competition(args["date"], args["patch"]),
         "health_snapshot_competition_projection": lambda: do_snapshot_competition_projection(args["date"], args.get("version", "current"), args.get("allow_retrospective", False)),
         "health_complete_competition": lambda: do_complete_competition(args["date"], args["results"], args["body_weight_kg"], args.get("version", "current"), args.get("allow_retrospective", True)),
@@ -3597,8 +3816,8 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
     override_pk = args.get("pk")
     saved_pk = None
     if override_pk:
-        from core import _get_store, _get_template_store, _get_import_store, _get_glossary_store
-        for getter in (_get_store, _get_template_store, _get_import_store, _get_glossary_store):
+        from core import _get_store, _get_template_store, _get_import_store, _get_glossary_store, _get_federation_store
+        for getter in (_get_store, _get_template_store, _get_import_store, _get_glossary_store, _get_federation_store):
             try:
                 s = getter()
                 if saved_pk is None:
@@ -3614,7 +3833,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
     finally:
         # Restore original pk to avoid leaking across calls
         if saved_pk is not None:
-            for getter in (_get_store, _get_template_store, _get_import_store, _get_glossary_store):
+            for getter in (_get_store, _get_template_store, _get_import_store, _get_glossary_store, _get_federation_store):
                 try:
                     getter().pk = saved_pk
                 except Exception:

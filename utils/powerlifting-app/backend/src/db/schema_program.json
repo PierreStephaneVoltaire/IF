@@ -160,6 +160,8 @@
       "name": "May 2026 Comp",
       "date": "2026-05-30",
       "federation": "CPU",
+      "federation_id": "cpu",
+      "counts_toward_federation_ids": [],
       "location": "Local",
       "hotel_required": false,
       "status": "confirmed",

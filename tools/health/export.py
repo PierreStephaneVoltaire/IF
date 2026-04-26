@@ -330,6 +330,7 @@ def build_program_xlsx(
             - weight_log: list of weight log entries
             - max_history: list of max history entries
             - glossary: exercise glossary rows
+            - federation_library: shared federation and standards record
             - sex: preferred sex for DOTS calculations
 
     Returns:
@@ -341,6 +342,7 @@ def build_program_xlsx(
     meta = copy.deepcopy(program.get("meta", {}))
     phases = _deepcopy_rows(program.get("phases"))
     sessions = _deepcopy_rows(program.get("sessions"))
+    goals = _deepcopy_rows(program.get("goals"))
     competitions = _deepcopy_rows(program.get("competitions"))
     diet_notes = _deepcopy_rows(program.get("diet_notes"))
     supplements = _deepcopy_rows(program.get("supplements"))
@@ -353,6 +355,7 @@ def build_program_xlsx(
     weight_log = _deepcopy_rows(export_context.get("weight_log"))
     max_history = _deepcopy_rows(export_context.get("max_history"))
     glossary = _deepcopy_rows(export_context.get("glossary"))
+    federation_library = copy.deepcopy(export_context.get("federation_library") or {})
     creator = _first_non_blank(meta.get("creator"), export_context.get("pk"), program.get("pk"), "operator")
     program_pk = _first_non_blank(export_context.get("pk"), program.get("pk"), creator)
     sex = str(_first_non_blank(meta.get("sex"), export_context.get("sex"), "male")).lower()
@@ -369,14 +372,15 @@ def build_program_xlsx(
 
     # ---- Base program sheets ----
     _write_meta_sheet(wb, meta, creator=creator, program_pk=program_pk, version_token=version_token, sex=sex)
-    _write_goals_sheet(wb, meta, competitions, sex)
+    _write_goals_sheet(wb, meta, goals, competitions, sex, federation_library)
+    _write_federation_standards_sheet(wb, federation_library)
     _write_current_maxes_sheet(wb, current_maxes)
     _write_max_history_sheet(wb, max_history, sex, meta)
     _write_phases_sheet(wb, phases)
     _write_sessions_sheet(wb, prepared_sessions)
     _write_planned_exercises_sheet(wb, prepared_sessions)
     _write_exercises_sheet(wb, prepared_sessions)
-    _write_competitions_sheet(wb, competitions, prepared_sessions, weight_log, sex, meta)
+    _write_competitions_sheet(wb, competitions, prepared_sessions, weight_log, sex, meta, federation_library)
     _write_biometrics_sheet(wb, diet_notes)
     _write_weight_log_sheet(wb, weight_log)
     _write_supplements_sheet(wb, supplements)
@@ -411,6 +415,7 @@ def build_program_xlsx(
             "weight_log": weight_log,
             "max_history": max_history,
             "glossary": glossary,
+            "federation_library": federation_library,
         },
     )
 
@@ -735,6 +740,94 @@ def _write_program_evaluation_sheet(wb: Workbook, evaluation: dict | None) -> No
         next_row += 1
     next_row += 1
 
+    _write_section_label(ws, next_row, "Goal Status", width=4)
+    next_row += 1
+    goal_headers = ["Goal", "Priority", "Status", "Reason"]
+    for col_idx, h in enumerate(goal_headers, 1):
+        cell = ws.cell(row=next_row, column=col_idx, value=h)
+        cell.font = _HEADER_FONT
+        cell.fill = _HEADER_FILL
+    next_row += 1
+    goal_items = evaluation.get("goal_status") or []
+    if goal_items:
+        for item in goal_items:
+            values = [
+                _fmt(item.get("goal")),
+                _fmt(item.get("priority")),
+                _fmt(item.get("status")),
+                _fmt(item.get("reason")),
+            ]
+            for col_idx, v in enumerate(values, 1):
+                c = ws.cell(row=next_row, column=col_idx, value=v)
+                c.alignment = _WRAP
+            next_row += 1
+    else:
+        ws.cell(row=next_row, column=1, value="(none)")
+        next_row += 1
+    next_row += 1
+
+    _write_section_label(ws, next_row, "Competition Strategy", width=4)
+    next_row += 1
+    strategy_headers = ["Competition", "Priority", "Approach", "Reason"]
+    for col_idx, h in enumerate(strategy_headers, 1):
+        cell = ws.cell(row=next_row, column=col_idx, value=h)
+        cell.font = _HEADER_FONT
+        cell.fill = _HEADER_FILL
+    next_row += 1
+    strategy_items = evaluation.get("competition_strategy") or []
+    if strategy_items:
+        for item in strategy_items:
+            values = [
+                _fmt(item.get("competition")),
+                _fmt(item.get("priority")),
+                _fmt(item.get("approach")),
+                _fmt(item.get("reason")),
+            ]
+            for col_idx, v in enumerate(values, 1):
+                c = ws.cell(row=next_row, column=col_idx, value=v)
+                c.alignment = _WRAP
+            next_row += 1
+    else:
+        ws.cell(row=next_row, column=1, value="(none)")
+        next_row += 1
+    next_row += 1
+
+    _write_section_label(ws, next_row, "Weight Class Strategy", width=4)
+    next_row += 1
+    weight_strategy = evaluation.get("weight_class_strategy") or {}
+    weight_rows = [
+        ["Recommendation", _fmt(weight_strategy.get("recommendation"))],
+        ["Recommended Weight Class", _fmt(weight_strategy.get("recommended_weight_class_kg"))],
+    ]
+    for label, value in weight_rows:
+        ws.cell(row=next_row, column=1, value=label).font = _HEADER_FONT
+        ws.cell(row=next_row, column=1).fill = _HEADER_FILL
+        ws.cell(row=next_row, column=1).alignment = _WRAP
+        ws.cell(row=next_row, column=2, value=value).alignment = _WRAP
+        next_row += 1
+    option_headers = ["Option Weight Class", "Suitability", "Reason"]
+    for col_idx, h in enumerate(option_headers, 1):
+        cell = ws.cell(row=next_row, column=col_idx, value=h)
+        cell.font = _HEADER_FONT
+        cell.fill = _HEADER_FILL
+    next_row += 1
+    viable_options = weight_strategy.get("viable_options") or []
+    if viable_options:
+        for item in viable_options:
+            values = [
+                _fmt(item.get("weight_class_kg")),
+                _fmt(item.get("suitability")),
+                _fmt(item.get("reason")),
+            ]
+            for col_idx, v in enumerate(values, 1):
+                c = ws.cell(row=next_row, column=col_idx, value=v)
+                c.alignment = _WRAP
+            next_row += 1
+    else:
+        ws.cell(row=next_row, column=1, value="(none)")
+        next_row += 1
+    next_row += 1
+
     # Small Changes
     _write_section_label(ws, next_row, "Small Changes", width=4)
     next_row += 1
@@ -882,27 +975,28 @@ def _write_meta_sheet(
 def _write_goals_sheet(
     wb: Workbook,
     meta: dict[str, Any],
+    goals: list[dict[str, Any]],
     competitions: list[dict[str, Any]],
     sex: str,
+    federation_library: dict[str, Any] | None = None,
 ) -> None:
     ws = wb.create_sheet("Goals")
-    target_total = _resolve_total_kg({
+    legacy_target_total = _resolve_total_kg({
         "squat_kg": meta.get("target_squat_kg"),
         "bench_kg": meta.get("target_bench_kg"),
         "deadlift_kg": meta.get("target_dl_kg"),
         "total_kg": meta.get("target_total_kg"),
     })
     target_bodyweight = _first_non_blank(meta.get("current_body_weight_kg"), meta.get("bodyweight_kg"))
+    primary_goals = [goal.get("title", "") for goal in goals if goal.get("priority") == "primary"]
     top_rows = [
         ["Program Name", meta.get("program_name", "")],
-        ["Target Squat (kg)", meta.get("target_squat_kg", "")],
-        ["Target Bench (kg)", meta.get("target_bench_kg", "")],
-        ["Target Deadlift (kg)", meta.get("target_dl_kg", "")],
-        ["Target Total (kg)", target_total],
-        ["Target Body Weight (kg)", target_bodyweight],
-        ["Target DOTS", _calculate_dots_value(target_total, target_bodyweight, sex)],
-        ["Weight Class (kg)", meta.get("weight_class_kg", "")],
-        ["Competition Date", meta.get("comp_date", "")],
+        ["Explicit Goals Recorded", len(goals)],
+        ["Primary Goals", ", ".join(primary_goals) if primary_goals else ""],
+        ["Current Weight Class (kg)", meta.get("weight_class_kg", "")],
+        ["Current Body Weight (kg)", target_bodyweight],
+        ["Legacy Target Total (kg)", legacy_target_total],
+        ["Legacy Target DOTS", _calculate_dots_value(legacy_target_total, target_bodyweight, sex)],
         ["Attempt Pct", _serialize_json(meta.get("attempt_pct", {}))],
     ]
     for row_idx, (field, value) in enumerate(top_rows, 1):
@@ -912,13 +1006,104 @@ def _write_goals_sheet(
         ws.cell(row=row_idx, column=2, value=_truncate(_fmt(value))).alignment = _WRAP
 
     next_row = len(top_rows) + 2
-    _write_section_label(ws, next_row, "Competition Goals", width=11)
+    _write_section_label(ws, next_row, "Explicit Goals", width=15)
     next_row += 1
     headers = [
-        "Name", "Date", "Status", "Weight Class", "Body Weight", "Target Squat", "Target Bench",
-        "Target Deadlift", "Target Total", "Target DOTS", "Notes",
+        "Title", "Type", "Priority", "Strategy", "Target Date", "Competition",
+        "Federation", "Standard", "Target Total", "Target DOTS", "Target IPF GL",
+        "Target Weight Class", "Acceptable Classes", "Risk", "Notes",
     ]
     for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=next_row, column=col_idx, value=header)
+        cell.font = _HEADER_FONT
+        cell.fill = _HEADER_FILL
+        cell.alignment = _WRAP
+    next_row += 1
+
+    federations = {
+        str(item.get("id")): item
+        for item in (federation_library or {}).get("federations", []) or []
+        if isinstance(item, dict) and item.get("id")
+    }
+    standards = {
+        str(item.get("id")): item
+        for item in (federation_library or {}).get("qualification_standards", []) or []
+        if isinstance(item, dict) and item.get("id")
+    }
+    competitions_by_date = {
+        str(comp.get("date")): comp
+        for comp in competitions
+        if comp.get("date")
+    }
+
+    if goals:
+        priority_order = {"primary": 0, "secondary": 1, "optional": 2}
+        for goal in sorted(
+            goals,
+            key=lambda item: (
+                priority_order.get(str(item.get("priority")), 9),
+                str(
+                    (list(item.get("target_competition_dates") or []) or [item.get("target_competition_date") or item.get("target_date") or ""])[0]
+                ),
+            ),
+        ):
+            target_standard_ids = [str(value or "").strip() for value in list(goal.get("target_standard_ids") or []) if str(value or "").strip()]
+            legacy_standard_id = str(goal.get("target_standard_id") or "").strip()
+            if legacy_standard_id and legacy_standard_id not in target_standard_ids:
+                target_standard_ids.append(legacy_standard_id)
+            linked_standards = [standards.get(standard_id) for standard_id in target_standard_ids if standards.get(standard_id)]
+            standard = linked_standards[0] if linked_standards else None
+            federation = federations.get(str(goal.get("target_federation_id") or "")) or (
+                federations.get(str(standard.get("federation_id"))) if isinstance(standard, dict) else None
+            )
+            target_competition_dates = [str(value or "").strip() for value in list(goal.get("target_competition_dates") or []) if str(value or "").strip()]
+            legacy_competition_date = str(goal.get("target_competition_date") or "").strip()
+            if legacy_competition_date and legacy_competition_date not in target_competition_dates:
+                target_competition_dates.append(legacy_competition_date)
+            competition_names = [competitions_by_date.get(target_date, {}).get("name", "") for target_date in target_competition_dates if competitions_by_date.get(target_date)]
+            target_total = _first_non_blank(goal.get("target_total_kg"), (standard or {}).get("required_total_kg"))
+            standard_label = "; ".join(
+                f"{item.get('season_year', '')} {item.get('weight_class_kg', '')}kg {item.get('required_total_kg', '')}kg"
+                for item in linked_standards
+            )
+            row = [
+                goal.get("title", ""),
+                goal.get("goal_type", ""),
+                goal.get("priority", ""),
+                goal.get("strategy_mode", ""),
+                _first_non_blank(goal.get("target_date"), ", ".join(target_competition_dates), ""),
+                ", ".join(name for name in competition_names if name),
+                _first_non_blank((federation or {}).get("abbreviation"), (federation or {}).get("name"), ""),
+                standard_label,
+                target_total,
+                goal.get("target_dots", ""),
+                goal.get("target_ipf_gl", ""),
+                _first_non_blank(goal.get("target_weight_class_kg"), (standard or {}).get("weight_class_kg"), ""),
+                _serialize_json(goal.get("acceptable_weight_classes_kg", [])),
+                goal.get("risk_tolerance", ""),
+                goal.get("notes", ""),
+            ]
+            for col_idx, value in enumerate(row, 1):
+                ws.cell(row=next_row, column=col_idx, value=_truncate(_fmt(value))).alignment = _WRAP
+            next_row += 1
+    else:
+        ws.cell(row=next_row, column=1, value="No explicit goals recorded. Legacy targets are shown in the header rows.")
+        next_row += 1
+
+    next_row += 2
+    _write_section_label(ws, next_row, "Competition Targets", width=13)
+    next_row += 1
+    federation_names = {
+        str(item.get("id")): _first_non_blank(item.get("abbreviation"), item.get("name"), "")
+        for item in (federation_library or {}).get("federations", []) or []
+        if isinstance(item, dict)
+    }
+
+    comp_headers = [
+        "Name", "Date", "Status", "Host Federation", "Counts Toward", "Weight Class", "Body Weight",
+        "Target Squat", "Target Bench", "Target Deadlift", "Target Total", "Target DOTS", "Notes",
+    ]
+    for col_idx, header in enumerate(comp_headers, 1):
         cell = ws.cell(row=next_row, column=col_idx, value=header)
         cell.font = _HEADER_FONT
         cell.fill = _HEADER_FILL
@@ -934,6 +1119,14 @@ def _write_goals_sheet(
                 comp.get("name", ""),
                 comp.get("date", ""),
                 comp.get("status", ""),
+                _first_non_blank(
+                    federation_names.get(str(comp.get("federation_id") or "")),
+                    comp.get("federation", ""),
+                ),
+                ", ".join(
+                    federation_names.get(str(federation_id), str(federation_id))
+                    for federation_id in (comp.get("counts_toward_federation_ids") or [])
+                ),
                 comp.get("weight_class_kg", ""),
                 resolved_bw,
                 targets.get("squat_kg", ""),
@@ -949,7 +1142,86 @@ def _write_goals_sheet(
     else:
         ws.cell(row=next_row, column=1, value="No competitions recorded.")
 
-    _autosize_columns(ws, max_cols=len(headers))
+    _autosize_columns(ws, max_cols=max(len(headers), len(comp_headers)))
+
+
+def _write_federation_standards_sheet(wb: Workbook, federation_library: dict[str, Any] | None) -> None:
+    ws = wb.create_sheet("Federation Standards")
+    library = federation_library or {}
+    federations = list(library.get("federations") or [])
+    standards = list(library.get("qualification_standards") or [])
+    federation_names = {
+        str(item.get("id")): _first_non_blank(item.get("abbreviation"), item.get("name"), "")
+        for item in federations
+        if isinstance(item, dict)
+    }
+
+    _write_section_label(ws, 1, "Federations", width=5)
+    fed_headers = ["Name", "Abbreviation", "Region", "Status", "Notes"]
+    for col_idx, header in enumerate(fed_headers, 1):
+        cell = ws.cell(row=2, column=col_idx, value=header)
+        cell.font = _HEADER_FONT
+        cell.fill = _HEADER_FILL
+        cell.alignment = _WRAP
+
+    row_idx = 3
+    if federations:
+        for item in federations:
+            values = [
+                item.get("name", ""),
+                item.get("abbreviation", ""),
+                item.get("region", ""),
+                item.get("status", ""),
+                item.get("notes", ""),
+            ]
+            for col_idx, value in enumerate(values, 1):
+                ws.cell(row=row_idx, column=col_idx, value=_truncate(_fmt(value))).alignment = _WRAP
+            row_idx += 1
+    else:
+        ws.cell(row=row_idx, column=1, value="No federations recorded.")
+        row_idx += 1
+
+    row_idx += 2
+    _write_section_label(ws, row_idx, "Qualification Standards", width=13)
+    row_idx += 1
+    std_headers = [
+        "Federation", "Competition", "Season", "Sex", "Equipment", "Event", "Age Class",
+        "Division", "Weight Class", "Required Total", "Qualifying Start", "Qualifying End",
+        "Source Label", "Source URL", "Status",
+    ]
+    for col_idx, header in enumerate(std_headers, 1):
+        cell = ws.cell(row=row_idx, column=col_idx, value=header)
+        cell.font = _HEADER_FONT
+        cell.fill = _HEADER_FILL
+        cell.alignment = _WRAP
+    row_idx += 1
+
+    if standards:
+        for item in sorted(standards, key=lambda entry: (str(entry.get("status", "")), -int(_num(entry.get("season_year")) or 0), _num(entry.get("weight_class_kg")))):
+            values = [
+                federation_names.get(str(item.get("federation_id")), ""),
+                item.get("competition_name", ""),
+                item.get("season_year", ""),
+                item.get("sex", ""),
+                item.get("equipment", ""),
+                item.get("event", ""),
+                item.get("age_class", ""),
+                item.get("division", ""),
+                item.get("weight_class_kg", ""),
+                item.get("required_total_kg", ""),
+                item.get("qualifying_start_date", ""),
+                item.get("qualifying_end_date", ""),
+                item.get("source_label", ""),
+                item.get("source_url", ""),
+                item.get("status", ""),
+            ]
+            for col_idx, value in enumerate(values, 1):
+                ws.cell(row=row_idx, column=col_idx, value=_truncate(_fmt(value))).alignment = _WRAP
+            row_idx += 1
+    else:
+        ws.cell(row=row_idx, column=1, value="No qualification standards recorded.")
+
+    _autosize_columns(ws, max_cols=len(std_headers))
 
 
 def _write_current_maxes_sheet(wb: Workbook, current_maxes: dict[str, Any]) -> None:
@@ -1118,10 +1390,16 @@ def _write_competitions_sheet(
     weight_log: list[dict[str, Any]],
     sex: str,
     meta: dict[str, Any],
+    federation_library: dict[str, Any] | None = None,
 ) -> None:
     ws = wb.create_sheet("Competitions")
+    federation_names = {
+        str(item.get("id")): _first_non_blank(item.get("abbreviation"), item.get("name"), "")
+        for item in (federation_library or {}).get("federations", []) or []
+        if isinstance(item, dict)
+    }
     headers = [
-        "Name", "Date", "Status", "Federation", "Location", "Hotel Required", "Weight Class",
+        "Name", "Date", "Status", "Federation", "Counts Toward", "Location", "Hotel Required", "Weight Class",
         "Body Weight", "Body Weight Source", "Target Squat", "Target Bench", "Target Deadlift",
         "Target Total", "Target DOTS", "Result Squat", "Result Bench", "Result Deadlift",
         "Result Total", "Result DOTS", "Place", "Decision Date", "Projection Snapshot Date",
@@ -1139,7 +1417,14 @@ def _write_competitions_sheet(
             comp.get("name", ""),
             comp.get("date", ""),
             comp.get("status", ""),
-            comp.get("federation", ""),
+            _first_non_blank(
+                federation_names.get(str(comp.get("federation_id") or "")),
+                comp.get("federation", ""),
+            ),
+            ", ".join(
+                federation_names.get(str(federation_id), str(federation_id))
+                for federation_id in (comp.get("counts_toward_federation_ids") or [])
+            ),
             comp.get("location", ""),
             comp.get("hotel_required", ""),
             comp.get("weight_class_kg", ""),

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Card, SimpleGrid, Text, UnstyledButton, Group, Stack } from '@mantine/core'
-import { GitBranch, ClipboardList, BookOpen, Trophy, Import } from 'lucide-react'
+import { GitBranch, ClipboardList, BookOpen, Trophy, Import, Target, Shield } from 'lucide-react'
 
 export default function DesignerLanding() {
   return (
@@ -106,6 +106,40 @@ export default function DesignerLanding() {
                 </Text>
               </div>
               <Text size="xs" c="blue" mt="md">Open competitions →</Text>
+            </Stack>
+          </Card>
+        </UnstyledButton>
+
+        <UnstyledButton component={Link} to="/designer/goals">
+          <Card withBorder shadow="sm" padding="lg">
+            <Stack justify="space-between" h="100%">
+              <div>
+                <Group gap="sm" mb="sm">
+                  <Target size={24} />
+                  <Text size="lg" fw={600}>Goals</Text>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Define block-wide goals, competition intent, qualifying targets, and weight-class options.
+                </Text>
+              </div>
+              <Text size="xs" c="blue" mt="md">Open goals →</Text>
+            </Stack>
+          </Card>
+        </UnstyledButton>
+
+        <UnstyledButton component={Link} to="/designer/federations">
+          <Card withBorder shadow="sm" padding="lg">
+            <Stack justify="space-between" h="100%">
+              <div>
+                <Group gap="sm" mb="sm">
+                  <Shield size={24} />
+                  <Text size="lg" fw={600}>Federations</Text>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Keep a reusable library of federations and manual qualification standards for meet planning.
+                </Text>
+              </div>
+              <Text size="xs" c="blue" mt="md">Open federations →</Text>
             </Stack>
           </Card>
         </UnstyledButton>

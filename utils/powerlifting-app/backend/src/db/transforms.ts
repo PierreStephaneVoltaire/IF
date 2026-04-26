@@ -59,6 +59,21 @@ export function transformProgram(item: Record<string, unknown>): Program {
   if (!program.phases) {
     program.phases = []
   }
+  if (!program.competitions) {
+    program.competitions = []
+  }
+  if (!program.goals) {
+    program.goals = []
+  }
+  if (!program.diet_notes) {
+    program.diet_notes = []
+  }
+  if (!program.supplements) {
+    program.supplements = []
+  }
+  if (!program.supplement_phases) {
+    program.supplement_phases = []
+  }
 
   // Derive week_number and resolve phase for each session within its block
   program.sessions = program.sessions.map(session => {

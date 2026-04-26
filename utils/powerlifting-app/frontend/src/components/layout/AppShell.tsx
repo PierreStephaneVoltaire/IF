@@ -53,7 +53,12 @@ export default function AppShell({ children }: AppShellProps) {
         <Sidebar />
       </MantineAppShell.Navbar>
 
-      <MantineAppShell.Main pb={100} style={{ flex: 1 }}>{children}</MantineAppShell.Main>
+      <MantineAppShell.Main
+        pb={{ base: 'calc(180px + env(safe-area-inset-bottom, 0px))', md: 140 }}
+        style={{ flex: 1 }}
+      >
+        {children}
+      </MantineAppShell.Main>
 
       {/* Mobile bottom navigation */}
       <MantineAppShell.Footer 

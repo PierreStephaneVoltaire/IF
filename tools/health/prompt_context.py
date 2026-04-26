@@ -128,29 +128,572 @@ def summarize_measurements(meta: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def summarize_competitions(program: dict[str, Any], reference_date: date | None = None) -> dict[str, Any]:
+def _positive_num(value: Any) -> float | None:
+    num = _num(value)
+    return round(num, 1) if num > 0 else None
+
+
+def _goal_priority_rank(priority: str | None) -> int:
+    order = {"primary": 0, "secondary": 1, "optional": 2}
+    return order.get(str(priority or "optional"), 99)
+
+
+def _goal_type_rank(goal_type: str | None) -> int:
+    order = {
+        "qualify_for_federation": 0,
+        "hit_total": 1,
+        "peak_for_meet": 2,
+        "make_podium": 3,
+        "rank_percentile": 4,
+        "improve_dots": 5,
+        "maintain_weight_class": 6,
+        "conservative_pr": 7,
+        "train_through": 8,
+        "coach_defined": 9,
+    }
+    return order.get(str(goal_type or "coach_defined"), 99)
+
+
+def _string_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    deduped: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in deduped:
+            deduped.append(text)
+    return deduped
+
+
+def _federation_brief(federation: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not federation:
+        return None
+    return {
+        "id": federation.get("id"),
+        "name": federation.get("name"),
+        "abbreviation": federation.get("abbreviation"),
+    }
+
+
+def _resolve_competition_host_federation(
+    comp: dict[str, Any] | None,
+    federations_by_id: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    if not isinstance(comp, dict):
+        return None
+    federations = federations_by_id or {}
+    federation_id = str(comp.get("federation_id") or "").strip()
+    if federation_id and federation_id in federations:
+        return federations[federation_id]
+    label = str(comp.get("federation") or "").strip().lower()
+    if not label:
+        return None
+    for federation in federations.values():
+        names = {
+            str(federation.get("name") or "").strip().lower(),
+            str(federation.get("abbreviation") or "").strip().lower(),
+        }
+        if label in names:
+            return federation
+    return None
+
+
+def _competition_eligible_federation_ids(
+    comp: dict[str, Any] | None,
+    federations_by_id: dict[str, dict[str, Any]] | None = None,
+) -> list[str]:
+    if not isinstance(comp, dict):
+        return []
+    ids: list[str] = []
+    host_federation = _resolve_competition_host_federation(comp, federations_by_id)
+    host_federation_id = str((host_federation or {}).get("id") or comp.get("federation_id") or "").strip()
+    if host_federation_id:
+        ids.append(host_federation_id)
+    for federation_id in _string_list(comp.get("counts_toward_federation_ids")):
+        if federation_id not in ids:
+            ids.append(federation_id)
+    return ids
+
+
+def _weight_class_alignment(
+    competition_weight_class_kg: float | None,
+    target_weight_class_kg: float | None,
+    acceptable_weight_classes_kg: list[float] | None,
+) -> str:
+    acceptable = [_positive_num(value) for value in (acceptable_weight_classes_kg or [])]
+    acceptable = [value for value in acceptable if value is not None]
+    if competition_weight_class_kg is None:
+        return "unknown"
+    if target_weight_class_kg is None and not acceptable:
+        return "unknown"
+    if target_weight_class_kg is not None and competition_weight_class_kg == target_weight_class_kg:
+        return "target"
+    if competition_weight_class_kg in acceptable:
+        return "acceptable"
+    return "mismatch"
+
+
+def _group_goals_by_competition(goals: list[dict[str, Any]] | None) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for goal in goals or []:
+        comp_dates = _goal_target_competition_dates(goal)
+        if not comp_dates:
+            linked_date = str((goal.get("linked_competition") or {}).get("date") or "").strip()
+            comp_dates = [linked_date] if linked_date else []
+        for comp_date in comp_dates:
+            grouped.setdefault(comp_date, []).append(goal)
+    for comp_date in grouped:
+        grouped[comp_date].sort(key=_goal_sort_key)
+    return grouped
+
+
+def _competition_strategy_pressure(goals_for_competition: list[dict[str, Any]] | None) -> str:
+    if not goals_for_competition:
+        return "aggressive"
+    highest_rank = min(_goal_priority_rank(str(goal.get("priority"))) for goal in goals_for_competition)
+    top_priority_goals = [
+        goal for goal in goals_for_competition
+        if _goal_priority_rank(str(goal.get("priority"))) == highest_rank
+    ]
+    strategies = {str(goal.get("strategy_mode") or "") for goal in top_priority_goals}
+    if strategies.intersection({"max_total", "qualify", "podium"}):
+        return "aggressive"
+    if strategies.intersection({"minimum_total", "train_through", "conservative_pr"}):
+        return "controlled"
+    return "aggressive"
+
+
+def _build_federation_maps(federation_library: dict[str, Any] | None) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    library = federation_library or {}
+    federations = {
+        str(item.get("id")): item
+        for item in (library.get("federations") or [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    standards = {
+        str(item.get("id")): item
+        for item in (library.get("qualification_standards") or [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    return federations, standards
+
+
+def _competition_goal_priorities(goals: list[dict[str, Any]] | None) -> dict[str, str]:
+    priorities: dict[str, str] = {}
+    for goal in goals or []:
+        priority = str(goal.get("priority") or "optional")
+        for comp_date in _goal_target_competition_dates(goal):
+            existing = priorities.get(comp_date)
+            if existing is None or _goal_priority_rank(priority) < _goal_priority_rank(existing):
+                priorities[comp_date] = priority
+    return priorities
+
+
+def _goal_required_total(goal: dict[str, Any] | None) -> float | None:
+    if not isinstance(goal, dict):
+        return None
+    required_total = _positive_num(goal.get("required_total_kg"))
+    if required_total is not None:
+        return required_total
+    target_total = _positive_num(goal.get("target_total_kg"))
+    if target_total is not None:
+        return target_total
+    return _positive_num((goal.get("linked_standard") or {}).get("required_total_kg"))
+
+
+def _goal_sort_key(goal: dict[str, Any]) -> tuple[int, int, float, str]:
+    required_total = _goal_required_total(goal)
+    return (
+        _goal_priority_rank(str(goal.get("priority"))),
+        _goal_type_rank(str(goal.get("goal_type"))),
+        -(required_total or 0.0),
+        str(goal.get("title") or ""),
+    )
+
+
+def _group_goals_by_eligible_opportunity(goals: list[dict[str, Any]] | None) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for goal in goals or []:
+        for opportunity in goal.get("eligible_opportunities") or []:
+            comp_date = str(opportunity.get("date") or "").strip()
+            if not comp_date:
+                continue
+            grouped.setdefault(comp_date, []).append(goal)
+    for comp_date in grouped:
+        grouped[comp_date].sort(key=_goal_sort_key)
+    return grouped
+
+
+def _goal_target_competition_dates(goal: dict[str, Any] | None) -> list[str]:
+    if not isinstance(goal, dict):
+        return []
+    return _string_list(list(goal.get("target_competition_dates") or []) + [goal.get("target_competition_date")])
+
+
+def _goal_target_standard_ids(goal: dict[str, Any] | None) -> list[str]:
+    if not isinstance(goal, dict):
+        return []
+    return _string_list(list(goal.get("target_standard_ids") or []) + [goal.get("target_standard_id")])
+
+
+def _goal_linked_standards(goal: dict[str, Any], standards_by_id: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    linked: list[dict[str, Any]] = []
+    for standard_id in _goal_target_standard_ids(goal):
+        standard = standards_by_id.get(standard_id)
+        if standard is not None:
+            linked.append(standard)
+    return linked
+
+
+def _goal_primary_standard(goal: dict[str, Any], standards_by_id: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    standards = _goal_linked_standards(goal, standards_by_id)
+    if not standards:
+        return None
+    target_federation_id = str(goal.get("target_federation_id") or "").strip()
+    candidates = [
+        standard for standard in standards
+        if target_federation_id and str(standard.get("federation_id") or "") == target_federation_id
+    ] or standards
+    candidates.sort(key=lambda standard: -(_positive_num(standard.get("required_total_kg")) or 0.0))
+    return candidates[0]
+
+
+def summarize_goals(
+    program: dict[str, Any],
+    federation_library: dict[str, Any] | None = None,
+    reference_date: date | None = None,
+) -> dict[str, Any]:
+    reference_date = reference_date or date.today()
+    goals = sorted(
+        program.get("goals") or [],
+        key=lambda goal: (
+            _goal_priority_rank(str(goal.get("priority"))),
+            str((_goal_target_competition_dates(goal) or [goal.get("target_date") or ""])[0]),
+            str(goal.get("title") or ""),
+        ),
+    )
+    competition_list = [
+        comp
+        for comp in (program.get("competitions") or [])
+        if isinstance(comp, dict) and comp.get("date")
+    ]
+    competitions = {
+        str(comp.get("date")): comp
+        for comp in competition_list
+    }
+    federations_by_id, standards_by_id = _build_federation_maps(federation_library)
+
+    rows: list[dict[str, Any]] = []
+    for goal in goals:
+        target_competition_dates = _goal_target_competition_dates(goal)
+        linked_standards = _goal_linked_standards(goal, standards_by_id)
+        primary_standard = _goal_primary_standard(goal, standards_by_id)
+        primary_competition = competitions.get(target_competition_dates[0]) if target_competition_dates else None
+        target_date = goal.get("target_date") or (target_competition_dates[0] if target_competition_dates else None) or (primary_competition or {}).get("date")
+        target_date_obj = _parse_date(target_date)
+        target_total = _positive_num(goal.get("target_total_kg"))
+        if target_total is None and primary_standard:
+            target_total = _positive_num(primary_standard.get("required_total_kg"))
+        target_weight_class = _positive_num(goal.get("target_weight_class_kg"))
+        if target_weight_class is None and primary_standard:
+            target_weight_class = _positive_num(primary_standard.get("weight_class_kg"))
+        acceptable_weight_classes = [
+            value
+            for value in (_positive_num(item) for item in list(goal.get("acceptable_weight_classes_kg") or []))
+            if value is not None
+        ]
+        federation = federations_by_id.get(str(goal.get("target_federation_id") or "")) or (
+            federations_by_id.get(str(primary_standard.get("federation_id"))) if primary_standard else None
+        )
+        target_federation_id = str((federation or {}).get("id") or "")
+        if not target_federation_id:
+            target_federation_id = str((primary_standard or {}).get("federation_id") or "")
+        eligible_opportunities: list[dict[str, Any]] = []
+        for eligible_comp in sorted(competition_list, key=lambda item: str(item.get("date") or "")):
+            eligible_federation_ids = _competition_eligible_federation_ids(eligible_comp, federations_by_id)
+            matching_standards = [
+                standard
+                for standard in linked_standards
+                if str(standard.get("federation_id") or "") in eligible_federation_ids
+            ]
+            preferred_matching_standards = [
+                standard
+                for standard in matching_standards
+                if target_federation_id and str(standard.get("federation_id") or "") == target_federation_id
+            ] or matching_standards
+            federation_eligible = bool(preferred_matching_standards) if linked_standards else (target_federation_id in eligible_federation_ids if target_federation_id else None)
+            eligible_weight_class = _positive_num(eligible_comp.get("weight_class_kg"))
+            weight_class_alignment = _weight_class_alignment(
+                eligible_weight_class,
+                target_weight_class,
+                acceptable_weight_classes,
+            )
+            if federation_eligible is False:
+                continue
+            if weight_class_alignment == "mismatch":
+                continue
+            eligible_opportunities.append(
+                {
+                    "name": eligible_comp.get("name"),
+                    "date": eligible_comp.get("date"),
+                    "status": eligible_comp.get("status"),
+                    "host_federation_label": eligible_comp.get("federation"),
+                    "host_federation": _federation_brief(_resolve_competition_host_federation(eligible_comp, federations_by_id)),
+                    "goal_federation_eligible": federation_eligible,
+                    "weight_class_alignment": weight_class_alignment,
+                    "weight_class_kg": eligible_weight_class,
+                    "matching_standard_ids": [str(standard.get("id")) for standard in preferred_matching_standards if standard.get("id")],
+                    "matching_required_total_kg": max(
+                        (_positive_num(standard.get("required_total_kg")) or 0.0)
+                        for standard in preferred_matching_standards
+                    ) if preferred_matching_standards else None,
+                    "notes": eligible_comp.get("notes") or "",
+                    "explicit_target": str(eligible_comp.get("date") or "") in target_competition_dates,
+                }
+            )
+        linked_competitions = [
+            {
+                "name": competition.get("name"),
+                "date": competition.get("date"),
+                "status": competition.get("status"),
+                "host_federation_label": competition.get("federation"),
+                "host_federation": _federation_brief(_resolve_competition_host_federation(competition, federations_by_id)),
+                "eligible_federations": [
+                    _federation_brief(federations_by_id.get(federation_id))
+                    for federation_id in _competition_eligible_federation_ids(competition, federations_by_id)
+                    if _federation_brief(federations_by_id.get(federation_id)) is not None
+                ],
+                "goal_federation_eligible": next(
+                    (
+                        opportunity.get("goal_federation_eligible")
+                        for opportunity in eligible_opportunities
+                        if str(opportunity.get("date") or "") == str(competition.get("date") or "")
+                    ),
+                    None,
+                ),
+                "competition_weight_class_kg": _positive_num(competition.get("weight_class_kg")),
+                "weight_class_alignment": next(
+                    (
+                        opportunity.get("weight_class_alignment")
+                        for opportunity in eligible_opportunities
+                        if str(opportunity.get("date") or "") == str(competition.get("date") or "")
+                    ),
+                    "unknown",
+                ),
+                "matching_standard_ids": next(
+                    (
+                        opportunity.get("matching_standard_ids")
+                        for opportunity in eligible_opportunities
+                        if str(opportunity.get("date") or "") == str(competition.get("date") or "")
+                    ),
+                    [],
+                ),
+                "matching_required_total_kg": next(
+                    (
+                        opportunity.get("matching_required_total_kg")
+                        for opportunity in eligible_opportunities
+                        if str(opportunity.get("date") or "") == str(competition.get("date") or "")
+                    ),
+                    None,
+                ),
+                "notes": competition.get("notes") or "",
+            }
+            for target_date in target_competition_dates
+            if (competition := competitions.get(target_date)) is not None
+        ]
+        rows.append(
+            {
+                "id": goal.get("id"),
+                "title": goal.get("title"),
+                "goal_type": goal.get("goal_type"),
+                "priority": goal.get("priority"),
+                "strategy_mode": goal.get("strategy_mode"),
+                "risk_tolerance": goal.get("risk_tolerance"),
+                "target_competition_dates": target_competition_dates,
+                "target_competition_date": target_competition_dates[0] if target_competition_dates else goal.get("target_competition_date"),
+                "target_standard_ids": [str(standard.get("id")) for standard in linked_standards if standard.get("id")],
+                "target_standard_id": str((primary_standard or {}).get("id") or goal.get("target_standard_id") or "") or None,
+                "target_date": target_date,
+                "weeks_to_target": round(((target_date_obj - reference_date).days / 7.0), 1) if target_date_obj else None,
+                "target_total_kg": target_total,
+                "required_total_kg": target_total,
+                "target_dots": _positive_num(goal.get("target_dots")),
+                "target_ipf_gl": _positive_num(goal.get("target_ipf_gl")),
+                "target_weight_class_kg": target_weight_class,
+                "acceptable_weight_classes_kg": acceptable_weight_classes,
+                "max_acceptable_bodyweight_loss_pct": _positive_num(goal.get("max_acceptable_bodyweight_loss_pct")),
+                "max_acceptable_water_cut_pct": _positive_num(goal.get("max_acceptable_water_cut_pct")),
+                "linked_competition": linked_competitions[0] if linked_competitions else None,
+                "linked_competitions": linked_competitions,
+                "target_federation": _federation_brief(federation),
+                "linked_standard": (
+                    {
+                        "id": primary_standard.get("id"),
+                        "season_year": primary_standard.get("season_year"),
+                        "sex": primary_standard.get("sex"),
+                        "equipment": primary_standard.get("equipment"),
+                        "event": primary_standard.get("event"),
+                        "age_class": primary_standard.get("age_class"),
+                        "division": primary_standard.get("division"),
+                        "weight_class_kg": _positive_num(primary_standard.get("weight_class_kg")),
+                        "required_total_kg": _positive_num(primary_standard.get("required_total_kg")),
+                        "qualifying_start_date": primary_standard.get("qualifying_start_date"),
+                        "qualifying_end_date": primary_standard.get("qualifying_end_date"),
+                    }
+                    if primary_standard
+                    else None
+                ),
+                "linked_standards": [
+                    {
+                        "id": standard.get("id"),
+                        "federation_id": standard.get("federation_id"),
+                        "season_year": standard.get("season_year"),
+                        "sex": standard.get("sex"),
+                        "equipment": standard.get("equipment"),
+                        "event": standard.get("event"),
+                        "age_class": standard.get("age_class"),
+                        "division": standard.get("division"),
+                        "weight_class_kg": _positive_num(standard.get("weight_class_kg")),
+                        "required_total_kg": _positive_num(standard.get("required_total_kg")),
+                        "qualifying_start_date": standard.get("qualifying_start_date"),
+                        "qualifying_end_date": standard.get("qualifying_end_date"),
+                    }
+                    for standard in linked_standards
+                ],
+                "eligible_opportunities": eligible_opportunities,
+                "remaining_eligible_opportunities": len(
+                    [
+                        opportunity
+                        for opportunity in eligible_opportunities
+                        if (opp_date := _parse_date(opportunity.get("date"))) is not None and opp_date >= reference_date
+                    ]
+                ),
+                "notes": goal.get("notes") or "",
+            }
+        )
+
+    competition_goal_priorities = _competition_goal_priorities(goals)
+    return {
+        "goals": rows,
+        "primary_goals": [row for row in rows if row.get("priority") == "primary"],
+        "competition_goal_priorities": competition_goal_priorities,
+    }
+
+
+def summarize_competitions(
+    program: dict[str, Any],
+    reference_date: date | None = None,
+    federation_library: dict[str, Any] | None = None,
+    competition_goal_priorities: dict[str, str] | None = None,
+) -> dict[str, Any]:
     meta = program.get("meta", {})
     competitions = sorted(program.get("competitions", []), key=lambda c: c.get("date", ""))
     reference_date = reference_date or date.today()
     sex = str(meta.get("sex", "male")).lower()
     fallback_bw = _num(meta.get("current_body_weight_kg", meta.get("bodyweight_kg", 0)))
+    federations_by_id, _ = _build_federation_maps(federation_library)
+    goal_summary = summarize_goals(program, federation_library=federation_library, reference_date=reference_date)
+    goal_priorities = competition_goal_priorities or goal_summary.get("competition_goal_priorities") or {}
+    goals_by_competition = _group_goals_by_competition(goal_summary.get("goals"))
+    goals_by_opportunity = _group_goals_by_eligible_opportunity(goal_summary.get("goals"))
 
     rows: list[dict[str, Any]] = []
-    primary = competitions[-1] if competitions else None
     for idx, comp in enumerate(competitions):
         comp_date = _parse_date(comp.get("date"))
         weeks_to_comp = round(((comp_date - reference_date).days / 7.0), 1) if comp_date else None
         bodyweight = _num(comp.get("body_weight_kg")) or fallback_bw
         results = comp.get("results") or {}
         targets = comp.get("targets") or {}
+        host_federation = _resolve_competition_host_federation(comp, federations_by_id)
+        eligible_federation_ids = _competition_eligible_federation_ids(comp, federations_by_id)
+        eligible_federations = [
+            federation_brief
+            for federation_id in eligible_federation_ids
+            if (federation_brief := _federation_brief(federations_by_id.get(federation_id))) is not None
+        ]
+        previous_date = _parse_date(competitions[idx - 1].get("date")) if idx > 0 else None
+        next_date = _parse_date(competitions[idx + 1].get("date")) if idx + 1 < len(competitions) else None
+        goal_priority = goal_priorities.get(str(comp.get("date") or ""))
+        linked_goals = goals_by_competition.get(str(comp.get("date") or ""), [])
+        opportunity_goals = goals_by_opportunity.get(str(comp.get("date") or ""), [])
+
+        def _goal_payload(goal: dict[str, Any], explicit_target: bool) -> dict[str, Any]:
+            linked_match = next(
+                (
+                    linked_comp
+                    for linked_comp in goal.get("linked_competitions") or []
+                    if str(linked_comp.get("date") or "") == str(comp.get("date") or "")
+                ),
+                None,
+            )
+            opportunity_match = next(
+                (
+                    opportunity
+                    for opportunity in goal.get("eligible_opportunities") or []
+                    if str(opportunity.get("date") or "") == str(comp.get("date") or "")
+                ),
+                None,
+            )
+            match = linked_match or opportunity_match or {}
+            return {
+                "id": goal.get("id"),
+                "title": goal.get("title"),
+                "goal_type": goal.get("goal_type"),
+                "priority": goal.get("priority"),
+                "strategy_mode": goal.get("strategy_mode"),
+                "target_total_kg": goal.get("target_total_kg"),
+                "required_total_kg": goal.get("required_total_kg"),
+                "target_weight_class_kg": goal.get("target_weight_class_kg"),
+                "acceptable_weight_classes_kg": goal.get("acceptable_weight_classes_kg"),
+                "target_federation": goal.get("target_federation"),
+                "linked_standard": goal.get("linked_standard"),
+                "linked_standards": goal.get("linked_standards"),
+                "goal_federation_eligible": match.get("goal_federation_eligible"),
+                "weight_class_alignment": match.get("weight_class_alignment"),
+                "matching_standard_ids": match.get("matching_standard_ids", []),
+                "matching_required_total_kg": match.get("matching_required_total_kg"),
+                "remaining_eligible_opportunities": goal.get("remaining_eligible_opportunities"),
+                "explicit_target": explicit_target,
+                "notes": goal.get("notes") or "",
+            }
+
+        candidate_goals: dict[str, dict[str, Any]] = {}
+        for goal in opportunity_goals:
+            goal_id = str(goal.get("id") or goal.get("title") or "")
+            if goal_id:
+                candidate_goals[goal_id] = _goal_payload(goal, explicit_target=False)
+        for goal in linked_goals:
+            goal_id = str(goal.get("id") or goal.get("title") or "")
+            if goal_id:
+                candidate_goals[goal_id] = _goal_payload(goal, explicit_target=True)
+
+        competition_goals = sorted(candidate_goals.values(), key=_goal_sort_key)
+        governing_goal = competition_goals[0] if competition_goals else None
+        role = "primary" if goal_priority == "primary" else ("practice" if competition_goals or idx < len(competitions) - 1 else "primary")
         row: dict[str, Any] = {
             "name": comp.get("name"),
             "date": comp.get("date"),
             "status": comp.get("status"),
-            "role": "primary" if primary is comp else ("practice" if idx < len(competitions) - 1 else "primary"),
+            "role": role,
+            "goal_priority": goal_priority,
             "weeks_to_comp": weeks_to_comp,
+            "federation": comp.get("federation"),
+            "federation_id": comp.get("federation_id"),
+            "linked_federation": _federation_brief(host_federation),
+            "eligible_federation_ids": eligible_federation_ids,
+            "eligible_federations": eligible_federations,
+            "counts_toward_federations": eligible_federations[1:] if len(eligible_federations) > 1 else [],
             "weight_class_kg": comp.get("weight_class_kg"),
             "bodyweight_kg": bodyweight if bodyweight > 0 else None,
+            "hotel_required": bool(comp.get("hotel_required")),
+            "notes": comp.get("notes") or "",
+            "linked_goals": [_goal_payload(goal, explicit_target=True) for goal in linked_goals],
+            "eligible_goals": competition_goals,
+            "governing_goal": governing_goal,
+            "primary_strategy_mode": (governing_goal or {}).get("strategy_mode"),
+            "required_total_kg": (governing_goal or {}).get("required_total_kg"),
+            "weeks_since_previous_comp": round(((comp_date - previous_date).days / 7.0), 1) if comp_date and previous_date else None,
+            "weeks_until_next_comp": round(((next_date - comp_date).days / 7.0), 1) if comp_date and next_date else None,
             "actual_total_kg": None,
             "actual_dots": None,
             "target_total_kg": None,
@@ -168,10 +711,88 @@ def summarize_competitions(program: dict[str, Any], reference_date: date | None 
                 row["target_dots"] = _safe_dots(total, bodyweight, sex)
         rows.append(row)
 
+    primary_comp = next((row for row in rows if row.get("goal_priority") == "primary"), None) or (rows[-1] if rows else None)
     return {
-        "primary_competition": rows[-1] if rows else None,
+        "primary_competition": primary_comp,
         "competitions": rows,
     }
+
+
+def summarize_meet_interference(
+    program: dict[str, Any],
+    reference_date: date | None = None,
+    competition_goal_priorities: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    reference_date = reference_date or date.today()
+    goal_summary = summarize_goals(program, reference_date=reference_date)
+    goal_priorities = competition_goal_priorities or goal_summary.get("competition_goal_priorities") or {}
+    goals_by_competition = _group_goals_by_competition(goal_summary.get("goals"))
+    upcoming = [
+        comp
+        for comp in sorted(program.get("competitions", []), key=lambda c: c.get("date", ""))
+        if comp.get("status") in ("confirmed", "optional")
+        and (comp_date := _parse_date(comp.get("date"))) is not None
+        and comp_date >= reference_date
+    ]
+
+    rows: list[dict[str, Any]] = []
+    for idx, comp in enumerate(upcoming):
+        comp_date = _parse_date(comp.get("date"))
+        if comp_date is None:
+            continue
+        later = upcoming[idx + 1:]
+        if not later:
+            continue
+        current_priority = goal_priorities.get(str(comp.get("date") or ""), "optional")
+        next_target = next(
+            (
+                candidate
+                for candidate in later
+                if _goal_priority_rank(goal_priorities.get(str(candidate.get("date") or ""), "optional")) < _goal_priority_rank(current_priority)
+            ),
+            later[0],
+        )
+        next_date = _parse_date(next_target.get("date"))
+        if next_date is None:
+            continue
+
+        gap_weeks = round(((next_date - comp_date).days / 7.0), 1)
+        flags: list[str] = []
+        score = 0
+        if gap_weeks < 4:
+            flags.append("less than 4 weeks between meets")
+            score += 2
+        elif gap_weeks < 8:
+            flags.append("less than 8 weeks between meets")
+            score += 1
+        if comp.get("hotel_required") or next_target.get("hotel_required"):
+            flags.append("travel or hotel load present")
+            score += 1
+        if _competition_strategy_pressure(goals_by_competition.get(str(comp.get("date") or ""), [])) == "aggressive":
+            flags.append("earlier meet still looks like a meaningful attempt")
+            score += 1
+        if comp.get("weight_class_kg") and next_target.get("weight_class_kg") and comp.get("weight_class_kg") != next_target.get("weight_class_kg"):
+            flags.append("weight-class targets differ between meets")
+            score += 1
+
+        risk_level = "high" if score >= 3 else "medium" if score >= 1 else "low"
+        rows.append(
+            {
+                "competition": comp.get("name"),
+                "competition_date": comp.get("date"),
+                "next_priority_competition": next_target.get("name"),
+                "next_priority_competition_date": next_target.get("date"),
+                "weeks_between_meets": gap_weeks,
+                "risk_level": risk_level,
+                "risk_flags": flags,
+                "summary": (
+                    f"{comp.get('name')} sits {gap_weeks:.1f} weeks before {next_target.get('name')} "
+                    f"with {', '.join(flags) if flags else 'minimal overlap risk'}."
+                ),
+            }
+        )
+
+    return rows
 
 
 def summarize_bodyweight_trend(

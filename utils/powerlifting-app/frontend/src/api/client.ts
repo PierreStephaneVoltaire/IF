@@ -13,6 +13,8 @@ import type {
   SupplementPhase,
   DietNote,
   Competition,
+  AthleteGoal,
+  FederationLibrary,
   SessionVideo,
   LiftResults,
   VideoLibraryItem,
@@ -303,6 +305,34 @@ export async function updateDietNotes(
   dietNotes: DietNote[]
 ): Promise<void> {
   await api.put(`/diet-notes/${version}`, { dietNotes })
+}
+
+// ─── Goals ───────────────────────────────────────────────────────────────────
+
+export async function fetchGoals(version: string): Promise<AthleteGoal[]> {
+  const res = await api.get<ApiResponse<AthleteGoal[]>>(`/goals/${version}`)
+  return res.data.data
+}
+
+export async function updateGoals(
+  version: string,
+  goals: AthleteGoal[],
+): Promise<void> {
+  await api.put(`/goals/${version}`, { goals })
+}
+
+// ─── Federations ─────────────────────────────────────────────────────────────
+
+export async function fetchFederationLibrary(): Promise<FederationLibrary> {
+  const res = await api.get<ApiResponse<FederationLibrary>>('/federations')
+  return res.data.data
+}
+
+export async function updateFederationLibrary(
+  library: FederationLibrary,
+): Promise<FederationLibrary> {
+  const res = await api.put<ApiResponse<FederationLibrary>>('/federations', { library })
+  return res.data.data
 }
 
 // ─── Competitions ─────────────────────────────────────────────────────────────

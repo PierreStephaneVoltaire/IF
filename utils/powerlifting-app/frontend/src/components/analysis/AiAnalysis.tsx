@@ -18,7 +18,7 @@ const CORR_STRENGTH_BADGE: Record<string, string> = {
 
 interface AiAnalysisProps {
   effectiveWeeks: number;
-  weeksMode: number | 'block';
+  weeksMode: number | 'current' | 'block';
 }
 
 export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
@@ -53,17 +53,10 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
     setCorrLoading(true);
     setCorrError(null);
     setCorrReport(null);
-    import('@/api/analytics').then(({ fetchCorrelationReport }) => {
-      const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
-      fetch(`${apiBase}/analytics/correlation?weeks=${effectiveWeeks}&block=current&refresh=true`)
-        .then(r => r.json())
-        .then(body => {
-          if (body.error) throw new Error(body.error);
-          setCorrReport(body.data);
-        })
-        .catch((e) => setCorrError(e.message))
-        .finally(() => setCorrLoading(false));
-    });
+    fetchCorrelationReport(effectiveWeeks, 'current', true)
+      .then(setCorrReport)
+      .catch((e) => setCorrError(e.message))
+      .finally(() => setCorrLoading(false));
   };
 
   // Program evaluation — fetch when in Full Block mode
@@ -73,7 +66,9 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
       setEvalError(null);
       return;
     }
-    const completedCount = program?.sessions?.filter(s => (s.block ?? 'current') === 'current' && s.completed).length ?? 0;
+    const completedCount = (program?.sessions ?? []).filter(
+      s => (s.block ?? 'current') === 'current' && s.completed,
+    ).length;
     if (completedCount < 4) {
       setEvalReport(null);
       return;
@@ -100,8 +95,27 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
   const STANCE_COLORS: Record<string, string> = { continue: 'green', monitor: 'blue', adjust: 'yellow', critical: 'red' };
   const ALIGN_COLORS: Record<string, string> = { good: 'green', mixed: 'yellow', poor: 'red' };
   const PRIORITY_COLORS: Record<string, string> = { low: 'gray', moderate: 'yellow', high: 'red' };
+  const GOAL_STATUS_COLORS: Record<string, string> = { achieved: 'green', on_track: 'blue', at_risk: 'yellow', off_track: 'red', unclear: 'gray' };
+  const GOAL_PRIORITY_COLORS: Record<string, string> = { primary: 'red', secondary: 'blue', optional: 'gray' };
+  const COMPETITION_PRIORITY_COLORS: Record<string, string> = { prioritize: 'red', supporting: 'blue', practice: 'gray', deprioritize: 'yellow', drop: 'red' };
+  const WEIGHT_CLASS_COLORS: Record<string, string> = { best: 'green', viable: 'blue', risky: 'yellow' };
 
-  const completedCount = program?.sessions?.filter(s => (s.block ?? 'current') === 'current' && s.completed).length ?? 0;
+  const completedCount = (program?.sessions ?? []).filter(
+    s => (s.block ?? 'current') === 'current' && s.completed,
+  ).length;
+  const corrFindings = corrReport?.findings ?? [];
+  const goalStatuses = evalReport?.goal_status ?? [];
+  const competitionAlignment = evalReport?.competition_alignment ?? [];
+  const competitionStrategy = evalReport?.competition_strategy ?? [];
+  const weightClassStrategy = evalReport?.weight_class_strategy ?? {
+    recommendation: '',
+    recommended_weight_class_kg: null,
+    viable_options: [],
+  };
+  const workingItems = evalReport?.what_is_working ?? [];
+  const blockedItems = evalReport?.what_is_not_working ?? [];
+  const smallChanges = evalReport?.small_changes ?? [];
+  const monitoringFocus = evalReport?.monitoring_focus ?? [];
 
   return (
     <>
@@ -147,7 +161,7 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
                 {corrReport.summary && (
                   <Text size="sm" c="dimmed" mb="md" p="sm" fs="italic" style={{ background: 'var(--mantine-color-default-hover)', borderRadius: 'var(--mantine-radius-sm)' }}>{corrReport.summary}</Text>
                 )}
-                {corrReport.findings.length > 0 ? (
+                {corrFindings.length > 0 ? (
                   <Box style={{ overflowX: 'auto' }}>
                     <Table fz="sm">
                       <Table.Thead>
@@ -161,7 +175,7 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
                         </Table.Tr>
                       </Table.Thead>
                       <Table.Tbody>
-                        {corrReport.findings.map((f, i) => (
+                        {corrFindings.map((f, i) => (
                           <Table.Tr key={i} style={{ verticalAlign: 'top' }}>
                             <Table.Td fw={500}>{f.exercise}</Table.Td>
                             <Table.Td>{f.lift}</Table.Td>
@@ -238,11 +252,35 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
                     <Text size="sm" c="dimmed" p="sm" fs="italic" style={{ background: 'var(--mantine-color-default-hover)', borderRadius: 'var(--mantine-radius-sm)' }}>{evalReport.summary}</Text>
                   )}
 
-                  {evalReport.competition_alignment.length > 0 && (
+                  {goalStatuses.length > 0 && (
+                    <Stack gap="xs">
+                      <Text size="sm" fw={500}>Goal Status</Text>
+                      <Stack gap="xs">
+                        {goalStatuses.map((goal, i) => (
+                          <Group key={i} gap="sm" align="flex-start" p="xs" style={{ background: 'var(--mantine-color-default-hover)', borderRadius: 'var(--mantine-radius-sm)' }}>
+                            <Badge color={GOAL_STATUS_COLORS[goal.status] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize', marginTop: 2 }}>
+                              {goal.status.replace('_', ' ')}
+                            </Badge>
+                            <Stack gap={2}>
+                              <Group gap={6}>
+                                <Text size="sm" fw={500}>{goal.goal}</Text>
+                                <Badge color={GOAL_PRIORITY_COLORS[goal.priority] || 'gray'} variant="light" size="xs" style={{ textTransform: 'capitalize' }}>
+                                  {goal.priority}
+                                </Badge>
+                              </Group>
+                              <Text size="xs" c="dimmed">{goal.reason}</Text>
+                            </Stack>
+                          </Group>
+                        ))}
+                      </Stack>
+                    </Stack>
+                  )}
+
+                  {competitionAlignment.length > 0 && (
                     <Stack gap="xs">
                       <Text size="sm" fw={500}>Competition Alignment</Text>
                       <Stack gap="xs">
-                        {evalReport.competition_alignment.map((ca, i) => (
+                        {competitionAlignment.map((ca, i) => (
                           <Group key={i} gap="sm" align="flex-start" p="xs" style={{ background: 'var(--mantine-color-default-hover)', borderRadius: 'var(--mantine-radius-sm)' }}>
                             <Badge color={ALIGN_COLORS[ca.alignment] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize', marginTop: 2 }}>{ca.alignment}</Badge>
                             <Stack gap={2}>
@@ -255,12 +293,60 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
                     </Stack>
                   )}
 
+                  {competitionStrategy.length > 0 && (
+                    <Stack gap="xs">
+                      <Text size="sm" fw={500}>Competition Strategy</Text>
+                      <Stack gap="xs">
+                        {competitionStrategy.map((strategy, i) => (
+                          <Paper key={i} withBorder p="sm">
+                            <Group gap="xs" mb={4} wrap="wrap">
+                              <Text size="sm" fw={500}>{strategy.competition}</Text>
+                              <Badge color={COMPETITION_PRIORITY_COLORS[strategy.priority] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize' }}>
+                                {strategy.priority}
+                              </Badge>
+                              <Badge color="grape" variant="light" size="sm" style={{ textTransform: 'capitalize' }}>
+                                {strategy.approach.replace('_', ' ')}
+                              </Badge>
+                            </Group>
+                            <Text size="xs" c="dimmed">{strategy.reason}</Text>
+                          </Paper>
+                        ))}
+                      </Stack>
+                    </Stack>
+                  )}
+
+                  {(weightClassStrategy.recommendation || weightClassStrategy.viable_options.length > 0) && (
+                    <Stack gap="xs">
+                      <Text size="sm" fw={500}>Weight Class Strategy</Text>
+                      <Paper withBorder p="sm">
+                        {weightClassStrategy.recommended_weight_class_kg !== null && (
+                          <Text size="sm" fw={500} mb={4}>
+                            Recommended class: {weightClassStrategy.recommended_weight_class_kg} kg
+                          </Text>
+                        )}
+                        <Text size="xs" c="dimmed">{weightClassStrategy.recommendation}</Text>
+                        {weightClassStrategy.viable_options.length > 0 && (
+                          <Stack gap={6} mt="sm">
+                            {weightClassStrategy.viable_options.map((option, i) => (
+                              <Group key={i} gap="sm" align="flex-start" wrap="nowrap">
+                                <Badge color={WEIGHT_CLASS_COLORS[option.suitability] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize' }}>
+                                  {option.weight_class_kg} kg • {option.suitability}
+                                </Badge>
+                                <Text size="xs" c="dimmed">{option.reason}</Text>
+                              </Group>
+                            ))}
+                          </Stack>
+                        )}
+                      </Paper>
+                    </Stack>
+                  )}
+
                   <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-                    {evalReport.what_is_working.length > 0 && (
+                    {workingItems.length > 0 && (
                       <Stack gap="xs">
                         <Text size="sm" fw={500} c="green">What's Working</Text>
                         <Stack gap={4}>
-                          {evalReport.what_is_working.map((item, i) => (
+                          {workingItems.map((item, i) => (
                             <Group key={i} gap="xs" align="flex-start" wrap="nowrap">
                               <Badge variant="light" color="green" size="sm">✓</Badge>
                               <Text size="xs">{item}</Text>
@@ -269,11 +355,11 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
                         </Stack>
                       </Stack>
                     )}
-                    {evalReport.what_is_not_working.length > 0 && (
+                    {blockedItems.length > 0 && (
                       <Stack gap="xs">
                         <Text size="sm" fw={500} c="red">Needs Attention</Text>
                         <Stack gap={4}>
-                          {evalReport.what_is_not_working.map((item, i) => (
+                          {blockedItems.map((item, i) => (
                             <Group key={i} gap="xs" align="flex-start" wrap="nowrap">
                               <Badge variant="light" color="red" size="sm">✗</Badge>
                               <Text size="xs">{item}</Text>
@@ -284,11 +370,11 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
                     )}
                   </SimpleGrid>
 
-                  {evalReport.small_changes.length > 0 && (
+                  {smallChanges.length > 0 && (
                     <Stack gap="xs">
                       <Text size="sm" fw={500}>Suggested Adjustments</Text>
                       <Stack gap="xs">
-                        {evalReport.small_changes.map((sc, i) => (
+                        {smallChanges.map((sc, i) => (
                           <Paper key={i} withBorder p="sm">
                             <Group gap="xs" mb={4}>
                               <Badge color={PRIORITY_COLORS[sc.priority] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize' }}>{sc.priority}</Badge>
@@ -302,11 +388,11 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
                     </Stack>
                   )}
 
-                  {evalReport.monitoring_focus.length > 0 && (
+                  {monitoringFocus.length > 0 && (
                     <Stack gap="xs">
                       <Text size="sm" fw={500}>Monitor Closely</Text>
                       <Group gap="xs" wrap="wrap">
-                        {evalReport.monitoring_focus.map((item, i) => (
+                        {monitoringFocus.map((item, i) => (
                           <Badge key={i} color="blue" variant="light">{item}</Badge>
                         ))}
                       </Group>

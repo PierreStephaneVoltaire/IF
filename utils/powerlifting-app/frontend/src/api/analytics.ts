@@ -260,18 +260,18 @@ export interface CorrelationReport {
   insufficient_data_reason?: string
 }
 
-export async function fetchWeeklyAnalysis(weeks = 1, block = 'current'): Promise<WeeklyAnalysis> {
-  const res = await api.get(`/analytics/analysis/weekly?weeks=${weeks}&block=${encodeURIComponent(block)}`)
-  const body = res.data
-  if (body.error) throw new Error(body.error)
-  return body.data
-}
-
-export async function fetchCorrelationReport(weeks: number, block = 'current'): Promise<CorrelationReport> {
-  const res = await api.get(`/analytics/correlation?weeks=${weeks}&block=${encodeURIComponent(block)}`)
-  const body = res.data
-  if (body.error) throw new Error(body.error)
-  return body.data
+function normalizeCorrelationReport(data: unknown): CorrelationReport {
+  const report = (data && typeof data === 'object') ? data as Partial<CorrelationReport> : {}
+  return {
+    findings: Array.isArray(report.findings) ? report.findings : [],
+    summary: typeof report.summary === 'string' ? report.summary : '',
+    generated_at: typeof report.generated_at === 'string' ? report.generated_at : '',
+    window_start: typeof report.window_start === 'string' ? report.window_start : '',
+    weeks: typeof report.weeks === 'number' ? report.weeks : 0,
+    cached: Boolean(report.cached),
+    insufficient_data: Boolean(report.insufficient_data),
+    insufficient_data_reason: typeof report.insufficient_data_reason === 'string' ? report.insufficient_data_reason : '',
+  }
 }
 
 export interface ProgramEvaluationSmallChange {
@@ -289,12 +289,41 @@ export interface ProgramEvaluationCompAlignment {
   reason: string
 }
 
+export interface ProgramEvaluationGoalStatus {
+  goal: string
+  priority: 'primary' | 'secondary' | 'optional'
+  status: 'achieved' | 'on_track' | 'at_risk' | 'off_track' | 'unclear'
+  reason: string
+}
+
+export interface ProgramEvaluationCompetitionStrategy {
+  competition: string
+  priority: 'prioritize' | 'supporting' | 'practice' | 'deprioritize' | 'drop'
+  approach: 'all_out' | 'qualify_only' | 'minimum_total' | 'podium_push' | 'train_through' | 'conservative_pr' | 'drop'
+  reason: string
+}
+
+export interface ProgramEvaluationWeightClassOption {
+  weight_class_kg: number
+  suitability: 'best' | 'viable' | 'risky'
+  reason: string
+}
+
+export interface ProgramEvaluationWeightClassStrategy {
+  recommendation: string
+  recommended_weight_class_kg: number | null
+  viable_options: ProgramEvaluationWeightClassOption[]
+}
+
 export interface ProgramEvaluationReport {
   stance: 'continue' | 'monitor' | 'adjust' | 'critical'
   summary: string
   what_is_working: string[]
   what_is_not_working: string[]
   competition_alignment: ProgramEvaluationCompAlignment[]
+  goal_status: ProgramEvaluationGoalStatus[]
+  competition_strategy: ProgramEvaluationCompetitionStrategy[]
+  weight_class_strategy: ProgramEvaluationWeightClassStrategy
   small_changes: ProgramEvaluationSmallChange[]
   monitoring_focus: string[]
   conclusion: string
@@ -306,6 +335,71 @@ export interface ProgramEvaluationReport {
   cached: boolean
 }
 
+function normalizeProgramEvaluation(data: unknown): ProgramEvaluationReport {
+  const report = (data && typeof data === 'object') ? data as Partial<ProgramEvaluationReport> : {}
+  const weightClassStrategy = (report.weight_class_strategy && typeof report.weight_class_strategy === 'object')
+    ? report.weight_class_strategy
+    : undefined
+
+  return {
+    stance: report.stance ?? 'monitor',
+    summary: typeof report.summary === 'string' ? report.summary : '',
+    what_is_working: Array.isArray(report.what_is_working) ? report.what_is_working : [],
+    what_is_not_working: Array.isArray(report.what_is_not_working) ? report.what_is_not_working : [],
+    competition_alignment: Array.isArray(report.competition_alignment) ? report.competition_alignment : [],
+    goal_status: Array.isArray(report.goal_status) ? report.goal_status : [],
+    competition_strategy: Array.isArray(report.competition_strategy) ? report.competition_strategy : [],
+    weight_class_strategy: {
+      recommendation: typeof weightClassStrategy?.recommendation === 'string' ? weightClassStrategy.recommendation : '',
+      recommended_weight_class_kg:
+        typeof weightClassStrategy?.recommended_weight_class_kg === 'number'
+          ? weightClassStrategy.recommended_weight_class_kg
+          : null,
+      viable_options: Array.isArray(weightClassStrategy?.viable_options) ? weightClassStrategy.viable_options : [],
+    },
+    small_changes: Array.isArray(report.small_changes) ? report.small_changes : [],
+    monitoring_focus: Array.isArray(report.monitoring_focus) ? report.monitoring_focus : [],
+    conclusion: typeof report.conclusion === 'string' ? report.conclusion : '',
+    insufficient_data: Boolean(report.insufficient_data),
+    insufficient_data_reason: typeof report.insufficient_data_reason === 'string' ? report.insufficient_data_reason : '',
+    generated_at: typeof report.generated_at === 'string' ? report.generated_at : '',
+    window_start: typeof report.window_start === 'string' ? report.window_start : '',
+    weeks: typeof report.weeks === 'number' ? report.weeks : 0,
+    cached: Boolean(report.cached),
+  }
+}
+
+export async function fetchWeeklyAnalysis(
+  weeks = 1,
+  block = 'current',
+  windowStart?: string,
+  windowEnd?: string,
+): Promise<WeeklyAnalysis> {
+  const params = new URLSearchParams({
+    weeks: String(weeks),
+    block,
+  })
+  if (windowStart) params.set('windowStart', windowStart)
+  if (windowEnd) params.set('windowEnd', windowEnd)
+  const res = await api.get(`/analytics/analysis/weekly?${params.toString()}`)
+  const body = res.data
+  if (body.error) throw new Error(body.error)
+  return body.data
+}
+
+export async function fetchCorrelationReport(
+  weeks: number,
+  block = 'current',
+  refresh = false,
+): Promise<CorrelationReport> {
+  const res = await api.get(
+    `/analytics/correlation?weeks=${weeks}&block=${encodeURIComponent(block)}&refresh=${refresh}`,
+  )
+  const body = res.data
+  if (body.error) throw new Error(body.error)
+  return normalizeCorrelationReport(body.data)
+}
+
 export async function fetchProgramEvaluation(refresh = false): Promise<ProgramEvaluationReport> {
   const apiBase = import.meta.env.VITE_API_BASE_URL || '/api'
   const res = await fetch(`${apiBase}/analytics/program-evaluation?refresh=${refresh}`, {
@@ -313,5 +407,5 @@ export async function fetchProgramEvaluation(refresh = false): Promise<ProgramEv
   })
   const body = await res.json()
   if (body.error) throw new Error(body.error)
-  return body.data
+  return normalizeProgramEvaluation(body.data)
 }

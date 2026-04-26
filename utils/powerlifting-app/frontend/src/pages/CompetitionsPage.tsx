@@ -1,16 +1,31 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Trash2, Save, Trophy, Target, CheckCircle } from 'lucide-react'
 import {
-  Stack, Group, Text, Button, Paper, Badge, Modal, SimpleGrid,
-  TextInput, NumberInput, Select, Textarea, Accordion, Title,
+  Accordion,
+  Badge,
+  Button,
+  Checkbox,
+  Group,
+  Modal,
+  MultiSelect,
+  NumberInput,
+  Paper,
+  Select,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+  Textarea,
+  Title,
 } from '@mantine/core'
 import { DatePickerInput } from '@mantine/dates'
 import { useProgramStore } from '@/store/programStore'
+import { useFederationStore } from '@/store/federationStore'
 import { useUiStore } from '@/store/uiStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { calculateDots } from '@/utils/dots'
-import type { Competition, LiftResults } from '@powerlifting/types'
+import type { Competition, FederationLibrary, LiftResults } from '@powerlifting/types'
 
 const STATUS_COLORS: Record<string, string> = {
   completed: 'green',
@@ -33,8 +48,19 @@ const STATUS_OPTIONS = [
   { value: 'skipped', label: 'Skipped' },
 ]
 
+function federationNameById(
+  federationId: string | undefined,
+  library: FederationLibrary | null,
+): string | null {
+  if (!federationId) return null
+  const federation = library?.federations.find(item => item.id === federationId)
+  if (!federation) return null
+  return federation.abbreviation || federation.name || null
+}
+
 export default function CompetitionsPage() {
   const { program, updateCompetitions, migrateLastComp, completeCompetition } = useProgramStore()
+  const { library, loadLibrary } = useFederationStore()
   const { pushToast } = useUiStore()
   const { sex } = useSettingsStore()
   const [competitions, setCompetitions] = useState<Competition[]>([])
@@ -48,9 +74,14 @@ export default function CompetitionsPage() {
   })
 
   useEffect(() => {
+    loadLibrary().catch(console.error)
+  }, [loadLibrary])
+
+  useEffect(() => {
     if (program?.competitions) {
       const sorted = [...program.competitions].sort((a, b) => a.date.localeCompare(b.date))
       setCompetitions(sorted)
+      setHasChanges(false)
     }
   }, [program])
 
@@ -69,9 +100,18 @@ export default function CompetitionsPage() {
     checkMigration()
   }, [])
 
+  const federationOptions = useMemo(() => {
+    return (library?.federations ?? [])
+      .filter(item => item.status === 'active')
+      .map(item => ({
+        value: item.id,
+        label: item.abbreviation ? `${item.abbreviation} • ${item.name}` : item.name,
+      }))
+  }, [library])
+
   function updateComp(date: string, updates: Partial<Competition>) {
     setCompetitions((prev) =>
-      prev.map((c) => (c.date === date ? { ...c, ...updates } : c))
+      prev.map((c) => (c.date === date ? { ...c, ...updates } : c)),
     )
     setHasChanges(true)
   }
@@ -84,6 +124,7 @@ export default function CompetitionsPage() {
       federation: '',
       status: 'optional',
       weight_class_kg: 75,
+      counts_toward_federation_ids: [],
       targets: {
         squat_kg: 0,
         bench_kg: 0,
@@ -169,7 +210,7 @@ export default function CompetitionsPage() {
             <Title order={2}>Competitions</Title>
           </Group>
           <Text c="dimmed" size="sm" mt={4}>
-            Track upcoming and past competitions with DOTS scores
+            Track upcoming and past competitions as meet opportunities, including which federations each meet can count toward.
           </Text>
         </Stack>
         <Group gap="sm">
@@ -191,7 +232,6 @@ export default function CompetitionsPage() {
         </Group>
       </Group>
 
-      {/* Competition Cards */}
       {sortedCompetitions.length > 0 ? (
         <Accordion variant="separated">
           {sortedCompetitions.map((comp) => {
@@ -199,6 +239,11 @@ export default function CompetitionsPage() {
             const trophyColor = comp.status === 'completed' ? 'green'
               : comp.status === 'confirmed' ? 'blue'
               : 'yellow'
+            const hostFederationLabel = federationNameById(comp.federation_id, library) || comp.federation || 'No federation'
+            const countsTowardLabels = (comp.counts_toward_federation_ids ?? [])
+              .map((federationId) => federationNameById(federationId, library))
+              .filter((value): value is string => Boolean(value))
+            const countsTowardOptions = federationOptions.filter(item => item.value !== comp.federation_id)
 
             return (
               <Accordion.Item key={comp.date} value={comp.date}>
@@ -214,7 +259,8 @@ export default function CompetitionsPage() {
                           day: 'numeric',
                         })}
                         {' \u2022 '}
-                        {comp.federation || 'No federation'}
+                        {hostFederationLabel}
+                        {countsTowardLabels.length > 0 ? ` • Counts toward ${countsTowardLabels.join(', ')}` : ''}
                       </Text>
                     </Stack>
                   </Group>
@@ -222,8 +268,7 @@ export default function CompetitionsPage() {
 
                 <Accordion.Panel>
                   <Stack gap="md">
-                    {/* Basic Info */}
-                    <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
+                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
                       <TextInput
                         label="Name"
                         value={comp.name}
@@ -242,7 +287,7 @@ export default function CompetitionsPage() {
                         }}
                       />
                       <TextInput
-                        label="Federation"
+                        label="Federation Label"
                         value={comp.federation}
                         onChange={(e) => updateComp(comp.date, { federation: e.currentTarget.value })}
                       />
@@ -254,8 +299,36 @@ export default function CompetitionsPage() {
                       />
                     </SimpleGrid>
 
-                    {/* Weight & Location */}
-                    <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
+                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
+                      <Select
+                        clearable
+                        searchable
+                        label="Host Federation"
+                        value={comp.federation_id || null}
+                        data={federationOptions}
+                        onChange={(value) => {
+                          const federation = library?.federations.find(item => item.id === value)
+                          updateComp(comp.date, {
+                            federation_id: value || undefined,
+                            federation: federation?.name ?? comp.federation,
+                            counts_toward_federation_ids: (comp.counts_toward_federation_ids ?? []).filter(item => item !== value),
+                          })
+                        }}
+                      />
+                      <MultiSelect
+                        searchable
+                        clearable
+                        label="Counts Toward Federations"
+                        value={comp.counts_toward_federation_ids ?? []}
+                        data={countsTowardOptions}
+                        onChange={(value) => updateComp(comp.date, {
+                          counts_toward_federation_ids: value.filter(item => item !== comp.federation_id),
+                        })}
+                        description="Use this when a meet hosted by one federation can satisfy goals for another federation."
+                      />
+                    </SimpleGrid>
+
+                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
                       <NumberInput
                         label="Weight Class (kg)"
                         value={comp.weight_class_kg}
@@ -274,9 +347,14 @@ export default function CompetitionsPage() {
                         value={comp.location || ''}
                         onChange={(e) => updateComp(comp.date, { location: e.currentTarget.value })}
                       />
+                      <Checkbox
+                        mt={30}
+                        label="Hotel required"
+                        checked={Boolean(comp.hotel_required)}
+                        onChange={(event) => updateComp(comp.date, { hotel_required: event.currentTarget.checked })}
+                      />
                     </SimpleGrid>
 
-                    {/* Lifts (Targets or Results) */}
                     <Stack gap="xs">
                       <Text size="xs" c="dimmed">
                         {comp.status === 'completed' ? 'Results (kg)' : 'Targets (kg)'}
@@ -321,20 +399,20 @@ export default function CompetitionsPage() {
                       </SimpleGrid>
                     </Stack>
 
-                    {/* DOTS Score */}
                     {dotsResult && (
                       <Paper bg="var(--mantine-color-default)" p="sm" radius="md">
-                        <Group gap="sm">
-                          <Target size={16} style={{ color: 'var(--mantine-color-blue-6)' }} />
-                          <Text size="sm">
-                            <Text span c="dimmed">{dotsResult.label} DOTS:</Text>{' '}
-                            <Text span fw={700} ff="monospace">{dotsResult.dots.toFixed(2)}</Text>
-                          </Text>
-                        </Group>
+                        <Stack gap={4}>
+                          <Group gap="sm">
+                            <Target size={16} style={{ color: 'var(--mantine-color-blue-6)' }} />
+                            <Text size="sm">
+                              <Text span c="dimmed">{dotsResult.label} DOTS:</Text>{' '}
+                              <Text span fw={700} ff="monospace">{dotsResult.dots.toFixed(2)}</Text>
+                            </Text>
+                          </Group>
+                        </Stack>
                       </Paper>
                     )}
 
-                    {/* Notes */}
                     <Textarea
                       label="Notes"
                       value={comp.notes || ''}
@@ -344,11 +422,18 @@ export default function CompetitionsPage() {
                       autosize
                     />
 
-                    {/* Status badge */}
                     <Group>
                       <Badge variant="light" color={STATUS_COLORS[comp.status]}>
                         {STATUS_LABELS[comp.status]}
                       </Badge>
+                      <Badge variant="light" color="grape">
+                        Host: {hostFederationLabel}
+                      </Badge>
+                      {countsTowardLabels.length > 0 && (
+                        <Badge variant="light" color="blue">
+                          Counts toward: {countsTowardLabels.join(', ')}
+                        </Badge>
+                      )}
                       {dotsResult && (
                         <Text size="sm" ff="monospace">
                           {dotsResult.label}: {dotsResult.dots.toFixed(1)}
@@ -356,7 +441,6 @@ export default function CompetitionsPage() {
                       )}
                     </Group>
 
-                    {/* Actions */}
                     <Group justify="space-between" pt="sm">
                       {comp.status !== 'completed' && new Date(comp.date) < new Date() && (
                         <Button
@@ -392,7 +476,6 @@ export default function CompetitionsPage() {
         </Group>
       )}
 
-      {/* Complete Competition Modal */}
       <Modal
         opened={showCompleteModal !== null}
         onClose={() => setShowCompleteModal(null)}

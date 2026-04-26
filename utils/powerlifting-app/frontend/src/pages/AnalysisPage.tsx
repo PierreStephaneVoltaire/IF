@@ -75,10 +75,52 @@ function isInsufficientData(value: unknown): value is { status: 'insufficient_da
   return !!value && typeof value === 'object' && 'status' in value
 }
 
-function getWindowCutoffStr(weeks: number): string {
-  const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - weeks * 7)
-  return cutoff.toISOString().slice(0, 10)
+function toDateStr(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
+function getWeekStart(date: Date): Date {
+  const d = new Date(date)
+  d.setHours(12, 0, 0, 0)
+  const day = d.getDay() || 7
+  d.setDate(d.getDate() - day + 1)
+  return d
+}
+
+function shiftDays(date: Date, days: number): Date {
+  const d = new Date(date)
+  d.setDate(d.getDate() + days)
+  return d
+}
+
+function getAnalysisWindow(mode: number | 'current' | 'block', programStart?: string | null) {
+  const today = new Date()
+  today.setHours(12, 0, 0, 0)
+  const currentWeekStart = getWeekStart(today)
+
+  if (mode === 'current') {
+    return {
+      start: toDateStr(currentWeekStart),
+      end: toDateStr(today),
+    }
+  }
+
+  if (mode === 'block') {
+    const start = programStart ? new Date(`${programStart}T12:00:00`) : currentWeekStart
+    start.setHours(12, 0, 0, 0)
+    return {
+      start: toDateStr(start),
+      end: toDateStr(today),
+    }
+  }
+
+  const weeks = Math.max(1, mode)
+  const start = shiftDays(currentWeekStart, -(weeks * 7))
+  const end = shiftDays(currentWeekStart, -1)
+  return {
+    start: toDateStr(start),
+    end: toDateStr(end),
+  }
 }
 
 function banisterBadgeColor(tsb: number) {
@@ -192,7 +234,7 @@ export default function AnalysisPage() {
   const { program, version } = useProgramStore()
   const { unit, sex } = useSettingsStore()
 
-  const [weeksMode, setWeeksMode] = useState<number | 'block'>(4)
+  const [weeksMode, setWeeksMode] = useState<number | 'current' | 'block'>(4)
   const [data, setData] = useState<WeeklyAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -201,7 +243,8 @@ export default function AnalysisPage() {
   const [viewMode, setViewMode] = useState<'raw' | 'graph'>('raw')
 
   const effectiveWeeks = useMemo(() => {
-    if (weeksMode !== 'block') return weeksMode
+    if (weeksMode !== 'block' && weeksMode !== 'current') return weeksMode
+    if (weeksMode === 'current') return 1
     const start = program?.meta?.program_start
     if (!start) return 52
     const startDate = new Date(start)
@@ -209,6 +252,11 @@ export default function AnalysisPage() {
     const diffDays = Math.max(0, (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
     return Math.max(1, Math.ceil(diffDays / 7))
   }, [weeksMode, program?.meta?.program_start])
+
+  const analysisWindow = useMemo(
+    () => getAnalysisWindow(weeksMode, program?.meta?.program_start),
+    [program?.meta?.program_start, weeksMode],
+  )
 
   const competitions = useMemo(() => {
     return (program?.competitions || []).sort((a, b) => a.date.localeCompare(b.date))
@@ -219,7 +267,11 @@ export default function AnalysisPage() {
     return competitions.find(c => (c.status === 'confirmed' || c.status === 'optional') && c.date >= today) || null
   }, [competitions])
 
-  const analysisWindowStartStr = useMemo(() => getWindowCutoffStr(effectiveWeeks), [effectiveWeeks])
+  const analysisWindowStartStr = useMemo(
+    () => analysisWindow.start,
+    [analysisWindow.start],
+  )
+  const analysisWindowEndStr = analysisWindow.end
 
   const banister = data?.banister && !isInsufficientData(data.banister) ? data.banister : null
   const decoupling = data?.decoupling && !isInsufficientData(data.decoupling) ? data.decoupling : null
@@ -233,11 +285,11 @@ export default function AnalysisPage() {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetchWeeklyAnalysis(effectiveWeeks, 'current')
+    fetchWeeklyAnalysis(effectiveWeeks, 'current', analysisWindow.start, analysisWindow.end)
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [effectiveWeeks])
+  }, [analysisWindow.end, analysisWindow.start, effectiveWeeks, weeksMode])
 
   useEffect(() => {
     fetchWeightLog(version).then(setWeightLog).catch(console.error)
@@ -249,9 +301,10 @@ export default function AnalysisPage() {
     return program.sessions.filter(s =>
       (s.block ?? 'current') === 'current' &&
       s.completed &&
-      s.date >= analysisWindowStartStr
+      s.date >= analysisWindowStartStr &&
+      s.date <= analysisWindowEndStr
     )
-  }, [program?.sessions, analysisWindowStartStr])
+  }, [program?.sessions, analysisWindowEndStr, analysisWindowStartStr])
 
   const glossaryMuscles = useMemo(() => {
     const lookup = new Map<string, { primary: string[]; secondary: string[]; tertiary: string[] }>()
@@ -551,12 +604,18 @@ export default function AnalysisPage() {
           <Select
             size="sm"
             value={String(weeksMode)}
-            onChange={(val) => val && setWeeksMode(val === 'block' ? 'block' : Number(val))}
+            onChange={(val) => {
+              if (!val) return
+              if (val === 'block') return setWeeksMode('block')
+              if (val === 'current') return setWeeksMode('current')
+              setWeeksMode(Number(val))
+            }}
             data={[
-              { value: '1', label: 'Last 1 week' },
-              { value: '2', label: 'Last 2 weeks' },
-              { value: '4', label: 'Last 4 weeks' },
-              { value: '8', label: 'Last 8 weeks' },
+              { value: 'current', label: 'Current Week' },
+              { value: '1', label: 'Previous Week' },
+              { value: '2', label: 'Previous 2 Weeks' },
+              { value: '4', label: 'Previous 4 Weeks' },
+              { value: '8', label: 'Previous 8 Weeks' },
               { value: 'block', label: 'Full Block (W1 → now)' },
             ]}
             w={200}

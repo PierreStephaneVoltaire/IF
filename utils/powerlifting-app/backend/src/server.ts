@@ -17,6 +17,8 @@ import { templateRouter } from './routes/template'
 import { statsRouter } from './routes/stats'
 import { authRouter } from './routes/auth'
 import { settingsRouter } from './routes/settings'
+import { goalsRouter } from './routes/goals'
+import { federationsRouter } from './routes/federations'
 import { errorHandler } from './middleware/errorHandler'
 import { requireUserOptional, resolvePk } from './middleware/auth'
 
@@ -46,6 +48,8 @@ app.use(requireUserOptional, resolvePk)
 // Domain routes
 app.use('/api/settings', settingsRouter)
 app.use('/api/programs', programsRouter)
+app.use('/api/goals', goalsRouter)
+app.use('/api/federations', federationsRouter)
 app.use('/api/sessions', sessionsRouter)
 app.use('/api/exercises', exercisesRouter)
 app.use('/api/maxes', maxesRouter)

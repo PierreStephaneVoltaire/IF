@@ -23,7 +23,9 @@ from prompt_context import (
     summarize_competitions,
     summarize_diet_context,
     summarize_exercise_roi,
+    summarize_goals,
     summarize_lift_profiles,
+    summarize_meet_interference,
     summarize_measurements,
     summarize_phases,
     summarize_planned_sessions,
@@ -55,7 +57,6 @@ You are an ANALYST, not a coach. Your job:
     legitimately vary — some alternate exercises weekly, some avoid spamming
     competition lifts to manage fatigue, some use high volume, some use low
     volume. All are valid.
-  ✗ Do NOT recommend dropping any competition.
   ✗ Do NOT call the program "sporadic", "inconsistent", "random", or
     "unstructured". If the schedule looks unusual to you, assume it is
     intentional and analyze the results it is producing.
@@ -74,12 +75,38 @@ PROGRAM META & PHASES
     strength, peaking, deload, etc.). Evaluate results relative to phase
     goals — a hypertrophy phase should not be judged by peak 1RM output.
 
+GOALS & QUALIFICATION STANDARDS
+  - The program now has explicit block goals. These define which competitions
+    matter most, which standards must be hit, whether a meet should be
+    treated as train-through, and what weight-class constraints exist.
+  - Goals override any naive assumption that the last meet is automatically
+    the main priority.
+  - Qualification standards are goal-owned in this system. Competitions are
+    opportunities to satisfy goals; goals define the actual standard,
+    federation, strategy mode, and weight-class target.
+  - A goal may now link to multiple competitions and multiple standards.
+    Treat those as alternative paths to the same block outcome, not as noise.
+  - Never silently downgrade a primary goal to an easier secondary standard.
+    If a primary OPA path requires 570 kg and a secondary CPU path requires
+    535 kg, a 535 total does NOT satisfy the 570 goal even if the meet
+    counts toward both federations.
+
 COMPETITIONS
   - Every competition in the block, with dates and weeks-to-comp.
-  - The FINAL competition is the primary goal. Earlier ones are practice/prep.
+  - Competition role is derived from explicit goals when available.
+  - A competition has one host federation plus a list of extra federations it
+    counts toward. Use this to judge whether a meet is actually eligible for a
+    goal's target federation or standard.
+  - Competition notes are ground-truth context. If the notes say a meet is a
+    qualifier, backup shot, practice day, or low-priority tune-up, use that.
+  - Each competition may include a governing_goal and required_total_kg when
+    the analysis context can infer them. Anchor recommendations to that bar,
+    not to the lowest available qualifying standard in the payload.
   - Weeks-to-comp is critical context: an athlete 12 weeks out should look
     different than one 3 weeks out. Taper expectations, volume shifts, and
     intensity curves should be evaluated relative to proximity.
+  - Some meets may be appropriate to deprioritize, sandbag, train through, or
+    even drop if they materially interfere with a higher-priority goal.
 
 LIFT PROFILES (if provided)
   - Style notes, sticking points, primary muscles, volume tolerance per lift.
@@ -154,12 +181,35 @@ EXERCISE ROI (if provided)
 EVALUATION FRAMEWORK
 ═══════════════════════════════════════════════════════════════════
 For each competition in the block:
-  1. Role: primary (final comp) or practice (earlier comps).
+  1. Role: primary or practice, based on the explicit goals and competition strategy.
   2. Weeks to comp: how far out is the athlete right now?
   3. Alignment: given the current phase, metrics, and trajectory, is the
      athlete on track for a good showing? Rate: good / mixed / poor.
   4. Reason: cite specific data points (e1RM trends, volume progression,
      bodyweight, fatigue indicators) that support your rating.
+
+For goal_status:
+  - Rate each explicit goal: achieved / on_track / at_risk / off_track / unclear.
+  - Reason from linked standards, projections, bodyweight trend, meet timing,
+    meet federation eligibility, and weight-class compatibility.
+
+For competition_strategy:
+  - For each relevant meet, decide whether it should be prioritized,
+    treated as supporting practice, deprioritized, or dropped.
+  - Choose an approach: all_out / qualify_only / minimum_total / podium_push /
+    train_through / conservative_pr / drop.
+  - If a competition has governing_goal.required_total_kg, use that as the
+    success bar for the recommendation. Mention lower secondary standards only
+    as fallback context; do not substitute them for the real target.
+  - If a primary goal has only 1-2 remaining eligible opportunities, do not
+    casually label those meets as practice unless the goal is already achieved
+    or clearly unrealistic.
+  - If recommending a drop, tie it directly to a higher-priority goal or an
+    interference problem.
+
+For weight_class_strategy:
+  - State the recommended class for the block, list viable options, and explain
+    tradeoffs around bodyweight trend, cut feasibility, and qualifying goals.
 
 For what_is_working / what_is_not_working:
   - Cite the actual numbers. "Squat e1RM trending up from X to Y over Z
@@ -227,6 +277,52 @@ _TOOL_SCHEMA = {
                         "required": ["competition", "role", "alignment", "reason"],
                     },
                 },
+                "goal_status": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "goal": {"type": "string"},
+                            "priority": {"type": "string", "enum": ["primary", "secondary", "optional"]},
+                            "status": {"type": "string", "enum": ["achieved", "on_track", "at_risk", "off_track", "unclear"]},
+                            "reason": {"type": "string"},
+                        },
+                        "required": ["goal", "priority", "status", "reason"],
+                    },
+                },
+                "competition_strategy": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "competition": {"type": "string"},
+                            "priority": {"type": "string", "enum": ["prioritize", "supporting", "practice", "deprioritize", "drop"]},
+                            "approach": {"type": "string", "enum": ["all_out", "qualify_only", "minimum_total", "podium_push", "train_through", "conservative_pr", "drop"]},
+                            "reason": {"type": "string"},
+                        },
+                        "required": ["competition", "priority", "approach", "reason"],
+                    },
+                },
+                "weight_class_strategy": {
+                    "type": "object",
+                    "properties": {
+                        "recommendation": {"type": "string"},
+                        "recommended_weight_class_kg": {"type": ["number", "null"]},
+                        "viable_options": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "weight_class_kg": {"type": "number"},
+                                    "suitability": {"type": "string", "enum": ["best", "viable", "risky"]},
+                                    "reason": {"type": "string"},
+                                },
+                                "required": ["weight_class_kg", "suitability", "reason"],
+                            },
+                        },
+                    },
+                    "required": ["recommendation", "recommended_weight_class_kg", "viable_options"],
+                },
                 "small_changes": {
                     "type": "array",
                     "items": {
@@ -255,7 +351,7 @@ _TOOL_SCHEMA = {
                     "type": "string",
                 },
             },
-            "required": ["stance", "summary", "what_is_working", "what_is_not_working", "competition_alignment", "small_changes", "monitoring_focus", "conclusion"],
+            "required": ["stance", "summary", "what_is_working", "what_is_not_working", "competition_alignment", "goal_status", "competition_strategy", "weight_class_strategy", "small_changes", "monitoring_focus", "conclusion"],
         },
     },
 }
@@ -298,7 +394,7 @@ def _sanitize_floats(obj: Any) -> Any:
     return obj
 
 
-def _build_user_message(program: dict[str, Any]) -> str:
+def _build_user_message(program: dict[str, Any], federation_library: dict[str, Any] | None = None) -> str:
     meta = program.get("meta", {})
     sessions = _current_block_sessions(program)
     current_weeks = _analysis_weeks(program, sessions)
@@ -307,7 +403,16 @@ def _build_user_message(program: dict[str, Any]) -> str:
     completed_weeks = sorted({int(s.get("week_number") or 0) for s in sessions if (s.get("completed") or s.get("status") in ("logged", "completed")) and s.get("week_number")})
     bodyweight_trend = summarize_bodyweight_trend(sessions, window_start=window_start)
     diet_context = summarize_diet_context(program, window_start=window_start, bodyweight_trend=bodyweight_trend)
-    competitions = summarize_competitions(program)
+    goals = summarize_goals(program, federation_library=federation_library)
+    competitions = summarize_competitions(
+        program,
+        federation_library=federation_library,
+        competition_goal_priorities=goals.get("competition_goal_priorities"),
+    )
+    meet_interference = summarize_meet_interference(
+        program,
+        competition_goal_priorities=goals.get("competition_goal_priorities"),
+    )
     lift_profiles = summarize_lift_profiles(program.get("lift_profiles"))
     phases = summarize_phases(program.get("phases"))
     measurements = summarize_measurements(meta)
@@ -324,7 +429,6 @@ def _build_user_message(program: dict[str, Any]) -> str:
             "tone": "objective sports scientist",
             "stance_preference": "conservative",
             "do_not": [
-                "drop a competition",
                 "recommend wholesale redesigns unless a serious issue exists",
                 "overreact to a single metric without context",
             ],
@@ -333,12 +437,14 @@ def _build_user_message(program: dict[str, Any]) -> str:
                 "what is going right",
                 "what is going wrong",
                 "goal alignment for each competition",
+                "federation eligibility and weight-class fit for each linked goal",
                 "small useful adjustments only",
                 "whether to continue as-is, monitor, or make limited changes",
             ],
         },
         "program_meta": summarize_program_meta(meta),
         "phases": phases,
+        "goals": goals,
         "full_block_summary": {
             "analysis_weeks": current_weeks,
             "completed_sessions": current_block_completed_sessions,
@@ -346,6 +452,7 @@ def _build_user_message(program: dict[str, Any]) -> str:
         },
         "completed_block_weeks": completed_weeks,
         "competitions": competitions,
+        "meet_interference": meet_interference,
         "lift_profiles": lift_profiles,
         "athlete_measurements": measurements,
         "supplements": supplements,
@@ -361,9 +468,12 @@ def _build_user_message(program: dict[str, Any]) -> str:
     return json.dumps(_sanitize_floats(payload), indent=2, default=str)
 
 
-async def generate_program_evaluation_report(program: dict[str, Any]) -> dict[str, Any]:
+async def generate_program_evaluation_report(
+    program: dict[str, Any],
+    federation_library: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Call the LLM to generate a conservative block evaluation report."""
-    user_msg = _build_user_message(program)
+    user_msg = _build_user_message(program, federation_library=federation_library)
     logger.info(f"[ProgramEvaluationAI] model={ANALYSIS_MODEL} payload_chars={len(user_msg)}")
 
     try:
@@ -407,6 +517,9 @@ async def generate_program_evaluation_report(program: dict[str, Any]) -> dict[st
             "what_is_working": args.get("what_is_working", []),
             "what_is_not_working": args.get("what_is_not_working", []),
             "competition_alignment": args.get("competition_alignment", []),
+            "goal_status": args.get("goal_status", []),
+            "competition_strategy": args.get("competition_strategy", []),
+            "weight_class_strategy": args.get("weight_class_strategy", {"recommendation": "", "recommended_weight_class_kg": None, "viable_options": []}),
             "small_changes": args.get("small_changes", []),
             "monitoring_focus": args.get("monitoring_focus", []),
             "conclusion": args.get("conclusion", ""),
@@ -422,6 +535,9 @@ async def generate_program_evaluation_report(program: dict[str, Any]) -> dict[st
             "what_is_working": [],
             "what_is_not_working": [],
             "competition_alignment": [],
+            "goal_status": [],
+            "competition_strategy": [],
+            "weight_class_strategy": {"recommendation": "", "recommended_weight_class_kg": None, "viable_options": []},
             "small_changes": [],
             "monitoring_focus": [],
             "conclusion": "Continue monitoring until the AI report can be regenerated.",

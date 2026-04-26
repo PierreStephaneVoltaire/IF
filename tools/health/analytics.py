@@ -2703,6 +2703,8 @@ def compute_readiness_score(
 def weekly_analysis(
     program: dict,
     sessions: list[dict],
+    window_start: Optional[str] = None,
+    window_end: Optional[str] = None,
     ref_date: Optional[str] = None,
     weeks: int = 1,
     block: Optional[str] = None,
@@ -2722,10 +2724,19 @@ def weekly_analysis(
     phase_name = current_phase.get("name", "Unknown") if current_phase else "Unknown"
 
     # Date-window filter → recent_sessions
-    ref = _parse_date(ref_date) if ref_date else date.today()
-    cutoff = ref - timedelta(weeks=weeks)
+    end = _parse_date(window_end) if window_end else (_parse_date(ref_date) if ref_date else date.today())
+    ref = end
+    start = _parse_date(window_start) if window_start else None
+    if start is None:
+        cutoff = end - timedelta(weeks=weeks)
+    else:
+        cutoff = start
     recent_sessions = sorted(
-        [s for s in sessions if (d := _parse_date(s.get("date", ""))) and d >= cutoff],
+        [
+            s
+            for s in sessions
+            if (d := _parse_date(s.get("date", ""))) and d >= cutoff and d <= end
+        ],
         key=lambda s: s.get("date", ""),
         reverse=True,
     )
@@ -2776,7 +2787,7 @@ def weekly_analysis(
         ex_name = lift_alias_map.get(lift_key, lift_key)
         lift_data: dict[str, Any] = {}
 
-        prog = progression_rate(sessions, ex_name, program_start, reference_date=ref)
+        prog = progression_rate(sessions, ex_name, program_start, reference_date=end)
         if "slope_kg_per_week" in prog:
             lift_data["progression_rate_kg_per_week"] = prog["slope_kg_per_week"]
             lift_data["fit_quality"] = prog.get("fit_quality")
@@ -2876,7 +2887,7 @@ def weekly_analysis(
     projection_calibration = _resolve_projection_lambda_multiplier(program, reference_date=ref)
 
     for comp in to_project:
-        proj = meet_projection(program, sessions, comp_date=comp["date"], ref_date=ref)
+        proj = meet_projection(program, sessions, comp_date=comp["date"], ref_date=end)
         if "total" in proj:
             projections.append({
                 "total": proj["total"],
@@ -2889,7 +2900,7 @@ def weekly_analysis(
             })
 
     if not projections and not to_project and meta.get("comp_date"):
-        proj = meet_projection(program, sessions, comp_date=meta["comp_date"], ref_date=ref)
+        proj = meet_projection(program, sessions, comp_date=meta["comp_date"], ref_date=end)
         if "total" in proj:
             projections.append({"total": proj["total"], "confidence": proj["confidence"],
                                  "weeks_to_comp": proj.get("weeks_to_comp"), "method": proj.get("method"),
@@ -2931,7 +2942,7 @@ def weekly_analysis(
             current_maxes_raw or {},
             phases=phases,
             current_week=current_week,
-            ref_date=ref,
+            ref_date=end,
         )
         spike = _compute_dimensional_spike(weekly_dim)
         weekly_rounded = {wk: {k: round(v, 1) for k, v in dims.items()} for wk, dims in sorted(weekly_dim.items())}
@@ -2946,21 +2957,21 @@ def weekly_analysis(
             glossary,
             program_start,
             current_maxes_raw or {},
-            ref_date=ref,
+            ref_date=end,
         )
         monotony_strain = compute_monotony_strain(
             sessions,
             glossary,
             program_start,
             current_maxes_raw or {},
-            ref_date=ref,
+            ref_date=end,
         )
         decoupling = compute_decoupling(
             sessions,
             glossary,
             program_start,
             current_maxes_raw or {},
-            ref_date=ref,
+            ref_date=end,
         )
         taper_quality = compute_taper_quality(
             program,
@@ -2968,7 +2979,7 @@ def weekly_analysis(
             glossary,
             current_maxes_raw or {},
             program_start,
-            ref_date=ref,
+            ref_date=end,
         )
 
     inol_result = compute_inol(completed_in_window, program_start, current_maxes_raw, program.get("lift_profiles"))
@@ -2979,7 +2990,7 @@ def weekly_analysis(
         current_maxes_raw,
         phases=phases,
         current_week=current_week,
-        ref_date=ref,
+        ref_date=end,
     )
     ri_result = compute_ri_distribution(completed_in_window, current_maxes_raw)
     specificity_comp_date = upcoming[0]["date"] if upcoming else meta.get("comp_date")
@@ -2998,7 +3009,7 @@ def weekly_analysis(
         glossary,
         current_maxes_raw or {},
         program_start,
-        ref_date=ref,
+        ref_date=end,
     )
     readiness_result = compute_readiness_score(sessions, program, glossary, program_start, reference_date=ref)
 
@@ -3038,7 +3049,7 @@ def weekly_analysis(
         program,
         sessions,
         glossary,
-        ref_date=ref,
+        ref_date=end,
         window_weeks=weeks,
     )
 
@@ -3102,6 +3113,36 @@ def _competition_qualifying_total(competition: dict) -> float | None:
         if total > 0:
             return round(total, 1)
     return None
+
+
+def _goal_priority_rank(priority: str | None) -> int:
+    order = {"primary": 0, "secondary": 1, "optional": 2}
+    return order.get(str(priority or "optional"), 99)
+
+
+def _competition_goal_qualifying_total(program: dict, competition_date: str) -> float | None:
+    candidates: list[tuple[int, float]] = []
+    for goal in program.get("goals", []) or []:
+        target_dates = [str(value or "").strip() for value in list(goal.get("target_competition_dates") or []) if str(value or "").strip()]
+        legacy_target_date = str(goal.get("target_competition_date") or "").strip()
+        if legacy_target_date and legacy_target_date not in target_dates:
+            target_dates.append(legacy_target_date)
+        if competition_date not in target_dates:
+            continue
+        goal_type = str(goal.get("goal_type") or "")
+        target_standard_ids = [str(value or "").strip() for value in list(goal.get("target_standard_ids") or []) if str(value or "").strip()]
+        legacy_target_standard_id = str(goal.get("target_standard_id") or "").strip()
+        if legacy_target_standard_id and legacy_target_standard_id not in target_standard_ids:
+            target_standard_ids.append(legacy_target_standard_id)
+        if goal_type != "qualify_for_federation" and not target_standard_ids:
+            continue
+        total = _num(goal.get("target_total_kg"))
+        if total > 0:
+            candidates.append((_goal_priority_rank(str(goal.get("priority"))), round(total, 1)))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[0][1]
 
 
 def _planned_exercise_weight(ex: dict, current_maxes: dict[str, Any]) -> float | None:
@@ -3625,6 +3666,8 @@ def generate_alerts(
     projection_by_name = {p.get("comp_name"): p for p in projections if p.get("comp_name")}
     for comp in upcoming:
         qualifying_total = _competition_qualifying_total(comp)
+        if qualifying_total is None:
+            qualifying_total = _competition_goal_qualifying_total(program, str(comp.get("date") or ""))
         if qualifying_total is None:
             continue
         projection = projection_by_name.get(comp.get("name"))

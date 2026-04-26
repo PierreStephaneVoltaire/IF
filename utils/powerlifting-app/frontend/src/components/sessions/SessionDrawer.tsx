@@ -306,7 +306,10 @@ export default function SessionDrawer({
   }
 
   const editorContent = (
-      <Stack gap="lg">
+      <Stack
+        gap="lg"
+        pb={mode === 'page' ? 'calc(120px + env(safe-area-inset-bottom, 0px))' : undefined}
+      >
         <Group justify="space-between" wrap="nowrap" align="flex-start">
           <Group gap="sm" align="flex-start">
             <Box
@@ -579,6 +582,7 @@ export default function SessionDrawer({
                                   size="sm"
                                   autosize
                                   minRows={1}
+                                  maxRows={mode === 'page' ? 3 : 4}
                                   variant="filled"
                                   style={{ width: '100%' }}
                                 />
@@ -640,6 +644,7 @@ export default function SessionDrawer({
                         size="sm"
                         autosize
                         minRows={1}
+                        maxRows={mode === 'page' ? 3 : 4}
                         variant="filled"
                       />
                     </Box>
@@ -739,7 +744,8 @@ export default function SessionDrawer({
               onChange={(e) => updateNotes(e.currentTarget.value)}
               placeholder="How did the session feel?"
               autosize
-              minRows={2}
+              minRows={1}
+              maxRows={mode === 'page' ? 4 : 6}
               size="sm"
             />
           </Box>

@@ -387,6 +387,30 @@ def test_compute_acwr_accepts_25_calendar_days() -> None:
     assert math.isfinite(result["composite"])
 
 
+def test_weekly_analysis_previous_week_window_excludes_current_week() -> None:
+    program = {
+        "meta": {"program_start": "2026-04-01"},
+        "phases": [],
+        "sessions": [],
+    }
+    sessions = [
+        make_session(9, [make_exercise("Squat", 100, 1)], week_number=2),
+        make_session(2, [make_exercise("Squat", 110, 1)], week_number=3),
+    ]
+
+    result = analytics.weekly_analysis(
+        program,
+        sessions,
+        window_start="2026-04-13",
+        window_end="2026-04-19",
+        weeks=1,
+        block="current",
+    )
+
+    assert result["sessions_analyzed"] == 1
+    assert result["exercise_stats"]["Squat"]["max_kg"] == 100
+
+
 def test_compute_banister_ffm_constant_load_stays_balanced() -> None:
     sessions = [
         make_sbd_session(
@@ -865,6 +889,79 @@ def test_generate_alerts_returns_deterministic_order(monkeypatch: pytest.MonkeyP
     assert alerts[1]["message"] == "Training load jumped sharply. Monitor recovery closely."
     assert alerts[3]["message"] == "You are in deep overload. Performance should rebound after a deload."
     assert alerts[-1]["message"] == "You're projected to exceed the qualifying total for this meet."
+
+
+def test_generate_alerts_uses_goal_owned_qualifying_total_when_competition_has_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(analytics, "fatigue_index", lambda *args, **kwargs: {"score": 0.20})
+    monkeypatch.setattr(analytics, "compute_readiness_score", lambda *args, **kwargs: {"score": 60.0})
+
+    program = {
+        "meta": {
+            "program_start": (TODAY - timedelta(days=28)).isoformat(),
+        },
+        "goals": [
+            {
+                "id": "goal-1",
+                "title": "Qualify",
+                "goal_type": "qualify_for_federation",
+                "priority": "primary",
+                "target_competition_date": (TODAY + timedelta(days=21)).isoformat(),
+                "target_total_kg": 550,
+            }
+        ],
+        "phases": [],
+        "competitions": [
+            {
+                "name": "Meet A",
+                "date": (TODAY + timedelta(days=21)).isoformat(),
+                "status": "confirmed",
+            }
+        ],
+    }
+    sessions = [
+        make_sbd_session(7, 140, 110, 170, session_rpe=8, week_number=4),
+    ]
+    glossary = [
+        {
+            "name": "Squat",
+            "fatigue_profile": {
+                "axial": 1.0,
+                "neural": 1.0,
+                "peripheral": 1.0,
+                "systemic": 1.0,
+            },
+        }
+    ]
+    analysis = {
+        "week": 8,
+        "fatigue_index": 0.20,
+        "current_maxes": {"squat": 200, "bench": 160, "deadlift": 240},
+        "projections": [
+            {
+                "total": 560,
+                "confidence": 0.82,
+                "weeks_to_comp": 3,
+                "comp_name": "Meet A",
+            }
+        ],
+        "readiness_score": {
+            "score": 60.0,
+            "zone": "yellow",
+            "components": {},
+        },
+    }
+
+    alerts = analytics.generate_alerts(
+        analysis,
+        program,
+        sessions,
+        glossary,
+        ref_date=TODAY,
+        window_weeks=4,
+    )
+
+    assert alerts[-1]["message"] == "You're projected to exceed the qualifying total for this meet."
+    assert "qualifying_total=550.0" in alerts[-1]["raw_detail"]
 
 
 def test_weekly_analysis_includes_alerts_and_peaking_timeline_projection() -> None:

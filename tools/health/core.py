@@ -27,6 +27,7 @@ _store: Optional[ProgramStore] = None
 _template_store: Optional[Any] = None
 _import_store: Optional[Any] = None
 _glossary_store: Optional[Any] = None
+_federation_store: Optional[Any] = None
 _rag: Optional[Any] = None  # HealthDocsRAG type, avoid circular import
 
 
@@ -80,6 +81,18 @@ def _get_glossary_store():
         )
     return _glossary_store
 
+def _get_federation_store():
+    global _federation_store
+    if _federation_store is None:
+        import os
+        from federation_store import FederationStore
+        _federation_store = FederationStore(
+            table_name=os.environ.get("IF_HEALTH_TABLE_NAME", "if-health"),
+            pk=os.environ.get("HEALTH_PROGRAM_PK", "operator"),
+            region=os.environ.get("AWS_REGION", "ca-central-1"),
+        )
+    return _federation_store
+
 def _get_rag():
     """Lazily create and return the HealthDocsRAG singleton."""
     global _rag
@@ -128,6 +141,300 @@ def _save_program_version(program: dict, sk: str, pk: str | None = None) -> None
     item["sk"] = sk
     table.put_item(Item=item)
     store.invalidate_cache()
+
+
+GOAL_TYPES = {
+    "qualify_for_federation",
+    "hit_total",
+    "peak_for_meet",
+    "make_podium",
+    "conservative_pr",
+    "train_through",
+    "rank_percentile",
+    "improve_dots",
+    "maintain_weight_class",
+    "coach_defined",
+}
+GOAL_PRIORITIES = {"primary", "secondary", "optional"}
+ATTEMPT_STRATEGY_MODES = {
+    "max_total",
+    "qualify",
+    "minimum_total",
+    "podium",
+    "train_through",
+    "conservative_pr",
+}
+RISK_TOLERANCES = {"low", "medium", "high"}
+FEDERATION_STATUSES = {"active", "archived"}
+STANDARD_STATUSES = {"active", "archived"}
+STANDARD_SEXES = {"male", "female"}
+STANDARD_EQUIPMENT = {"raw", "wraps", "single-ply", "multi-ply"}
+STANDARD_EVENTS = {"sbd", "bench-only", "deadlift-only"}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _validate_iso_date(value: Any, field_name: str) -> None:
+    if value in (None, ""):
+        return
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a YYYY-MM-DD string")
+    datetime.strptime(value, "%Y-%m-%d")
+
+
+def _validate_choice(value: Any, valid_values: set[str], field_name: str, default: str | None = None) -> str:
+    resolved = value if value not in (None, "") else default
+    if resolved is None:
+        raise ValueError(f"{field_name} is required")
+    resolved = str(resolved)
+    if resolved not in valid_values:
+        raise ValueError(f"{field_name} must be one of {sorted(valid_values)}")
+    return resolved
+
+
+def _string_list_with_legacy(values: Any, legacy_value: Any, field_name: str) -> list[str]:
+    resolved: list[str] = []
+    if values is not None:
+        if not isinstance(values, list):
+            raise ValueError(f"{field_name} must be an array when provided")
+        for item in values:
+            text = str(item or "").strip()
+            if text and text not in resolved:
+                resolved.append(text)
+    legacy_text = str(legacy_value or "").strip()
+    if legacy_text and legacy_text not in resolved:
+        resolved.append(legacy_text)
+    return resolved
+
+
+def _sanitize_goal_record(goal: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(goal, dict):
+        raise ValueError("Each goal must be an object")
+
+    title = str(goal.get("title") or "").strip()
+    if not title:
+        raise ValueError("goal.title is required")
+
+    goal_type = _validate_choice(goal.get("goal_type"), GOAL_TYPES, "goal.goal_type")
+    strategy_default = {
+        "qualify_for_federation": "qualify",
+        "make_podium": "podium",
+        "train_through": "train_through",
+        "conservative_pr": "conservative_pr",
+    }.get(goal_type, "max_total")
+
+    target_competition_dates = _string_list_with_legacy(
+        goal.get("target_competition_dates"),
+        goal.get("target_competition_date"),
+        "goal.target_competition_dates",
+    )
+    for value in target_competition_dates:
+        _validate_iso_date(value, "goal.target_competition_dates[]")
+    _validate_iso_date(goal.get("target_competition_date"), "goal.target_competition_date")
+    _validate_iso_date(goal.get("target_date"), "goal.target_date")
+    target_standard_ids = _string_list_with_legacy(
+        goal.get("target_standard_ids"),
+        goal.get("target_standard_id"),
+        "goal.target_standard_ids",
+    )
+
+    acceptable_weight_classes = goal.get("acceptable_weight_classes_kg")
+    if acceptable_weight_classes is not None and not isinstance(acceptable_weight_classes, list):
+        raise ValueError("goal.acceptable_weight_classes_kg must be an array when provided")
+
+    clean_goal: dict[str, Any] = {
+        "id": str(goal.get("id") or uuid.uuid4()),
+        "title": title,
+        "goal_type": goal_type,
+        "priority": _validate_choice(goal.get("priority"), GOAL_PRIORITIES, "goal.priority", default="secondary"),
+        "strategy_mode": _validate_choice(
+            goal.get("strategy_mode"),
+            ATTEMPT_STRATEGY_MODES,
+            "goal.strategy_mode",
+            default=strategy_default,
+        ),
+        "risk_tolerance": _validate_choice(
+            goal.get("risk_tolerance"),
+            RISK_TOLERANCES,
+            "goal.risk_tolerance",
+            default="medium",
+        ),
+    }
+
+    optional_scalar_fields = (
+        "target_date",
+        "target_federation_id",
+        "target_total_kg",
+        "target_dots",
+        "target_ipf_gl",
+        "target_weight_class_kg",
+        "max_acceptable_bodyweight_loss_pct",
+        "max_acceptable_water_cut_pct",
+        "notes",
+    )
+    for field in optional_scalar_fields:
+        value = goal.get(field)
+        if value is not None:
+            clean_goal[field] = value
+
+    if target_competition_dates:
+        clean_goal["target_competition_dates"] = target_competition_dates
+        clean_goal["target_competition_date"] = target_competition_dates[0]
+    elif goal.get("target_competition_date") is not None:
+        clean_goal["target_competition_date"] = goal.get("target_competition_date")
+
+    if target_standard_ids:
+        clean_goal["target_standard_ids"] = target_standard_ids
+        clean_goal["target_standard_id"] = target_standard_ids[0]
+    elif goal.get("target_standard_id") is not None:
+        clean_goal["target_standard_id"] = goal.get("target_standard_id")
+
+    if acceptable_weight_classes is not None:
+        clean_goal["acceptable_weight_classes_kg"] = acceptable_weight_classes
+
+    return clean_goal
+
+
+def _sanitize_federation_record(record: dict[str, Any], now: str) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        raise ValueError("Each federation must be an object")
+
+    name = str(record.get("name") or "").strip()
+    if not name:
+        raise ValueError("federation.name is required")
+
+    clean_record: dict[str, Any] = {
+        "id": str(record.get("id") or uuid.uuid4()),
+        "name": name,
+        "status": _validate_choice(record.get("status"), FEDERATION_STATUSES, "federation.status", default="active"),
+        "created_at": str(record.get("created_at") or now),
+        "updated_at": now,
+    }
+
+    for field in ("abbreviation", "region", "notes"):
+        value = record.get(field)
+        if value not in (None, ""):
+            clean_record[field] = value
+
+    return clean_record
+
+
+def _sanitize_qualification_standard(
+    record: dict[str, Any],
+    now: str,
+    federation_ids: set[str],
+) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        raise ValueError("Each qualification standard must be an object")
+
+    federation_id = str(record.get("federation_id") or "").strip()
+    if not federation_id:
+        raise ValueError("qualification_standard.federation_id is required")
+    if federation_id not in federation_ids:
+        raise ValueError(f"qualification_standard.federation_id '{federation_id}' does not match any federation in the library")
+
+    _validate_iso_date(record.get("qualifying_start_date"), "qualification_standard.qualifying_start_date")
+    _validate_iso_date(record.get("qualifying_end_date"), "qualification_standard.qualifying_end_date")
+
+    try:
+        season_year = int(record.get("season_year"))
+    except (TypeError, ValueError):
+        raise ValueError("qualification_standard.season_year must be an integer")
+
+    weight_class_kg = record.get("weight_class_kg")
+    if weight_class_kg is None:
+        raise ValueError("qualification_standard.weight_class_kg is required")
+
+    required_total_kg = record.get("required_total_kg")
+    if required_total_kg is None:
+        raise ValueError("qualification_standard.required_total_kg is required")
+
+    clean_record: dict[str, Any] = {
+        "id": str(record.get("id") or uuid.uuid4()),
+        "federation_id": federation_id,
+        "season_year": season_year,
+        "sex": _validate_choice(record.get("sex"), STANDARD_SEXES, "qualification_standard.sex"),
+        "equipment": _validate_choice(record.get("equipment"), STANDARD_EQUIPMENT, "qualification_standard.equipment"),
+        "event": _validate_choice(record.get("event"), STANDARD_EVENTS, "qualification_standard.event"),
+        "weight_class_kg": weight_class_kg,
+        "required_total_kg": required_total_kg,
+        "source_type": "user_entered",
+        "status": _validate_choice(
+            record.get("status"),
+            STANDARD_STATUSES,
+            "qualification_standard.status",
+            default="active",
+        ),
+        "updated_at": now,
+    }
+
+    optional_fields = (
+        "competition_name",
+        "age_class",
+        "division",
+        "qualifying_start_date",
+        "qualifying_end_date",
+        "source_url",
+        "source_label",
+    )
+    for field in optional_fields:
+        value = record.get(field)
+        if value not in (None, ""):
+            clean_record[field] = value
+
+    return clean_record
+
+
+def _build_federation_library_payload(library: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(library, dict):
+        raise ValueError("library must be an object")
+
+    store = _get_federation_store()
+    now = _utc_now_iso()
+    federation_rows = library.get("federations") or []
+    standard_rows = library.get("qualification_standards") or []
+    if not isinstance(federation_rows, list):
+        raise ValueError("library.federations must be an array")
+    if not isinstance(standard_rows, list):
+        raise ValueError("library.qualification_standards must be an array")
+
+    federations = [
+        _sanitize_federation_record(record, now)
+        for record in federation_rows
+    ]
+    federation_ids = {str(record["id"]) for record in federations}
+    standards = [
+        _sanitize_qualification_standard(record, now, federation_ids)
+        for record in standard_rows
+    ]
+
+    return {
+        "pk": store.pk,
+        "sk": store.FEDERATIONS_SK,
+        "updated_at": now,
+        "federations": federations,
+        "qualification_standards": standards,
+    }
+
+
+async def _write_federation_library(library: dict[str, Any]) -> dict[str, Any]:
+    store = _get_federation_store()
+    item = _floats_to_decimals(library)
+    await asyncio.get_running_loop().run_in_executor(None, lambda: store.table.put_item(Item=item))
+    return library
+
+
+def _string_ids(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    deduped: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in deduped:
+            deduped.append(text)
+    return deduped
 
 
 def _competition_snapshot_payload(projection: dict, snapshot_date: date) -> dict:
@@ -683,6 +990,18 @@ async def health_get_current_maxes() -> dict:
     store = _get_store()
     program = await store.get_program()
     return program.get("current_maxes", {})
+
+
+async def health_get_goals() -> list[dict]:
+    """Get explicit goals attached to the current program block."""
+    store = _get_store()
+    program = await store.get_program()
+    return program.get("goals", []) or []
+
+
+async def health_get_federation_library() -> dict:
+    """Get the shared federation and qualification standards library."""
+    return await _get_federation_store().get_library()
 
 
 async def health_get_operator_prefs() -> dict:
@@ -1335,8 +1654,9 @@ async def health_create_competition(competition: dict) -> dict:
 
     Args:
         competition: Dict with required fields: name, date (YYYY-MM-DD), federation.
-            Optional: status (default "confirmed"), weight_class_kg, location,
-            targets {squat_kg, bench_kg, deadlift_kg, total_kg}, notes.
+            Optional: federation_id, counts_toward_federation_ids, status
+            (default "confirmed"), weight_class_kg, location, targets
+            {squat_kg, bench_kg, deadlift_kg, total_kg}, notes.
 
     Returns:
         The created competition dict
@@ -1363,6 +1683,8 @@ async def health_create_competition(competition: dict) -> dict:
         "name": competition["name"],
         "date": competition["date"],
         "federation": competition["federation"],
+        "federation_id": competition.get("federation_id"),
+        "counts_toward_federation_ids": _string_ids(competition.get("counts_toward_federation_ids")),
         "status": competition.get("status", "confirmed"),
         "weight_class_kg": competition.get("weight_class_kg"),
         "location": competition.get("location"),
@@ -1439,6 +1761,34 @@ async def health_delete_diet_note(date: str) -> dict:
 # =============================================================================
 # Meta & Structure Updates
 # =============================================================================
+
+async def health_update_goals(goals: list[dict]) -> list[dict]:
+    """Replace the explicit goals array on the current program block."""
+    import copy
+
+    if not isinstance(goals, list):
+        raise ValueError("goals must be an array")
+
+    cleaned_goals = [_sanitize_goal_record(goal) for goal in goals]
+
+    goal_ids = [str(goal.get("id")) for goal in cleaned_goals]
+    if len(goal_ids) != len(set(goal_ids)):
+        raise ValueError("goals must have unique ids")
+
+    store = _get_store()
+    program = await store.get_program()
+    new_program = copy.deepcopy(program)
+    new_program["goals"] = cleaned_goals
+
+    await store._write_new_version(new_program, minor=True)
+    return cleaned_goals
+
+
+async def health_update_federation_library(library: dict) -> dict:
+    """Replace the shared federation library document."""
+    payload = _build_federation_library_payload(library)
+    return await _write_federation_library(payload)
+
 
 async def health_update_meta(updates: dict) -> dict:
     """Update program metadata fields.
@@ -1573,6 +1923,10 @@ async def health_program_evaluation(refresh: bool = False) -> dict:
 
     store = _get_store()
     program = await store.get_program()
+    federation_library = await _get_federation_store().get_library()
+    active_pk = store.pk
+    program_updated_at = str((program.get("meta") or {}).get("updated_at") or "")
+    federation_library_updated_at = str(federation_library.get("updated_at") or "")
     sessions = [s for s in program.get("sessions", []) if (s.get("block") or "current") == "current"]
 
     completed_weeks = sorted({
@@ -1599,17 +1953,21 @@ async def health_program_evaluation(refresh: bool = False) -> dict:
     table = dynamodb.Table(IF_HEALTH_TABLE_NAME)
 
     if not refresh:
-        cached = table.get_item(Key={"pk": "operator", "sk": cache_sk}).get("Item")
+        cached = table.get_item(Key={"pk": active_pk, "sk": cache_sk}).get("Item")
         if cached and cached.get("report"):
             report = cached["report"]
-            if isinstance(report, dict):
+            if (
+                isinstance(report, dict)
+                and str(cached.get("program_updated_at") or "") == program_updated_at
+                and str(cached.get("federation_library_updated_at") or "") == federation_library_updated_at
+            ):
                 report["cached"] = True
                 report["generated_at"] = cached.get("generated_at", "")
                 report["window_start"] = window_start
                 report["weeks"] = len(completed_weeks)
                 return report
 
-    report = await generate_program_evaluation_report(program)
+    report = await generate_program_evaluation_report(program, federation_library=federation_library)
     generated_at = datetime.utcnow().isoformat() + "Z"
     report["cached"] = False
     report["generated_at"] = generated_at
@@ -1619,12 +1977,14 @@ async def health_program_evaluation(refresh: bool = False) -> dict:
     if not (report.get("insufficient_data") and str(report.get("insufficient_data_reason", "")).startswith("AI evaluation failed")):
         # DynamoDB does not support Python float — convert all floats to Decimal before writing
         dynamo_item = _floats_to_decimals({
-            "pk": "operator",
+            "pk": active_pk,
             "sk": cache_sk,
             "report": report,
             "generated_at": generated_at,
             "window_start": window_start,
             "weeks": len(completed_weeks),
+            "program_updated_at": program_updated_at,
+            "federation_library_updated_at": federation_library_updated_at,
         })
         table.put_item(Item=dynamo_item)
 
