@@ -433,15 +433,19 @@ Source: backend `fatigue_index`
 Displayed:
 
 - composite fatigue score as a percentage
-- label: low / moderate / high
-- component breakdown:
-  `failed_compound_ratio`, `composite_spike`, `rpe_stress`
+- label: low / moderate / high / very high
+- component breakdown (7 dimensions):
+  `failure_stress`, `acute_spike_stress`, `rpe_stress`,
+  `chronic_load_stress`, `overload_streak`,
+  `intensity_density_stress`, `monotony_stress`
+- fatigue context confidence (window weeks used, confidence level)
 
 Threshold colors:
 
-- `< 0.30` low
-- `0.30 - 0.59` moderate
-- `>= 0.60` high / overreaching risk
+- `< 0.25` low
+- `0.25 - 0.44` moderate
+- `0.45 - 0.64` high
+- `>= 0.65` very high / overreaching risk
 
 ### 4. Readiness
 
@@ -583,7 +587,9 @@ Landmark rules:
 - MV is the first bin with non-negative week-over-week e1RM change
 - MEV is the first bin with a positive e1RM change
 - MAV is the bin with the largest e1RM change
-- MRV is the first bin with a high next-week fatigue index or negative e1RM change
+- MRV is the first bin where `count >= 3` and any of: median fatigue index
+  `>= 0.55`, probability of negative e1RM change `>= 0.60`, or median readiness
+  `< 60`
 
 ### 11. e1RM Progression, DOTS, and IPF GL Trend
 
@@ -945,29 +951,31 @@ Where used:
 Formula:
 
 ```text
-FI = 0.40 * failed_compound_ratio
-   + 0.35 * composite_spike
-   + 0.25 * rpe_stress
-
-rpe_stress = clamp((avg_session_rpe - 7.5) / 2.5, 0, 1)
-```
+FI_w = 0.12*fail + 0.12*spike + 0.18*rpe + 0.28*chronic_load + 0.12*streak + 0.10*density + 0.08*strain
+FI_window = weighted_mean(FI_w)
+weight_w = exp(-ln(2) * age / clamp(weeks/2, 1, 4))
 
 Component details:
 
-- `failed_compound_ratio`
-  failed compound sets / total compound sets
-- `composite_spike`
-  preferred path: weighted dimensional spike from glossary fatigue math
-  fallback path: recent tonnage spike vs recent-week average
-- `rpe_stress`
-  captures prolonged RPE 8+ grinding even if failures never occur
+- `failure_stress`: Clamped failed compounds
+- `acute_spike_stress`: Volume spike
+- `rpe_stress`: RMS of phase-relative RPE excess and 9+ frequency
+- `chronic_load_stress`: Four-dimensional workload vs baseline
+- `overload_streak`: Consecutive weeks of high loading
+- `intensity_density_stress`: Ratio of heavy sets
+- `monotony_stress`: Monotony and 4-week strain ratio
 
 Flags:
 
-- `failed_sets_spike` if failed ratio > 0.15
+- `failed_sets_spike` if failure ratio > 0.15
 - `volume_spike` if composite spike > 0.20
 - `high_rpe_stress` if RPE stress > 0.50
-- `overreaching_risk` if FI >= 0.60
+- `sustained_overload` if overload streak >= 0.75
+- `high_chronic_load` if chronic load stress >= 0.65
+- `high_intensity_density` if intensity density stress >= 0.65
+- `high_monotony_strain` if monotony stress >= 0.65
+- `fatigue_high` if FI >= 0.45
+- `overreaching_risk` if FI >= 0.65
 - `neural_overload` and `axial_overload` if dimension ACWR > 1.3
 
 Why this is customized:
@@ -1211,37 +1219,32 @@ Where used:
 Formula:
 
 ```text
-R = (1 - (
-      0.30 * fatigue_norm
-    + 0.25 * rpe_drift
-    + 0.20 * subjective_wellness
-    + 0.15 * performance_trend
-    + 0.10 * bodyweight_deviation
-    )) * 100
+penalty = sum(w_i * x_i) / sum(w_i)    # renormalizes over available components
+R = (1 - penalty) * 100
+w = [fatigue_norm: 0.30, rpe_drift: 0.25, wellness: 0.20, perf_trend: 0.15, bw_deviation: 0.10]
+readiness_confidence = available_weight / 1.00
 ```
+
+When a component is missing, it is excluded and the remaining weights are
+renormalized. `readiness_confidence` reports the fraction of total intended
+weight that was available.
 
 Component construction:
 
 - `fatigue_norm`
-  fatigue index over the last 14 days
+  fatigue index over the last 14 days; `None` if unavailable (excluded)
 - `rpe_drift`
-  `clamp((avg_rpe_last_14d - current_phase_target_midpoint) / 2, 0, 1)`
+  `clamp((avg_rpe_last_14d - current_phase_target_midpoint) / 2, 0, 1)`;
+  `None` if no RPE data (excluded)
 - `subjective_wellness`
-  `1 - mean(wellness values in the last 14 days) / 5`
+  `1 - mean(wellness values in the last 14 days) / 5`; fallback `0.5` if none
 - `performance_trend`
-  `clamp((-slope(e1RM_last_14d)) / expected_weekly_delta, 0, 1)`
+  `clamp((-slope(e1RM_last_14d)) / denominator, 0, 1)` where denominator is
+  `max(2.5, mean(current_maxes) * 0.01)`; fallback `0.5` if < 2 points
 - `bodyweight_deviation`
   cut-aware trajectory deviation when a weight cut is in progress,
   otherwise coefficient of variation of the last 7 session bodyweight entries
-  normalized by `0.03`
-
-Fallbacks:
-
-- no fatigue data -> `0.5`
-- no recent RPEs -> `7.5`
-- no wellness rows -> `0.5`
-- no e1RM trend -> `0.0`
-- no bodyweight series -> `0.5`
+  normalized by `0.03`; fallback `0.5` if < 2 entries
 
 Why this is customized:
 
@@ -1398,98 +1401,74 @@ Tool/module path:
 - `fatigue_profile_estimate`
 - `tools/health/fatigue_ai.py`
 
-Prompt summary:
+Inputs:
 
-- estimate four 0.0-1.0 dimensions: axial, neural, peripheral, systemic
-- anchor to known example lifts and accessories
-- treat athlete body metrics and lift profile as soft modifiers only
-- explicitly ignore diet, sleep, supplements, and programming context
+- exercise name, category, equipment
+- muscle groups (primary, secondary, tertiary)
+- optional athlete body metrics (bodyweight, height, arm wingspan, leg length)
+- optional lift profiles (style notes, sticking points, volume tolerance)
 
-Output:
+Outputs:
 
-- dimension values rounded to nearest `0.05`
-- short reasoning string
-
-Important implementation detail:
-
-- the auto-add path sends a full exercise dict and is the cleaner path
-- the `glossary_estimate_fatigue` path currently passes only the exercise name
-  into `fatigue_ai`, which is rougher and can fall back to defaults on error
-
-### 2. Lift-profile review, rewrite, and stimulus estimation
-
-User-visible surfaces:
-
-- Dashboard lift-profile guide
-- dedicated `LiftProfilePage`
-
-Routes:
-
-- `POST /api/analytics/lift-profile/review`
-- `POST /api/analytics/lift-profile/rewrite`
-- `POST /api/analytics/lift-profile/estimate-stimulus`
-- `POST /api/analytics/lift-profile/rewrite-and-estimate`
-
-Tool/module path:
-
-- `tools/health/lift_profile_ai.py`
+- `axial`: spinal compression loading 0.0-1.0
+- `neural`: CNS demand baseline 0.0-1.0
+- `peripheral`: local muscle damage potential 0.0-1.0
+- `systemic`: cardiovascular/metabolic demand 0.0-1.0
+- `reasoning`: brief explanation
 
 Prompt summary:
 
-- review whether a profile has enough biomechanical detail to estimate how much
-  raw INOL understates or overstates stimulus
-- score completeness as:
-  - style/setup: 40 points
-  - sticking point: 35 points
-  - primary driver: 25 points
-- ready threshold for estimation is `55`
-- stimulus coefficient range is `1.0` to `2.0`
-- baseline `1.0` means competition-standard stimulus
-- raise coefficient for longer ROM, more tension, more muscle mass under
-  tension, mechanical disadvantage, more weak-point time, and low volume tolerance
-- keep closer to `1.0` for shorter ROM, strong leverage, bypassed weak points,
-  and high volume tolerance
+- estimates 4-dimensional fatigue profiles for exercises
+- uses calibration anchors (competition squat/bench/deadlift, bicep curl, face
+  pulls) as reference points
+- athlete body metrics and lift profiles are soft modifiers, not hard overrides
+- diet, supplements, and training history are explicitly out of scope
+- values are rounded to nearest 0.05
+- confidence is intentionally only `medium` or `low`
 
-Fallback behavior:
-
-- if AI fails or profile is too sparse, coefficient defaults to `1.0`
-- confidence drops to `low`
-
-### 3. Exercise ROI correlation analysis
+### 2. Exercise ROI correlation analysis
 
 User-visible surface:
 
-- Analysis page -> `Exercise ROI Correlation`
+- Analysis page -> `Exercise ROI Correlation` (requires >= 4 weeks selected)
 
 Route:
 
-- `GET /api/analytics/correlation?weeks=N&block=current`
+- `GET /api/analytics/correlation?weeks=...&block=current`
 
 Tool/module path:
 
 - `correlation_analysis`
 - `tools/health/correlation_ai.py`
 
-Prompt summary:
-
-- identify only anatomically plausible accessory -> SBD relationships
-- do not judge the program structure itself
-- treat missing weeks or low frequency as normal for powerlifting
-- use lift profiles to weight relevance
-- use deterministic ROI prior (`pearson_r` between weekly accessory volume and
-  average intensity) only as a confidence modifier, never as permission to
-  invent a relationship
-
 Inputs:
 
-- weekly big-lift e1RMs built locally inside the AI module using Epley
-- weekly accessory volume table
-- lift profiles
-- athlete measurements
-- bodyweight trend
-- caloric context
-- weeks to primary competition
-- deterministic accessory ROI table
+- weekly e1RM estimates per SBD lift (Epley formula)
+- weekly volume per accessory exercise
+- lift profiles for anatomical context
+- exercise ROI prior (Pearson r per accessory)
+- glossary for muscle mapping and anatomical plausibility
+
+Outputs:
+
+- `findings[]`: per accessory, correlation direction (positive/negative/unclear),
+  strength (strong/moderate/weak), biomechanical reasoning, caveat
+- `summary`: 1-2 sentence overall summary
+- `insufficient_data`: boolean
+- `insufficient_data_reason`: string if applicable
+
+Prompt summary:
+
+- biomechanics-focused analyst identifying anatomically plausible correlations
+  between accessory volume and SBD e1RM trends
+- anatomical plausibility filter: only reports correlations where the accessory
+  works muscles that are primary or significant secondary movers in the lift
+- lift profiles contextualize relevance (e.g., tricep-dominant bencher benefits
+  more from tricep accessories)
+- exercise ROI prior tunes strength ratings: |r| >= 0.60 with >= 4 weeks
+  upgrades strength by one level; anatomical filter is the gate, ROI only tunes
+- does not critique programming, call it random, or flag insufficient data
+  unless fewer than 2 weeks of activity
 
 Cache behavior:
 
@@ -1502,11 +1481,11 @@ Minimum data:
 
 - current code requires at least 4 distinct weeks of data
 
-### 4. Full-block program evaluation
+### 3. Full-block program evaluation
 
 User-visible surface:
 
-- Analysis page -> `Program Evaluation`
+- Analysis page -> `Program Evaluation` (Full Block mode, >= 4 completed sessions)
 
 Route:
 
@@ -1517,41 +1496,269 @@ Tool/module path:
 - `program_evaluation`
 - `tools/health/program_evaluation_ai.py`
 
-Prompt summary:
+Prompt:
 
-- the model is framed as an objective sports scientist and analyst, not a coach
-- default stance should be conservative: continue or monitor unless multiple
-  signals point to a real issue
-- it must not redesign the program, call it random, or tell the athlete to drop
-  competitions
-- it must use:
-  - program meta
-  - phases
-  - competitions
-  - lift profiles
-  - measurements
-  - supplement summary
-  - diet and bodyweight context
-  - completed and planned sessions
-  - deterministic weekly analysis
-  - exercise ROI prior
-  - formula reference text
+```text
+You are an objective sports scientist producing a data-driven evaluation of a
+powerlifting competition block. Your audience is the athlete — someone who
+already wrote the program deliberately and wants to know if the data supports
+staying the course or making small corrections.
 
-Output:
+═══════════════════════════════════════════════════════════════════
+ROLE BOUNDARIES
+═══════════════════════════════════════════════════════════════════
+You are an ANALYST, not a coach. Your job:
+  ✓ Identify what the data says is working
+  ✓ Identify what the data says is not working
+  ✓ Suggest the smallest useful corrections grounded in the data
+  ✗ Do NOT redesign the program, restructure training splits, or suggest
+    wholesale changes unless a serious, data-backed issue threatens the
+    athlete's ability to compete safely.
+  ✗ Do NOT critique exercise selection, training frequency, volume strategy,
+    or session structure. These are deliberate programming choices. Programs
+    legitimately vary — some alternate exercises weekly, some avoid spamming
+    competition lifts to manage fatigue, some use high volume, some use low
+    volume. All are valid.
+  ✗ Do NOT call the program "sporadic", "inconsistent", "random", or
+    "unstructured". If the schedule looks unusual to you, assume it is
+    intentional and analyze the results it is producing.
 
-- `stance`
-- `summary`
-- `what_is_working`
-- `what_is_not_working`
-- `competition_alignment[]`
-- `small_changes[]`
-- `monitoring_focus[]`
-- `conclusion`
+Default stance: "continue as-is" or "monitor". Only escalate to "adjust" or
+"critical" when multiple data points converge on a clear problem.
+
+═══════════════════════════════════════════════════════════════════
+UNDERSTANDING THE DATA YOU RECEIVE
+═══════════════════════════════════════════════════════════════════
+You will receive a JSON payload with the following sections. Use ALL of them.
+
+PROGRAM META & PHASES
+  - Block name, start date, planned phases, and phase progression.
+  - Phases tell you the INTENT of the current training period (hypertrophy,
+    strength, peaking, deload, etc.). Evaluate results relative to phase
+    goals — a hypertrophy phase should not be judged by peak 1RM output.
+
+GOALS & QUALIFICATION STANDARDS
+  - The program now has explicit block goals. These define which competitions
+    matter most, which standards must be hit, whether a meet should be
+    treated as train-through, and what weight-class constraints exist.
+  - Goals override any naive assumption that the last meet is automatically
+    the main priority.
+  - Qualification standards are goal-owned in this system. Competitions are
+    opportunities to satisfy goals; goals define the actual standard,
+    federation, strategy mode, and weight-class target.
+  - A goal may now link to multiple competitions and multiple standards.
+    Treat those as alternative paths to the same block outcome, not as noise.
+  - Never silently downgrade a primary goal to an easier secondary standard.
+    If a primary OPA path requires 570 kg and a secondary CPU path requires
+    535 kg, a 535 total does NOT satisfy the 570 goal even if the meet
+    counts toward both federations.
+
+COMPETITIONS
+  - Every competition in the block, with dates and weeks-to-comp.
+  - Competition role is derived from explicit goals when available.
+  - A competition has one host federation plus a list of extra federations it
+    counts toward. Use this to judge whether a meet is actually eligible for a
+    goal's target federation or standard.
+  - Competition notes are ground-truth context. If the notes say a meet is a
+    qualifier, backup shot, practice day, or low-priority tune-up, use that.
+  - Each competition may include a governing_goal and required_total_kg when
+    the analysis context can infer them. Anchor recommendations to that bar,
+    not to the lowest available qualifying standard in the payload.
+  - Weeks-to-comp is critical context: an athlete 12 weeks out should look
+    different than one 3 weeks out. Taper expectations, volume shifts, and
+    intensity curves should be evaluated relative to proximity.
+  - Some meets may be appropriate to deprioritize, sandbag, train through, or
+    even drop if they materially interfere with a higher-priority goal.
+
+LIFT PROFILES (if provided)
+  - Style notes, sticking points, primary muscles, volume tolerance per lift.
+  - Use these to contextualize every finding. A metric that looks suboptimal
+    in a textbook sense may be fine for THIS athlete's leverages and style.
+
+ATHLETE MEASUREMENTS (if provided)
+  - Height, arm wingspan, leg length, weight class, current bodyweight.
+  - These affect what "good" looks like. Long-armed pullers have different
+    deadlift mechanics. Short-torso squatters have different positions. Do
+    not apply generic standards without accounting for the athlete's build.
+
+DIET & BODYWEIGHT (if provided)
+  - Caloric status (surplus, deficit, maintenance, unclear).
+  - Bodyweight trend with direction and magnitude.
+  - An athlete in a deficit should NOT be expected to hit PRs. Strength
+    maintenance in a cut is a win. Evaluate accordingly.
+
+SLEEP & RECOVERY (if provided)
+  - Average sleep hours and trends.
+  - Poor or declining sleep is a confounder for every other metric. Flag it
+    as a root cause before blaming programming.
+
+SUPPLEMENTS (if provided)
+  - Current supplement stack.
+  - Note only if something is conspicuously missing for the context (e.g.,
+    creatine for a strength athlete) or if a supplement could explain a trend.
+    Do not lecture about supplements unprompted.
+
+SESSION COMMENTS (if provided)
+  - Athlete-written notes on individual sessions.
+  - These are first-person context — fatigue notes, pain reports, RPE feel,
+    life stress mentions. Treat them as ground truth for subjective state.
+    They often explain why a number looks off better than any metric can.
+
+COMPLETED & PLANNED SESSIONS
+  - What has been done and what is scheduled.
+  - Gaps between sessions are NORMAL. Rest days, deload weeks, life
+    interruptions, and rotating schedules are all standard. A week with no
+    deadlift data means the athlete did not deadlift that week — it does not
+    mean the data is incomplete or the program is flawed.
+  - Partial weeks at the start or end of the analysis window are valid data.
+
+PLANNED SESSION INTERPRETATION:
+- Sets with load_type "rpe": intensity-regulated. Do NOT treat as zero load.
+  Estimate relative intensity for qualitative assessment only:
+  RPE 10 ≈ 100%, RPE 9 ≈ 96%, RPE 8 ≈ 92%, RPE 7 ≈ 88% of current e1RM.
+  Use language like "RPE 8 prescribed" — never cite a projected kg figure.
+- Sets with load_type "absolute": use kg value as-is.
+- Sets with load_type "unspecified": exclude from volume assessment entirely.
+  Note their presence as a data gap if it affects a meaningful number of sets.
+- When summarising future block load for an exercise that mixes absolute and
+  RPE sets, describe them separately — do not aggregate into a single volume
+  figure unless you can resolve both to the same intensity basis.
+
+WEEKLY ANALYSIS (deterministic analytics report)
+  - Pre-computed metrics: e1RM trends, volume loads, tonnage, fatigue
+    indicators, etc.
+  - This is your primary quantitative evidence. The formula_reference section
+    explains how each metric was calculated — use it so your reasoning is
+    grounded in the actual computation, not assumptions.
+
+EXERCISE ROI (if provided)
+  - Per-accessory pearson r between weekly volume and average intensity over
+    the block. Treat |r| >= 0.60 with >= 4 weeks observed as a strong prior
+    that the accessory is pulling its weight; low |r| on a high-fatigue
+    accessory is a flag worth noting in monitoring_focus or small_changes.
+  - Anatomy still gates: a high |r| on an accessory unrelated to the
+    competition lifts is not evidence of ROI toward the primary goal.
+
+═══════════════════════════════════════════════════════════════════
+EVALUATION FRAMEWORK
+═══════════════════════════════════════════════════════════════════
+For each competition in the block:
+  1. Role: primary or practice, based on the explicit goals and competition strategy.
+  2. Weeks to comp: how far out is the athlete right now?
+  3. Alignment: given the current phase, metrics, and trajectory, is the
+     athlete on track for a good showing? Rate: good / mixed / poor.
+  4. Reason: cite specific data points (e1RM trends, volume progression,
+     bodyweight, fatigue indicators) that support your rating.
+
+For goal_status:
+  - Rate each explicit goal: achieved / on_track / at_risk / off_track / unclear.
+  - Reason from linked standards, projections, bodyweight trend, meet timing,
+    meet federation eligibility, and weight-class compatibility.
+
+For competition_strategy:
+  - For each relevant meet, decide whether it should be prioritized,
+    treated as supporting practice, deprioritized, or dropped.
+  - Choose an approach: all_out / qualify_only / minimum_total / podium_push /
+    train_through / conservative_pr / drop.
+  - If a competition has governing_goal.required_total_kg, use that as the
+    success bar for the recommendation. Mention lower secondary standards only
+    as fallback context; do not substitute them for the real target.
+  - If a primary goal has only 1-2 remaining eligible opportunities, do not
+    casually label those meets as practice unless the goal is already achieved
+    or clearly unrealistic.
+  - If recommending a drop, tie it directly to a higher-priority goal or an
+    interference problem.
+  - alternative_strategies: when multiple viable paths exist, include
+    alternative approaches with target_total_kg, target_weight_class_kg, and
+    reason.
+
+For weight_class_strategy:
+  - State the recommended class for the block, list viable options, and explain
+    tradeoffs around bodyweight trend, cut feasibility, and qualifying goals.
+
+For what_is_working / what_is_not_working:
+  - Cite the actual numbers. "Squat e1RM trending up from X to Y over Z
+    weeks" is useful. "Squat looks good" is not.
+  - If diet, sleep, or bodyweight context explains a trend, say so.
+
+For small_changes:
+  - Each change must be the MINIMUM intervention needed.
+  - Include risk: what could go wrong if this change is made.
+  - Priority: low (nice to have), moderate (worth doing soon), high (address
+    this week).
+  - If nothing needs changing, return an empty array. "No changes needed" is
+    a valid and good outcome.
+
+For monitoring_focus:
+  - What should the athlete keep an eye on over the next 1-2 weeks?
+  - Tie each item to a specific metric or trend.
+
+═══════════════════════════════════════════════════════════════════
+INSUFFICIENT DATA
+═══════════════════════════════════════════════════════════════════
+Set insufficient_data to true ONLY if there are fewer than 2 completed
+sessions in the entire block. If there is any meaningful data to analyze,
+analyze it. Partial data is normal. Work with what exists.
+
+Return valid JSON only using the tool schema.
+
+```
+
+Inputs:
+
+- `task`: evaluation goal string
+- `instructions`: tuning instructions (tone, stance preference, do-not list, focus)
+- `program_meta`: block metadata (name, start, comp date, federation, sex, weight
+  class, body weight, targets, anthropometrics, attempt percents, last comp)
+- `phases`: phase definitions with target RPE ranges
+- `goals`: explicit block goals with linked competitions, standards, target totals,
+  weight classes, and remaining eligible opportunities
+- `full_block_summary`: completed sessions and weeks count
+- `competitions`: full competition context with eligible federations, linked goals,
+  governing goals, and required totals
+- `meet_interference`: pairwise meet conflict analysis
+- `lift_profiles`: style notes, sticking points, volume tolerance, stimulus coefficient
+- `athlete_measurements`: height, wingspan, leg length, bodyweight
+- `supplements`: current stack and supplement phases
+- `diet_context`: caloric status, macros, sleep, consistency
+- `bodyweight_trend`: points, latest, oldest, change, direction
+- `completed_sessions`: full session detail with exercises, wellness, notes
+- `planned_sessions`: future sessions with load-type-aware serialization
+- `weekly_analysis`: deterministic backend analytics report
+- `exercise_roi`: top 15 accessories by |Pearson r|
+- `formula_reference`: definitions of internal analytics formulas
+
+Output (all required unless noted):
+
+- `stance`: `continue` / `monitor` / `adjust` / `critical`
+- `summary`: 2-4 sentence overall summary
+- `what_is_working[]`: positive findings
+- `what_is_not_working[]`: negative findings
+- `competition_alignment[]`: per-meet with `competition`, `role` (primary/practice),
+  `weeks_to_comp`, `alignment` (good/mixed/poor), `reason`
+- `goal_status[]`: per-goal with `goal`, `priority` (primary/secondary/optional),
+  `status` (achieved/on_track/at_risk/off_track/unclear), `reason`
+- `competition_strategy[]`: per-meet with `competition`,
+  `priority` (prioritize/supporting/practice/deprioritize/drop),
+  `approach` (all_out/qualify_only/minimum_total/podium_push/train_through/
+  conservative_pr/drop), `reason`,
+  optional `alternative_strategies[]` with `approach`, `target_total_kg`,
+  `target_weight_class_kg`, `reason`
+- `weight_class_strategy`: `recommendation`, `recommended_weight_class_kg`,
+  `viable_options[]` with `weight_class_kg`, `suitability` (best/viable/risky),
+  `reason`
+- `small_changes[]`: per-change with `change`, `why`, `risk`,
+  `priority` (low/moderate/high)
+- `monitoring_focus[]`: metrics to watch
+- `conclusion`: short final recommendation
+- `insufficient_data`: boolean (optional)
+- `insufficient_data_reason`: string (optional)
 
 Cache behavior:
 
 - cached on a weekly cadence under `program_eval#{window_start}`
 - `Regenerate` bypasses cache
+- cache invalidated if `program_updated_at` or `federation_library_updated_at` change
 
 Minimum data:
 
@@ -1563,7 +1770,7 @@ Important frontend/backend mismatch:
   show the card
 - backend is stricter and may still return insufficient data
 
-### 5. Accessory e1RM backfill
+### 4. Accessory e1RM backfill
 
 User-visible surface:
 
@@ -1589,7 +1796,7 @@ Persisted output:
 
 - writes `glossary[].e1rm_estimate`
 
-### 6. Template evaluation
+### 5. Template evaluation
 
 User-visible surface:
 
@@ -1619,7 +1826,7 @@ Important current rough edge:
 - so template evaluation is real AI output, but not yet fed by the full current
   athlete context you might expect
 
-### 7. Spreadsheet import AI
+### 6. Spreadsheet import AI
 
 User-visible surface:
 

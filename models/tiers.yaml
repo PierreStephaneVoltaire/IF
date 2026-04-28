@@ -4,15 +4,14 @@ tiers:
   air:
     models:
       - openai/gpt-5.4-nano
-      - google/gemini-3.1-flash-lite-preview
       - z-ai/glm-5.1
-      - minimax/minimax-m2.7
     sort_by: throughput_desc
     context_limit: 150000
 
   standard:
     models:
       - anthropic/claude-haiku-4.5
+      - openai/gpt-5.5
       - openai/gpt-5.4-mini
       - qwen/qwen3.6-plus
     sort_by: latency_asc
@@ -21,7 +20,7 @@ tiers:
   heavy:
     models:
       - google/gemini-3.1-pro-preview
-      - openai/gpt-5.4
+      - openai/gpt-5.5
       - openai/gpt-5.3-codex
       - anthropic/claude-sonnet-4.6
       - anthropic/claude-opus-4.6

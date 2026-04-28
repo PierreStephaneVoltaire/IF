@@ -122,7 +122,7 @@ resource "kubernetes_deployment" "if_agent_api" {
             }
             requests = {
               memory = "${var.api_memory_request_mb}Mi"
-              cpu    = "250m"
+              cpu    = "2000m"
             }
           }
 
@@ -311,8 +311,8 @@ resource "kubernetes_deployment" "portal_backends" {
               cpu    = "${var.portal_cpu_millicores}m"
             }
             requests = {
-              memory = "256Mi"
-              cpu    = "100m"
+              memory = "1024Mi"
+              cpu    = "1000m"
             }
           }
 
@@ -400,8 +400,8 @@ resource "kubernetes_deployment" "portal_frontends" {
               cpu    = "${var.frontend_cpu_millicores}m"
             }
             requests = {
-              memory = "64Mi"
-              cpu    = "50m"
+              memory = "1024i"
+              cpu    = "1000m"
             }
           }
 

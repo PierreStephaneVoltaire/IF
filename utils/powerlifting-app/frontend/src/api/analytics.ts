@@ -135,8 +135,19 @@ export interface WeeklyAnalysis {
   fatigue_components: {
     failed_compound_ratio?: number
     composite_spike?: number
-    /** RPE stress = clamp((avg_session_rpe - 7.5) / 2.5, 0, 1). Replaces skip_rate. */
+    failure_stress?: number
+    acute_spike_stress?: number
     rpe_stress?: number
+    chronic_load_stress?: number
+    overload_streak?: number
+    intensity_density_stress?: number
+    monotony_stress?: number
+    latest_week_fi?: number
+    window_mean_fi?: number
+    window_peak_fi?: number
+    fatigue_window_weeks?: number
+    fatigue_context_weeks_used?: number
+    fatigue_context_confidence?: string
   } | null
   compliance: {
     phase: string
@@ -224,6 +235,7 @@ export interface WeeklyAnalysis {
       performance_trend?: number
       bw_deviation?: number
     }
+    readiness_confidence?: number
   }
   fatigue_dimensions?: {
     weekly: Record<string, { axial: number; neural: number; peripheral: number; systemic: number }>

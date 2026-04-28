@@ -35,15 +35,17 @@ function epleyE1rm(kg: number, reps: number): number {
 
 function fatigueBadgeColor(score: number | null): string {
   if (score === null) return 'gray'
-  if (score >= 0.6) return 'red'
-  if (score >= 0.3) return 'yellow'
+  if (score >= 0.65) return 'red'
+  if (score >= 0.45) return 'orange'
+  if (score >= 0.25) return 'yellow'
   return 'green'
 }
 
 function fatigueLabel(score: number | null): string {
   if (score === null) return 'N/A'
-  if (score >= 0.6) return 'High'
-  if (score >= 0.3) return 'Moderate'
+  if (score >= 0.65) return 'Very High'
+  if (score >= 0.45) return 'High'
+  if (score >= 0.25) return 'Moderate'
   return 'Low'
 }
 
@@ -739,10 +741,19 @@ export default function AnalysisPage() {
                 </Text>
                 <Text fz="sm" c="dimmed">{fatigueLabel(data.fatigue_index)} risk</Text>
                 <Text fz="xs" c="dimmed" lh="lg">
-                  Failed compounds: {((data.fatigue_components?.failed_compound_ratio ?? 0) * 100).toFixed(0)}%
-                  &middot; Fatigue spike: {((data.fatigue_components?.composite_spike ?? 0) * 100).toFixed(0)}%
-                  &middot; RPE stress: {((data.fatigue_components?.rpe_stress ?? 0) * 100).toFixed(0)}%
+                  Failures: {((data.fatigue_components?.failure_stress ?? 0) * 100).toFixed(0)}%
+                  &middot; Spike: {((data.fatigue_components?.acute_spike_stress ?? 0) * 100).toFixed(0)}%
+                  &middot; RPE: {((data.fatigue_components?.rpe_stress ?? 0) * 100).toFixed(0)}%
+                  &middot; Chronic Load: {((data.fatigue_components?.chronic_load_stress ?? 0) * 100).toFixed(0)}%
+                  &middot; Streak: {((data.fatigue_components?.overload_streak ?? 0) * 100).toFixed(0)}%
+                  &middot; Intensity: {((data.fatigue_components?.intensity_density_stress ?? 0) * 100).toFixed(0)}%
+                  &middot; Strain: {((data.fatigue_components?.monotony_stress ?? 0) * 100).toFixed(0)}%
                 </Text>
+                {data.fatigue_components?.fatigue_context_confidence && (
+                  <Text fz="xs" c="dimmed" mt="xs">
+                    Context: {data.fatigue_components.fatigue_context_weeks_used}w ({data.fatigue_components.fatigue_context_confidence} confidence)
+                  </Text>
+                )}
               </Stack>
             </Paper>
 

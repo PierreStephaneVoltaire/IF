@@ -4,10 +4,8 @@ presets:
   code:
     models:
       - z-ai/glm-5.1
-      - x-ai/grok-4.1-fast
       - deepseek/deepseek-v3.2
       - moonshotai/kimi-k2.5
-      - google/gemini-3.1-pro-preview
       - anthropic/claude-sonnet-4.6
       - openai/gpt-5.4
       - minimax/minimax-m2.7
@@ -26,7 +24,6 @@ presets:
   architecture:
     models:
       - z-ai/glm-5.1
-      - google/gemini-3.1-pro-preview
       - openai/gpt-5.4
       - anthropic/claude-sonnet-4.6
       - anthropic/claude-opus-4.6
@@ -44,10 +41,8 @@ presets:
 
   shell:
     models:
-      - x-ai/grok-4.1-fast
       - openai/gpt-5.4-nano
       - openai/gpt-5-nano
-      - google/gemini-3.1-flash-lite-preview
       - google/gemma-4-26b-a4b-it
       - anthropic/claude-haiku-4.5
       - openai/gpt-oss-120b
@@ -65,8 +60,7 @@ presets:
   security:
     models:
       - anthropic/claude-sonnet-4.6
-      - google/gemini-3.1-pro-preview
-      - openai/gpt-5.4
+      - openai/gpt-5.5
       - anthropic/claude-opus-4.6
     sort_by: price_asc
     when: >
@@ -82,9 +76,8 @@ presets:
 
   health:
     models:
-      - google/gemini-3.1-pro-preview
       - anthropic/claude-sonnet-4.6
-      - openai/gpt-5.4
+      - openai/gpt-5.5
       - anthropic/claude-opus-4.6
     sort_by: price_asc
     when: >
@@ -101,7 +94,6 @@ presets:
     models:
       - moonshotai/kimi-k2.5
       - anthropic/claude-sonnet-4.6
-      - google/gemini-3-flash-preview
       - anthropic/claude-opus-4.6
     sort_by: throughput_desc
     when: >
@@ -117,8 +109,7 @@ presets:
     models:
       - deepseek/deepseek-v3.2
       - moonshotai/kimi-k2.5
-      - google/gemini-3.1-pro-preview
-      - openai/gpt-5.4
+      - openai/gpt-5.5
       - anthropic/claude-opus-4.6
     sort_by: throughput_desc
     when: >
@@ -154,7 +145,6 @@ presets:
       - z-ai/glm-4.7-flash
       - openai/gpt-5-nano
       - google/gemma-4-26b-a4b-it
-      - x-ai/grok-4.1-fast
       - openai/gpt-oss-120b
     sort_by: latency_asc
     when: >
@@ -170,6 +160,7 @@ presets:
       - anthropic/claude-sonnet-4.6
       - google/gemini-3.1-pro-preview
       - openai/gpt-5.4-nano
+      - openai/gpt-5.5
       - deepseek/deepseek-v3.2
       - openai/gpt-5.4-mini
       - moonshotai/kimi-k2.5

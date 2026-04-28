@@ -229,6 +229,59 @@ For monitoring_focus:
   - Tie each item to a specific metric or trend.
 
 ═══════════════════════════════════════════════════════════════════
+MULTI-COMPETITION STRATEGY REASONING
+═══════════════════════════════════════════════════════════════════
+
+When the athlete has 2+ competitions with linked goals, you MUST reason
+across ALL goals and ALL eligible meets before recommending strategy.
+A naive per-comp assessment is inadequate.
+
+GOALS HAVE MULTIPLE PATHS.
+  A single "qualify" goal may have:
+    - Multiple eligible competitions (e.g., OPA Provincials in 6 weeks,
+      CPU Nationals in 12 weeks)
+    - Multiple acceptable weight classes (e.g., 74kg and 83kg)
+    - Multiple federation standards (e.g., OPA requires 570 DOTS at 83kg,
+      CPU requires 535 DOTS at 83kg)
+  Evaluate EVERY path. An athlete who can hit 535 DOTS at the first comp
+  and 570 DOTS at the second has TWO viable strategies, not one.
+
+PRESENT OPTIONS, NOT JUST ONE ANSWER.
+  When multiple viable paths exist, describe each with its trade-offs.
+  Use alternative_strategies for each competition to show what other
+  approaches are on the table. Example:
+    - Option A: compete at both. Sandbag comp 1 at 83kg to hit CPU 535,
+      then adjust training to peak for OPA 570 at comp 2.
+    - Option B: drop comp 1, use the extra weeks to peak for comp 2 at 74kg.
+  Both are valid. The athlete decides.
+
+CLOSE COMPS ARE NOT INHERENTLY BAD.
+  Two meets 3-6 weeks apart is NOT automatically a problem.
+  - The first comp can be a deliberate sandbag: open conservatively,
+    hit a qualifying total for a lower standard, and treat the day as
+    high-specificity practice under meet conditions.
+  - The comp effectively becomes a planned deload week with a purpose.
+  - Only flag comp proximity as risky when recovery is genuinely
+    compromised (high fatigue, chronic sleep issues, weight cut required).
+
+PROGRAMS CAN CHANGE BETWEEN COMPS.
+  The block doesn't have to be the same across both meets. If the
+  optimal path requires reducing volume after comp 1 and increasing
+  intensity toward comp 2, say so explicitly.
+
+WEIGHT CLASS FLEXIBILITY.
+  When a goal lists acceptable_weight_classes_kg, evaluate the
+  qualification standard for EACH class at EACH comp. Recommend which
+  class to target at which comp based on current bodyweight, cut
+  feasibility, and the qualifying total required.
+
+DON'T CASUALLY RECOMMEND DROPS.
+  If a primary goal has only 1-2 remaining eligible opportunities,
+  do NOT label those meets as "practice" or "drop" unless the goal is
+  already achieved or the required total is clearly unrealistic given
+  the trajectory. Every remaining eligible comp is a real shot at the goal.
+
+═══════════════════════════════════════════════════════════════════
 INSUFFICIENT DATA
 ═══════════════════════════════════════════════════════════════════
 Set insufficient_data to true ONLY if there are fewer than 2 completed
@@ -299,6 +352,20 @@ _TOOL_SCHEMA = {
                             "priority": {"type": "string", "enum": ["prioritize", "supporting", "practice", "deprioritize", "drop"]},
                             "approach": {"type": "string", "enum": ["all_out", "qualify_only", "minimum_total", "podium_push", "train_through", "conservative_pr", "drop"]},
                             "reason": {"type": "string"},
+                            "alternative_strategies": {
+                                "type": "array",
+                                "description": "Alternative viable approaches for this competition. Present when multiple paths to the athlete's goals exist.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "approach": {"type": "string", "enum": ["all_out", "qualify_only", "minimum_total", "podium_push", "train_through", "conservative_pr", "drop"]},
+                                        "target_total_kg": {"type": ["number", "null"]},
+                                        "target_weight_class_kg": {"type": ["number", "null"]},
+                                        "reason": {"type": "string"},
+                                    },
+                                    "required": ["approach", "reason"],
+                                },
+                            },
                         },
                         "required": ["competition", "priority", "approach", "reason"],
                     },

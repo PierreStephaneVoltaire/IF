@@ -140,24 +140,24 @@ I = weight / E_now (intensity ratio)`,
   {
     id: 'fatigue_index',
     title: 'Fatigue Index',
-    summary: 'Composite fatigue score from failed compounds, volume spikes, and RPE stress.',
-    formula: `FI = 0.40 * failed_compound_ratio
-   + 0.35 * composite_spike
-   + 0.25 * rpe_stress
-
-rpe_stress = clamp((avg_session_rpe − 7.5) / 2.5, 0, 1)
-  RPE 7.5 → 0.0 | RPE 8.0 → 0.2 | RPE 10 → 1.0
-
-Note: skip_rate excluded — resting reduces fatigue, not increases it.`,
+    summary: 'Window-aware fatigue score from failures, spikes, RPE, load, and intensity density.',
+    formula: `FI_w = 0.12*fail + 0.12*spike + 0.18*rpe + 0.28*chronic_load + 0.12*streak + 0.10*density + 0.08*strain
+FI_window = weighted_mean(FI_w)
+weight_w = exp(-ln(2) * age / clamp(weeks/2, 1, 4))`,
     variables: [
-      { name: 'failed_compound_ratio', description: 'Failed compound sets / total compound sets' },
-      { name: 'composite_spike', description: 'Weighted dimensional fatigue spike (axial/neural/peripheral/systemic)' },
-      { name: 'rpe_stress', description: 'Normalized session RPE — captures weeks of RPE 9-10 grinding without failures' },
+      { name: 'failure_stress', description: 'Failed compound ratio clamped to 15%' },
+      { name: 'acute_spike_stress', description: 'Normalized recent volume spike' },
+      { name: 'rpe_stress', description: 'RMS of phase-relative RPE excess and 9+ frequency' },
+      { name: 'chronic_load_stress', description: 'Four-dimensional load ratio vs 6-8 week baseline' },
+      { name: 'overload_streak', description: 'Consecutive weeks of high chronic load or intensity' },
+      { name: 'intensity_density_stress', description: 'Ratio of heavy (85%+) and very heavy (90%+) sets' },
+      { name: 'monotony_stress', description: 'Foster monotony and 4-week strain ratio' },
     ],
     thresholds: [
-      { label: 'Low', value: '< 0.30', flag: 'Normal' },
-      { label: 'Moderate', value: '0.30 - 0.59', flag: 'Caution' },
-      { label: 'High', value: '>= 0.60', flag: 'Overreaching risk' },
+      { label: 'Low', value: '< 0.25', flag: 'Normal' },
+      { label: 'Moderate', value: '0.25 - 0.44', flag: 'Caution' },
+      { label: 'High', value: '0.45 - 0.64', flag: 'Overreaching risk' },
+      { label: 'Very High', value: '>= 0.65', flag: 'High accumulated fatigue' },
     ],
   },
   {
@@ -314,15 +314,17 @@ Expected band selected by weeks_to_comp:
   {
     id: 'readiness_score',
     title: 'Readiness Score',
-    summary: 'Composite score predicting training readiness from fatigue, RPE drift, subjective wellness, short-term performance trend, and bodyweight deviation.',
-    formula: `R = (1 - (0.30*F_norm + 0.25*D_rpe + 0.20*W_subj
-         + 0.15*P_trend + 0.10*S_bw*)) * 100`,
+    summary: 'Composite score predicting training readiness. Missing data re-weights available components without penalizing.',
+    formula: `R = (1 - penalty) * 100
+penalty = sum(w_i * x_i) / sum(w_i)
+w = [F_norm: 0.30, D_rpe: 0.25, W_subj: 0.20, P_trend: 0.15, S_bw: 0.10]`,
     variables: [
       { name: 'F_norm', description: 'Normalized fatigue index (0-1)' },
       { name: 'D_rpe', description: 'RPE drift from phase target' },
       { name: 'W_subj', description: 'Subjective wellness (1 - mean wellness / 5)' },
       { name: 'P_trend', description: 'Negative short-term e1RM trend penalty' },
-      { name: 'S_bw*', description: 'Cut-aware bodyweight deviation or stability penalty' },
+      { name: 'S_bw', description: 'Cut-aware bodyweight deviation or stability penalty' },
+      { name: 'readiness_confidence', description: 'Ratio of available weights to total possible weights' },
     ],
     thresholds: [
       { label: 'Green', value: '> 75', flag: 'Ready to train' },

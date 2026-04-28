@@ -1098,8 +1098,8 @@ HOW THE ANALYSIS PAGE METRICS ARE CALCULATED
 - RPE drift: Theil-Sen slope on raw or phase-residual RPE. Uses the same fit-quality reporting.
 - Fatigue model: axial and peripheral scale nonlinearly with load, neural uses an intensity gate
   plus sqrt(load), systemic adds a modest absolute-load and intensity term.
-- Fatigue index: 0.40 × failed compound set ratio + 0.35 × composite fatigue spike + 0.25 × RPE stress.
-  RPE stress = clamp((avg_session_rpe - 7.5) / 2.5, 0, 1).
+- Fatigue index: Window-aware composite score derived from failure_stress, acute_spike_stress, rpe_stress, chronic_load_stress, overload_streak, intensity_density_stress, and monotony_stress.
+  Values >= 0.65 indicate Very High risk. >= 0.45 indicate High risk.
 - INOL: reps / (100 × sqrt((1 - min(intensity ratio, 0.995))^2 + 0.02^2)) aggregated per lift per week,
   then multiplied by the lift profile stimulus coefficient. Defaults are per-lift, with optional overrides.
 - ACWR: daily EWMA acute workload divided by daily EWMA chronic workload, with a weighted composite
