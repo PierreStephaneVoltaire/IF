@@ -115,6 +115,7 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
   const workingItems = evalReport?.what_is_working ?? [];
   const blockedItems = evalReport?.what_is_not_working ?? [];
   const smallChanges = evalReport?.small_changes ?? [];
+  const externalFactors = evalReport?.external_factors ?? [];
   const monitoringFocus = evalReport?.monitoring_focus ?? [];
 
   return (
@@ -401,6 +402,28 @@ export function AiAnalysis({ effectiveWeeks, weeksMode }: AiAnalysisProps) {
                             </Group>
                             <Text size="xs" c="dimmed">{sc.why}</Text>
                             {sc.risk && <Text size="xs" c="orange" mt={4}>Risk: {sc.risk}</Text>}
+                          </Paper>
+                        ))}
+                      </Stack>
+                    </Stack>
+                  )}
+
+                  {externalFactors.length > 0 && (
+                    <Stack gap="xs">
+                      <Text size="sm" fw={500}>External Factors</Text>
+                      <Stack gap="xs">
+                        {externalFactors.map((factor, i) => (
+                          <Paper key={i} withBorder p="sm">
+                            <Group gap="xs" mb={4} wrap="wrap">
+                              <Badge color={PRIORITY_COLORS[factor.impact] || 'gray'} variant="light" size="sm" style={{ textTransform: 'capitalize' }}>
+                                {factor.impact}
+                              </Badge>
+                              <Text size="sm" fw={500}>{factor.factor}</Text>
+                              {factor.separate_from_program && (
+                                <Badge color="blue" variant="light" size="xs">External context</Badge>
+                              )}
+                            </Group>
+                            <Text size="xs" c="dimmed">{factor.reason}</Text>
                           </Paper>
                         ))}
                       </Stack>

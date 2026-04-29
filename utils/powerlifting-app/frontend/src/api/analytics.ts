@@ -18,12 +18,17 @@ export interface BanisterAnalysis {
   tsb_today: number
   tsb_label: string
   series: BanisterSeriesPoint[]
+  load_baselines?: Record<string, number>
+  model?: string
 }
 
 export interface MonotonyStrainRow {
   week_start: string
   monotony: number
+  monotony_raw?: number
   strain: number
+  strain_index?: number | null
+  nonzero_training_days?: number
   flags: string[]
 }
 
@@ -111,6 +116,10 @@ export interface PeakingTimeline {
   current_tsb: number | null
   peak_date: string | null
   peak_delta_days: number | null
+  peak_type?: 'inside_window' | 'not_reached'
+  closest_peak_date?: string | null
+  closest_projected_tsb?: number | null
+  future_unresolved_sets?: number
   peak_window: { min: number; max: number }
   series: PeakingTimelineSeriesPoint[]
   specificity_points: PeakingTimelineSpecificityPoint[]
@@ -142,11 +151,19 @@ export interface WeeklyAnalysis {
     overload_streak?: number
     intensity_density_stress?: number
     monotony_stress?: number
+    fatigue_model?: string
+    current_state_fi?: number
+    window_weighted_fi?: number
     latest_week_fi?: number
     window_mean_fi?: number
     window_peak_fi?: number
+    reservoir_stress?: number
+    reservoir_dimension_stress?: Record<string, number>
+    reservoir_max_dimension_stress?: number
+    reservoir_weighted_stress?: number
     fatigue_window_weeks?: number
     fatigue_context_weeks_used?: number
+    fatigue_context_days_used?: number
     fatigue_context_confidence?: string
   } | null
   compliance: {
@@ -162,6 +179,7 @@ export interface WeeklyAnalysis {
     method?: string
   } | null
   estimated_dots: number | null
+  estimated_dots_reason?: string | null
   projections: Array<{
     total: number
     confidence: number
@@ -196,6 +214,19 @@ export interface WeeklyAnalysis {
     raw_avg_inol?: Record<string, number>
     stimulus_coefficients?: Record<string, number>
     thresholds?: Record<string, { low: number; high: number }>
+    phase_adjusted_thresholds?: Record<string, {
+      low: number
+      high: number
+      display_low: number
+      display_high: number
+      phase_multiplier: number
+    }>
+    trend_pressure?: Record<string, {
+      value: number
+      volume_ratio: number
+      ri_ratio: number
+    }>
+    ramp_up_grace?: Record<string, boolean>
     flags: string[]
   } | null
   acwr?: {
@@ -224,9 +255,17 @@ export interface WeeklyAnalysis {
     broad_status?: 'below_expected' | 'within_expected' | 'above_expected' | 'unknown'
     flags?: string[]
   }
+  specificity_target_competition?: {
+    name?: string
+    date?: string
+    selection_reason?: string
+    [key: string]: unknown
+  } | null
   volume_landmarks?: Record<'squat' | 'bench' | 'deadlift', VolumeLandmark | InsufficientDataResponse>
   readiness_score?: {
     score: number
+    training_score?: number
+    external_score?: number
     zone: string
     components: {
       fatigue_norm?: number
@@ -236,6 +275,8 @@ export interface WeeklyAnalysis {
       bw_deviation?: number
     }
     readiness_confidence?: number
+    training_readiness_confidence?: number
+    external_readiness_confidence?: number
   }
   fatigue_dimensions?: {
     weekly: Record<string, { axial: number; neural: number; peripheral: number; systemic: number }>
@@ -293,6 +334,13 @@ export interface ProgramEvaluationSmallChange {
   priority: 'low' | 'moderate' | 'high'
 }
 
+export interface ProgramEvaluationExternalFactor {
+  factor: string
+  impact: 'low' | 'moderate' | 'high'
+  reason: string
+  separate_from_program: boolean
+}
+
 export interface ProgramEvaluationCompAlignment {
   competition: string
   role: 'primary' | 'practice'
@@ -313,6 +361,12 @@ export interface ProgramEvaluationCompetitionStrategy {
   priority: 'prioritize' | 'supporting' | 'practice' | 'deprioritize' | 'drop'
   approach: 'all_out' | 'qualify_only' | 'minimum_total' | 'podium_push' | 'train_through' | 'conservative_pr' | 'drop'
   reason: string
+  alternative_strategies?: Array<{
+    approach: 'all_out' | 'qualify_only' | 'minimum_total' | 'podium_push' | 'train_through' | 'conservative_pr' | 'drop'
+    target_total_kg?: number | null
+    target_weight_class_kg?: number | null
+    reason: string
+  }>
 }
 
 export interface ProgramEvaluationWeightClassOption {
@@ -337,6 +391,7 @@ export interface ProgramEvaluationReport {
   competition_strategy: ProgramEvaluationCompetitionStrategy[]
   weight_class_strategy: ProgramEvaluationWeightClassStrategy
   small_changes: ProgramEvaluationSmallChange[]
+  external_factors: ProgramEvaluationExternalFactor[]
   monitoring_focus: string[]
   conclusion: string
   insufficient_data?: boolean
@@ -370,6 +425,7 @@ function normalizeProgramEvaluation(data: unknown): ProgramEvaluationReport {
       viable_options: Array.isArray(weightClassStrategy?.viable_options) ? weightClassStrategy.viable_options : [],
     },
     small_changes: Array.isArray(report.small_changes) ? report.small_changes : [],
+    external_factors: Array.isArray(report.external_factors) ? report.external_factors : [],
     monitoring_focus: Array.isArray(report.monitoring_focus) ? report.monitoring_focus : [],
     conclusion: typeof report.conclusion === 'string' ? report.conclusion : '',
     insufficient_data: Boolean(report.insufficient_data),

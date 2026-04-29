@@ -261,6 +261,17 @@ export default function DesignerPage() {
     return Array.from(s)
   }, [program?.sessions])
 
+  const phaseOptions = useMemo(() => {
+    const seen = new Set<string>([''])
+    const options = [{ value: '', label: 'None' }]
+    for (const phase of phases) {
+      if (!phase.name || seen.has(phase.name)) continue
+      seen.add(phase.name)
+      options.push({ value: phase.name, label: phase.name })
+    }
+    return options
+  }, [phases])
+
   const weekSessions = useMemo(() => {
     return (program?.sessions || [])
       .filter(s => s.week_number === selectedWeek)
@@ -680,10 +691,7 @@ export default function DesignerPage() {
               label="Phase"
               value={sessionPhase}
               onChange={(v) => setSessionPhase(v ?? '')}
-              data={[
-                { value: '', label: 'None' },
-                ...phases.map(p => ({ value: p.name, label: p.name })),
-              ]}
+              data={phaseOptions}
             />
           </SimpleGrid>
 

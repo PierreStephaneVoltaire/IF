@@ -640,6 +640,16 @@ export default function AnalysisPage() {
           >
             Export Excel
           </Button>
+          <Button
+            component="a"
+            href="/api/export/markdown"
+            download="program_history.md"
+            size="sm"
+            variant="light"
+            leftSection={<Download size={16} />}
+          >
+            Export Markdown
+          </Button>
         </Group>
       </Group>
 
@@ -733,25 +743,48 @@ export default function AnalysisPage() {
             <Paper withBorder p="md">
               <Group gap="xs" mb="xs">
                 <Activity size={18} />
-                <Text fw={500}>Fatigue Signal</Text>
+                <Text fw={500}>Current Fatigue State</Text>
               </Group>
               <Stack gap={2}>
                 <Text fz="2rem" fw={700} c={fatigueBadgeColor(data.fatigue_index)}>
                   {data.fatigue_index !== null ? (data.fatigue_index * 100).toFixed(0) + '%' : 'N/A'}
                 </Text>
-                <Text fz="sm" c="dimmed">{fatigueLabel(data.fatigue_index)} risk</Text>
+                <Text fz="sm" c="dimmed">{fatigueLabel(data.fatigue_index)} current state</Text>
+                <Group gap="xs" wrap="wrap">
+                  {typeof data.fatigue_components?.window_mean_fi === 'number' && (
+                    <Badge variant="light" color="blue">
+                      Window mean {(data.fatigue_components.window_mean_fi * 100).toFixed(0)}%
+                    </Badge>
+                  )}
+                  {typeof data.fatigue_components?.window_peak_fi === 'number' && (
+                    <Badge variant="light" color="orange">
+                      Window peak {(data.fatigue_components.window_peak_fi * 100).toFixed(0)}%
+                    </Badge>
+                  )}
+                </Group>
                 <Text fz="xs" c="dimmed" lh="lg">
                   Failures: {((data.fatigue_components?.failure_stress ?? 0) * 100).toFixed(0)}%
                   &middot; Spike: {((data.fatigue_components?.acute_spike_stress ?? 0) * 100).toFixed(0)}%
                   &middot; RPE: {((data.fatigue_components?.rpe_stress ?? 0) * 100).toFixed(0)}%
-                  &middot; Chronic Load: {((data.fatigue_components?.chronic_load_stress ?? 0) * 100).toFixed(0)}%
+                  &middot; Reservoir: {((data.fatigue_components?.chronic_load_stress ?? 0) * 100).toFixed(0)}%
                   &middot; Streak: {((data.fatigue_components?.overload_streak ?? 0) * 100).toFixed(0)}%
                   &middot; Intensity: {((data.fatigue_components?.intensity_density_stress ?? 0) * 100).toFixed(0)}%
                   &middot; Strain: {((data.fatigue_components?.monotony_stress ?? 0) * 100).toFixed(0)}%
                 </Text>
+                {data.fatigue_components?.reservoir_dimension_stress && (
+                  <Group gap={6} wrap="wrap" mt={4}>
+                    {Object.entries(data.fatigue_components.reservoir_dimension_stress).map(([dim, value]) => (
+                      <Badge key={dim} variant="light" color={value >= 0.75 ? 'red' : value >= 0.5 ? 'orange' : 'gray'} style={{ textTransform: 'capitalize' }}>
+                        {dim} {(value * 100).toFixed(0)}%
+                      </Badge>
+                    ))}
+                  </Group>
+                )}
                 {data.fatigue_components?.fatigue_context_confidence && (
                   <Text fz="xs" c="dimmed" mt="xs">
-                    Context: {data.fatigue_components.fatigue_context_weeks_used}w ({data.fatigue_components.fatigue_context_confidence} confidence)
+                    Context: {typeof data.fatigue_components.fatigue_context_days_used === 'number'
+                      ? `${data.fatigue_components.fatigue_context_days_used}d`
+                      : `${data.fatigue_components.fatigue_context_weeks_used ?? 0}w`} ({data.fatigue_components.fatigue_context_confidence} confidence)
                   </Text>
                 )}
               </Stack>
@@ -772,12 +805,27 @@ export default function AnalysisPage() {
               {data.readiness_score ? (
                 <Stack gap={2}>
                   <Text fz="2rem" fw={700}>{data.readiness_score.score.toFixed(0)}</Text>
+                  <SimpleGrid cols={2} spacing="xs" mt={4}>
+                    <Stack gap={0}>
+                      <Text fz="xs" c="dimmed">Training</Text>
+                      <Text fz="sm" fw={700}>{data.readiness_score.training_score?.toFixed(0) ?? '--'}</Text>
+                    </Stack>
+                    <Stack gap={0}>
+                      <Text fz="xs" c="dimmed">External</Text>
+                      <Text fz="sm" fw={700}>{data.readiness_score.external_score?.toFixed(0) ?? '--'}</Text>
+                    </Stack>
+                  </SimpleGrid>
                   <Text fz="xs" c="dimmed" lh="lg">
                     Fatigue: {((data.readiness_score.components.fatigue_norm ?? 0) * 100).toFixed(0)}%
                     &middot; RPE drift: {((data.readiness_score.components.rpe_drift ?? 0) * 100).toFixed(0)}%
                     &middot; Wellness: {((data.readiness_score.components.wellness ?? 0) * 100).toFixed(0)}%
                     &middot; Trend: {((data.readiness_score.components.performance_trend ?? 0) * 100).toFixed(0)}%
                     &middot; BW deviation: {((data.readiness_score.components.bw_deviation ?? 0) * 100).toFixed(0)}%
+                  </Text>
+                  <Text fz="xs" c="dimmed">
+                    Confidence: overall {((data.readiness_score.readiness_confidence ?? 0) * 100).toFixed(0)}%
+                    {' '}| training {((data.readiness_score.training_readiness_confidence ?? 0) * 100).toFixed(0)}%
+                    {' '}| external {((data.readiness_score.external_readiness_confidence ?? 0) * 100).toFixed(0)}%
                   </Text>
                 </Stack>
               ) : <Text fz="sm" c="dimmed">N/A</Text>}
@@ -1020,15 +1068,34 @@ export default function AnalysisPage() {
               <SimpleGrid cols={3} mb="sm">
                 {Object.entries(data.inol.avg_inol).map(([lift, val]) => {
                   const coefficient = data.inol?.stimulus_coefficients?.[lift] ?? 1
-                  const thresholds = getInolThresholds(lift, data.inol?.thresholds)
-                  const zoneMeta = getInolZoneMeta(val, thresholds)
+                  const baseThresholds = getInolThresholds(lift, data.inol?.thresholds)
+                  const adjusted = data.inol?.phase_adjusted_thresholds?.[lift]
+                  const displayThresholds = adjusted
+                    ? { low: adjusted.display_low, high: adjusted.display_high }
+                    : baseThresholds
+                  const zoneMeta = getInolZoneMeta(val, displayThresholds)
+                  const raw = data.inol?.raw_avg_inol?.[lift]
+                  const trend = data.inol?.trend_pressure?.[lift]
+                  const rampGrace = data.inol?.ramp_up_grace?.[lift]
                   return (
                     <Stack key={lift} gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: `var(--mantine-color-${zoneMeta.color}-light)` }}>
                       <Text fz="xs" c="dimmed" tt="capitalize">{lift}</Text>
                       <Text fz="xl" fw={700} c={zoneMeta.color}>{val.toFixed(2)}</Text>
+                      {typeof raw === 'number' && <Text fz="xs" c="dimmed">Raw {raw.toFixed(2)}</Text>}
                       <Text fz="xs" c="dimmed">Stimulus x{coefficient.toFixed(2)}</Text>
                       <Text fz="xs" c="dimmed">{zoneMeta.label}</Text>
-                      <Text fz="xs" c="dimmed">Range {thresholds.low.toFixed(1)} - {thresholds.high.toFixed(1)}</Text>
+                      <Text fz="xs" c="dimmed">
+                        Target {(adjusted?.low ?? baseThresholds.low).toFixed(1)} - {(adjusted?.high ?? baseThresholds.high).toFixed(1)}
+                      </Text>
+                      <Text fz="xs" c="dimmed">
+                        Display {displayThresholds.low.toFixed(1)} - {displayThresholds.high.toFixed(1)}
+                      </Text>
+                      {trend && (
+                        <Text fz="xs" c="dimmed">
+                          Trend {(trend.value * 100).toFixed(0)}%
+                        </Text>
+                      )}
+                      {rampGrace && <Badge color="blue" variant="light" size="xs">Ramp-up grace</Badge>}
                     </Stack>
                   )
                 })}
@@ -1200,6 +1267,13 @@ export default function AnalysisPage() {
                   <Badge variant="light" color="gray">No upcoming comp band</Badge>
                 )}
               </Group>
+              {data.specificity_target_competition && (
+                <Text fz="xs" c="dimmed" mb="sm">
+                  Specificity target: {data.specificity_target_competition.name ?? 'Upcoming meet'}
+                  {data.specificity_target_competition.date ? ` (${data.specificity_target_competition.date})` : ''}
+                  {data.specificity_target_competition.selection_reason ? ` • ${String(data.specificity_target_competition.selection_reason).replace(/_/g, ' ')}` : ''}
+                </Text>
+              )}
               <SimpleGrid cols={2} spacing="md">
                 <Stack gap="xs">
                   <Text fz="xs" c="dimmed">Narrow (SBD only)</Text>

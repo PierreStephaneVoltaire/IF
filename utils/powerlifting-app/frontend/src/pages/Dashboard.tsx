@@ -421,15 +421,27 @@ export default function Dashboard() {
     <Stack gap={24}>
       <Group justify="space-between">
         <Text fz="h1" fw={700}>Dashboard</Text>
-        <Button
-          component="a"
-          href="/api/export/xlsx"
-          download="program_history.xlsx"
-          leftSection={<Download size={16} />}
-          size="sm"
-        >
-          Export Excel
-        </Button>
+        <Group gap="sm" wrap="wrap">
+          <Button
+            component="a"
+            href="/api/export/xlsx"
+            download="program_history.xlsx"
+            leftSection={<Download size={16} />}
+            size="sm"
+          >
+            Export Excel
+          </Button>
+          <Button
+            component="a"
+            href="/api/export/markdown"
+            download="program_history.md"
+            leftSection={<Download size={16} />}
+            size="sm"
+            variant="light"
+          >
+            Export Markdown
+          </Button>
+        </Group>
       </Group>
 
       {/* Stats Grid */}

@@ -426,19 +426,20 @@ Implementation notes:
 - completed means `completed == true` or `status in ('logged', 'completed')`
 - planned count does not exclude deload or break weeks
 
-### 3. Fatigue Signal
+### 3. Current Fatigue State
 
 Source: backend `fatigue_index`
 
 Displayed:
 
-- composite fatigue score as a percentage
+- current fatigue state as a percentage
+- selected-window mean and peak fatigue
 - label: low / moderate / high / very high
 - component breakdown (7 dimensions):
   `failure_stress`, `acute_spike_stress`, `rpe_stress`,
   `chronic_load_stress`, `overload_streak`,
   `intensity_density_stress`, `monotony_stress`
-- fatigue context confidence (window weeks used, confidence level)
+- reservoir dimension stress and fatigue context confidence
 
 Threshold colors:
 
@@ -453,7 +454,8 @@ Source: backend `compute_readiness_score`
 
 Displayed:
 
-- readiness score on a 0-100 scale
+- overall readiness score on a 0-100 scale
+- training readiness and external readiness
 - normalized components:
   fatigue, RPE drift, subjective wellness, short-term performance trend, bodyweight deviation
 
@@ -470,14 +472,17 @@ Source: backend `compute_inol`
 Displayed:
 
 - average adjusted INOL per lift across the selected window
+- raw INOL per lift across the selected window
 - lift-specific stimulus coefficient
+- phase-adjusted target range, uncertainty display range, and trend pressure
 - lift-level flags:
-  low stimulus if `< 2.0`, overreaching if `> 4.0`
+  low stimulus, high INOL monitor, or overreaching risk
 
 Important nuance:
 
-- backend also returns raw, unadjusted INOL
-- the UI currently surfaces only the adjusted version
+- INOL is selected-window and phase-adjusted
+- ramp-up weeks can suppress low-stimulus flags
+- trend pressure strengthens high-INOL warnings when volume or RI is rising
 
 ### 6. ACWR
 
@@ -951,19 +956,26 @@ Where used:
 Formula:
 
 ```text
-FI_w = 0.12*fail + 0.12*spike + 0.18*rpe + 0.28*chronic_load + 0.12*streak + 0.10*density + 0.08*strain
-FI_window = weighted_mean(FI_w)
-weight_w = exp(-ln(2) * age / clamp(weeks/2, 1, 4))
+R_d,t = R_d,t-1 * exp(-ln(2) / half_life_d) + Load_d,t
+S_d,t = clamp((R_d,t / baseline_d - 1.0) / 0.75, 0, 1)
+ReservoirStress = 0.60 * max(S_d) + 0.40 * weighted_mean(S_d)
+
+FI = 0.10*fail + 0.12*spike + 0.15*rpe + 0.34*reservoir
+   + 0.10*streak + 0.10*density + 0.09*monotony
+```
 
 Component details:
 
 - `failure_stress`: Clamped failed compounds
 - `acute_spike_stress`: Volume spike
 - `rpe_stress`: RMS of phase-relative RPE excess and 9+ frequency
-- `chronic_load_stress`: Four-dimensional workload vs baseline
+- `chronic_load_stress`: Decaying reservoir stress compatibility key
 - `overload_streak`: Consecutive weeks of high loading
 - `intensity_density_stress`: Ratio of heavy sets
 - `monotony_stress`: Monotony and 4-week strain ratio
+- `reservoir_dimension_stress`: Axial, neural, peripheral, and systemic stress
+- `current_state_fi`: Current fatigue as of the selected end date
+- `window_mean_fi` / `window_peak_fi`: Selected-window summaries
 
 Flags:
 
@@ -972,6 +984,7 @@ Flags:
 - `high_rpe_stress` if RPE stress > 0.50
 - `sustained_overload` if overload streak >= 0.75
 - `high_chronic_load` if chronic load stress >= 0.65
+- `localized_fatigue_high` if any reservoir dimension stress >= 0.75
 - `high_intensity_density` if intensity density stress >= 0.65
 - `high_monotony_strain` if monotony stress >= 0.65
 - `fatigue_high` if FI >= 0.45
@@ -985,6 +998,7 @@ Why this is customized:
 - the model treats high-RPE grinding as fatigue even without misses
 - when glossary data exists, fatigue is computed through axial/neural/peripheral/
   systemic workload rather than plain tonnage
+- selected week filters affect window summaries, not the current fatigue state
 
 ### INOL
 
@@ -1000,6 +1014,9 @@ I = kg / current_max_for_lift
 raw_set_INOL = reps / (100 * sqrt((1 - min(I, 0.995))^2 + 0.02^2))
 raw_weekly_INOL = sum(raw_set_INOL * sets)
 adjusted_weekly_INOL = raw_weekly_INOL * stimulus_coefficient
+TargetRange_l,w = BaseRange_l * PhaseMultiplier_w
+DisplayRange = TargetRange widened for small selected windows
+TrendPressure = 0.60*volume_spike + 0.40*RI_spike
 ```
 
 Only canonical lifts count:
@@ -1022,6 +1039,13 @@ Default productive ranges:
 - squat: `1.6 - 3.5`
 - bench: `2.0 - 5.0`
 - deadlift: `1.0 - 2.5`
+
+Phase and trend behavior:
+
+- deload/taper/peak/overreach/hypertrophy/strength phases adjust target ranges
+- one- and two-week windows widen the display range to reflect uncertainty
+- early effective training weeks get ramp-up grace for low-INOL flags
+- high INOL becomes an overreaching warning when volume or relative intensity is also rising
 
 Why this is customized:
 
@@ -1078,7 +1102,7 @@ Where used:
 Formula:
 
 ```text
-load_t = 0.30*F_axial + 0.30*F_neural + 0.25*F_peripheral + 0.15*F_systemic
+load_t = 100 * (0.30*F_axial/B_axial + 0.30*F_neural/B_neural + 0.25*F_peripheral/B_peripheral + 0.15*F_systemic/B_systemic)
 CTL_t = (2/43) * load_t + (1 - 2/43) * CTL_t-1
 ATL_t = (2/8) * load_t + (1 - 2/8) * ATL_t-1
 TSB_t = CTL_t - ATL_t
@@ -1097,6 +1121,7 @@ Why this is customized:
 
 - the daily load input comes from the same four-dimensional fatigue model used
   everywhere else in the app
+- historical and future projected TSB use the same normalized load units
 - rest days are explicit zeros, so the model respects recovery gaps instead of
   collapsing them into missing data
 
@@ -1109,18 +1134,21 @@ Where used:
 Formula:
 
 ```text
-Monotony_week = mean(daily_load_week) / (SD(daily_load_week) + 1e-6)
-Strain_week = weekly_load * Monotony_week
+Monotony = mean(daily_load) / max(SD(daily_load), 0.10*mean(daily_load), load_floor)
+Monotony_display = min(Monotony, 7.0)
+Strain = weekly_load * Monotony_display
+StrainIndex = Strain / rolling_4wk_median(Strain)
 ```
 
 Flags:
 
-- `high_monotony` when monotony `> 2.0`
-- `strain_spike` when strain exceeds the rolling 4-week median by 50%
+- `high_monotony` when monotony `> 2.0` and at least 3 nonzero training days exist
+- `strain_spike` when strain index exceeds `1.5`
 
 Why this is customized:
 
 - it uses the same composite daily load as Banister and ACWR
+- denominator floors and display caps prevent tiny-load weeks from exploding
 - it catches "same moderate load every day" patterns that a ratio-based
   workload metric can miss
 
@@ -1210,6 +1238,9 @@ broad  = (direct_SBD_sets + same_category_secondary_sets) / total_sets
 Secondary category matching uses glossary categories `squat`, `bench`, and
 `deadlift`.
 
+Target competition selection prefers primary-goal meets, then competition notes,
+then the nearest confirmed/optional meet.
+
 ### Readiness score
 
 Where used:
@@ -1219,15 +1250,14 @@ Where used:
 Formula:
 
 ```text
-penalty = sum(w_i * x_i) / sum(w_i)    # renormalizes over available components
-R = (1 - penalty) * 100
-w = [fatigue_norm: 0.30, rpe_drift: 0.25, wellness: 0.20, perf_trend: 0.15, bw_deviation: 0.10]
-readiness_confidence = available_weight / 1.00
+TrainingReadiness = 100 * (1 - weighted_penalty(fatigue, rpe_drift, performance_trend))
+ExternalReadiness = 100 * (1 - weighted_penalty(wellness, bodyweight))
+OverallReadiness = 0.70*TrainingReadiness + 0.30*ExternalReadiness
 ```
 
 When a component is missing, it is excluded and the remaining weights are
-renormalized. `readiness_confidence` reports the fraction of total intended
-weight that was available.
+renormalized. Readiness confidence is reported overall and separately for
+training and external readiness.
 
 Component construction:
 

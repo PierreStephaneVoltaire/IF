@@ -28,6 +28,7 @@ import {
   FileSpreadsheet,
   FlaskConical,
   Utensils,
+  Info,
 } from 'lucide-react'
 import { FORMULA_DESCRIPTIONS } from '@/constants/formulaDescriptions'
 
@@ -91,9 +92,9 @@ export default function AboutPage() {
             >
               <List.Item>
                 <b>Statistical engine.</b> Deterministic math: e1RM, DOTS, INOL, EWMA ACWR,
-                fatigue index, Theil-Sen progression with fit quality, diminishing-returns
+                current fatigue state, Theil-Sen progression with fit quality, diminishing-returns
                 projection, PRR calibration, volume landmarks, specificity bands, attempt
-                selection, readiness score.
+                selection, and split readiness.
               </List.Item>
               <List.Item>
                 <b>AI reasoning layer.</b> Seven focused entry points: fatigue-profile
@@ -195,12 +196,21 @@ export default function AboutPage() {
             Every number surfaced in the portal comes from one of the formulas below.
             They fall into five families: <b>scoring</b> (DOTS, estimated 1RM),{' '}
             <b>progression</b> (Theil-Sen regression on effective weeks, diminishing-returns
-            projection, fit quality), <b>stress</b> (INOL, EWMA ACWR, fatigue index, RPE drift),{' '}
+            projection, fit quality), <b>stress</b> (phase-adjusted INOL, EWMA ACWR,
+            current fatigue state, RPE drift),{' '}
             <b>quality</b> (specificity ratio, relative-intensity distribution, compliance),
             and <b>peaking</b> (Banister fitness-fatigue, monotony/strain, decoupling,
             taper quality, attempt selection, readiness score). Each card lists the
             exact formula, its variables, and the thresholds used to interpret output.
           </Text>
+          <Alert icon={<Info size={16} />} color="blue" title="Window filters and stateful metrics">
+            The selected week filter narrows window summaries such as exercise stats, INOL,
+            RI distribution, and specificity. Current fatigue state, ACWR, Banister, readiness,
+            and alerts use full history up to the selected end date. Monotony uses a denominator
+            floor and display cap, Banister projections use normalized future load, specificity
+            prefers primary-goal competitions, and readiness is split into training, external,
+            and overall scores.
+          </Alert>
 
           {FORMULA_DESCRIPTIONS.map((f) => (
             <Paper key={f.id} withBorder p="xl" radius="md">

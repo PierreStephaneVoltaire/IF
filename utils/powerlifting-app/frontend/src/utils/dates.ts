@@ -6,7 +6,7 @@ import type { Session } from '@powerlifting/types'
  * This avoids the timezone shift issue where parseISO would show
  * the wrong day in certain timezones.
  */
-const parseLocalDate = (dateStr: string): Date =>
+export const parseLocalDate = (dateStr: string): Date =>
   parse(dateStr, 'yyyy-MM-dd', new Date())
 
 export const formatDate = (dateStr: string): string =>

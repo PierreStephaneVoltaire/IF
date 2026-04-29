@@ -122,7 +122,7 @@ resource "kubernetes_deployment" "if_agent_api" {
             }
             requests = {
               memory = "${var.api_memory_request_mb}Mi"
-              cpu    = "2000m"
+              cpu    = "${var.api_cpu_request_millicores}m"
             }
           }
 
@@ -400,7 +400,7 @@ resource "kubernetes_deployment" "portal_frontends" {
               cpu    = "${var.frontend_cpu_millicores}m"
             }
             requests = {
-              memory = "1024i"
+              memory = "1024Mi"
               cpu    = "1000m"
             }
           }

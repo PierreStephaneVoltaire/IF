@@ -152,7 +152,7 @@ def test_fatigue_index_rpe_stress_mapping(avg_rpe: float, expected: float) -> No
     result = analytics.fatigue_index(sessions, days=14)
 
     assert result["components"]["rpe_stress"] == pytest.approx(expected, abs=1e-3)
-    assert result["score"] == pytest.approx(expected * 0.25, abs=1e-3)
+    assert result["score"] == pytest.approx(expected * 0.15, abs=1e-3)
 
 
 def test_progression_rate_returns_fit_metrics() -> None:
@@ -1058,6 +1058,12 @@ def test_weekly_analysis_includes_alerts_and_peaking_timeline_projection() -> No
     assert peaking["series"][-1]["date"] == (TODAY + timedelta(days=28)).isoformat()
     assert peaking["specificity_points"]
     assert peaking["specificity_bands"]
+    assert "closest_peak_date" in peaking
+    assert all(
+        abs(point["projected_tsb"]) < 1_000
+        for point in peaking["series"]
+        if point.get("projected_tsb") is not None
+    )
 
     future_point = next(point for point in peaking["series"] if point["date"] == future_session_date.isoformat())
     baseline_point = next(point for point in baseline["peaking_timeline"]["series"] if point["date"] == future_session_date.isoformat())
@@ -1527,7 +1533,9 @@ def test_compute_readiness_score_uses_new_components(monkeypatch: pytest.MonkeyP
 
     result = analytics.compute_readiness_score(sessions, program, program_start=program["meta"]["program_start"])
 
-    assert result["score"] == pytest.approx(68.0, abs=1e-6)
+    assert result["training_score"] == pytest.approx(68.5, abs=1e-6)
+    assert result["external_score"] == pytest.approx(72.0, abs=1e-6)
+    assert result["score"] == pytest.approx(69.5, abs=0.2)
     assert result["zone"] == "yellow"
     assert result["components"]["fatigue_norm"] == pytest.approx(0.2, abs=1e-6)
     assert result["components"]["rpe_drift"] == pytest.approx(0.5, abs=1e-6)
@@ -1536,3 +1544,257 @@ def test_compute_readiness_score_uses_new_components(monkeypatch: pytest.MonkeyP
     assert result["components"]["bw_deviation"] == pytest.approx(0.1, abs=1e-6)
     assert "miss_rate" not in result["components"]
     assert "compliance_pct" not in result["components"]
+    assert result["training_readiness_confidence"] == pytest.approx(1.0, abs=1e-6)
+    assert result["external_readiness_confidence"] == pytest.approx(1.0, abs=1e-6)
+
+
+def test_fatigue_index_uses_one_based_calendar_weeks() -> None:
+    program_start = (TODAY - timedelta(days=28)).isoformat()
+    sessions = [
+        {
+            "date": (TODAY - timedelta(days=28 - (week * 7))).isoformat(),
+            "completed": True,
+            "status": "completed",
+            "exercises": [make_exercise("Squat", 100 + week, 3, sets=3)],
+            "session_rpe": 7,
+        }
+        for week in range(4)
+    ]
+
+    result = analytics.fatigue_index(
+        sessions,
+        days=28,
+        program_start=program_start,
+        ref_date=TODAY,
+        current_maxes={"squat": 200},
+    )
+
+    assert result["fatigue_model"] == "reservoir_v2"
+    assert result["components"]["fatigue_window_weeks"] == 5
+    assert result["components"]["current_state_fi"] == result["score"]
+
+
+def test_fatigue_current_state_is_stable_across_filters() -> None:
+    program_start_date = TODAY - timedelta(days=56)
+    sessions = [
+        make_session(
+            56 - (week * 7),
+            [make_exercise("Bench Press", 80 + week, 5, sets=4)],
+            session_rpe=7 + (0.1 * week),
+            week_number=week + 1,
+        )
+        for week in range(8)
+    ]
+
+    full = analytics.fatigue_index(
+        sessions,
+        days=56,
+        program_start=program_start_date.isoformat(),
+        ref_date=TODAY,
+        current_maxes={"bench": 120},
+    )
+    one_week = analytics.fatigue_index(
+        sessions,
+        days=7,
+        program_start=program_start_date.isoformat(),
+        ref_date=TODAY,
+        current_maxes={"bench": 120},
+    )
+
+    assert full["score"] == pytest.approx(one_week["score"], abs=1e-6)
+    assert full["window_mean_fi"] != one_week["window_mean_fi"]
+
+
+def test_smolov_style_bench_localized_reservoir_is_not_diluted() -> None:
+    program_start = TODAY - timedelta(days=70)
+    sessions = []
+    for week in range(8):
+        sessions.append(
+            make_session(
+                70 - (week * 7),
+                [make_exercise("Bench Press", 70, 5, sets=5)],
+                session_rpe=7,
+                week_number=week + 1,
+            )
+        )
+    for day in range(5):
+        sessions.append(
+            make_session(
+                day,
+                [make_exercise("Bench Press", 85, 5, sets=10)],
+                session_rpe=9,
+                week_number=11,
+            )
+        )
+    glossary = [
+        {
+            "name": "Bench Press",
+            "category": "bench",
+            "fatigue_profile": {"axial": 0.1, "neural": 1.0, "peripheral": 1.0, "systemic": 0.4},
+        }
+    ]
+
+    result = analytics.fatigue_index(
+        sessions,
+        days=7,
+        glossary=glossary,
+        program_start=program_start.isoformat(),
+        ref_date=TODAY,
+        current_maxes={"bench": 100},
+    )
+
+    dims = result["components"]["reservoir_dimension_stress"]
+    assert max(dims.values()) >= 0.75
+    assert "localized_fatigue_high" in result["flags"]
+
+
+def test_inol_ramp_up_grace_and_later_low_stimulus_flag() -> None:
+    program_start = (TODAY - timedelta(days=28)).isoformat()
+    week1 = [make_session(28, [make_exercise("Squat", 100, 1, sets=1)], week_number=1)]
+    week5 = [make_session(0, [make_exercise("Squat", 100, 1, sets=1)], week_number=5)]
+    history = week1 + [
+        make_session(21, [make_exercise("Squat", 150, 3, sets=4)], week_number=2),
+        make_session(14, [make_exercise("Squat", 150, 3, sets=4)], week_number=3),
+        make_session(7, [make_exercise("Squat", 150, 3, sets=4)], week_number=4),
+    ] + week5
+
+    early = analytics.compute_inol(
+        week1,
+        program_start=program_start,
+        current_maxes={"squat": 200},
+        phases=[],
+        selected_weeks=1,
+        all_history_sessions=history,
+        ref_date=TODAY - timedelta(days=28),
+    )
+    later = analytics.compute_inol(
+        week5,
+        program_start=program_start,
+        current_maxes={"squat": 200},
+        phases=[],
+        selected_weeks=1,
+        all_history_sessions=history,
+        ref_date=TODAY,
+    )
+
+    assert early["ramp_up_grace"]["squat"] is True
+    assert "low_stimulus_squat" not in early["flags"]
+    assert later["ramp_up_grace"]["squat"] is False
+    assert "low_stimulus_squat" in later["flags"]
+
+
+def test_inol_trend_pressure_strengthens_high_warning() -> None:
+    program_start = (TODAY - timedelta(days=35)).isoformat()
+    history = [
+        make_session(35, [make_exercise("Bench Press", 70, 5, sets=3)], week_number=1),
+        make_session(28, [make_exercise("Bench Press", 70, 5, sets=3)], week_number=2),
+        make_session(21, [make_exercise("Bench Press", 70, 5, sets=3)], week_number=3),
+        make_session(14, [make_exercise("Bench Press", 70, 5, sets=3)], week_number=4),
+        make_session(0, [make_exercise("Bench Press", 90, 5, sets=14)], week_number=6),
+    ]
+
+    result = analytics.compute_inol(
+        [history[-1]],
+        program_start=program_start,
+        current_maxes={"bench": 100},
+        phases=[],
+        selected_weeks=1,
+        all_history_sessions=history,
+        ref_date=TODAY,
+    )
+
+    assert result["trend_pressure"]["bench"]["value"] > 0.35
+    assert "overreaching_risk_bench" in result["flags"]
+
+
+def test_monotony_small_loads_are_capped_and_require_training_days() -> None:
+    sessions = [
+        make_session(0, [make_exercise("Squat", 20, 1, sets=1, failed=True)], session_rpe=10, week_number=1)
+    ]
+
+    result = analytics.compute_monotony_strain(
+        sessions,
+        program_start=TODAY.isoformat(),
+        current_maxes={"squat": 200},
+        ref_date=TODAY,
+    )
+
+    row = result["weekly"][-1]
+    assert row["monotony"] <= 7.0
+    assert row["strain"] < 1_000_000
+    assert row["nonzero_training_days"] == 1
+    assert "high_monotony" not in row["flags"]
+
+
+def test_planned_load_resolver_and_unresolved_sets() -> None:
+    current_maxes = {"squat": 200, "bench": 100}
+    assert analytics._planned_exercise_weight({"name": "Squat", "kg": 120, "sets": 1, "reps": 1}, current_maxes) == pytest.approx(120)
+    assert analytics._planned_exercise_weight({"name": "Squat", "percent": 0.8, "sets": 1, "reps": 1}, current_maxes) == pytest.approx(160)
+    assert analytics._planned_exercise_weight({"name": "Bench Press", "rpe_target": 8, "sets": 1, "reps": 3}, current_maxes) == pytest.approx(87.5)
+    assert analytics._planned_exercise_weight({"name": "Squat", "load_type": "unspecified", "sets": 1, "reps": 1}, current_maxes) is None
+
+    future = [
+        {
+            "date": (TODAY + timedelta(days=1)).isoformat(),
+            "status": "planned",
+            "completed": False,
+            "planned_exercises": [
+                {"name": "Squat", "percent": 0.8, "sets": 3, "reps": 3},
+                {"name": "Squat", "load_type": "unspecified", "sets": 2, "reps": 5},
+            ],
+        }
+    ]
+    daily, unresolved = analytics._future_planned_daily_fatigue(
+        future,
+        glossary=[{"name": "Squat", "fatigue_profile": {"axial": 1.0, "neural": 1.0, "peripheral": 1.0, "systemic": 1.0}}],
+        current_maxes=current_maxes,
+        ref_date=TODAY,
+        end_day=TODAY + timedelta(days=7),
+    )
+
+    assert (TODAY + timedelta(days=1)) in daily
+    assert unresolved == 2
+
+
+def test_accessory_e1rm_estimate_is_used_for_intensity() -> None:
+    intensity = analytics._resolve_intensity(
+        "leg press",
+        weight=200,
+        reps=8,
+        rpe=None,
+        current_maxes={},
+        glossary=[
+            {
+                "name": "Leg Press",
+                "category": "machine",
+                "e1rm_estimate": {"value_kg": 400},
+            }
+        ],
+    )
+
+    assert intensity == pytest.approx(0.5, abs=1e-6)
+
+
+def test_specificity_target_prefers_primary_goal_meet() -> None:
+    program = {
+        "meta": {"program_name": "Block", "comp_date": (TODAY + timedelta(days=21)).isoformat()},
+        "goals": [
+            {
+                "priority": "primary",
+                "target_competition_dates": [(TODAY + timedelta(days=42)).isoformat()],
+            }
+        ],
+        "competitions": [
+            {"name": "Optional Tune Up", "date": (TODAY + timedelta(days=21)).isoformat(), "status": "optional"},
+            {"name": "Primary Meet", "date": (TODAY + timedelta(days=42)).isoformat(), "status": "confirmed"},
+        ],
+    }
+
+    selected = analytics._select_specificity_target_competition(program, TODAY)
+    assert selected["name"] == "Primary Meet"
+    assert selected["selection_reason"] == "primary_goal"
+
+    fallback_program = {**program, "goals": []}
+    selected_fallback = analytics._select_specificity_target_competition(fallback_program, TODAY)
+    assert selected_fallback["name"] == "Optional Tune Up"
+    assert selected_fallback["selection_reason"] == "nearest_confirmed"

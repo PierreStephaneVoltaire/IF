@@ -356,96 +356,114 @@ export default function GlossaryPage() {
   }
 
   async function handleBulkEstimateFatigue() {
-    const toEstimate = exercises.filter(e => !e.fatigue_profile || e.fatigue_profile_source !== 'ai_estimated')
+    const candidates = exercises.filter((e) => showArchived || !e.archived)
+    const missingEstimates = candidates.filter(e => !e.fatigue_profile || e.fatigue_profile_source !== 'ai_estimated')
+    const shouldReEstimateAll = candidates.length > 0 && missingEstimates.length === 0
+    const toEstimate = shouldReEstimateAll ? candidates : missingEstimates
     if (toEstimate.length === 0) {
-      pushToast({ message: 'All exercises already have AI fatigue profiles', type: 'success' })
+      pushToast({ message: 'No exercises available for fatigue estimation', type: 'warning' })
       return
     }
 
-    if (!confirm(`Estimate fatigue profiles for ${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
+    if (!confirm(`${shouldReEstimateAll ? 'Re-estimate' : 'Estimate'} fatigue profiles for ${toEstimate.length} exercises? This will call the AI backend multiple times${shouldReEstimateAll ? ' and overwrite existing AI fatigue profiles' : ''}.`)) return
 
     setIsBulkEstimatingFatigue(true)
     setBulkProgress({ current: 0, total: toEstimate.length, label: 'Estimating fatigue profiles' })
 
-    let successCount = 0
-    for (let i = 0; i < toEstimate.length; i++) {
-      setBulkProgress({ current: i + 1, total: toEstimate.length, label: 'Estimating fatigue profiles' })
-      try {
-        const res = await api.estimateExerciseFatigue(toEstimate[i].id)
-        if (res?.fatigue_profile || res?.profile) {
-          successCount++
+    try {
+      let successCount = 0
+      for (let i = 0; i < toEstimate.length; i++) {
+        setBulkProgress({ current: i + 1, total: toEstimate.length, label: 'Estimating fatigue profiles' })
+        try {
+          const res = await api.estimateExerciseFatigue(toEstimate[i].id)
+          if (res?.fatigue_profile || res?.profile) {
+            successCount++
+          }
+        } catch (err) {
+          console.error(`Failed to estimate fatigue for ${toEstimate[i].name}`, err)
         }
-      } catch (err) {
-        console.error(`Failed to estimate fatigue for ${toEstimate[i].name}`, err)
       }
-    }
 
-    pushToast({ message: `Successfully estimated fatigue for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
-    setIsBulkEstimatingFatigue(false)
-    setBulkProgress(null)
-    loadExercises()
+      pushToast({ message: `Successfully estimated fatigue for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
+      loadExercises()
+    } finally {
+      setIsBulkEstimatingFatigue(false)
+      setBulkProgress(null)
+    }
   }
 
   async function handleBulkEstimateE1rm() {
-    const toEstimate = exercises.filter(e => !e.e1rm_estimate)
+    const candidates = exercises.filter((e) => showArchived || !e.archived)
+    const missingEstimates = candidates.filter(e => !e.e1rm_estimate)
+    const shouldReEstimateAll = candidates.length > 0 && missingEstimates.length === 0
+    const toEstimate = shouldReEstimateAll ? candidates : missingEstimates
     if (toEstimate.length === 0) {
-      pushToast({ message: 'All exercises already have e1RM estimates', type: 'warning' })
+      pushToast({ message: 'No exercises available for e1RM estimation', type: 'warning' })
       return
     }
 
-    if (!window.confirm(`Estimate e1RM for ${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
+    if (!window.confirm(`${shouldReEstimateAll ? 'Re-estimate' : 'Estimate'} e1RM for ${toEstimate.length} exercises? This will call the AI backend multiple times${shouldReEstimateAll ? ' and overwrite existing e1RM estimates' : ''}.`)) return
 
     setIsBulkEstimatingE1rm(true)
     setBulkProgress({ current: 0, total: toEstimate.length, label: 'Estimating e1RM values' })
 
-    let successCount = 0
-    for (let i = 0; i < toEstimate.length; i++) {
-      setBulkProgress({ current: i + 1, total: toEstimate.length, label: 'Estimating e1RM values' })
-      try {
-        const res = await api.estimateExerciseE1rm(toEstimate[i].id)
-        if (res?.estimate) {
-          successCount++
+    try {
+      let successCount = 0
+      for (let i = 0; i < toEstimate.length; i++) {
+        setBulkProgress({ current: i + 1, total: toEstimate.length, label: 'Estimating e1RM values' })
+        try {
+          const res = await api.estimateExerciseE1rm(toEstimate[i].id)
+          if (res?.estimate) {
+            successCount++
+          }
+        } catch (err) {
+          console.error(`Failed to estimate e1RM for ${toEstimate[i].name}`, err)
         }
-      } catch (err) {
-        console.error(`Failed to estimate e1RM for ${toEstimate[i].name}`, err)
       }
-    }
 
-    pushToast({ message: `Successfully estimated e1RM for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
-    setIsBulkEstimatingE1rm(false)
-    setBulkProgress(null)
-    loadExercises()
+      pushToast({ message: `Successfully estimated e1RM for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
+      loadExercises()
+    } finally {
+      setIsBulkEstimatingE1rm(false)
+      setBulkProgress(null)
+    }
   }
 
   async function handleBulkEstimateMuscles() {
-    const toEstimate = exercises.filter((e) => e.tertiary_muscles == null)
+    const candidates = exercises.filter((e) => showArchived || !e.archived)
+    const missingEstimates = candidates.filter((e) => e.tertiary_muscles == null)
+    const shouldReEstimateAll = candidates.length > 0 && missingEstimates.length === 0
+    const toEstimate = shouldReEstimateAll ? candidates : missingEstimates
     if (toEstimate.length === 0) {
-      pushToast({ message: 'All exercises already have tertiary muscle groups', type: 'success' })
+      pushToast({ message: 'No exercises available for muscle group estimation', type: 'warning' })
       return
     }
 
-    if (!confirm(`Estimate muscle groups for ${toEstimate.length} exercises? This will call the AI backend multiple times.`)) return
+    if (!confirm(`${shouldReEstimateAll ? 'Re-estimate' : 'Estimate'} muscle groups for ${toEstimate.length} exercises? This will call the AI backend multiple times${shouldReEstimateAll ? ' and overwrite existing muscle groups' : ''}.`)) return
 
     setIsBulkEstimatingMuscles(true)
     setBulkProgress({ current: 0, total: toEstimate.length, label: 'Estimating muscle groups' })
 
-    let successCount = 0
-    for (let i = 0; i < toEstimate.length; i++) {
-      setBulkProgress({ current: i + 1, total: toEstimate.length, label: 'Estimating muscle groups' })
-      try {
-        const res = await api.estimateExerciseMuscles(toEstimate[i].id)
-        if (Array.isArray(res?.primary_muscles) && Array.isArray(res?.secondary_muscles) && Array.isArray(res?.tertiary_muscles)) {
-          successCount++
+    try {
+      let successCount = 0
+      for (let i = 0; i < toEstimate.length; i++) {
+        setBulkProgress({ current: i + 1, total: toEstimate.length, label: 'Estimating muscle groups' })
+        try {
+          const res = await api.estimateExerciseMuscles(toEstimate[i].id)
+          if (Array.isArray(res?.primary_muscles) && Array.isArray(res?.secondary_muscles) && Array.isArray(res?.tertiary_muscles)) {
+            successCount++
+          }
+        } catch (err) {
+          console.error(`Failed to estimate muscles for ${toEstimate[i].name}`, err)
         }
-      } catch (err) {
-        console.error(`Failed to estimate muscles for ${toEstimate[i].name}`, err)
       }
-    }
 
-    pushToast({ message: `Successfully estimated muscle groups for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
-    setIsBulkEstimatingMuscles(false)
-    setBulkProgress(null)
-    loadExercises()
+      pushToast({ message: `Successfully estimated muscle groups for ${successCount}/${toEstimate.length} exercises`, type: 'success' })
+      loadExercises()
+    } finally {
+      setIsBulkEstimatingMuscles(false)
+      setBulkProgress(null)
+    }
   }
 
   const filteredExercises = useMemo(() => {

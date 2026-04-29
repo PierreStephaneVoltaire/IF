@@ -1,6 +1,7 @@
-"""Excel export builder for training programs.
+"""Export builders for training programs.
 
-Uses openpyxl to produce a multi-sheet .xlsx workbook from a program dict.
+Uses openpyxl to produce a multi-sheet workbook from a program dict, then
+writes it as either .xlsx or Markdown.
 """
 from __future__ import annotations
 
@@ -307,17 +308,15 @@ def _resolve_bodyweight_for_date(
     return 0.0, "fallback"
 
 
-def build_program_xlsx(
+def _build_program_workbook(
     program: dict,
-    out_path: str,
     analysis: dict | None = None,
     export_context: dict[str, Any] | None = None,
-) -> str:
-    """Build a multi-sheet Excel workbook from a program dict.
+) -> Workbook:
+    """Build a multi-sheet workbook from a program dict.
 
     Args:
         program: Full program dict from ProgramStore.
-        out_path: Absolute path to write the .xlsx file.
         analysis: Optional analysis bundle with keys:
             - "weekly": output of analytics.weekly_analysis()
             - "correlation": cached correlation report dict (or None if not generated)
@@ -334,7 +333,7 @@ def build_program_xlsx(
             - sex: preferred sex for DOTS calculations
 
     Returns:
-        Absolute path to the written file.
+        In-memory workbook containing all export sheets.
     """
     wb = Workbook()
     export_context = export_context or {}
@@ -419,9 +418,930 @@ def build_program_xlsx(
         },
     )
 
+    return wb
+
+
+def build_program_xlsx(
+    program: dict,
+    out_path: str,
+    analysis: dict | None = None,
+    export_context: dict[str, Any] | None = None,
+) -> str:
+    """Build a multi-sheet Excel workbook from a program dict.
+
+    Args:
+        program: Full program dict from ProgramStore.
+        out_path: Absolute path to write the .xlsx file.
+        analysis: Optional analysis bundle. See _build_program_workbook().
+        export_context: Optional sidecar payload. See _build_program_workbook().
+
+    Returns:
+        Absolute path to the written file.
+    """
+    wb = _build_program_workbook(program, analysis=analysis, export_context=export_context)
+
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     wb.save(out_path)
     return out_path
+
+
+def build_program_markdown(
+    program: dict,
+    out_path: str,
+    analysis: dict | None = None,
+    export_context: dict[str, Any] | None = None,
+) -> str:
+    """Build a readable Markdown export with narrative paragraphs and tables where appropriate."""
+    export_context = export_context or {}
+
+    meta = copy.deepcopy(program.get("meta", {}))
+    phases = _deepcopy_rows(program.get("phases"))
+    sessions_raw = _deepcopy_rows(program.get("sessions"))
+    goals = _deepcopy_rows(program.get("goals"))
+    competitions = _deepcopy_rows(program.get("competitions"))
+    diet_notes = _deepcopy_rows(program.get("diet_notes"))
+    supplements = _deepcopy_rows(program.get("supplements"))
+    supplement_phases = _deepcopy_rows(program.get("supplement_phases"))
+    lift_profiles = _deepcopy_rows(program.get("lift_profiles"))
+    weight_log = _deepcopy_rows(export_context.get("weight_log"))
+    max_history = _deepcopy_rows(export_context.get("max_history"))
+    federation_library = copy.deepcopy(export_context.get("federation_library") or {})
+    current_maxes = copy.deepcopy(program.get("current_maxes", {}))
+
+    creator = _first_non_blank(meta.get("creator"), export_context.get("pk"), program.get("pk"), "operator")
+    sex = str(_first_non_blank(meta.get("sex"), export_context.get("sex"), "male")).lower()
+    version_token = str(_first_non_blank(
+        export_context.get("version"), meta.get("version"), meta.get("version_label"), ""
+    )).strip()
+    if version_token and not version_token.startswith("v") and version_token.isdigit():
+        version_token = f"v{int(version_token):03d}"
+
+    prepared_sessions = _prepare_sessions_for_export(sessions_raw, weight_log, meta)
+
+    sections = [
+        _md_overview(meta, creator, version_token, sex),
+        _md_goals(meta, goals, competitions, sex, federation_library),
+        _md_current_maxes(current_maxes),
+        _md_max_history(max_history, sex, meta),
+        _md_phases(phases),
+        _md_sessions(prepared_sessions),
+        _md_competitions(competitions, prepared_sessions, weight_log, sex, meta, federation_library),
+        _md_biometrics(diet_notes),
+        _md_weight_log(weight_log),
+        _md_supplements(supplements, supplement_phases),
+        _md_lift_profiles(lift_profiles),
+        _md_analysis(analysis, prepared_sessions, weight_log, diet_notes, sex, meta),
+        _md_notes(meta, phases, prepared_sessions, competitions, diet_notes, supplement_phases),
+    ]
+
+    md = "\n\n---\n\n".join(s for s in sections if s).rstrip() + "\n"
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(md)
+    return out_path
+
+
+# ---------------------------------------------------------------------------
+# Markdown narrative helpers
+# ---------------------------------------------------------------------------
+
+
+def _tcell(value: Any) -> str:
+    if value is None or _is_blank(value):
+        return ""
+    return str(_num(value)).replace("|", "\\|").replace("\n", " ").replace("\r", "")
+
+
+def _md_table(headers: list[str], rows: list[list[Any]]) -> str:
+    if not rows:
+        return ""
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+    ]
+    for row in rows:
+        cells = [_tcell(v) for v in row]
+        if len(cells) < len(headers):
+            cells.extend([""] * (len(headers) - len(cells)))
+        lines.append("| " + " | ".join(cells[: len(headers)]) + " |")
+    return "\n".join(lines)
+
+
+def _txt(value: Any) -> str:
+    if value is None or _is_blank(value):
+        return ""
+    return str(_num(value)).strip()
+
+
+def _first_line(value: Any) -> str:
+    text = _txt(value)
+    return text.split("\n")[0].strip() if text else ""
+
+
+def _md_overview(meta: dict, creator: str, version_token: str, sex: str) -> str:
+    name = meta.get("program_name") or "Training Program"
+    lines = [f"# {name}", ""]
+
+    details = []
+    if creator and creator != "operator":
+        details.append(f"**Creator:** {creator}")
+    if version_token:
+        details.append(f"**Version:** {version_token}")
+    if meta.get("program_start"):
+        details.append(f"**Started:** {meta['program_start']}")
+    if meta.get("comp_date"):
+        details.append(f"**Competition:** {meta['comp_date']}")
+    if meta.get("federation"):
+        details.append(f"**Federation:** {meta['federation']}")
+    if meta.get("weight_class_kg"):
+        details.append(f"**Weight Class:** {meta['weight_class_kg']} kg")
+    if meta.get("equipment"):
+        details.append(f"**Equipment:** {meta['equipment']}")
+    bw = _first_non_blank(meta.get("current_body_weight_kg"), meta.get("bodyweight_kg"))
+    if bw:
+        details.append(f"**Current BW:** {bw} kg")
+    sex_label = "Male" if sex == "male" else "Female" if sex == "female" else sex.title()
+    details.append(f"**Sex:** {sex_label}")
+
+    if details:
+        lines.append(" | ".join(details))
+        lines.append("")
+
+    squat = meta.get("target_squat_kg")
+    bench = meta.get("target_bench_kg")
+    dl = meta.get("target_dl_kg")
+    total = meta.get("target_total_kg")
+    if any(not _is_blank(v) for v in [squat, bench, dl, total]):
+        parts = []
+        if not _is_blank(squat):
+            parts.append(f"Squat {squat} kg")
+        if not _is_blank(bench):
+            parts.append(f"Bench {bench} kg")
+        if not _is_blank(dl):
+            parts.append(f"Deadlift {dl} kg")
+        if not _is_blank(total):
+            parts.append(f"**Total: {total} kg**")
+        lines.append("### Target Lifts")
+        lines.append("")
+        lines.append(" / ".join(parts))
+        lines.append("")
+
+    training_notes = meta.get("training_notes")
+    if training_notes:
+        notes = training_notes if isinstance(training_notes, list) else [training_notes]
+        for note in notes:
+            if note:
+                lines.append(f"- {note}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_goals(meta: dict, goals: list[dict], competitions: list[dict], sex: str, federation_library: dict | None) -> str:
+    if not goals:
+        return ""
+
+    lines = ["## Goals", ""]
+
+    primary = [g for g in goals if g.get("priority") == "primary"]
+    if primary:
+        lines.append("**Primary goals:** " + ", ".join(g.get("title", "Untitled") for g in primary))
+        lines.append("")
+
+    secondary = [g for g in goals if g.get("priority") == "secondary"]
+    if secondary:
+        lines.append("**Secondary goals:** " + ", ".join(g.get("title", "Untitled") for g in secondary))
+        lines.append("")
+
+    headers = ["Priority", "Goal", "Target Date", "Notes"]
+    rows = []
+    priority_order = {"primary": 0, "secondary": 1, "optional": 2}
+    for goal in sorted(goals, key=lambda g: (priority_order.get(str(g.get("priority")), 9), str(g.get("target_date", "")))):
+        target_date = _first_non_blank(goal.get("target_date"), ", ".join(goal.get("target_competition_dates") or []))
+        rows.append([goal.get("priority", ""), goal.get("title", ""), target_date, _first_line(goal.get("notes", ""))])
+
+    if rows:
+        lines.append(_md_table(headers, rows))
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_current_maxes(current_maxes: dict) -> str:
+    if not current_maxes:
+        return ""
+
+    rows = []
+    for lift, val in current_maxes.items():
+        if lift == "_note" or _is_blank(val):
+            continue
+        rows.append([lift.replace("_", " ").title(), val])
+
+    return "## Current Maxes\n\n" + _md_table(["Lift", "1RM (kg)"], rows) if rows else ""
+
+
+def _md_max_history(max_history: list[dict], sex: str, meta: dict) -> str:
+    if not max_history:
+        return ""
+
+    headers = ["Date", "Squat", "Bench", "Deadlift", "Total", "BW", "DOTS", "Context"]
+    rows = []
+    for entry in sorted(max_history, key=lambda e: str(e.get("date", ""))):
+        bw = _first_non_blank(entry.get("bodyweight_kg"), meta.get("current_body_weight_kg"), meta.get("bodyweight_kg"))
+        total = _first_non_blank(entry.get("total_kg"), "")
+        dots = _calculate_dots_value(total, bw, sex) if not _is_blank(total) else ""
+        rows.append([entry.get("date", ""), entry.get("squat_kg", ""), entry.get("bench_kg", ""), entry.get("deadlift_kg", ""), total, bw, dots, entry.get("context", "")])
+
+    return "## Max History\n\n" + _md_table(headers, rows)
+
+
+def _md_phases(phases: list[dict]) -> str:
+    if not phases:
+        return ""
+
+    lines = ["## Training Phases", ""]
+    for phase in phases:
+        name = phase.get("name", "Unnamed Phase")
+        start = phase.get("start_week", "")
+        end = phase.get("end_week", "")
+        week_range = f"Weeks {start}\u2013{end}" if start and end else ""
+
+        parts = [f"**{name}**"]
+        if week_range:
+            parts.append(week_range)
+        block = phase.get("block")
+        if block and block != "current":
+            parts.append(f"({block} block)")
+
+        sub = []
+        rpe_min = phase.get("target_rpe_min")
+        rpe_max = phase.get("target_rpe_max")
+        if not _is_blank(rpe_min) or not _is_blank(rpe_max):
+            sub.append(f"RPE {rpe_min or '?'}\u2013{rpe_max or '?'}")
+        dpw = phase.get("days_per_week")
+        if not _is_blank(dpw):
+            sub.append(f"{dpw} days/week")
+        intent = phase.get("intent")
+        if not _is_blank(intent):
+            sub.append(str(intent))
+
+        line = " \u2014 ".join(parts) + ("." if not sub else f". {'; '.join(sub)}.")
+        lines.append(line)
+
+        notes = phase.get("notes")
+        if notes:
+            lines.append(f"  {notes}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_sessions(sessions: list[dict]) -> str:
+    if not sessions:
+        return ""
+
+    lines = ["## Training Log", ""]
+
+    weeks: dict[str, list[dict]] = {}
+    for session in sessions:
+        week_key = str(session.get("week_number") or session.get("week") or "Unscheduled")
+        weeks.setdefault(week_key, []).append(session)
+
+    for week_key in sorted(weeks.keys(), key=lambda w: int(w) if w.isdigit() else 999):
+        week_sessions = weeks[week_key]
+        phase_name = ""
+        for s in week_sessions:
+            pn = _extract_phase_name(s.get("phase", ""))
+            if pn:
+                phase_name = pn
+                break
+        header = f"Week {week_key}"
+        if phase_name:
+            header += f" \u2014 {phase_name}"
+        lines.append(f"### {header}")
+        lines.append("")
+
+        for session in week_sessions:
+            date = session.get("date", "No date")
+            day = session.get("day", "")
+            status = session.get("status", "")
+            bw = session.get("body_weight_kg")
+            session_rpe = session.get("session_rpe")
+
+            parts = [f"**{date}**"]
+            if day:
+                parts.append(day)
+            if status:
+                parts.append(f"({status})")
+            if not _is_blank(bw):
+                parts.append(f"BW: {bw} kg")
+            if not _is_blank(session_rpe):
+                parts.append(f"Session RPE: {session_rpe}")
+            lines.append(" | ".join(parts))
+
+            wellness = session.get("wellness")
+            if isinstance(wellness, dict):
+                w_parts = []
+                for key in ["sleep", "energy", "stress", "soreness", "mood"]:
+                    val = wellness.get(key)
+                    if not _is_blank(val):
+                        w_parts.append(f"{key.title()}: {val}")
+                if w_parts:
+                    lines.append("  " + " | ".join(w_parts))
+
+            notes = session.get("session_notes")
+            if notes:
+                lines.append(f"  _{notes}_")
+
+            exercises = session.get("exercises") or []
+            if exercises:
+                ex_rows = []
+                for ex in exercises:
+                    failed = " \u2717" if ex.get("failed") else ""
+                    ex_rows.append([
+                        ex.get("name", ""),
+                        f"{ex.get('sets', '')} x {ex.get('reps', '')}",
+                        ex.get("kg", ""),
+                        ex.get("rpe", ""),
+                        _first_line(ex.get("notes", "")) + failed,
+                    ])
+                lines.append("")
+                lines.append(_md_table(["Exercise", "Sets x Reps", "kg", "RPE", "Notes"], ex_rows))
+
+            lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_competitions(
+    competitions: list[dict], sessions: list[dict], weight_log: list[dict],
+    sex: str, meta: dict, federation_library: dict | None,
+) -> str:
+    if not competitions:
+        return ""
+
+    federation_names = {
+        str(item.get("id")): _first_non_blank(item.get("abbreviation"), item.get("name"), "")
+        for item in (federation_library or {}).get("federations", []) or []
+        if isinstance(item, dict)
+    }
+
+    lines = ["## Competitions", ""]
+    for comp in sorted(competitions, key=lambda c: str(c.get("date", ""))):
+        name = comp.get("name", "Unnamed Competition")
+        date = comp.get("date", "")
+        status = comp.get("status", "")
+
+        lines.append(f"### {name} \u2014 {date}")
+        lines.append("")
+
+        details = []
+        if status:
+            details.append(f"**Status:** {status}")
+        fed = _first_non_blank(federation_names.get(str(comp.get("federation_id") or "")), comp.get("federation", ""))
+        if fed:
+            details.append(f"**Federation:** {fed}")
+        wc = comp.get("weight_class_kg")
+        if wc:
+            details.append(f"**Weight Class:** {wc} kg")
+        location = comp.get("location")
+        if location:
+            details.append(f"**Location:** {location}")
+        if details:
+            lines.append(" | ".join(details))
+            lines.append("")
+
+        targets = comp.get("targets") or {}
+        target_parts = []
+        for lift, label in [("squat_kg", "S"), ("bench_kg", "B"), ("deadlift_kg", "D")]:
+            v = targets.get(lift)
+            if not _is_blank(v):
+                target_parts.append(f"{label}: {v}")
+        target_total = _resolve_total_kg(targets)
+        if not _is_blank(target_total):
+            target_parts.append(f"**Total: {target_total}**")
+        if target_parts:
+            lines.append("**Targets:** " + " / ".join(target_parts))
+
+        results = comp.get("results") or {}
+        result_parts = []
+        for lift, label in [("squat_kg", "S"), ("bench_kg", "B"), ("deadlift_kg", "D")]:
+            v = results.get(lift)
+            if not _is_blank(v):
+                result_parts.append(f"{label}: {v}")
+        result_total = _resolve_total_kg(results)
+        if not _is_blank(result_total):
+            bw = _first_non_blank(comp.get("body_weight_kg"), _resolve_bodyweight_for_date(comp.get("date"), sessions, weight_log, meta)[0])
+            dots = _calculate_dots_value(result_total, bw, sex)
+            result_parts.append(f"**Total: {result_total}** (DOTS: {dots})" if dots else f"**Total: {result_total}**")
+        place = comp.get("place")
+        if not _is_blank(place):
+            result_parts.append(f"**Place:** {place}")
+        if result_parts:
+            lines.append("**Results:** " + " / ".join(result_parts))
+
+        comp_notes = comp.get("notes")
+        if comp_notes:
+            lines.append("")
+            lines.append(comp_notes)
+
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_biometrics(diet_notes: list[dict]) -> str:
+    if not diet_notes:
+        return ""
+
+    lines = ["## Biometrics & Nutrition", ""]
+
+    total_entries = len(diet_notes)
+    consistent = sum(1 for n in diet_notes if n.get("consistent"))
+    consistency_pct = round((consistent / total_entries) * 100, 1) if total_entries else 0
+
+    lines.append(f"Tracking {total_entries} entries with {consistency_pct}% consistency.")
+    lines.append("")
+
+    cals = [_num(n.get("avg_daily_calories")) for n in diet_notes if not _is_blank(n.get("avg_daily_calories"))]
+    protein = [_num(n.get("avg_protein_g")) for n in diet_notes if not _is_blank(n.get("avg_protein_g"))]
+    carbs = [_num(n.get("avg_carb_g")) for n in diet_notes if not _is_blank(n.get("avg_carb_g"))]
+    fat = [_num(n.get("avg_fat_g")) for n in diet_notes if not _is_blank(n.get("avg_fat_g"))]
+    sleep = [_num(n.get("avg_sleep_hours")) for n in diet_notes if not _is_blank(n.get("avg_sleep_hours"))]
+
+    avg_parts = []
+    if cals:
+        avg_parts.append(f"**Calories:** {round(sum(float(v) for v in cals) / len(cals)):.0f} kcal")
+    if protein:
+        avg_parts.append(f"**Protein:** {round(sum(float(v) for v in protein) / len(protein)):.0f} g")
+    if carbs:
+        avg_parts.append(f"**Carbs:** {round(sum(float(v) for v in carbs) / len(carbs)):.0f} g")
+    if fat:
+        avg_parts.append(f"**Fat:** {round(sum(float(v) for v in fat) / len(fat)):.0f} g")
+    if sleep:
+        avg_parts.append(f"**Sleep:** {round(sum(float(v) for v in sleep) / len(sleep), 1)} hrs/night")
+    if avg_parts:
+        lines.append("Average daily intake: " + " | ".join(avg_parts))
+        lines.append("")
+
+    headers = ["Date", "Calories", "Protein", "Carbs", "Fat", "Sleep", "Notes"]
+    rows = []
+    for note in sorted(diet_notes, key=lambda n: str(n.get("date", ""))):
+        rows.append([note.get("date", ""), note.get("avg_daily_calories", ""), note.get("avg_protein_g", ""), note.get("avg_carb_g", ""), note.get("avg_fat_g", ""), note.get("avg_sleep_hours", ""), _first_line(note.get("notes", ""))])
+    lines.append(_md_table(headers, rows))
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_weight_log(weight_log: list[dict]) -> str:
+    if not weight_log:
+        return ""
+
+    sorted_log = sorted(weight_log, key=lambda e: str(e.get("date", "")))
+    lines = ["## Weight Log", ""]
+
+    kg_values = [(str(e.get("date", "")), e.get("kg")) for e in sorted_log if not _is_blank(e.get("kg"))]
+    if kg_values:
+        latest_date, latest_kg = kg_values[-1]
+        oldest_date, oldest_kg = kg_values[0]
+        change = round(float(latest_kg) - float(oldest_kg), 1)
+        direction = "gain" if change > 0.25 else "loss" if change < -0.25 else "stable"
+        lines.append(f"Started {oldest_kg} kg on {oldest_date}. Current: {latest_kg} kg ({'+' if change > 0 else ''}{change} kg, {direction}). {len(kg_values)} entries.")
+        lines.append("")
+
+        headers = ["Date", "Weight (kg)", "Change", "Notes"]
+        rows = []
+        prev = None
+        for entry in sorted_log[-20:]:
+            kg = entry.get("kg", "")
+            delta = ""
+            if prev is not None and not _is_blank(kg):
+                try:
+                    d = round(float(kg) - float(prev), 1)
+                    delta = f"+{d}" if d > 0 else str(d)
+                except (TypeError, ValueError):
+                    delta = ""
+            rows.append([entry.get("date", ""), kg, delta, entry.get("notes", "")])
+            prev = kg if not _is_blank(kg) else prev
+        lines.append(_md_table(headers, rows))
+    else:
+        lines.append("No weight data recorded.")
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_supplements(supplements: list[dict], supplement_phases: list[dict]) -> str:
+    if not supplements and not supplement_phases:
+        return ""
+
+    lines = ["## Supplements", ""]
+
+    if supplements:
+        stack = [f"{s.get('name', '')} {s.get('dose', '')}".strip() for s in supplements]
+        lines.append("**Current stack:** " + ", ".join(stack))
+        lines.append("")
+
+    for phase in sorted(supplement_phases, key=lambda p: int(p.get("phase", 0) or 0)):
+        phase_name = phase.get("phase_name") or f"Phase {phase.get('phase', '')}"
+        start = phase.get("start_week", "")
+        end = phase.get("end_week", "")
+        week_range = f" (Weeks {start}\u2013{end})" if start and end else ""
+
+        items = phase.get("items") or []
+        if items:
+            item_str = ", ".join(f"{i.get('name', '')} {i.get('dose', '')}".strip() for i in items)
+            lines.append(f"**{phase_name}{week_range}:** {item_str}")
+        elif phase.get("notes"):
+            lines.append(f"**{phase_name}{week_range}:** {phase['notes']}")
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_lift_profiles(lift_profiles: list[dict]) -> str:
+    if not lift_profiles:
+        return ""
+
+    lines = ["## Lift Profiles", ""]
+
+    for profile in lift_profiles:
+        lift = (profile.get("lift") or "Unknown").title()
+        parts = []
+
+        style = profile.get("style_notes")
+        if not _is_blank(style):
+            parts.append(str(style))
+
+        sticking = profile.get("sticking_points")
+        if not _is_blank(sticking):
+            parts.append(f"Sticking point: {sticking}")
+
+        muscle = profile.get("primary_muscle")
+        if not _is_blank(muscle):
+            parts.append(f"Primary muscle: {muscle}")
+
+        vol = profile.get("volume_tolerance")
+        if not _is_blank(vol):
+            parts.append(f"Volume tolerance: {vol}")
+
+        stim = profile.get("stimulus_coefficient")
+        if not _is_blank(stim):
+            conf = profile.get("stimulus_coefficient_confidence", "")
+            conf_str = f" ({conf} confidence)" if conf else ""
+            parts.append(f"Stimulus coefficient: {stim}{conf_str}")
+
+        if parts:
+            lines.append(f"**{lift}:** {'; '.join(parts)}.")
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_analysis(
+    analysis: dict | None, sessions: list[dict], weight_log: list[dict],
+    diet_notes: list[dict], sex: str, meta: dict,
+) -> str:
+    weekly = (analysis or {}).get("weekly") or {}
+    correlation = (analysis or {}).get("correlation")
+    evaluation = (analysis or {}).get("program_evaluation")
+
+    has_trends = bool(sessions)
+    if not weekly and not correlation and not evaluation and not has_trends:
+        return ""
+
+    lines = ["## Analysis", ""]
+
+    if weekly:
+        lines.extend(_md_weekly_analysis(weekly))
+        lines.append("")
+
+    # e1RM Progression & DOTS Trend — from session data
+    dots_rows = _build_dots_trend_rows(sessions, weight_log, sex, meta)
+    if dots_rows:
+        lines.extend(_md_dots_trend(dots_rows))
+        lines.append("")
+
+    # Body Weight Trend — from weight log and session data
+    bw_section = _md_weight_trend_analysis(sessions, weight_log, meta)
+    if bw_section:
+        lines.extend(bw_section)
+        lines.append("")
+
+    if correlation:
+        lines.extend(_md_correlation(correlation))
+        lines.append("")
+
+    if evaluation:
+        lines.extend(_md_program_evaluation(evaluation))
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
+def _md_weekly_analysis(weekly: dict) -> list[str]:
+    lines = ["### Weekly Summary", ""]
+
+    week = weekly.get("week", "")
+    block = weekly.get("block", "")
+    sessions_analyzed = weekly.get("sessions_analyzed", "")
+
+    if week:
+        header = f"Week {week}"
+        if block:
+            header += f" of {block}"
+        lines.append(f"**{header}.**" + (f" {sessions_analyzed} sessions analyzed." if sessions_analyzed else ""))
+
+    compliance = weekly.get("compliance") or {}
+    if compliance:
+        planned = compliance.get("planned", "")
+        completed = compliance.get("completed", "")
+        pct = compliance.get("pct", "")
+        if planned and completed:
+            lines.append(f"Compliance: {completed} of {planned} planned sessions completed ({pct}%).")
+
+    dots = weekly.get("estimated_dots")
+    if not _is_blank(dots):
+        lines.append(f"Estimated DOTS: {dots}.")
+
+    current_maxes = weekly.get("current_maxes") or {}
+    if current_maxes:
+        max_parts = []
+        for lift in ["squat", "bench", "deadlift"]:
+            v = current_maxes.get(lift)
+            if not _is_blank(v):
+                max_parts.append(f"{lift.title()}: {v} kg")
+        if max_parts:
+            lines.append(f"Current e1RM: {' / '.join(max_parts)}.")
+
+    fatigue = weekly.get("fatigue_index")
+    if not _is_blank(fatigue):
+        lines.append(f"Fatigue index: {fatigue}/10.")
+
+    readiness = weekly.get("readiness_score")
+    if isinstance(readiness, dict):
+        score = readiness.get("score")
+        zone = readiness.get("zone")
+        if not _is_blank(score):
+            lines.append(f"Readiness: {score}/100 ({zone} zone)." if zone else f"Readiness: {score}/100.")
+
+    alerts = weekly.get("alerts") or []
+    if alerts:
+        lines.append("")
+        lines.append("**Alerts:**")
+        for alert in alerts:
+            lines.append(f"- {alert}")
+
+    lifts = weekly.get("lifts") or {}
+    if lifts:
+        lines.append("")
+        lines.append("#### Per-Lift Progress")
+        lines.append("")
+        for name, data in lifts.items():
+            parts = [name]
+            progression = data.get("progression_rate_kg_per_week")
+            if not _is_blank(progression):
+                parts.append(f"{progression} kg/week")
+            rpe_trend = data.get("rpe_trend")
+            if not _is_blank(rpe_trend):
+                parts.append(f"RPE trend: {rpe_trend}")
+            lines.append(f"- **{' \u2014 '.join(parts)}**")
+
+    projections = weekly.get("projections") or []
+    if projections:
+        lines.append("")
+        lines.append("#### Projections")
+        lines.append("")
+        for p in projections:
+            proj_parts = [f"**{p.get('comp_name') or 'Unscheduled'}**"]
+            if not _is_blank(p.get("weeks_to_comp")):
+                proj_parts.append(f"{p['weeks_to_comp']} weeks out")
+            if not _is_blank(p.get("total")):
+                proj_parts.append(f"projected total: {p['total']} kg")
+            if not _is_blank(p.get("confidence")):
+                proj_parts.append(f"confidence: {p['confidence']}")
+            lines.append(f"- {' \u2014 '.join(proj_parts)}")
+    elif weekly.get("projection_reason"):
+        lines.append("")
+        lines.append(f"No projections: {weekly['projection_reason']}")
+
+    return lines
+
+
+def _md_dots_trend(trend_rows: list[dict]) -> list[str]:
+    lines = ["### e1RM Progression & DOTS Trend", ""]
+
+    # Summary: change over time
+    with_dots = [r for r in trend_rows if not _is_blank(r.get("dots"))]
+    if len(with_dots) >= 2:
+        first = with_dots[0]
+        last = with_dots[-1]
+        dots_change = round(last["dots"] - first["dots"], 2)
+        span = len(with_dots)
+        direction = "+" if dots_change >= 0 else ""
+        lines.append(f"DOTS {direction}{dots_change} over {span} tracked weeks ({direction}{round(dots_change / max(1, span - 1), 2)}/week).")
+        lines.append("")
+
+    headers = ["Week", "Squat", "Bench", "Deadlift", "Total", "BW", "DOTS"]
+    rows = []
+    for r in trend_rows:
+        rows.append([
+            f"W{r.get('week', '')}",
+            r.get("squat", "") or "",
+            r.get("bench", "") or "",
+            r.get("deadlift", "") or "",
+            r.get("total", "") or "",
+            r.get("bodyweight", "") or "",
+            r.get("dots", "") or "",
+        ])
+    lines.append(_md_table(headers, rows))
+    lines.append("")
+    lines.append("_Estimated 1RM via Epley formula. DOTS uses nearest bodyweight._")
+
+    return lines
+
+
+def _md_weight_trend_analysis(sessions: list[dict], weight_log: list[dict], meta: dict) -> list[str]:
+    # Gather bodyweight points from weight log first, then sessions as fallback
+    points: list[tuple[str, float]] = []
+    if weight_log:
+        for entry in sorted(weight_log, key=lambda e: str(e.get("date", ""))):
+            kg = entry.get("kg")
+            if not _is_blank(kg):
+                points.append((str(entry.get("date", "")), float(kg)))
+    else:
+        for session in sessions:
+            if session.get("block", "current") != "current" or not session.get("completed"):
+                continue
+            bw = session.get("body_weight_kg")
+            if not _is_blank(bw):
+                points.append((str(session.get("date", "")), float(bw)))
+
+    if len(points) < 2:
+        return []
+
+    lines = ["### Body Weight Trend", ""]
+
+    oldest_date, oldest_kg = points[0]
+    latest_date, latest_kg = points[-1]
+    change = round(latest_kg - oldest_kg, 1)
+    direction = "gain" if change > 0.25 else "loss" if change < -0.25 else "stable"
+
+    lines.append(f"**{latest_kg} kg** ({'+' if change > 0 else ''}{change} kg over {len(points)} entries, {direction}). Started at {oldest_kg} kg on {oldest_date}.")
+    lines.append("")
+
+    # Show last 12 entries
+    if len(points) > 2:
+        shown = points[-12:]
+        headers = ["Date", "Weight (kg)", "Change"]
+        rows = []
+        prev = None
+        for d, kg in shown:
+            delta = ""
+            if prev is not None:
+                d_val = round(kg - prev, 1)
+                delta = f"+{d_val}" if d_val > 0 else str(d_val)
+            rows.append([d, kg, delta])
+            prev = kg
+        lines.append(_md_table(headers, rows))
+
+    return lines
+
+
+def _md_correlation(correlation: dict) -> list[str]:
+    if correlation.get("insufficient_data"):
+        return ["### ROI Correlation", "", f"Insufficient data: {correlation.get('insufficient_data_reason', 'Not enough training data to analyze.')}", ""]
+
+    lines = ["### ROI Correlation", ""]
+
+    summary = correlation.get("summary")
+    if not _is_blank(summary):
+        lines.append(str(summary))
+        lines.append("")
+
+    findings = correlation.get("findings") or []
+    if findings:
+        for f in findings:
+            parts = []
+            if f.get("exercise"):
+                parts.append(f["exercise"])
+            if f.get("lift"):
+                parts.append(f"\u2192 {f['lift']}")
+            direction = f.get("correlation_direction")
+            strength = f.get("strength")
+            if direction and strength:
+                parts.append(f"({strength} {direction})")
+            if f.get("reasoning"):
+                parts.append(f"\u2014 {f['reasoning']}")
+            lines.append(f"- {' '.join(parts)}")
+    else:
+        lines.append("No correlation findings reported.")
+
+    return lines
+
+
+def _md_program_evaluation(evaluation: dict) -> list[str]:
+    if evaluation.get("insufficient_data"):
+        return ["### Program Evaluation", "", f"Insufficient data: {evaluation.get('insufficient_data_reason', 'Not enough training data to evaluate.')}", ""]
+
+    lines = ["### Program Evaluation", ""]
+
+    stance = evaluation.get("stance")
+    if not _is_blank(stance):
+        lines.append(f"**Stance:** {stance}")
+    summary = evaluation.get("summary")
+    if not _is_blank(summary):
+        lines.append(str(summary))
+    conclusion = evaluation.get("conclusion")
+    if not _is_blank(conclusion):
+        lines.append(f"**Conclusion:** {conclusion}")
+    lines.append("")
+
+    for label, key in [("What's working", "what_is_working"), ("What's not working", "what_is_not_working"), ("Monitoring focus", "monitoring_focus")]:
+        items = evaluation.get(key) or []
+        if items:
+            lines.append(f"**{label}:**")
+            for item in items:
+                lines.append(f"- {item}")
+            lines.append("")
+
+    goal_status = evaluation.get("goal_status") or []
+    if goal_status:
+        lines.append("**Goal Status:**")
+        for item in goal_status:
+            parts = [item.get("goal", ""), f"\u2014 {item.get('status', '')}"]
+            if item.get("reason"):
+                parts.append(f"({item['reason']})")
+            lines.append(f"- {' '.join(parts)}")
+        lines.append("")
+
+    weight_strategy = evaluation.get("weight_class_strategy") or {}
+    if weight_strategy:
+        rec = weight_strategy.get("recommendation")
+        wc = weight_strategy.get("recommended_weight_class_kg")
+        if not _is_blank(rec):
+            lines.append(f"**Weight Class Strategy:** {rec}" + (f" \u2014 {wc} kg" if not _is_blank(wc) else ""))
+            lines.append("")
+        options = weight_strategy.get("viable_options") or []
+        if options:
+            for opt in options:
+                opt_parts = []
+                if opt.get("weight_class_kg"):
+                    opt_parts.append(f"{opt['weight_class_kg']} kg")
+                if opt.get("suitability"):
+                    opt_parts.append(f"({opt['suitability']})")
+                if opt.get("reason"):
+                    opt_parts.append(f"\u2014 {opt['reason']}")
+                lines.append(f"  - {' '.join(opt_parts)}")
+            lines.append("")
+
+    changes = evaluation.get("small_changes") or []
+    if changes:
+        lines.append("**Recommended Changes:**")
+        for item in changes:
+            parts = [item.get("change", "")]
+            if item.get("why"):
+                parts.append(f"\u2014 {item['why']}")
+            if item.get("risk"):
+                parts.append(f"[Risk: {item['risk']}]")
+            if item.get("priority"):
+                parts.append(f"(Priority: {item['priority']})")
+            lines.append(f"- {' '.join(parts)}")
+        lines.append("")
+
+    return lines
+
+
+def _md_notes(
+    meta: dict, phases: list[dict], sessions: list[dict],
+    competitions: list[dict], diet_notes: list[dict],
+    supplement_phases: list[dict],
+) -> str:
+    all_notes: list[tuple[str, str, str]] = []
+
+    for note in _safe_list(meta.get("training_notes")):
+        if note:
+            all_notes.append(("Program", meta.get("updated_at", ""), str(note)))
+
+    for phase in phases:
+        if phase.get("notes"):
+            all_notes.append(("Phase", f"W{phase.get('start_week', '')}\u2013W{phase.get('end_week', '')}", phase["notes"]))
+
+    for note in diet_notes:
+        if note.get("notes"):
+            all_notes.append(("Biometrics", note.get("date", ""), note["notes"]))
+
+    for phase in supplement_phases:
+        if phase.get("notes"):
+            all_notes.append(("Supplements", phase.get("phase_name", ""), phase["notes"]))
+        for item in phase.get("items") or []:
+            if item.get("notes"):
+                all_notes.append(("Supplements", item.get("name", ""), item["notes"]))
+
+    if not all_notes:
+        return ""
+
+    lines = ["## Notes", ""]
+    for source, context, note in all_notes:
+        lines.append(f"- **{source}** ({context}): {note}")
+
+    return "\n".join(lines).rstrip()
 
 
 # ---------------------------------------------------------------------------

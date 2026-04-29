@@ -1553,6 +1553,7 @@ def _build_analysis_bundle(program: dict, sessions: list[dict]) -> dict:
 
     from analytics import weekly_analysis
     from config import IF_HEALTH_TABLE_NAME
+    from core import _get_store
     from prompt_context import summarize_lift_profiles
 
     logger = logging.getLogger(__name__)
@@ -1683,8 +1684,38 @@ def _read_cached_correlation(weeks: int = 4) -> dict | None:
     return _sanitize_decimals(report)
 
 
+def _normalize_export_format(format_value: str | None) -> str:
+    export_format = str(format_value or "xlsx").strip().lower()
+    if export_format in ("md", "markdown"):
+        return "markdown"
+    if export_format == "xlsx":
+        return "xlsx"
+    raise ValueError(f"Unsupported export format: {format_value!r}. Use 'xlsx' or 'markdown'.")
+
+
+def _write_program_export(program: dict, sessions: list[dict], out_dir: str, format_value: str | None) -> tuple[str, str, str]:
+    import os
+    from export import build_program_markdown, build_program_xlsx
+
+    export_format = _normalize_export_format(format_value)
+    analysis = _build_analysis_bundle(program, sessions)
+
+    if export_format == "markdown":
+        filename = "program_history.md"
+        description = "Markdown export of full program history"
+        out_path = os.path.join(out_dir, filename)
+        build_program_markdown(program, out_path, analysis=analysis, export_context=analysis)
+        return filename, description, export_format
+
+    filename = "program_history.xlsx"
+    description = "Excel export of full program history"
+    out_path = os.path.join(out_dir, filename)
+    build_program_xlsx(program, out_path, analysis=analysis, export_context=analysis)
+    return filename, description, export_format
+
+
 class ExportProgramHistoryAction(Action):
-    format: str = Field(default="xlsx", description="Export format (only 'xlsx' supported)")
+    format: str = Field(default="xlsx", description="Export format: 'xlsx' or 'markdown'")
 
 
 class ExportProgramHistoryObservation(Observation):
@@ -1699,11 +1730,9 @@ class ExportProgramHistoryExecutor(ToolExecutor[ExportProgramHistoryAction, Expo
         import os
         import tempfile
         from core import _get_store
-        from export import build_program_xlsx
 
         program = _run_async(_get_store().get_program())
         sessions = program.get("sessions", []) if isinstance(program, dict) else []
-        filename = "program_history.xlsx"
 
         if self.chat_id:
             try:
@@ -1714,14 +1743,13 @@ class ExportProgramHistoryExecutor(ToolExecutor[ExportProgramHistoryAction, Expo
         else:
             work_dir = tempfile.gettempdir()
 
-        out_path = os.path.join(work_dir, filename)
-        analysis = _build_analysis_bundle(program, sessions)
-        build_program_xlsx(program, out_path, analysis=analysis, export_context=analysis)
+        os.makedirs(work_dir, exist_ok=True)
+        filename, description, _ = _write_program_export(program, sessions, work_dir, action.format)
 
         return ExportProgramHistoryObservation.from_text(
             f"Exported program history to {filename}.\n"
             f"Emit this line at the end of your reply:\n"
-            f"FILES: {filename} (Excel export of full program history)"
+            f"FILES: {filename} ({description})"
         )
 
 
@@ -1730,7 +1758,7 @@ class ExportProgramHistoryTool(ToolDefinition[ExportProgramHistoryAction, Export
     def create(cls, conv_state=None, chat_id: str = "", **params) -> Sequence["ExportProgramHistoryTool"]:
         return [cls(
             description=(
-                "Export the full training program to an Excel (.xlsx) file. "
+                "Export the full training program to an Excel (.xlsx) or Markdown (.md) file. "
                 "Sheets: Meta, Current Maxes, Phases, Sessions, Exercises, Competitions, "
                 "Lift Profiles, Weekly Analysis, Per-Lift Metrics, ROI Correlation, Program Evaluation. "
                 "The three AI-driven sheets (Weekly Analysis, ROI Correlation, Program Evaluation) use cached values — "
@@ -2427,13 +2455,15 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
         "export_program_history": {
             "name": "export_program_history",
             "description": (
-                "Export the full training program to an Excel (.xlsx) file, including "
+                "Export the full training program to an Excel (.xlsx) or Markdown (.md) file, including "
                 "Lift Profiles, Weekly Analysis, Per-Lift Metrics, ROI Correlation, "
-                "and Program Evaluation sheets alongside the base program sheets."
+                "and Program Evaluation sections alongside the base program sections."
             ),
             "parameters": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "format": {"type": "string", "description": "Export format: 'xlsx' or 'markdown'", "default": "xlsx"},
+                },
                 "required": [],
             },
         },
@@ -2826,7 +2856,7 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
         "export_program_history": {
             "name": "export_program_history",
             "description": (
-                "Export the full training program to an Excel (.xlsx) file. "
+                "Export the full training program to an Excel (.xlsx) or Markdown (.md) file. "
                 "Sheets: Meta, Current Maxes, Phases, Sessions, Exercises, Competitions, "
                 "Lift Profiles, Weekly Analysis, Per-Lift Metrics, ROI Correlation, Program Evaluation. "
                 "The three AI-driven sheets use cached values; refresh on the Analysis page first if needed. "
@@ -2835,7 +2865,7 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "format": {"type": "string", "description": "Export format (only 'xlsx' supported)", "default": "xlsx"},
+                    "format": {"type": "string", "description": "Export format: 'xlsx' or 'markdown'", "default": "xlsx"},
                 },
                 "required": [],
             },
@@ -3429,7 +3459,6 @@ def _do_export(args):
     import os
     from config import SANDBOX_PATH
     from core import _get_store
-    from export import build_program_xlsx
 
     conversation_id = args.get("_conversation_id", "default")
     out_dir = os.path.join(SANDBOX_PATH, conversation_id)
@@ -3437,16 +3466,14 @@ def _do_export(args):
 
     program = _run_async(_get_store().get_program())
     sessions = program.get("sessions", []) if isinstance(program, dict) else []
-    filename = "program_history.xlsx"
-    out_path = os.path.join(out_dir, filename)
-    analysis = _build_analysis_bundle(program, sessions)
-    build_program_xlsx(program, out_path, analysis=analysis, export_context=analysis)
+    filename, description, export_format = _write_program_export(program, sessions, out_dir, args.get("format"))
 
     payload = json.dumps({
         "filename": filename,
+        "format": export_format,
         "message": "Program history exported successfully.",
     })
-    return f"{payload}\nFILES: {filename} (Excel export of full program history)"
+    return f"{payload}\nFILES: {filename} ({description})"
 
 
 def _do_analyze_progression(args):

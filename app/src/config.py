@@ -339,7 +339,7 @@ MODEL_ROUTER_ENABLED: bool = os.getenv("MODEL_ROUTER_ENABLED", "true").lower() =
 
 # Model for AI-powered health analytics (correlation analysis, program evaluation)
 # Defaults to Claude Sonnet with extended thinking enabled
-ANALYSIS_MODEL = os.getenv("ANALYSIS_MODEL", "anthropic/claude-sonnet-4-6")
+ANALYSIS_MODEL = os.getenv("ANALYSIS_MODEL", "openai/gpt-5.5")
 ANALYSIS_MODEL_THINKING_BUDGET = int(os.getenv("ANALYSIS_MODEL_THINKING_BUDGET", "16000"))
 
 # Model settings for user-facing health estimate flows (fatigue, muscle groups,

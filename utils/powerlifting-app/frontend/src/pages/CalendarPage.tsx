@@ -16,6 +16,7 @@ import { Calendar } from '@mantine/dates'
 import { useProgramStore } from '@/store/programStore'
 import { phaseColor } from '@/utils/phases'
 import { startOfWeek, format } from 'date-fns'
+import { parseLocalDate } from '@/utils/dates'
 import { normalizeExerciseName } from '@/utils/volume'
 import { Check } from 'lucide-react'
 import dayjs from 'dayjs'
@@ -58,7 +59,7 @@ export default function CalendarPage() {
     if (!program) return []
     return program.sessions
       .filter((session) => (session.block ?? 'current') === 'current')
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .sort((a, b) => a.date.localeCompare(b.date))
   }, [program])
 
   const weeklyGroups = useMemo(() => {
@@ -66,7 +67,7 @@ export default function CalendarPage() {
     const groups = new Map<string, Session[]>()
 
     for (const session of currentSessions) {
-      const weekStart = format(startOfWeek(new Date(session.date), { weekStartsOn: 0 }), 'yyyy-MM-dd')
+      const weekStart = format(startOfWeek(parseLocalDate(session.date), { weekStartsOn: 0 }), 'yyyy-MM-dd')
       const existing = groups.get(weekStart)
       if (existing) {
         existing.push(session)
@@ -77,7 +78,7 @@ export default function CalendarPage() {
 
     return Array.from(groups.entries()).map(([weekStart, sessions]) => ({
       weekStart,
-      weekLabel: format(new Date(weekStart), 'MMM d'),
+      weekLabel: format(parseLocalDate(weekStart), 'MMM d'),
       sessions,
     }))
   }, [currentSessions])
@@ -157,7 +158,7 @@ export default function CalendarPage() {
           <Group justify="space-between" wrap="nowrap" align="flex-start">
             <Group gap="xs" wrap="nowrap" align="flex-start" style={{ minWidth: 0, flex: 1 }}>
               <Text size="sm" fw={500} style={{ minWidth: compact ? 56 : 64 }}>
-                {format(new Date(session.date), compact ? 'MMM d' : 'EEE, MMM d')}
+                {format(parseLocalDate(session.date), compact ? 'MMM d' : 'EEE, MMM d')}
               </Text>
               <Badge size="xs" variant="filled" color={color}>
                 {session.phase?.name || 'Unknown'}

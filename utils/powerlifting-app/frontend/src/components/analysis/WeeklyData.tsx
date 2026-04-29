@@ -227,7 +227,10 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupAvgWeekl
                   <Table.Tr>
                     <Table.Th>Week Start</Table.Th>
                     <Table.Th ta="right">Monotony</Table.Th>
+                    <Table.Th ta="right">Raw</Table.Th>
                     <Table.Th ta="right">Strain</Table.Th>
+                    <Table.Th ta="right">Strain Index</Table.Th>
+                    <Table.Th ta="right">Days</Table.Th>
                     <Table.Th ta="right">Flags</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -239,7 +242,10 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupAvgWeekl
                       <Table.Tr key={row.week_start}>
                         <Table.Td fw={500}>{row.week_start}</Table.Td>
                         <Table.Td ta="right" c={row.monotony > 2 ? 'red' : 'green'}>{row.monotony.toFixed(2)}</Table.Td>
+                        <Table.Td ta="right">{typeof row.monotony_raw === 'number' ? row.monotony_raw.toFixed(2) : '--'}</Table.Td>
                         <Table.Td ta="right">{row.strain.toFixed(1)}</Table.Td>
+                        <Table.Td ta="right">{typeof row.strain_index === 'number' ? row.strain_index.toFixed(2) : '--'}</Table.Td>
+                        <Table.Td ta="right">{row.nonzero_training_days ?? '--'}</Table.Td>
                         <Table.Td ta="right">
                           <Group gap="xs" wrap="wrap" justify="flex-end">
                             {row.flags.length > 0 ? row.flags.map(flag => (
@@ -267,14 +273,24 @@ export function WeeklyData({ data, viewMode, perLiftDetails, muscleGroupAvgWeekl
                         )) : <Text span fz="xs" c="dimmed">No flags</Text>}
                       </Group>
                     </Group>
-                    <SimpleGrid cols={2} spacing="xs">
+                    <SimpleGrid cols={4} spacing="xs">
                       <Stack gap={0} ta="center">
                         <Text fz="xs" c="dimmed">Monotony</Text>
                         <Text fz="sm" fw={500} c={row.monotony > 2 ? 'red' : 'green'}>{row.monotony.toFixed(2)}</Text>
                       </Stack>
                       <Stack gap={0} ta="center">
+                        <Text fz="xs" c="dimmed">Raw</Text>
+                        <Text fz="sm" fw={500}>{typeof row.monotony_raw === 'number' ? row.monotony_raw.toFixed(2) : '--'}</Text>
+                      </Stack>
+                      <Stack gap={0} ta="center">
                         <Text fz="xs" c="dimmed">Strain</Text>
                         <Text fz="sm" fw={500}>{row.strain.toFixed(1)}</Text>
+                      </Stack>
+                      <Stack gap={0} ta="center">
+                        <Text fz="xs" c="dimmed">Index / Days</Text>
+                        <Text fz="sm" fw={500}>
+                          {typeof row.strain_index === 'number' ? row.strain_index.toFixed(2) : '--'} / {row.nonzero_training_days ?? '--'}
+                        </Text>
                       </Stack>
                     </SimpleGrid>
                   </Paper>

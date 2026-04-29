@@ -140,15 +140,21 @@ I = weight / E_now (intensity ratio)`,
   {
     id: 'fatigue_index',
     title: 'Fatigue Index',
-    summary: 'Window-aware fatigue score from failures, spikes, RPE, load, and intensity density.',
-    formula: `FI_w = 0.12*fail + 0.12*spike + 0.18*rpe + 0.28*chronic_load + 0.12*streak + 0.10*density + 0.08*strain
-FI_window = weighted_mean(FI_w)
-weight_w = exp(-ln(2) * age / clamp(weeks/2, 1, 4))`,
+    summary: 'Current fatigue state from failures, acute spikes, RPE, intensity density, monotony, and decaying fatigue reservoirs. Recent work matters more, and localized dimension overload is not diluted away by quiet lifts.',
+    formula: `R_d,t = R_d,t-1 * exp(-ln(2) / half_life_d) + Load_d,t
+S_d,t = clamp((R_d,t / baseline_d - 1.0) / 0.75, 0, 1)
+ReservoirStress = 0.60 * max(S_d) + 0.40 * weighted_mean(S_d)
+
+FI = 0.10*fail + 0.12*spike + 0.15*rpe + 0.34*reservoir
+   + 0.10*streak + 0.10*density + 0.09*monotony`,
     variables: [
+      { name: 'R_d,t', description: 'Decaying fatigue reservoir for each fatigue dimension' },
+      { name: 'half_life_d', description: 'Dimension-specific fatigue half-life in days' },
+      { name: 'ReservoirStress', description: 'Max-sensitive chronic fatigue pressure' },
       { name: 'failure_stress', description: 'Failed compound ratio clamped to 15%' },
       { name: 'acute_spike_stress', description: 'Normalized recent volume spike' },
       { name: 'rpe_stress', description: 'RMS of phase-relative RPE excess and 9+ frequency' },
-      { name: 'chronic_load_stress', description: 'Four-dimensional load ratio vs 6-8 week baseline' },
+      { name: 'chronic_load_stress', description: 'Compatibility key for reservoir-based chronic pressure' },
       { name: 'overload_streak', description: 'Consecutive weeks of high chronic load or intensity' },
       { name: 'intensity_density_stress', description: 'Ratio of heavy (85%+) and very heavy (90%+) sets' },
       { name: 'monotony_stress', description: 'Foster monotony and 4-week strain ratio' },
@@ -163,10 +169,13 @@ weight_w = exp(-ln(2) * age / clamp(weeks/2, 1, 4))`,
   {
     id: 'inol',
     title: 'INOL',
-    summary: 'Stimulus-adjusted intensity and volume load metric per lift per week. Uses smoothed singularity handling and per-lift productive ranges.',
+    summary: 'Selected-window stimulus-adjusted INOL with phase-adjusted target ranges, ramp-up grace, uncertainty bands, and volume/intensity trend pressure.',
     formula: `raw_set_INOL = reps / (100 * sqrt((1 - min(I, 0.995))^2 + 0.02^2))
 raw_weekly_INOL = sum(raw_set_INOL * sets)
 adjusted_weekly_INOL = raw_weekly_INOL * lift_stimulus_coefficient
+TargetRange_l,w = BaseRange_l * PhaseMultiplier_w
+DisplayRange = TargetRange widened for small selected windows
+TrendPressure = 0.60*volume_spike + 0.40*RI_spike
 I = weight / E_now (per set)`,
     variables: [
       { name: 'reps', description: 'Repetitions in the set' },
@@ -202,8 +211,8 @@ Composite = 0.30*axial + 0.30*neural + 0.25*peripheral + 0.15*systemic`,
   {
     id: 'banister_ffm',
     title: 'Banister Fitness-Fatigue Model',
-    summary: 'Daily composite load drives CTL (fitness), ATL (fatigue), and TSB (form) for peaking readiness.',
-    formula: `load_t = 0.30*F_axial + 0.30*F_neural + 0.25*F_peripheral + 0.15*F_systemic
+    summary: 'Daily normalized dimension load drives CTL, ATL, and TSB. Future peaking projections use the same normalized load units as historical data.',
+    formula: `load_t = 100 * (0.30*F_axial/B_axial + 0.30*F_neural/B_neural + 0.25*F_peripheral/B_peripheral + 0.15*F_systemic/B_systemic)
 CTL_t = (2/43) * load_t + (1 - 2/43) * CTL_t-1
 ATL_t = (2/8) * load_t + (1 - 2/8) * ATL_t-1
 TSB_t = CTL_t - ATL_t
@@ -226,8 +235,10 @@ CTL_0 = ATL_0 = mean(load first 14 days)`,
     id: 'monotony_strain',
     title: 'Foster Monotony & Strain',
     summary: 'Weekly load consistency and accumulated strain. Catches repeated moderate loading that ACWR can miss.',
-    formula: `Monotony_week = mean(daily_load_week) / (SD(daily_load_week) + 1e-6)
-Strain_week = weekly_load * Monotony_week`,
+    formula: `Monotony = mean(daily_load) / max(SD(daily_load), 0.10*mean(daily_load), load_floor)
+Monotony_display = min(Monotony, 7.0)
+Strain = weekly_load * Monotony_display
+StrainIndex = Strain / rolling_4wk_median(Strain)`,
     variables: [
       { name: 'daily_load_week', description: 'Composite daily loads inside one training week' },
       { name: 'weekly_load', description: 'Sum of daily loads for the week' },
@@ -295,7 +306,7 @@ Light: RI < 0.70`,
   {
     id: 'specificity_ratio',
     title: 'Specificity Ratio',
-    summary: 'Measures how much training is directly sport-specific (SBD) vs broad support work, and shows an expected band when weeks-to-comp is known.',
+    summary: 'Measures direct and broad powerlifting specificity against the selected target competition timeline, preferring primary-goal meets over nearest meets.',
     formula: `SR_narrow = SBD sets / total sets
 SR_broad = (SBD + secondary category) / total sets
 Expected band selected by weeks_to_comp:
@@ -315,9 +326,9 @@ Expected band selected by weeks_to_comp:
     id: 'readiness_score',
     title: 'Readiness Score',
     summary: 'Composite score predicting training readiness. Missing data re-weights available components without penalizing.',
-    formula: `R = (1 - penalty) * 100
-penalty = sum(w_i * x_i) / sum(w_i)
-w = [F_norm: 0.30, D_rpe: 0.25, W_subj: 0.20, P_trend: 0.15, S_bw: 0.10]`,
+    formula: `TrainingReadiness = 100 * (1 - weighted_penalty(fatigue, rpe_drift, performance_trend))
+ExternalReadiness = 100 * (1 - weighted_penalty(wellness, bodyweight))
+OverallReadiness = 0.70*TrainingReadiness + 0.30*ExternalReadiness`,
     variables: [
       { name: 'F_norm', description: 'Normalized fatigue index (0-1)' },
       { name: 'D_rpe', description: 'RPE drift from phase target' },

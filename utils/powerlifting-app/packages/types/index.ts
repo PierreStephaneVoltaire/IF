@@ -673,3 +673,43 @@ export interface WeightLogStore {
   entries: WeightEntry[]
   updated_at: string
 }
+
+// ─── Analytics Response Additions ────────────────────────────────────────────
+
+export interface FatigueAnalyticsFields {
+  fatigue_model?: string
+  current_state_fi?: number
+  window_weighted_fi?: number
+  window_mean_fi?: number
+  window_peak_fi?: number
+  reservoir_stress?: number
+  reservoir_dimension_stress?: Record<string, number>
+  reservoir_max_dimension_stress?: number
+  reservoir_weighted_stress?: number
+}
+
+export interface InolPhaseAdjustedThreshold {
+  low: number
+  high: number
+  display_low: number
+  display_high: number
+  phase_multiplier: number
+}
+
+export interface InolTrendPressure {
+  value: number
+  volume_ratio: number
+  ri_ratio: number
+}
+
+export interface InolAnalyticsFields {
+  phase_adjusted_thresholds?: Record<string, InolPhaseAdjustedThreshold>
+  trend_pressure?: Record<string, InolTrendPressure>
+}
+
+export interface ReadinessAnalyticsFields {
+  training_score?: number
+  external_score?: number
+  training_readiness_confidence?: number
+  external_readiness_confidence?: number
+}

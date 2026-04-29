@@ -449,6 +449,12 @@ variable "api_memory_request_mb" {
   default     = 2048
 }
 
+variable "api_cpu_request_millicores" {
+  description = "CPU request for main API (millicores)"
+  type        = number
+  default     = 2000
+}
+
 variable "api_cpu_millicores" {
   description = "CPU limit for main API (millicores)"
   type        = number
@@ -681,4 +687,3 @@ variable "cookie_secure" {
   type        = string
   default     = "true"
 }
-

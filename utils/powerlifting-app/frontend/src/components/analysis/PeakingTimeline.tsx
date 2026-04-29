@@ -64,6 +64,7 @@ export function PeakingTimeline({ data }: PeakingTimelineProps) {
 
   const firstDate = chartData[0]?.date ?? data.current_date
   const lastDate = chartData[chartData.length - 1]?.date ?? data.comp_date ?? data.current_date
+  const projectedPeakDate = data.peak_date ?? data.closest_peak_date ?? null
 
   return (
     <Paper
@@ -101,10 +102,13 @@ export function PeakingTimeline({ data }: PeakingTimelineProps) {
               </Text>
             </Stack>
             <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
-              <Text fz="xs" c="dimmed">Projected peak</Text>
+              <Text fz="xs" c="dimmed">{data.peak_date ? 'Projected peak' : 'Closest projected peak'}</Text>
               <Text fz="xl" fw={700}>
-                {data.peak_date ?? '--'}
+                {projectedPeakDate ?? '--'}
               </Text>
+              {!data.peak_date && typeof data.closest_projected_tsb === 'number' && (
+                <Text fz="xs" c="dimmed">TSB {data.closest_projected_tsb.toFixed(1)}</Text>
+              )}
             </Stack>
             <Stack gap={2} ta="center" p="sm" style={{ borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-default-hover)' }}>
               <Text fz="xs" c="dimmed">Meet date</Text>
@@ -246,6 +250,16 @@ export function PeakingTimeline({ data }: PeakingTimelineProps) {
           <Text fz="xs" c="dimmed">
             Green band: target TSB range (+5 to +15). Blue shaded bands: expected specificity by weeks out.
           </Text>
+          {!data.peak_date && data.closest_peak_date && (
+            <Text fz="xs" c="dimmed">
+              Closest projected peak, not true peaking-window entry.
+            </Text>
+          )}
+          {typeof data.future_unresolved_sets === 'number' && data.future_unresolved_sets > 0 && (
+            <Text fz="xs" c="dimmed">
+              {data.future_unresolved_sets} future planned sets could not be resolved into load.
+            </Text>
+          )}
           <Text fz="xs" c="dimmed">
             {formatPeakOffset(data.peak_delta_days)}
           </Text>

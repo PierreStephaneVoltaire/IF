@@ -42,6 +42,16 @@ powerlifting competition block. Your audience is the athlete — someone who
 already wrote the program deliberately and wants to know if the data supports
 staying the course or making small corrections.
 
+PRIMARY TASK CLARIFICATION:
+This is a PROGRAM ANALYSIS, not a general lifestyle audit. Training structure,
+load progression, specificity, fatigue response, lift trends, and competition
+alignment are the primary subjects.
+
+Diet, sleep, bodyweight, supplements, and life stress are EXTERNAL CONTEXT.
+Use them only to explain uncertainty or confounding. Do not let them dominate
+the evaluation unless the training data is otherwise internally coherent and
+the external factor is clearly severe enough to explain the issue.
+
 ═══════════════════════════════════════════════════════════════════
 ROLE BOUNDARIES
 ═══════════════════════════════════════════════════════════════════
@@ -127,8 +137,10 @@ DIET & BODYWEIGHT (if provided)
 
 SLEEP & RECOVERY (if provided)
   - Average sleep hours and trends.
-  - Poor or declining sleep is a confounder for every other metric. Flag it
-    as a root cause before blaming programming.
+  - Sleep/recovery context may explain why training outputs look worse than
+    expected, but keep it in External Factors / Confounders. Do not make sleep
+    or calories the main conclusion unless multiple training metrics are normal
+    while performance/readiness is still deteriorating.
 
 SUPPLEMENTS (if provided)
   - Current supplement stack.
@@ -218,6 +230,9 @@ For what_is_working / what_is_not_working:
 
 For small_changes:
   - Each change must be the MINIMUM intervention needed.
+  - small_changes should primarily be training/program adjustments. Lifestyle
+    changes belong in external_factors unless they are the only clearly
+    supported intervention.
   - Include risk: what could go wrong if this change is made.
   - Priority: low (nice to have), moderate (worth doing soon), high (address
     this week).
@@ -403,6 +418,20 @@ _TOOL_SCHEMA = {
                         "required": ["change", "why", "risk", "priority"],
                     },
                 },
+                "external_factors": {
+                    "type": "array",
+                    "description": "Diet, sleep, bodyweight, supplements, stress, or other external confounders separated from program structure.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "factor": {"type": "string"},
+                            "impact": {"type": "string", "enum": ["low", "moderate", "high"]},
+                            "reason": {"type": "string"},
+                            "separate_from_program": {"type": "boolean"},
+                        },
+                        "required": ["factor", "impact", "reason", "separate_from_program"],
+                    },
+                },
                 "monitoring_focus": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -418,7 +447,7 @@ _TOOL_SCHEMA = {
                     "type": "string",
                 },
             },
-            "required": ["stance", "summary", "what_is_working", "what_is_not_working", "competition_alignment", "goal_status", "competition_strategy", "weight_class_strategy", "small_changes", "monitoring_focus", "conclusion"],
+            "required": ["stance", "summary", "what_is_working", "what_is_not_working", "competition_alignment", "goal_status", "competition_strategy", "weight_class_strategy", "small_changes", "external_factors", "monitoring_focus", "conclusion"],
         },
     },
 }
@@ -588,6 +617,7 @@ async def generate_program_evaluation_report(
             "competition_strategy": args.get("competition_strategy", []),
             "weight_class_strategy": args.get("weight_class_strategy", {"recommendation": "", "recommended_weight_class_kg": None, "viable_options": []}),
             "small_changes": args.get("small_changes", []),
+            "external_factors": args.get("external_factors", []),
             "monitoring_focus": args.get("monitoring_focus", []),
             "conclusion": args.get("conclusion", ""),
             "insufficient_data": args.get("insufficient_data", False),
@@ -606,6 +636,7 @@ async def generate_program_evaluation_report(
             "competition_strategy": [],
             "weight_class_strategy": {"recommendation": "", "recommended_weight_class_kg": None, "viable_options": []},
             "small_changes": [],
+            "external_factors": [],
             "monitoring_focus": [],
             "conclusion": "Continue monitoring until the AI report can be regenerated.",
             "insufficient_data": True,
