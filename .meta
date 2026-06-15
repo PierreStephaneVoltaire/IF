@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "powerlifting-app": {
+      "url": "https://github.com/PierreStephaneVoltaire/ai-powerlifting.git",
+      "path": "utils/powerlifting-app"
+    }
+  }
+}
+
