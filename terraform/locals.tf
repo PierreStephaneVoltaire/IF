@@ -34,4 +34,9 @@ locals {
     "powerlifting-app"  = 3005
     "directives-portal" = 3006
   }
+
+  built_portals = {
+    for k, v in local.portals : k => v
+    if k != "powerlifting-app"
+  }
 }

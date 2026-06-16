@@ -329,7 +329,7 @@ resource "kubernetes_deployment" "portal_backends" {
 
         container {
           name              = "backend"
-          image             = "${aws_ecr_repository.portal_backends["${each.key}-backend"].repository_url}:latest"
+          image             = "${local.portal_backend_image_urls[each.key]}:latest"
           image_pull_policy = "Always"
 
           port {
@@ -390,7 +390,10 @@ resource "kubernetes_deployment" "portal_backends" {
     }
   }
 
-  depends_on = [null_resource.packer_build_portal_backends]
+  depends_on = [
+    null_resource.packer_build_portal_backends,
+    kubernetes_namespace.if_portals,
+  ]
 }
 
 resource "kubernetes_deployment" "portal_frontends" {
@@ -427,7 +430,7 @@ resource "kubernetes_deployment" "portal_frontends" {
 
         container {
           name              = "frontend"
-          image             = "${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url}:latest"
+          image             = "${local.portal_frontend_image_urls[each.key]}:latest"
           image_pull_policy = "Always"
 
           port {

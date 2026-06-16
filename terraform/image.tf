@@ -23,7 +23,6 @@ resource "aws_ecr_repository" "portal_backends" {
     "finance-portal-backend",
     "diary-portal-backend",
     "proposals-portal-backend",
-    "powerlifting-app-backend",
     "directives-portal-backend"
   ])
 
@@ -41,7 +40,6 @@ resource "aws_ecr_repository" "portal_frontends" {
     "finance-portal-frontend",
     "diary-portal-frontend",
     "proposals-portal-frontend",
-    "powerlifting-app-frontend",
     "directives-portal-frontend"
   ])
 
@@ -51,6 +49,14 @@ resource "aws_ecr_repository" "portal_frontends" {
   image_scanning_configuration {
     scan_on_push = true
   }
+}
+
+data "aws_ecr_repository" "powerlifting_backend" {
+  name = "${var.ecr_repository_prefix}-powerlifting-app-backend"
+}
+
+data "aws_ecr_repository" "powerlifting_frontend" {
+  name = "${var.ecr_repository_prefix}-powerlifting-app-frontend"
 }
 
 resource "aws_ecr_repository" "if_mcp_base" {
@@ -123,6 +129,22 @@ locals {
     "directives-portal" = "/api"
   }
 
+  portal_backend_image_urls = {
+    for k, v in local.portals : k => (
+      k == "powerlifting-app"
+      ? data.aws_ecr_repository.powerlifting_backend.repository_url
+      : aws_ecr_repository.portal_backends["${k}-backend"].repository_url
+    )
+  }
+
+  portal_frontend_image_urls = {
+    for k, v in local.portals : k => (
+      k == "powerlifting-app"
+      ? data.aws_ecr_repository.powerlifting_frontend.repository_url
+      : aws_ecr_repository.portal_frontends["${k}-frontend"].repository_url
+    )
+  }
+
   opencode_runner_hash = sha1(join("", [
     filesha1("${path.module}/../docker/opencode-runner.pkr.hcl"),
     filesha1("${path.module}/../utils/opencode-runner/Cargo.toml"),
@@ -193,7 +215,7 @@ resource "null_resource" "rollout_restart_main_api" {
 }
 
 resource "null_resource" "packer_build_portal_backends" {
-  for_each = local.portals
+  for_each = local.built_portals
 
   triggers = {
     dir_sha1    = filesha1("${path.module}/../docker/portals-backend.pkr.hcl")
@@ -217,7 +239,7 @@ resource "null_resource" "packer_build_portal_backends" {
 }
 
 resource "null_resource" "rollout_restart_portal_backends" {
-  for_each = local.portals
+  for_each = local.built_portals
 
   triggers = {
     source_sha1 = local.portal_backend_hashes[each.key]
@@ -234,7 +256,7 @@ resource "null_resource" "rollout_restart_portal_backends" {
 }
 
 resource "null_resource" "packer_build_portal_frontends" {
-  for_each = local.portals
+  for_each = local.built_portals
 
   triggers = {
     dir_sha1    = filesha1("${path.module}/../docker/portals-frontend.pkr.hcl")
@@ -259,7 +281,7 @@ resource "null_resource" "packer_build_portal_frontends" {
 }
 
 resource "null_resource" "rollout_restart_portal_frontends" {
-  for_each = local.portals
+  for_each = local.built_portals
 
   triggers = {
     source_sha1 = local.portal_frontend_hashes[each.key]
