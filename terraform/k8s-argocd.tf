@@ -97,7 +97,7 @@ resource "helm_release" "argocd_image_updater" {
           credentials: env
           # Accept only `latest-<7-40 hex sha>` tags that CI pushes, plus
           # the bare `latest` tag.
-          allowtags: ^latest-[a-f0-9]{7,40}$
+          allowtags: ^latest$
           sort_order: latest-last
         - name: DockerHub
           prefix: docker.io
@@ -148,7 +148,7 @@ resource "kubernetes_manifest" "argocd_project_powerlifting" {
     spec = {
       description = "Powerlifting app — backend & frontend (GitOps via image-updater)"
       sourceRepos = [
-        var.discord_ai_bot_repo_url,
+        var.powerlifting_app_repo_url,
       ]
       destinations = [
         {
@@ -194,11 +194,11 @@ resource "kubernetes_manifest" "argocd_app_powerlifting" {
         "argocd-image-updater.argoproj.io/image-list" = "backend=${local.powerlifting_backend_image},frontend=${local.powerlifting_frontend_image}"
 
         "argocd-image-updater.argoproj.io/backend.update-strategy"      = "latest"
-        "argocd-image-updater.argoproj.io/backend.allow-tags"           = "regex:^latest-[a-f0-9]{7,40}$"
+        "argocd-image-updater.argoproj.io/backend.allow-tags"           = "latest"
         "argocd-image-updater.argoproj.io/backend.kustomize.image-name" = local.powerlifting_backend_image
 
         "argocd-image-updater.argoproj.io/frontend.update-strategy"      = "latest"
-        "argocd-image-updater.argoproj.io/frontend.allow-tags"           = "regex:^latest-[a-f0-9]{7,40}$"
+        "argocd-image-updater.argoproj.io/frontend.allow-tags"           = "latest"
         "argocd-image-updater.argoproj.io/frontend.kustomize.image-name" = local.powerlifting_frontend_image
 
         "argocd-image-updater.argoproj.io/refresh" = "2m0s"
@@ -210,9 +210,9 @@ resource "kubernetes_manifest" "argocd_app_powerlifting" {
       project = kubernetes_manifest.argocd_project_powerlifting.manifest.metadata.name
 
       source = {
-        repoURL        = var.discord_ai_bot_repo_url
+        repoURL        = var.powerlifting_app_repo_url
         targetRevision = "master"
-        path           = "utils/powerlifting-app/infra"
+        path           = "infra"
         kustomize = {
 
           images = [

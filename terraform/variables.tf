@@ -53,10 +53,10 @@ variable "if_self_repo_url" {
   type        = string
   default     = ""
 }
-variable "discord_ai_bot_repo_url" {
-  description = "HTTPS Git URL of the discord-ai-bot monorepo. ArgoCD uses this as the source for the powerlifting-app Application."
+variable "powerlifting_app_repo_url" {
+  description = "HTTPS Git URL of the ai-powerlifting repo. ArgoCD uses this as the source for the powerlifting-app Application."
   type        = string
-  default     = "https://github.com/PierreStephaneVoltaire/discord-ai-bot.git"
+  default     = "https://github.com/PierreStephaneVoltaire/ai-powerlifting.git"
 }
 
 variable "powerlifting_app_domain_suffix" {
