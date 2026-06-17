@@ -261,12 +261,10 @@ scrape_configs:
         target_label: container
       - source_labels: [__meta_kubernetes_pod_label_app]
         target_label: app
-      - replacement: /var/log/pods/*$1/*.log
-        separator: /
-        source_labels:
-          - __meta_kubernetes_pod_uid
-          - __meta_kubernetes_pod_container_name
+      - source_labels: [__meta_kubernetes_pod_uid]
         target_label: __path__
+        regex: (.+)
+        replacement: /var/log/pods/*$1/*/*.log
     EOT
   }
 }
@@ -660,7 +658,7 @@ datasources:
   - name: Loki
     type: loki
     access: proxy
-    url: http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100
+    url: http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100/loki
     editable: true
     EOT
   }

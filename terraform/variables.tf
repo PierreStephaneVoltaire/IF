@@ -53,6 +53,31 @@ variable "if_self_repo_url" {
   type        = string
   default     = ""
 }
+variable "discord_ai_bot_repo_url" {
+  description = "HTTPS Git URL of the discord-ai-bot monorepo. ArgoCD uses this as the source for the powerlifting-app Application."
+  type        = string
+  default     = "https://github.com/PierreStephaneVoltaire/discord-ai-bot.git"
+}
+
+variable "powerlifting_app_domain_suffix" {
+  description = "Domain suffix used to construct the ArgoCD public hostname (e.g. argocd.<suffix>). Typically the apex zone of the powerlifting app's parent domain."
+  type        = string
+  default     = "if-prototype.xyz"
+}
+
+variable "ecr_image_updater_access_key_id" {
+  description = "AWS access key id used by argocd-image-updater to authenticate to ECR for listing image tags. Prefer a dedicated IAM user with only ecr:DescribeImages + ecr:GetAuthorizationToken on the powerlifting repos."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "ecr_image_updater_secret_access_key" {
+  description = "AWS secret access key paired with ecr_image_updater_access_key_id."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
 
 variable "dynamodb_core_table" {
   description = "DynamoDB table for core directives"
