@@ -15,8 +15,6 @@ dynamodb = boto3.resource('dynamodb')
 TABLE_NAME = os.environ.get('TABLE_NAME', 'if-health')
 SESSIONS_TABLE_NAME = os.environ.get('SESSIONS_TABLE_NAME', 'if-sessions')
 VIDEOS_BUCKET = os.environ.get('VIDEOS_BUCKET', 'powerlifting-session-videos')
-CLOUDFRONT_MEDIA_BASE_URL = os.environ.get('CLOUDFRONT_MEDIA_BASE_URL')
-
 def handler(event, context):
     """S3 event handler for video thumbnail generation."""
     for record in event.get('Records', []):
@@ -99,13 +97,10 @@ def handler(event, context):
                         ContentType='image/jpeg'
                     )
 
-            video_url = f"{CLOUDFRONT_MEDIA_BASE_URL}/{target_video_key}"
-            thumbnail_url = f"{CLOUDFRONT_MEDIA_BASE_URL}/{thumbnail_key}"
-
             update_video_metadata(
                 pk, sk, session_date, video_id,
-                video_url, target_video_key,
-                thumbnail_url, thumbnail_key,
+                target_video_key,
+                thumbnail_key,
                 'ready'
             )
 
@@ -128,7 +123,7 @@ def handler(event, context):
                         meta.get('sk'),
                         meta.get('session_date'),
                         meta.get('video_id'),
-                        '', '', '', '', 'failed'
+                        '', '', 'failed'
                     )
             except Exception as update_err:
                 print(f"Failed to mark video as failed: {update_err}")
@@ -138,16 +133,15 @@ def update_video_metadata(
     program_sk: str,
     session_date: str,
     video_id: str,
-    video_url: str,
     video_s3_key: str,
-    thumbnail_url: str,
     thumbnail_s3_key: str,
     status: str
 ):
     """Update video metadata in DynamoDB (if-sessions table).
 
-    Crucially updates s3_key to the processed path so the backend's
-    transformVideo function generates the correct proxy URL.
+    Updates s3_key to the processed path and thumbnail_s3_key to the
+    generated thumbnail path. The frontend resolves these S3 keys into
+    full CloudFront URLs — the backend and Lambda no longer store URLs.
     """
     table = dynamodb.Table(SESSIONS_TABLE_NAME)
 
@@ -168,10 +162,8 @@ def update_video_metadata(
             updated = False
             for video in videos:
                 if video.get('video_id') == video_id:
-                    video['video_url'] = video_url
                     if video_s3_key:
                         video['s3_key'] = video_s3_key
-                    video['thumbnail_url'] = thumbnail_url
                     video['thumbnail_s3_key'] = thumbnail_s3_key
                     video['thumbnail_status'] = status
                     updated = True

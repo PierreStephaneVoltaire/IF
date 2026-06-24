@@ -103,7 +103,13 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     LOG_LEVEL = var.log_level
 
     IF_SELF_REPO_URL = var.if_self_repo_url
-    IF_SELF_REPO_URL = var.if_self_repo_url
+
+    # Fission router base URL. The IF agent API forwards every opencode job
+    # to {OPENCODE_FISSION_URL}/v1/opencode/execute (see flow/opencode_fission.py).
+    # The Fission router service fronts the HTTPTrigger that maps to the
+    # opencode-job function. Built from var.fission_namespace so it tracks
+    # the install namespace instead of being hardcoded.
+    OPENCODE_FISSION_URL = "http://router.${var.fission_namespace}.svc.cluster.local:80"
   }
 }
 
@@ -239,10 +245,6 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
     JWT_SECRET                             = var.jwt_secret
     COOKIE_DOMAIN                          = var.cookie_domain
     COOKIE_SECURE                          = var.cookie_secure
-    CLOUDFRONT_MEDIA_BASE_URL              = "https://${aws_cloudfront_distribution.session_videos.domain_name}"
-    # Frontend build-time env (consumed by vite.config.ts to widen the CSP
-    # meta tag so thumbnails and videos served from CloudFront are allowed).
-    VITE_CLOUDFRONT_MEDIA_BASE_URL = "https://${aws_cloudfront_distribution.session_videos.domain_name}"
   }
 }
 

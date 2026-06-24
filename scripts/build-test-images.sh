@@ -131,6 +131,15 @@ else
 fi
 
 if should_build frontend; then
+  # Read the CloudFront media base URL from the powerlifting-app terraform
+  # state so the frontend build can bake it into the CSP media-src allowlist.
+  POWERLIFTING_TF_DIR="${ROOT_DIR}/utils/powerlifting-app/terraform"
+  CLOUDFRONT_MEDIA_BASE_URL="${CLOUDFRONT_MEDIA_BASE_URL:-}"
+  if [ -z "$CLOUDFRONT_MEDIA_BASE_URL" ] && [ -d "$POWERLIFTING_TF_DIR" ]; then
+    CLOUDFRONT_MEDIA_BASE_URL="$(cd "$POWERLIFTING_TF_DIR" && terraform output -raw cloudfront_media_base_url 2>/dev/null || true)"
+  fi
+  echo "  CloudFront media base URL: ${CLOUDFRONT_MEDIA_BASE_URL:-<not set>}"
+
   packer init portals-frontend.pkr.hcl
   packer build \
     -var "image_repository=${FRONTEND_REPO}" \
@@ -138,6 +147,7 @@ if should_build frontend; then
     -var "tag_latest=false" \
     -var "portal_name=powerlifting-app" \
     -var "api_url=${FRONTEND_API_URL}" \
+    -var "cloudfront_media_base_url=${CLOUDFRONT_MEDIA_BASE_URL}" \
     portals-frontend.pkr.hcl
 else
   echo "Skipping frontend image build"

@@ -853,9 +853,9 @@ variable "fission_function_name" {
 }
 
 variable "fission_http_trigger_url" {
-  description = "URL path the Fission HTTP trigger listens on. The IF agent API posts to the Fission router service in the Fission install namespace at this path."
+  description = "URL path the Fission HTTP trigger listens on. Must match the path the IF agent API posts to and the opencode-runner handles (POST /v1/opencode/execute). The router forwards this path verbatim to the function pod."
   type        = string
-  default     = "/opencode/job"
+  default     = "/v1/opencode/execute"
 }
 
 variable "fission_router_timeout_seconds" {
