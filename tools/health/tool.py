@@ -3053,6 +3053,44 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "required": ["payload"],
             },
         },
+        "budget_priority_timeline": {
+            "name": "budget_priority_timeline",
+            "description": (
+                "AI purchase priority timeline for a powerlifting budget. Schedules equipment, supplements, "
+                "gym/federation memberships, and competition-entry fees across months so the total stays under "
+                "the monthly cap while ensuring mandatory items are bought before each confirmed/optional competition."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "description": "Budget config: monthly_budget, currency, budget_start_month.",
+                        "properties": {
+                            "monthly_budget": {"type": "number"},
+                            "currency": {"type": "string"},
+                            "budget_start_month": {"type": "string"},
+                        },
+                    },
+                    "items": {
+                        "type": "array",
+                        "description": "Budget items (equipment, supplements, memberships, competition entries).",
+                        "items": {"type": "object"},
+                    },
+                    "competitions": {
+                        "type": "array",
+                        "description": "Optional upcoming competitions with master_id, name, start_date, user_status.",
+                        "items": {"type": "object"},
+                    },
+                    "federation_memberships": {
+                        "type": "array",
+                        "description": "Optional federation membership state: abbreviation, membership_group, membership_paid, membership_cost.",
+                        "items": {"type": "object"},
+                    },
+                },
+                "required": ["config", "items"],
+            },
+        },
         "import_parse_file": {
             "name": "import_parse_file",
             "description": "Parse a spreadsheet file and stage it as a pending import.",
@@ -3773,6 +3811,17 @@ def _do_multi_block_comparison_analysis(args):
         payload = {}
     return _run_async(generate_multi_block_comparison_report(payload))
 
+def _do_budget_priority_timeline(args):
+    from budget_timeline_ai import generate_budget_timeline
+
+    payload = {
+        "config": args.get("config") if isinstance(args.get("config"), dict) else {},
+        "items": args.get("items") if isinstance(args.get("items"), list) else [],
+        "competitions": args.get("competitions") if isinstance(args.get("competitions"), list) else [],
+        "federation_memberships": args.get("federation_memberships") if isinstance(args.get("federation_memberships"), list) else [],
+    }
+    return _run_async(generate_budget_timeline(payload))
+
 def _do_powerlifting_filter_categories(args):
     from powerlifting_stats import load_data, get_filter_categories, DatasetNotReadyError
     try:
@@ -4283,6 +4332,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "program_evaluation": lambda: _do_program_evaluation(args),
         "block_program_evaluation": lambda: _do_block_program_evaluation(args),
         "multi_block_comparison_analysis": lambda: _do_multi_block_comparison_analysis(args),
+        "budget_priority_timeline": lambda: _do_budget_priority_timeline(args),
         "import_parse_file": lambda: import_parse_file(args["base64_content"], args["filename"]),
         "import_apply": lambda: import_apply(args["import_id"], args.get("merge_strategy", "append"), args.get("conflict_resolutions"), args.get("start_date"), args.get("actor_pk") or args.get("pk"), args.get("author")),
         "import_reject": lambda: import_reject(args["import_id"], args.get("reason")),

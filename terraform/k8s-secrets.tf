@@ -236,6 +236,8 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
     POWERLIFTING_MASTER_FEDERATIONS_TABLE  = var.dynamodb_powerlifting_master_federations_table
     POWERLIFTING_USER_FEDERATIONS_TABLE    = var.dynamodb_powerlifting_user_federations_table
     POWERLIFTING_GOALS_TABLE               = var.dynamodb_powerlifting_goals_table
+    POWERLIFTING_BUDGET_TABLE              = "if-powerlifting-budget"
+    BUDGET_MEDIA_BUCKET                    = "powerlifting-budget-media"
     NODE_ENV                               = "production"
     PORT                                   = "3005"
     FRONTEND_URL                           = "https://${local.app_domains["powerlifting-app"].domain}"
