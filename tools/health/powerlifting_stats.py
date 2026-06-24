@@ -357,15 +357,15 @@ def _percentile_for(value: Optional[float], series: "pd.Series") -> Optional[int
     return int(round(float(np.sum(arr < value) / len(arr) * 100)))
 
 def _top10_mean_for(series: "pd.Series") -> Optional[float]:
-    """Mean of the top 10% of values in series; None if <10 entries."""
+    """Mean of the top 25% of values in series; None if <10 entries."""
     arr = series.dropna().values
     if len(arr) < 10:
         return None
-    threshold = np.percentile(arr, 90)
-    top10 = arr[arr >= threshold]
-    if len(top10) == 0:
+    threshold = np.percentile(arr, 75)
+    top = arr[arr >= threshold]
+    if len(top) == 0:
         return None
-    return round(float(top10.mean()), 1)
+    return round(float(top.mean()), 1)
 
 def compute_ranking_percentiles(
     df: pd.DataFrame,

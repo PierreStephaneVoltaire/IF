@@ -38,11 +38,16 @@ resource "kubernetes_service" "portal_backends" {
 
     type = "ClusterIP"
   }
+  lifecycle {
+    ignore_changes = [metadata]
+  }
 }
 
 resource "kubernetes_service" "portal_frontends" {
   for_each = local.portals
-
+  lifecycle {
+    ignore_changes = [metadata]
+  }
   metadata {
     name      = "${each.key}-frontend"
     namespace = kubernetes_namespace.if_portals.metadata[0].name

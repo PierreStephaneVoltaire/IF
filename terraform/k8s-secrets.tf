@@ -239,6 +239,10 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
     JWT_SECRET                             = var.jwt_secret
     COOKIE_DOMAIN                          = var.cookie_domain
     COOKIE_SECURE                          = var.cookie_secure
+    CLOUDFRONT_MEDIA_BASE_URL              = "https://${aws_cloudfront_distribution.session_videos.domain_name}"
+    # Frontend build-time env (consumed by vite.config.ts to widen the CSP
+    # meta tag so thumbnails and videos served from CloudFront are allowed).
+    VITE_CLOUDFRONT_MEDIA_BASE_URL = "https://${aws_cloudfront_distribution.session_videos.domain_name}"
   }
 }
 

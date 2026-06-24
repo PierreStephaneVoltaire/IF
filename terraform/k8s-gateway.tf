@@ -26,6 +26,9 @@ resource "kubernetes_namespace" "nginx_gateway" {
       managed-by = "terraform"
     }
   }
+  lifecycle {
+    ignore_changes = [metadata]
+  }
 }
 
 resource "helm_release" "nginx_gateway_fabric" {

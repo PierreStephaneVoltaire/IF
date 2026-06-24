@@ -130,9 +130,10 @@ resource "aws_lambda_function" "video_thumbnail" {
 
   environment {
     variables = {
-      TABLE_NAME          = var.dynamodb_health_table
-      SESSIONS_TABLE_NAME = var.dynamodb_sessions_table
-      VIDEOS_BUCKET       = aws_s3_bucket.session_videos.id
+      TABLE_NAME                = var.dynamodb_health_table
+      SESSIONS_TABLE_NAME       = var.dynamodb_sessions_table
+      VIDEOS_BUCKET             = aws_s3_bucket.session_videos.id
+      CLOUDFRONT_MEDIA_BASE_URL = "https://${aws_cloudfront_distribution.session_videos.domain_name}"
     }
   }
 

@@ -329,7 +329,7 @@ resource "kubernetes_deployment" "portal_backends" {
 
         container {
           name              = "backend"
-          image             = "${local.portal_backend_image_urls[each.key]}:latest"
+          image             = local.portal_backend_image_urls[each.key]
           image_pull_policy = "Always"
 
           port {
@@ -430,7 +430,7 @@ resource "kubernetes_deployment" "portal_frontends" {
 
         container {
           name              = "frontend"
-          image             = "${local.portal_frontend_image_urls[each.key]}:latest"
+          image             = local.portal_frontend_image_urls[each.key]
           image_pull_policy = "Always"
 
           port {

@@ -13,3 +13,8 @@ output "cloudflare_tunnel_id" {
   description = "Tunnel ID (used in CNAME targets: <id>.cfargotunnel.com)"
   value       = cloudflare_zero_trust_tunnel_cloudflared.this.id
 }
+
+output "cloudfront_media_domain" {
+  description = "CloudFront domain serving the powerlifting session videos bucket"
+  value       = aws_cloudfront_distribution.session_videos.domain_name
+}

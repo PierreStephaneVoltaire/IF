@@ -59,6 +59,16 @@ data "aws_ecr_repository" "powerlifting_frontend" {
   name = "${var.ecr_repository_prefix}-powerlifting-app-frontend"
 }
 
+data "aws_ecr_image" "powerlifting_backend" {
+  repository_name = data.aws_ecr_repository.powerlifting_backend.name
+  image_tag       = "latest"
+}
+
+data "aws_ecr_image" "powerlifting_frontend" {
+  repository_name = data.aws_ecr_repository.powerlifting_frontend.name
+  image_tag       = "latest"
+}
+
 resource "aws_ecr_repository" "if_mcp_base" {
   name                 = "${var.ecr_repository_prefix}-mcp-base"
   image_tag_mutability = "MUTABLE"
@@ -132,16 +142,16 @@ locals {
   portal_backend_image_urls = {
     for k, v in local.portals : k => (
       k == "powerlifting-app"
-      ? data.aws_ecr_repository.powerlifting_backend.repository_url
-      : aws_ecr_repository.portal_backends["${k}-backend"].repository_url
+      ? "${data.aws_ecr_repository.powerlifting_backend.repository_url}@${data.aws_ecr_image.powerlifting_backend.image_digest}"
+      : "${aws_ecr_repository.portal_backends["${k}-backend"].repository_url}:latest"
     )
   }
 
   portal_frontend_image_urls = {
     for k, v in local.portals : k => (
       k == "powerlifting-app"
-      ? data.aws_ecr_repository.powerlifting_frontend.repository_url
-      : aws_ecr_repository.portal_frontends["${k}-frontend"].repository_url
+      ? "${data.aws_ecr_repository.powerlifting_frontend.repository_url}@${data.aws_ecr_image.powerlifting_frontend.image_digest}"
+      : "${aws_ecr_repository.portal_frontends["${k}-frontend"].repository_url}:latest"
     )
   }
 

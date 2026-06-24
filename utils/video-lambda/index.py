@@ -15,6 +15,7 @@ dynamodb = boto3.resource('dynamodb')
 TABLE_NAME = os.environ.get('TABLE_NAME', 'if-health')
 SESSIONS_TABLE_NAME = os.environ.get('SESSIONS_TABLE_NAME', 'if-sessions')
 VIDEOS_BUCKET = os.environ.get('VIDEOS_BUCKET', 'powerlifting-session-videos')
+CLOUDFRONT_MEDIA_BASE_URL = os.environ.get('CLOUDFRONT_MEDIA_BASE_URL')
 
 def handler(event, context):
     """S3 event handler for video thumbnail generation."""
@@ -98,8 +99,8 @@ def handler(event, context):
                         ContentType='image/jpeg'
                     )
 
-            video_url = f"/api/videos/media/{target_video_key}"
-            thumbnail_url = f"/api/videos/media/{thumbnail_key}"
+            video_url = f"{CLOUDFRONT_MEDIA_BASE_URL}/{target_video_key}"
+            thumbnail_url = f"{CLOUDFRONT_MEDIA_BASE_URL}/{thumbnail_key}"
 
             update_video_metadata(
                 pk, sk, session_date, video_id,
