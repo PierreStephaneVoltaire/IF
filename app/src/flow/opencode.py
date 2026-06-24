@@ -51,5 +51,8 @@ async def run_opencode(
         prompt=prompt,
         files=files,
         timeout=timeout,
+        config_path=config_path,
+        config_content=config_content,
+        session_marker_path=session_marker_path,
     )
     return OpencodeResult(returncode=returncode, stdout=stdout, stderr=stderr)

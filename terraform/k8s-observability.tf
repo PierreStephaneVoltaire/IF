@@ -236,35 +236,35 @@ resource "kubernetes_config_map" "promtail_config" {
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
+  log_level: info
 
 positions:
   filename: /run/promtail/positions.yaml
 
 clients:
   - url: http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576
 
 scrape_configs:
-  - job_name: kubernetes-pods
-    kubernetes_sd_configs:
-      - role: pod
+  - job_name: container-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: container-logs
+          __path__: /var/log/containers/*.log
     pipeline_stages:
       - cri: {}
+      - regex:
+          expression: '/var/log/containers/(?P<pod>[^_]+)_(?P<namespace>[^_]+)_(?P<container>.+)-[0-9a-f]{64}\.log$'
+      - labels:
+          pod:
+          namespace:
+          container:
     relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_phase]
-        regex: 'Succeeded|Failed'
-        action: drop
-      - source_labels: [__meta_kubernetes_namespace]
-        target_label: namespace
-      - source_labels: [__meta_kubernetes_pod_name]
-        target_label: pod
-      - source_labels: [__meta_kubernetes_pod_container_name]
-        target_label: container
-      - source_labels: [__meta_kubernetes_pod_label_app]
-        target_label: app
-      - source_labels: [__meta_kubernetes_pod_uid]
-        target_label: __path__
-        regex: (.+)
-        replacement: /var/log/pods/*$1/*/*.log
+      - target_label: __address__
+        replacement: localhost
     EOT
   }
 }
@@ -648,6 +648,18 @@ resource "kubernetes_config_map" "grafana_datasources" {
   data = {
     "datasources.yaml" = <<-EOT
 apiVersion: 1
+
+# Force provisioning to delete any manually-created or stale datasources
+# from a previous deployment, then re-create the canonical set. Without
+# this, Grafana's provisioner skips datasources that already exist in its
+# SQLite DB (on the PVC), so a stale state from before the datasource
+# ConfigMap was added will persist forever.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
+
 datasources:
   - name: Prometheus
     type: prometheus
@@ -655,11 +667,94 @@ datasources:
     url: http://prometheus.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:9090
     isDefault: true
     editable: true
+    jsonData:
+      timeInterval: 15s
   - name: Loki
     type: loki
     access: proxy
-    url: http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100/loki
+    url: http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100
     editable: true
+    jsonData:
+      maxLines: 1000
+    EOT
+  }
+}
+
+resource "kubernetes_config_map" "grafana_dashboards" {
+  metadata {
+    name      = "grafana-dashboards"
+    namespace = kubernetes_namespace.monitoring.metadata[0].name
+  }
+
+  data = {
+    "container-logs.json" = <<-EOT
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "title": "Container Logs",
+  "uid": "container-logs",
+  "schemaVersion": 39,
+  "tags": ["loki", "kubernetes"],
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 24, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "{namespace=~\"$namespace\", pod=~\"$pod\", container=~\"$container\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs",
+      "type": "logs"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": {"type": "loki", "uid": "loki"},
+        "query": "label_values(namespace)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "pod",
+        "type": "query",
+        "datasource": {"type": "loki", "uid": "loki"},
+        "query": "label_values(pod)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "container",
+        "type": "query",
+        "datasource": {"type": "loki", "uid": "loki"},
+        "query": "label_values(container)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  }
+}
     EOT
   }
 }
@@ -714,6 +809,13 @@ resource "kubernetes_deployment" "grafana" {
         }
 
         volume {
+          name = "dashboards"
+          config_map {
+            name = kubernetes_config_map.grafana_dashboards.metadata[0].name
+          }
+        }
+
+        volume {
           name = "data"
           persistent_volume_claim {
             claim_name = kubernetes_persistent_volume_claim.grafana_data.metadata[0].name
@@ -747,6 +849,12 @@ resource "kubernetes_deployment" "grafana" {
           volume_mount {
             name       = "datasources"
             mount_path = "/etc/grafana/provisioning/datasources"
+            read_only  = true
+          }
+
+          volume_mount {
+            name       = "dashboards"
+            mount_path = "/etc/grafana/provisioning/dashboards"
             read_only  = true
           }
 

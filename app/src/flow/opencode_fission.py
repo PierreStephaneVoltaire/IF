@@ -22,8 +22,18 @@ async def run_opencode_via_fission(
     prompt: str,
     files: list[Path] | None = None,
     timeout: int | None = None,
+    config_path: Path | None = None,
+    config_content: str | None = None,
+    session_marker_path: Path | None = None,
 ) -> tuple[int, str, str]:
     base_url = OPENCODE_FISSION_URL.rstrip("/")
+    extra_env: dict[str, str] = {}
+    if config_content:
+        extra_env["OPENCODE_CONFIG_CONTENT"] = config_content
+    elif config_path is not None:
+        extra_env["OPENCODE_CONFIG"] = str(config_path)
+    if session_marker_path is not None:
+        extra_env["IF_SESSION_MARKER_PATH"] = str(session_marker_path)
     payload: dict[str, Any] = {
         "job_id": job_id,
         "agent": agent,
@@ -32,7 +42,7 @@ async def run_opencode_via_fission(
         "session_dir": str(session_dir),
         "files": [str(p) for p in (files or [])],
         "timeout_seconds": int(timeout or OPENCODE_TIMEOUT_SECONDS),
-        "extra_env": {},
+        "extra_env": extra_env,
     }
     timeout_seconds = int(payload["timeout_seconds"])
     http_timeout = float(timeout_seconds) + 60.0

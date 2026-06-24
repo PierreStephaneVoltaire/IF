@@ -189,6 +189,22 @@ build {
     destination = "/app/scripts"
   }
 
+
+  provisioner "file" {
+    source      = "../app/main_system_prompt.txt"
+    destination = "/app/app/main_system_prompt.txt"
+  }
+  provisioner "shell" {
+    inline = [
+      "export DEBIAN_FRONTEND=noninteractive",
+      "apt-get update && apt-get install -y python3 python3-yaml",
+      "mkdir -p /app/app",
+      "cd /app && python3 /app/scripts/generate_opencode_agents.py",
+      "ls -la /app/.opencode/agent/ | head",
+      "apt-get purge -y python3-yaml && apt-get autoremove -y",
+      "rm -rf /var/lib/apt/lists/*"
+    ]
+  }
   # Pre-create the workspace directories so the Fission function can
   # write to them immediately, regardless of which PVC bind-mount the
   # executor attaches.
