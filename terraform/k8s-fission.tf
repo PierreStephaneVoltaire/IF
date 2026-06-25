@@ -235,6 +235,25 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
                 mountPath: /root/.netrc
                 subPath: .netrc
                 readOnly: true
+              # Runtime-mounted prompt / specialist / tool directories.
+              # These point at the live project dirs on the node so prompt
+              # and specialist YAML updates are picked up by the next pod
+              # Fission spawns — no image rebuild needed.
+              - name: specialists-directory
+                mountPath: /app/specialists
+                readOnly: true
+              - name: tools-directory
+                mountPath: /app/tools
+                readOnly: true
+              - name: models-directory
+                mountPath: /app/models
+                readOnly: true
+              - name: skills-directory
+                mountPath: /app/skills
+                readOnly: true
+              - name: scripts-directory
+                mountPath: /app/scripts
+                readOnly: true
         volumes:
           - name: data-storage
             persistentVolumeClaim:
@@ -255,6 +274,27 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
           - name: netrc
             secret:
               secretName: opencode-runner-netrc
+          # HostPath mounts for live prompt / specialist / tool dirs.
+          - name: specialists-directory
+            hostPath:
+              path: ${var.specialists_host_path}
+              type: DirectoryOrCreate
+          - name: tools-directory
+            hostPath:
+              path: ${var.tools_host_path}
+              type: DirectoryOrCreate
+          - name: models-directory
+            hostPath:
+              path: ${var.models_host_path}
+              type: DirectoryOrCreate
+          - name: skills-directory
+            hostPath:
+              path: ${var.skills_host_path}
+              type: DirectoryOrCreate
+          - name: scripts-directory
+            hostPath:
+              path: ${var.scripts_host_path}
+              type: DirectoryOrCreate
   YAML
 
   depends_on = [

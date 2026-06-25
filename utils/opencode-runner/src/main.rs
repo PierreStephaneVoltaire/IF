@@ -122,9 +122,14 @@ fn main() {
 
     // One-shot semantics: keep serving /health (and any 404s) so a
     // debug health probe never kills the pod mid-flight, but exit as
-    // soon as a /v1/opencode/execute call completes. Fission's
-    // newdeploy Deployment then scales back to minScale=0 and respawns
-    // a fresh pod for the next job.
+    // soon as a real opencode job call completes. Fission's newdeploy
+    // Deployment then scales back to minScale=0 and respawns a fresh
+    // pod for the next job.
+    //
+    // We accept both POST /v1/opencode/execute (direct/test) and POST /
+    // (Fission router rewrites the trigger URL to the root path when
+    // forwarding to the function pod, so the runner sees "/" not the
+    // original relativeurl).
     for req in server.incoming_requests() {
         if handle_request(req, &opencode_bin) {
             break;
@@ -156,7 +161,7 @@ fn handle_request(mut req: tiny_http::Request, opencode_bin: &str) -> bool {
             let _ = req.respond(resp);
             return false;
         }
-        (Method::Post, "/v1/opencode/execute") => match read_and_parse_job(&mut req) {
+        (Method::Post, "/v1/opencode/execute") | (Method::Post, "/") => match read_and_parse_job(&mut req) {
             Ok(job) => run_opencode(&job, opencode_bin),
             Err(msg) => {
                 // Malformed job body: nothing the pod can do about it.

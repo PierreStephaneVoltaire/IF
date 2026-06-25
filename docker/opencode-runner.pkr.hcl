@@ -164,45 +164,22 @@ build {
     ]
   }
 
-  # Same read-only data the api-agent mounts, so Fission-spawned job pods
-  # resolve the same specialists / models / skills / scripts / tools the
-  # IF agent uses. Packer bakes them into the image; the Fission function
-  # pod additionally bind-mounts the live workspace PVCs.
-  provisioner "file" {
-    source      = "../specialists"
-    destination = "/app/specialists"
-  }
-  provisioner "file" {
-    source      = "../tools"
-    destination = "/app/tools"
-  }
-  provisioner "file" {
-    source      = "../models"
-    destination = "/app/models"
-  }
-  provisioner "file" {
-    source      = "../skills"
-    destination = "/app/skills"
-  }
-  provisioner "file" {
-    source      = "../scripts"
-    destination = "/app/scripts"
-  }
-
-
-  provisioner "file" {
-    source      = "../app/main_system_prompt.txt"
-    destination = "/app/app/main_system_prompt.txt"
-  }
+  # ---- Runtime-mounted prompt / specialist / tool directories ----
+  #
+  # The Fission function pod mounts these as read-only hostPath volumes
+  # (see terraform/k8s-fission.tf podspec) pointing at the live project
+  # directories on the node. This means prompt and specialist YAML updates
+  # are picked up by the next pod that Fission spawns — no image rebuild
+  # needed. We only create the empty mount points here so the dirs exist
+  # even before the first mount attaches.
   provisioner "shell" {
     inline = [
-      "export DEBIAN_FRONTEND=noninteractive",
-      "apt-get update && apt-get install -y python3 python3-yaml",
-      "mkdir -p /app/app",
-      "cd /app && python3 /app/scripts/generate_opencode_agents.py",
-      "ls -la /app/.opencode/agent/ | head",
-      "apt-get purge -y python3-yaml && apt-get autoremove -y",
-      "rm -rf /var/lib/apt/lists/*"
+      "mkdir -p /app/specialists",
+      "mkdir -p /app/tools",
+      "mkdir -p /app/models",
+      "mkdir -p /app/skills",
+      "mkdir -p /app/scripts",
+      "mkdir -p /app/app"
     ]
   }
   # Pre-create the workspace directories so the Fission function can
