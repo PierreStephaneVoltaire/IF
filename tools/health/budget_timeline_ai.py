@@ -158,32 +158,28 @@ def _normalize_timeline(args: dict[str, Any], item_by_id: dict[str, dict[str, An
 
 
 def _fallback_timeline(payload: dict[str, Any]) -> dict[str, Any]:
-    """Deterministic fallback: place each unpurchased item in its start_month (or
-    the budget start / current month), grouped by month, without LLM reasoning."""
+    """Deterministic fallback: place each unpurchased item on its start_date,
+    grouped by month (YYYY-MM), without LLM reasoning."""
     config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     budget = _as_number(config.get("monthly_budget"))
-    start = str(config.get("budget_start_month") or "").strip()
 
     by_month: dict[str, list[dict[str, Any]]] = {}
-    item_by_id: dict[str, dict[str, Any]] = {}
     for item in items:
-        if not isinstance(item, dict):
+        if not isinstance(item, dict) or item.get("purchased"):
             continue
-        item_by_id[str(item.get("id", ""))] = item
-        if item.get("purchased"):
+        start_date = str(item.get("start_date") or "").strip()
+        if not start_date:
             continue
-        month = str(item.get("start_month") or start or "").strip()
-        if not month:
-            continue
+        month = start_date[:7]
         by_month.setdefault(month, []).append({
             "item_id": str(item.get("id", "")),
             "name": str(item.get("name", "")),
             "category": str(item.get("category", "equipment")),
-            "priority": str(item.get("priority", "optional")),
-            "suggested_month": month,
+            "priority": str(item.get("priority", "optional")) if item.get("priority") else "optional",
+            "suggested_date": start_date,
             "cost": _as_number(item.get("cost")),
-            "reason": "Scheduled in its configured month (AI unavailable).",
+            "reason": "Scheduled on its configured start date (AI unavailable).",
         })
 
     months = []
@@ -199,10 +195,11 @@ def _fallback_timeline(payload: dict[str, Any]) -> dict[str, Any]:
         })
     return {
         "months": months,
-        "notes": ["AI timeline generation unavailable; items placed in their configured months."],
+        "notes": ["AI timeline generation unavailable; items placed on their configured start dates."],
         "insufficient_data": False,
         "insufficient_data_reason": "",
     }
+
 
 
 async def generate_budget_timeline(payload: dict[str, Any]) -> dict[str, Any]:
