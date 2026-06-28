@@ -113,7 +113,7 @@ MCP_SERVER_CATEGORIES = [
         "MCP_SERVER_CATEGORIES",
         "health,finance,diary,proposals,supplement_research,"
         "temporal_age,temporal_city_time,temporal_duration,temporal_from_unix,"
-        "temporal_resolve,temporal_timezone,temporal_to_unix,tarot",
+        "temporal_resolve,temporal_timezone,temporal_to_unix,tarot,health_lambda",
     ).split(",")
     if item.strip()
 ]
@@ -261,6 +261,8 @@ IF_TEMPLATES_LIBRARY_PK = os.getenv("IF_TEMPLATES_LIBRARY_PK", "template_library
 IF_SESSIONS_TABLE_NAME = os.getenv("IF_SESSIONS_TABLE_NAME", "if-sessions")
 
 HEALTH_PROGRAM_PK = os.getenv("HEALTH_PROGRAM_PK", "operator")
+
+POWERLIFTING_LAMBDA_BASE_URL = os.getenv("POWERLIFTING_LAMBDA_BASE_URL", "")
 
 IF_FINANCE_TABLE_NAME = os.getenv("IF_FINANCE_TABLE_NAME", "if-finance")
 

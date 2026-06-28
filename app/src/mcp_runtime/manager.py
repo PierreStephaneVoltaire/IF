@@ -97,9 +97,13 @@ class MCPToolManager:
             raise RuntimeError("Python package 'mcp' is required for MCP tool servers") from exc
 
         server_script = self.tools_root / "mcp_server.py"
+        args = [str(server_script), category]
+        if category == "health_lambda":
+            server_script = self.tools_root / "health_lambda_mcp" / "server.py"
+            args = [str(server_script)]
         params = StdioServerParameters(
             command=sys.executable,
-            args=[str(server_script), category],
+            args=args,
             env={**os.environ, "IF_TOOLS_ROOT": str(self.tools_root)},
         )
         client_cm = stdio_client(params)
