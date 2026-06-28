@@ -16,11 +16,15 @@ BASE_URL = os.environ.get("POWERLIFTING_LAMBDA_BASE_URL", "").rstrip("/")
 if not BASE_URL:
     raise RuntimeError("POWERLIFTING_LAMBDA_BASE_URL environment variable is required")
 
+INTERNAL_API_TOKEN = os.environ.get("INTERNAL_API_TOKEN", "")
+
 
 def _fetch(url: str, data: bytes | None = None) -> str:
     headers: dict[str, str] = {}
     if data is not None:
         headers["Content-Type"] = "application/json"
+    if INTERNAL_API_TOKEN:
+        headers["X-Internal-Token"] = INTERNAL_API_TOKEN
     req = urllib.request.Request(url, data=data, headers=headers)
     with urllib.request.urlopen(req, timeout=60) as resp:
         return resp.read().decode("utf-8")

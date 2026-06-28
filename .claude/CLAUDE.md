@@ -162,7 +162,8 @@ models/                       # Current planner model allowlist + legacy model c
 └── model_ids.txt            # Execution model allowlist for OpenCode planner
 tools/                       # External tool plugins (one subdir per plugin)
 ├── mcp_server.py            # Local plugin MCP wrapper used by OpenCode
-├── health/                  # Training program management, analytics, imports, templates
+├── health/                  # Training program management, analytics, imports, templates (source-of-truth for tool logic + AI system prompts; bundled into Lambda layers)
+├── health_lambda_mcp/       # HTTP-discovering MCP server for the 94 health tool Lambdas (POST to API Gateway)
 ├── finance/                 # Financial profile and investments (21 tools)
 ├── diary/                   # Write-only diary entries and signals
 ├── proposals/               # Agent-proposed directives (4 tools)
@@ -424,7 +425,7 @@ Current domain tools are local Python plugins exposed to OpenCode through scoped
 Native OpenCode MCP tool names are server-prefixed, for example:
 
 ```text
-if_health_health_get_session
+if_health_lambda_health_get_session
 ```
 
 The prompt also exposes a shell fallback:
@@ -450,7 +451,7 @@ The app-side MCP manager (`mcp_runtime/manager.py`) starts configured categories
 
 | Plugin | Scope | Tools | Description |
 |--------|-------|-------|-------------|
-| `tools/health/` | specialist | 85+ | Training program CRUD, session logging, glossary management, goal/federation library CRUD, import pipeline, template CRUD, block analytics, lift-profile AI, muscle-group AI, multi-block comparison, stats analysis, unit conversions |
+| `tools/health/` | specialist | 94 | Training program CRUD, session logging, glossary management, goal/federation library CRUD, import pipeline, template CRUD, block analytics, lift-profile AI, muscle-group AI, multi-block comparison, stats analysis, unit conversions. Deployed as one AWS Lambda per tool behind an HTTP API Gateway with a `pl_authorizer` request-authorizer (`X-Internal-Token`). Agent reaches them via the `health_lambda` HTTP-discovering MCP category (`tools/health_lambda_mcp/server.py`); portal backend calls them via `invokeLambda` (`utils/lambda.ts`) through an in-process LRU cache with write invalidation (`utils/lambdaCache.ts`). `health_rag_search` stays in-process under `tools/health/` (local ChromaDB). |
 | `tools/finance/` | specialist | 21 | Financial profile, investments, goals, cashflow, holdings |
 | `tools/diary/` | specialist | 2 | Write-only diary entries, signal computation |
 | `tools/proposals/` | specialist | 4 | Proposal CRUD, implementation plan generation |
@@ -611,7 +612,7 @@ Do not treat these as deliverable artifacts. `config.IF_TECHNICAL_ARTIFACT_EXCLU
 
 Training program management with DynamoDB storage (`if-health` table) and ChromaDB RAG for PDF documents (IPF rulebook, anti-doping list, supplement PDFs).
 
-Core health functionality now lives primarily under `tools/health/` and is exposed through the health MCP category. Tools cover program CRUD, session logging, competition management, imports, templates, glossary, analytics, RAG search, and unit conversions. Any health DynamoDB write must recursively convert floats to `Decimal(str(value))`.
+94 of the health tools (75 deterministic + 19 AI that call OpenRouter directly with their own static `.j2` system prompts) are deployed as individual AWS Lambda functions behind an HTTP API Gateway — one POST `/<tool>` route per tool, gated by a `pl_authorizer` request-authorizer Lambda (`X-Internal-Token`). Shared deps (`httpx`, `jinja2`, `pandas`, the DynamoDB store modules, 24 `.j2` prompts) live in 10 Lambda layers (`layers.tf`, including `pl-ai` for AI tools). `OPENROUTER_API_KEY` and `INTERNAL_API_TOKEN` are sourced from plain `aws_ssm_parameter` (`String`, no KMS) via `data.aws_ssm_parameter` at apply time. `health_rag_search` stays in-process on the agent pod (local ChromaDB) and is served by the residual `health` MCP category. Any health DynamoDB write must recursively convert floats to `Decimal(str(value))`.
 
 ## Heartbeat
 
@@ -625,7 +626,8 @@ Local plugin folders under `tools/` can be exposed as MCP categories through `to
 
 | Server | Purpose |
 |--------|---------|
-| `if_health` / health category | Health plugin tools filtered by `IF_MCP_ALLOWED_TOOLS` |
+| `if_health` / health category | Residual in-process health tools (only `health_rag_search`, which needs local ChromaDB) served by `tools/mcp_server.py health` |
+| `if_health_lambda` / health_lambda category | HTTP-discovering MCP server (`tools/health_lambda_mcp/server.py`); fetches the pl-* OpenAPI doc and routes 94 health tool calls via HTTP POST to the API Gateway. Reads `POWERLIFTING_LAMBDA_BASE_URL`; sends `X-Internal-Token` |
 | `if_finance` / finance category | Finance plugin tools filtered by `IF_MCP_ALLOWED_TOOLS` |
 | `time` | Local time retrieval via `mcp-server-time` |
 | `aws_docs` | AWS documentation lookup |
@@ -653,6 +655,8 @@ Server assignment per specialist is configured in each `specialist.yaml` under `
 | Proposals | DynamoDB (`if-proposals`) | Agent-proposed directives |
 | Execution Registry | DynamoDB (`if-agent-execution-registry`) | Channel/batch/intent/task/run/outbox state for the Discord classifier flow |
 | Analysis Cache | DynamoDB (`if-powerlifting-analysis-cache`) | Cached powerlifting weekly analyses |
+| Powerlifting Lambdas | AWS Lambda (94 health-tool functions + `pl_authorizer` + `tool_registry`) + HTTP API Gateway | Per-tool execution surface behind `POST /<tool>`; env from `lambda_common_env` + `lambda_stats_env` |
+| Powerlifting Secrets | AWS SSM Parameter Store | `OPENROUTER_API_KEY` and `INTERNAL_API_TOKEN` (plain `String`, no KMS); pulled into Lambda env via `data.aws_ssm_parameter` at Terraform apply |
 
 ## Utility Applications
 
@@ -694,6 +698,8 @@ Key configuration (see `app/src/config.py` for full list):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENROUTER_API_KEY` | required | API key for model access |
+| `POWERLIFTING_LAMBDA_BASE_URL` | (required when `health_lambda` MCP is enabled) | HTTP API Gateway base URL for the 94 health tool Lambda functions; read by `tools/health_lambda_mcp/server.py` and the powerlifting-app backend `utils/lambda.ts` |
+| `INTERNAL_API_TOKEN` | (required when `health_lambda` MCP is enabled) | Static token sent in `X-Internal-Token` to authorize API Gateway calls from the agent / portal backend; sourced from `aws_ssm_parameter` |
 | `LLM_BASE_URL` | `https://openrouter.ai/api/v1` | LLM endpoint |
 | `TIER_UPGRADE_THRESHOLD` | 0.65 | Context fraction before tier upgrade |
 | `TIER_AIR_LIMIT` | 100000 | Air tier token limit |
@@ -736,7 +742,7 @@ Key configuration (see `app/src/config.py` for full list):
 - **Specialist auto-discovery**: `specialists.py` scans `SPECIALISTS_PATH` at import time — no code changes needed to add specialists
 - **OpenCode planner path**: `api/completions.py -> flow.runner.run_if_flow()` is the primary request path. Planner output is validated by `flow/plan.py`.
 - **Session workspace pattern**: `flow/session_dirs.py` resolves per-conversation workspaces; `history.md`, `plan.md`, `opencode.json`, `response.md`, and `review.md` are runtime artifacts, not deliverables.
-- **Scoped MCP pattern**: `flow/opencode_config.py` writes per-run MCP config; `tools/mcp_server.py` filters tools by `IF_MCP_ALLOWED_TOOLS`.
+- **Scoped MCP pattern**: `flow/opencode_config.py` writes per-run MCP config; `tools/mcp_server.py` filters tools by `IF_MCP_ALLOWED_TOOLS`. The `health_lambda` MCP category (`tools/health_lambda_mcp/server.py`) fetches the pl-* OpenAPI doc and exposes 94 health tools via HTTP POST to the API Gateway with `X-Internal-Token`.
 - **Model allowlist**: `models/model_ids.txt` is the current planner execution allowlist. YAML presets/tiers are legacy/support metadata.
 - **Model registry**: `storage/model_registry.py` mirrors DirectiveStore pattern (PK/SK, boto3, cache). Seeded from OpenRouter API at startup.
 - **Tool plugin structure**: local plugins under `tools/` expose `tool.yaml`, `tool.py`, optional `get_schemas()`, and `async execute(name, args)`.
@@ -745,5 +751,5 @@ Key configuration (see `app/src/config.py` for full list):
 - **FILES metadata pattern**: `FILES:` lines in agent output are stripped by `FilesStripBuffer` for artifact tracking
 - **Channel message flow**: listener → debounce → dispatcher → translator → completions → OpenCode planner/runtime → chunker → delivery
 - **Directive injection**: System prompt includes directives from DynamoDB, filtered by specialist type for subagents
-- **MCP server config**: `mcp_servers.yaml` defines servers; specialist `specialist.yaml` lists which servers each specialist gets
+- **MCP server config**: `mcp_servers.yaml` defines servers; specialist `specialist.yaml` lists which servers each specialist gets. `app/src/mcp_runtime/manager.py` starts standard local plugins via `tools/mcp_server.py` and the `health_lambda` HTTP discovery server via `tools/health_lambda_mcp/server.py`.
 - **Discord status embeds**: `channels/status.py` sends color-coded embeds via `contextvars` propagation — no-ops for non-Discord platforms
