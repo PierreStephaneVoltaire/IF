@@ -80,7 +80,7 @@ spec:
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline';  font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; frame-ancestors 'self';" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline';  font-src 'self' data:; img-src 'self' data: blob: https://cdn.discordapp.com https://*.cloudfront.net; connect-src 'self' https://cloudflareinsights.com; frame-ancestors 'self';" always;
         limit_req zone=portal_limit burst=20 nodelay;
   YAML
 }

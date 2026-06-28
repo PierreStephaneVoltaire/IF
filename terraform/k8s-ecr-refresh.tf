@@ -125,15 +125,19 @@ resource "kubernetes_cron_job_v1" "ecr_refresher" {
             }
 
             container {
-              name  = "refresher"
-              image = "amazon/aws-cli:latest"
+              name = "refresher"
+              # alpine/k8s bundles aws, kubectl, curl, and jq in one image.
+              # amazon/aws-cli (the previous image) ships NO kubectl, so every
+              # `kubectl patch` in the refresh script failed with
+              # "command not found" and the ECR imagePullSecrets went stale.
+              # Pinned to match the cluster server version (v1.34.5+k3s1).
+              image = "alpine/k8s:1.34.5"
 
               command = ["/bin/sh", "-c"]
               args = [<<-EOT
-                set -e
+                set -eu
                 echo "Fetching fresh ECR token..."
                 TOKEN=$(aws ecr get-login-password --region ${var.region})
-                REGISTRY="${data.aws_ecr_authorization_token.private.proxy_endpoint}"
                 REGISTRY="${replace(data.aws_ecr_authorization_token.private.proxy_endpoint, "https://", "")}"
                 AUTH=$(echo -n "AWS:$TOKEN" | base64 -w 0)
                 DOCKERCONFIG=$(printf '{"auths":{"%s":{"username":"AWS","password":"%s","auth":"%s"}}}' "$REGISTRY" "$TOKEN" "$AUTH")
@@ -150,6 +154,19 @@ resource "kubernetes_cron_job_v1" "ecr_refresher" {
                   -n default \
                   --type='json' \
                   -p="[{\"op\":\"replace\",\"path\":\"/data/.dockerconfigjson\",\"value\":\"$ENCODED\"}]"
+
+                # Verify both secrets now hold the freshly encoded token so a
+                # silent failure can never leave the imagePullSecrets stale.
+                for NS_SECRET in "${kubernetes_namespace.if_portals.metadata[0].name} ecr-registry" "default ecr-secret"; do
+                  set -- $NS_SECRET
+                  NS="$1"; NAME="$2"
+                  CURRENT=$(kubectl get secret "$NAME" -n "$NS" -o json | jq -r '.data[".dockerconfigjson"]')
+                  if [ "$CURRENT" != "$ENCODED" ]; then
+                    echo "ERROR: $NAME in $NS did not accept the refreshed token"
+                    exit 1
+                  fi
+                  echo "Verified $NAME in $NS holds the refreshed token."
+                done
 
                 echo "Done. ECR secrets refreshed successfully."
               EOT

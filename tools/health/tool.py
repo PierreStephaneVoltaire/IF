@@ -3091,6 +3091,40 @@ def get_schemas() -> Dict[str, Dict[str, Any]]:
                 "required": ["config", "items"],
             },
         },
+        "budget_advisor": {
+            "name": "budget_advisor",
+            "description": (
+                "AI budget triage and pre-competition priority analysis for a powerlifter. Returns a structured "
+                "assessment: overall status vs monthly cap, locked-in MANDATORY items, suggested cuts when over budget, "
+                "missing-expense gaps based on the nearest competition, and a coach-facing note. Competition day is the "
+                "north star — mandatory comp-linked items are never suggested for cuts."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "description": "Budget config: monthly_cap (hard cap), currency.",
+                        "properties": {
+                            "monthly_cap": {"type": "number"},
+                            "currency": {"type": "string"},
+                        },
+                    },
+                    "items": {
+                        "type": "array",
+                        "description": "Budget items with id, name, category, cost, recurrence, priority_tier, purchased, comp linkage.",
+                        "items": {"type": "object"},
+                    },
+                    "competitions": {
+                        "type": "array",
+                        "description": "Optional upcoming competitions with name, start_date, user_status.",
+                        "items": {"type": "object"},
+                    },
+                    "spent_this_month": {"type": "number", "description": "Total spent in the current month, for over/under-cap reasoning."},
+                },
+                "required": ["config", "items"],
+            },
+        },
         "import_parse_file": {
             "name": "import_parse_file",
             "description": "Parse a spreadsheet file and stage it as a pending import.",
@@ -3822,6 +3856,19 @@ def _do_budget_priority_timeline(args):
     }
     return _run_async(generate_budget_timeline(payload))
 
+def _do_budget_advisor(args):
+    from budget_advisor_ai import generate_budget_advisor
+
+    payload = {
+        "config": args.get("config") if isinstance(args.get("config"), dict) else {},
+        "items": args.get("items") if isinstance(args.get("items"), list) else [],
+        "competitions": args.get("competitions") if isinstance(args.get("competitions"), list) else [],
+    }
+    spent = args.get("spent_this_month")
+    if isinstance(spent, (int, float)):
+        payload["spent_this_month"] = float(spent)
+    return _run_async(generate_budget_advisor(payload))
+
 def _do_powerlifting_filter_categories(args):
     from powerlifting_stats import load_data, get_filter_categories, DatasetNotReadyError
     try:
@@ -4333,6 +4380,7 @@ async def execute(name: str, args: Dict[str, Any]) -> str:
         "block_program_evaluation": lambda: _do_block_program_evaluation(args),
         "multi_block_comparison_analysis": lambda: _do_multi_block_comparison_analysis(args),
         "budget_priority_timeline": lambda: _do_budget_priority_timeline(args),
+        "budget_advisor": lambda: _do_budget_advisor(args),
         "import_parse_file": lambda: import_parse_file(args["base64_content"], args["filename"]),
         "import_apply": lambda: import_apply(args["import_id"], args.get("merge_strategy", "append"), args.get("conflict_resolutions"), args.get("start_date"), args.get("actor_pk") or args.get("pk"), args.get("author")),
         "import_reject": lambda: import_reject(args["import_id"], args.get("reason")),
