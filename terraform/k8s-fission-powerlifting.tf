@@ -32,7 +32,7 @@ locals {
 
   pl_scale = {
     ai    = { min = 0, max = 1, cpu = 70, timeout = 120 }
-    warm  = { min = 0, max = 2, cpu = 70, timeout = 60 }
+    warm  = { min = 1, max = 2, cpu = 70, timeout = 60 }
     stats = { min = 0, max = 2, cpu = 80, timeout = 120 }
     det   = { min = 0, max = 3, cpu = 70, timeout = 90 }
   }
@@ -71,7 +71,8 @@ resource "kubectl_manifest" "pl_fission_env" {
       builder                = { image = "ghcr.io/fission/python-builder" }
       terminationGracePeriod = 120
       resources = {
-        requests = { cpu = "100m", memory = "128Mi" }
+        requests = { cpu = "100m", memory = "512Mi" }
+        limits   = { cpu = "1000m", memory = "2Gi" }
       }
     }
   })
@@ -126,7 +127,8 @@ resource "kubectl_manifest" "pl_packages" {
     metadata   = { name = "pl-pkg-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
     spec = {
       environment = { name = "pl-fission-tools", namespace = kubernetes_namespace.if_portals.metadata[0].name }
-      deployment  = { type = "literal", literal = filebase64("${local.pl_build_dir}/${each.key}.zip") }
+      source      = { type = "literal", literal = filebase64("${local.pl_build_dir}/${each.key}.zip") }
+      buildcmd    = "./build.sh"
     }
   })
   depends_on = [kubectl_manifest.pl_fission_env]
@@ -168,17 +170,30 @@ resource "kubectl_manifest" "pl_functions" {
             env = concat(
               local.pl_common_env,
               [{ name = "IF_TOOL_NAME", value = each.key }],
+              [
+                { name = "AWS_SHARED_CREDENTIALS_FILE", value = "/root/.aws/credentials" },
+                { name = "AWS_REGION", value = "ca-central-1" },
+                { name = "AWS_DEFAULT_REGION", value = "ca-central-1" },
+              ],
               each.value.class == "ai" ? local.pl_ai_env : [],
               try(each.value.s3_read, false) ? [{ name = "POWERLIFTING_S3_BUCKET", value = var.powerlifting_s3_bucket }] : [],
             )
             envFrom = [{ secretRef = { name = "pl-fission-secrets" } }]
+            volumeMounts = [
+              { name = "aws-credentials", mountPath = "/root/.aws", readOnly = true },
+            ]
             resources = {
               requests = { cpu = "100m", memory = "${max(128, try(each.value.memory, 256) / 2)}Mi" }
               limits   = { cpu = "1000m", memory = "${try(each.value.memory, 256)}Mi" }
             }
           },
         ]
-        volumes = []
+        volumes = [
+          {
+            name     = "aws-credentials"
+            hostPath = { path = var.aws_credentials_host_path, type = "Directory" }
+          },
+        ]
       }
     }
   })

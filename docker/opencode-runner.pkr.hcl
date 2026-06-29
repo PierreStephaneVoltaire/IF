@@ -51,7 +51,7 @@ source "docker" "opencode_runner" {
   changes = [
     "WORKDIR /app",
     "ENV PATH=/usr/local/bin:$PATH",
-    "EXPOSE 8000",
+    "EXPOSE 8888",
     "CMD [\"/app/opencode-runner\"]"
   ]
 }

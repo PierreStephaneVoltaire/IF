@@ -114,12 +114,16 @@ resource "kubectl_manifest" "fission_environment_opencode_runner" {
     kind: Environment
     metadata:
       name: ${var.fission_environment_name}
-      namespace: ${var.fission_namespace}
+      namespace: ${var.fission_function_namespace}
     spec:
       runtime:
         image: ${aws_ecr_repository.if_opencode_runner.repository_url}:latest
-      version: 1
+      version: 3
       keeparchive: false
+      # newdeploy does not pull from the poolmgr pool; poolsize 0 avoids
+      # idle pool pods. The function below uses ExecutorType newdeploy.
+      poolsize: 0
+      imagepullsecret: ecr-registry
   YAML
 
   depends_on = [helm_release.fission]
@@ -171,14 +175,17 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
     spec:
       InvokeStrategy:
         ExecutionStrategy:
-          ExecutorType: container
+          ExecutorType: newdeploy
+          # Keep one pod warm so OpenCode jobs never pay the ~42s cold image
+          # pull. HPA bursts up to max on concurrent jobs.
+          MinScale: 1
           MaxScale: ${var.opencode_runner_max_concurrent}
-          MinScale: 0
           SpecializationTimeout: 120
+          TargetCPUPercent: 70
         StrategyType: execution
       environment:
         name: ${var.fission_environment_name}
-        namespace: ${var.fission_namespace}
+        namespace: ${var.fission_function_namespace}
       package:
         packageref:
           name: ${var.fission_function_name}-pkg
@@ -194,13 +201,20 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
             imagePullPolicy: IfNotPresent
             command: ["/app/opencode-runner"]
             ports:
-              - containerPort: 8000
+              - containerPort: 8888
             securityContext:
               privileged: true
               runAsUser: 0
+            readinessProbe:
+              httpGet:
+                path: /healthz
+                port: 8888
+              initialDelaySeconds: 3
+              periodSeconds: 5
+              failureThreshold: 6
             env:
               - name: PORT
-                value: "8000"
+                value: "8888"
               - name: HOST
                 value: "0.0.0.0"
               - name: OPENCODE_WORKSPACE_BASE
@@ -311,6 +325,39 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
     kubernetes_secret.ecr_registry,
     null_resource.packer_build_opencode_runner,
   ]
+}
+
+
+# Stub Package for the opencode-job Function. The Fission *container*
+# executor does not fetch or specialize from a deploy archive — it runs the
+# Environment image directly with the Function's podspec merged in. The
+# Function CRD still requires a `package` ref, so we create a minimal
+# Package with an empty literal archive to satisfy validation. Nothing
+# ever downloads it; the runner binary lives in the env image.
+resource "kubectl_manifest" "fission_package_opencode_job" {
+  count = var.fission_enabled ? 1 : 0
+
+  server_side_apply = true
+  force_conflicts   = true
+
+  yaml_body = <<-YAML
+    apiVersion: fission.io/v1
+    kind: Package
+    metadata:
+      name: ${var.fission_function_name}-pkg
+      namespace: ${var.fission_function_namespace}
+    spec:
+      environment:
+        name: ${var.fission_environment_name}
+        namespace: ${var.fission_function_namespace}
+      deployment:
+        # Minimal valid zip (empty archive end-of-central-directory record),
+        # base64-encoded. The container executor never reads it.
+        literal: "UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA=="
+      buildcmd: ""
+  YAML
+
+  depends_on = [kubectl_manifest.fission_environment_opencode_runner]
 }
 
 

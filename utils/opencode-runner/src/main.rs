@@ -1,9 +1,18 @@
-// Fission-spawned job pod for the IF agent's OpenCode execution phase.
+// Fission Environment runtime image for the IF agent's OpenCode execution
+// phase.
 //
-// One-shot HTTP server: bind on $HOST:$PORT, accept exactly one request,
-// run OpenCode against the shared workspace PVCs, return the response,
-// exit. With minScale=0 on the Fission newdeploy function, the
-// Deployment scales to zero between requests and respawns on demand.
+// Implements the Fission environment HTTP protocol so the runtime can be
+// used as a custom Environment image backing a newdeploy Function:
+//   - bind port 8888 (Fission fetcher/router contract port)
+//   - GET /healthz        -> 200 OK (readiness probe)
+//   - POST /specialize    -> v1 specialize handshake (no user code to load)
+//   - POST /v2/specialize -> v2 FunctionLoadRequest handshake (ignored)
+//   - POST <any other>    -> dispatch to the OpenCode job runner
+//
+// Unlike the old one-shot server, this server STAYS RUNNING and serves
+// repeated requests. newdeploy keeps the pod warm; HPA scales it out. We
+// handle one request at a time per pod — set the Function MaxScale to fan
+// out across pods.
 //
 // Why Rust here (vs Node/Python): the wrapper streams opencode's
 // stdout/stderr line-by-line to the pod log while opencode runs. No GC
@@ -15,6 +24,8 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -34,11 +45,13 @@ const RUNTIME_EXCLUDES: &[&str] = &[
     "status.log",
 ];
 
-const DEFAULT_PORT: u16 = 8000;
 const DEFAULT_HOST: &str = "0.0.0.0";
 const DEFAULT_OPENCODE_BIN: &str = "opencode";
 const DEFAULT_TIMEOUT_SECONDS: u64 = 900;
 const MAX_BODY_BYTES: usize = 8 * 1024 * 1024; // 8 MiB
+
+// Fission env protocol: bind 8888, stay alive, serve repeated requests.
+const FISSION_ENV_PORT: u16 = 8888;
 
 // -----------------------------------------------------------------------------
 // Wire types
@@ -98,14 +111,16 @@ fn error_response(job_id: &str, message: &str) -> OpencodeJobResponse {
 }
 
 // -----------------------------------------------------------------------------
-// main: bind, accept one request, exit
+// main: bind 8888, serve forever (Fission env protocol)
 // -----------------------------------------------------------------------------
 
 fn main() {
+    // Fission talks to the runtime on 8888. We still allow PORT override for
+    // local testing, but default to the Fission contract port.
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(DEFAULT_PORT);
+        .unwrap_or(FISSION_ENV_PORT);
     let host = std::env::var("HOST").unwrap_or_else(|_| DEFAULT_HOST.to_string());
     let opencode_bin =
         std::env::var("OPENCODE_BIN").unwrap_or_else(|_| DEFAULT_OPENCODE_BIN.to_string());
@@ -116,97 +131,117 @@ fn main() {
         std::process::exit(1);
     });
     eprintln!(
-        "[opencode-runner] listening on {}, opencode={}",
+        "[opencode-runner] listening on {} (fission env protocol), opencode={}",
         bind_addr, opencode_bin
     );
 
-    // One-shot semantics: keep serving /health (and any 404s) so a
-    // debug health probe never kills the pod mid-flight, but exit as
-    // soon as a real opencode job call completes. Fission's newdeploy
-    // Deployment then scales back to minScale=0 and respawns a fresh
-    // pod for the next job.
-    //
-    // We accept both POST /v1/opencode/execute (direct/test) and POST /
-    // (Fission router rewrites the trigger URL to the root path when
-    // forwarding to the function pod, so the runner sees "/" not the
-    // original relativeurl).
+    // `specialized` flips true after Fission calls /specialize or
+    // /v2/specialize. There is no user code to load for this environment —
+    // the "function" is the fixed OpenCode job runner — so specialize is just
+    // a readiness handshake.
+    let specialized = Arc::new(AtomicBool::new(false));
+
+    // Serve forever. NEVER exit after a job (newdeploy keeps the pod warm and
+    // the HPA scales it). Each request is handled synchronously; tiny_http
+    // queues concurrent requests. OpenCode jobs are long, so we handle one at
+    // a time per pod — set the Function MaxScale to fan out across pods.
     for req in server.incoming_requests() {
-        if handle_request(req, &opencode_bin) {
-            break;
-        }
+        handle_request(req, &opencode_bin, &specialized);
     }
-    eprintln!("[opencode-runner] opencode job completed, exiting");
 }
 
 // -----------------------------------------------------------------------------
-// HTTP routing
+// HTTP routing (Fission environment protocol)
 // -----------------------------------------------------------------------------
 
-/// Handle one request. Returns `true` if the server should now exit
-/// (i.e. the request was a real /v1/opencode/execute job), `false` if
-/// it was a health probe or 404 and the server should keep listening.
-fn handle_request(mut req: tiny_http::Request, opencode_bin: &str) -> bool {
+#[derive(Debug, Deserialize)]
+struct FunctionLoadRequest {
+    #[serde(default)]
+    filepath: String,
+    #[serde(default)]
+    #[serde(rename = "functionName")]
+    function_name: String,
+    #[serde(default)]
+    url: String,
+}
+
+fn handle_request(mut req: tiny_http::Request, opencode_bin: &str, specialized: &Arc<AtomicBool>) {
     let method = req.method().clone();
     let url = req.url().to_string();
+    // Path without query string.
+    let path = url.split('?').next().unwrap_or("/").to_string();
 
-    let response: OpencodeJobResponse = match (method.clone(), url.as_str()) {
-        (Method::Get, "/health") | (Method::Get, "/healthz") => {
-            // Health probes must not kill the pod mid-flight.
-            let body = serde_json::json!({
-                "status": "ok",
-                "opencode_bin": opencode_bin,
-            });
-            let json = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-            let resp = Response::from_string(json).with_header(json_header());
-            let _ = req.respond(resp);
-            return false;
+    match (method.clone(), path.as_str()) {
+        // Readiness probe — Fission polls this; must be cheap and always 200.
+        (Method::Get, "/healthz") | (Method::Get, "/health") => {
+            let _ = req.respond(Response::from_string("OK").with_status_code(StatusCode(200)));
         }
-        (Method::Post, "/v1/opencode/execute") | (Method::Post, "/") => match read_and_parse_job(&mut req) {
-            Ok(job) => run_opencode(&job, opencode_bin),
-            Err(msg) => {
-                // Malformed job body: nothing the pod can do about it.
-                // Send the error, then exit so a fresh pod can take
-                // the next (hopefully valid) call.
-                let body = serde_json::json!({
-                    "status": "error",
-                    "message": msg,
-                });
-                let json = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-                let resp = Response::from_string(json)
-                    .with_header(json_header())
-                    .with_status_code(StatusCode(400));
-                let _ = req.respond(resp);
-                return true;
+        // Fission v1 specialize: no body, fixed code path. We have no user
+        // code to load — just flip ready and 200.
+        (Method::Post, "/specialize") => {
+            specialized.store(true, Ordering::SeqCst);
+            eprintln!("[opencode-runner] specialized (v1)");
+            let _ = req.respond(Response::from_string("").with_status_code(StatusCode(200)));
+        }
+        // Fission v2 specialize: JSON FunctionLoadRequest. We accept and
+        // ignore the payload (no plugin to load); flip ready and 200.
+        (Method::Post, "/v2/specialize") => {
+            let mut body = String::new();
+            let _ = req.as_reader().read_to_string(&mut body);
+            if let Ok(load) = serde_json::from_str::<FunctionLoadRequest>(&body) {
+                eprintln!(
+                    "[opencode-runner] specialized (v2) filepath={} fn={} url={}",
+                    load.filepath, load.function_name, load.url
+                );
+            } else {
+                eprintln!("[opencode-runner] specialized (v2) [unparsed body]");
             }
-        },
-        _ => {
-            // Anything else: stay alive in case a stray probe lands.
-            let body = serde_json::json!({
-                "status": "error",
-                "message": format!("not found: {} {}", method, url),
-            });
-            let json = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-            let resp = Response::from_string(json)
-                .with_header(json_header())
-                .with_status_code(StatusCode(404));
-            let _ = req.respond(resp);
-            return false;
+            specialized.store(true, Ordering::SeqCst);
+            let _ = req.respond(Response::from_string("").with_status_code(StatusCode(200)));
         }
-    };
-
-    // Real opencode job — done, send the response, and signal the main
-    // loop to exit so the Fission Deployment can scale to zero.
-    let status = if response.status == "ok" {
-        StatusCode(200)
-    } else {
-        StatusCode(500)
-    };
-    let json = serde_json::to_string(&response).unwrap_or_else(|_| "{}".to_string());
-    let resp = Response::from_string(json)
-        .with_header(json_header())
-        .with_status_code(status);
-    let _ = req.respond(resp);
-    true
+        // Everything else is a real OpenCode job. The router forwards the
+        // trigger to the pod root, and the IF agent posts to
+        // /v1/opencode/execute; accept any non-protocol path here.
+        (Method::Post, _) => {
+            if !specialized.load(Ordering::SeqCst) {
+                let _ = req.respond(
+                    Response::from_string("not specialized").with_status_code(StatusCode(500)),
+                );
+                return;
+            }
+            let response = match read_and_parse_job(&mut req) {
+                Ok(job) => run_opencode(&job, opencode_bin),
+                Err(msg) => {
+                    let body = serde_json::json!({"status": "error", "message": msg});
+                    let json = serde_json::to_string(&body).unwrap_or_else(|_| "{}".into());
+                    let _ = req.respond(
+                        Response::from_string(json)
+                            .with_header(json_header())
+                            .with_status_code(StatusCode(400)),
+                    );
+                    return;
+                }
+            };
+            let status = if response.status == "ok" { 200 } else { 500 };
+            let json = serde_json::to_string(&response).unwrap_or_else(|_| "{}".into());
+            let _ = req.respond(
+                Response::from_string(json)
+                    .with_header(json_header())
+                    .with_status_code(StatusCode(status)),
+            );
+        }
+        // GET/other on unknown path: 404 but stay alive.
+        _ => {
+            let body = serde_json::json!({"status": "error",
+                "message": format!("not found: {} {}", method, path)});
+            let json = serde_json::to_string(&body).unwrap_or_else(|_| "{}".into());
+            let _ = req.respond(
+                Response::from_string(json)
+                    .with_header(json_header())
+                    .with_status_code(StatusCode(404)),
+            );
+        }
+    }
 }
 
 fn json_header() -> Header {
@@ -250,7 +285,11 @@ fn run_opencode(job: &OpencodeJobRequest, opencode_bin: &str) -> OpencodeJobResp
     if let Err(e) = std::fs::create_dir_all(&session_dir) {
         return error_response(
             &job.job_id,
-            &format!("failed to create session_dir {}: {}", session_dir.display(), e),
+            &format!(
+                "failed to create session_dir {}: {}",
+                session_dir.display(),
+                e
+            ),
         );
     }
     let probe = session_dir.join(".opencode-runner-write-probe");
@@ -309,12 +348,7 @@ fn run_opencode(job: &OpencodeJobRequest, opencode_bin: &str) -> OpencodeJobResp
     //    opencode processes.
     let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => {
-            return error_response(
-                &job.job_id,
-                &format!("failed to spawn opencode: {}", e),
-            )
-        }
+        Err(e) => return error_response(&job.job_id, &format!("failed to spawn opencode: {}", e)),
     };
     let stdout = child.stdout.take().expect("stdout piped above");
     let stderr = child.stderr.take().expect("stderr piped above");
@@ -386,10 +420,7 @@ fn run_opencode(job: &OpencodeJobRequest, opencode_bin: &str) -> OpencodeJobResp
     }
 }
 
-fn stream_to_log_and_buf<R: Read + Send + 'static>(
-    reader: R,
-    label: &'static str,
-) -> String {
+fn stream_to_log_and_buf<R: Read + Send + 'static>(reader: R, label: &'static str) -> String {
     let mut buf = String::new();
     let mut truncated = false;
     for line in BufReader::new(reader).lines() {
@@ -438,5 +469,3 @@ fn list_artifacts(session_dir: &Path) -> Vec<Artifact> {
     walk(session_dir, &mut out);
     out
 }
-
-
