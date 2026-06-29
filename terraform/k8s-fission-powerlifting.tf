@@ -32,7 +32,7 @@ locals {
 
   pl_scale = {
     ai    = { min = 0, max = 1, cpu = 70, timeout = 120 }
-    warm  = { min = 1, max = 2, cpu = 70, timeout = 60 }
+    warm  = { min = 0, max = 2, cpu = 70, timeout = 60 }
     stats = { min = 0, max = 2, cpu = 80, timeout = 120 }
     det   = { min = 0, max = 3, cpu = 70, timeout = 90 }
   }
@@ -63,7 +63,7 @@ resource "kubectl_manifest" "pl_fission_env" {
   yaml_body = yamlencode({
     apiVersion = "fission.io/v1"
     kind       = "Environment"
-    metadata   = { name = "pl-fission-tools", namespace = var.fission_namespace }
+    metadata   = { name = "pl-fission-tools", namespace = kubernetes_namespace.if_portals.metadata[0].name }
     spec = {
       version                = 3
       keeparchive            = false
@@ -125,9 +125,8 @@ resource "kubectl_manifest" "pl_packages" {
     kind       = "Package"
     metadata   = { name = "pl-pkg-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
     spec = {
-      environment  = { name = "pl-fission-tools", namespace = var.fission_namespace }
-      deployment   = { type = "literal", literal = filebase64("${local.pl_build_dir}/${each.key}.zip") }
-      functionName = "fission_entry.handler"
+      environment = { name = "pl-fission-tools", namespace = kubernetes_namespace.if_portals.metadata[0].name }
+      deployment  = { type = "literal", literal = filebase64("${local.pl_build_dir}/${each.key}.zip") }
     }
   })
   depends_on = [kubectl_manifest.pl_fission_env]
@@ -142,10 +141,10 @@ resource "kubectl_manifest" "pl_functions" {
     kind       = "Function"
     metadata   = { name = "pl-fn-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
     spec = {
-      environment = { name = "pl-fission-tools", namespace = var.fission_namespace }
+      environment = { name = "pl-fission-tools", namespace = kubernetes_namespace.if_portals.metadata[0].name }
       package = {
         packageref   = { name = "pl-pkg-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
-        functionName = "fission_entry.handler"
+        functionName = "main.main"
       }
       functionTimeout = try(each.value.timeout, 900)
       concurrency     = 500
@@ -163,7 +162,7 @@ resource "kubectl_manifest" "pl_functions" {
         serviceAccountName = "default"
         containers = [
           {
-            name            = "pl-${local.pl_dns_name[each.key]}"
+            name            = "pl-fission-tools"
             image           = "ghcr.io/fission/python-env"
             imagePullPolicy = "IfNotPresent"
             env = concat(
