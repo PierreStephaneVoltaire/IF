@@ -1,5 +1,5 @@
 data "external" "localhost_hostname" {
-  program = ["bash", "-c", "{\"hostname\": \"$(hostname)\"}"]
+  program = ["bash", "-c", "echo \"{\\\"hostname\\\": \\\"$(hostname)\\\"}\""]
 }
 
 locals {

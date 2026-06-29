@@ -44,24 +44,3 @@ nltk>=3.8.0
 
 # Number to words conversion
 num2words>=0.5.12
-
-# PDF Extraction for Health RAG
-tika>=2.0.0
-
-# Excel export for health module
-openpyxl>=3.1.0
-
-# Statistics for Theil-Sen regression in health analytics
-numpy>=1.24.0
-pandas>=2.0.0
-scipy>=1.11.0
-rapidfuzz>=3.6.0
-
-
-# Date/Time Parsing for Temporal Tools
-dateparser>=1.1.0
-python-dateutil>=2.8.0
-
-# Optional: For development and testing
-pytest>=7.4.0
-pytest-asyncio>=0.21.0

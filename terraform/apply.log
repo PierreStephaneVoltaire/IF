@@ -1,0 +1,17 @@
+[31m╷[0m[0m
+[31m│[0m [0m[1m[31mError: [0m[0m[1mAttribute redefined[0m
+[31m│[0m [0m
+[31m│[0m [0m[0m  on k8s-fission-powerlifting.tf line 80, in resource "kubectl_manifest" "pl_fission_env":
+[31m│[0m [0m  80: [4mdepends_on[0m = [helm_release.fission][0m
+[31m│[0m [0m
+[31m│[0m [0mThe argument "depends_on" was already set at
+[31m│[0m [0mk8s-fission-powerlifting.tf:79,3-13. Each argument may be set only once.
+[31m╵[0m[0m
+[31m╷[0m[0m
+[31m│[0m [0m[1m[31mError: [0m[0m[1mArgument or block definition required[0m
+[31m│[0m [0m
+[31m│[0m [0m[0m  on k8s-fission-powerlifting.tf line 121:
+[31m│[0m [0m 121: [4m}[0m[0m
+[31m│[0m [0m
+[31m│[0m [0mAn argument or block definition is required here.
+[31m╵[0m[0m

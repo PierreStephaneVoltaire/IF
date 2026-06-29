@@ -17,7 +17,6 @@ import yaml
 logger = logging.getLogger("if_mcp_server")
 
 TOOL_CATEGORIES = {
-    "health": ["health"],
     "finance": ["finance"],
     "diary": ["diary"],
     "proposals": ["proposals"],

@@ -174,7 +174,6 @@ locals {
   ]))
 
   mcp_server_categories = toset([
-    "health",
     "finance",
     "diary",
     "proposals",
@@ -189,7 +188,6 @@ locals {
     "tarot",
   ])
 }
-
 resource "null_resource" "packer_build_main_api" {
   triggers = {
     dir_sha1    = local.docker_hash

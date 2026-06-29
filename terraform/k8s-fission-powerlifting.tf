@@ -53,20 +53,7 @@ locals {
     { name = "IMPORT_FAST_MODEL", value = "anthropic/claude-haiku-4.5" },
     { name = "GLOSSARY_TEXT_MODEL", value = "google/gemini-3.1-flash-lite" },
   ]
-
   pl_resources_hash = sha1(join("\n", [for p in values(local.pl_tool_yaml_paths) : sha1(file(p))]))
-}
-
-resource "null_resource" "pl_build_archives" {
-  count = var.fission_enabled ? 1 : 0
-  triggers = {
-    resources_hash = local.pl_resources_hash
-    builder_hash   = sha1(file("${local.pl_lambda_dir}/fission-deploy.py"))
-  }
-  provisioner "local-exec" {
-    command     = "python3 fission-deploy.py"
-    working_dir = local.pl_lambda_dir
-  }
 }
 
 resource "kubectl_manifest" "pl_fission_env" {
@@ -85,11 +72,49 @@ resource "kubectl_manifest" "pl_fission_env" {
       terminationGracePeriod = 120
       resources = {
         requests = { cpu = "100m", memory = "128Mi" }
-        limits   = { cpu = "1000m", memory = "512Mi" }
       }
     }
   })
-  depends_on = [helm_release.fission, null_resource.pl_build_archives]
+  depends_on = [helm_release.fission]
+}
+
+resource "kubectl_manifest" "pl_fission_executor_env_rbac" {
+  count             = var.fission_enabled ? 1 : 0
+  server_side_apply = true
+  force_conflicts   = true
+  yaml_body = yamlencode({
+    apiVersion = "rbac.authorization.k8s.io/v1"
+    kind       = "Role"
+    metadata   = { name = "fission-executor-env-reader", namespace = var.fission_namespace }
+    rules = [{
+      apiGroups = ["fission.io"]
+      resources = ["environments", "functions", "packages", "httptriggers", "kuberneteswatchtriggers", "messagequeuetriggers", "timetriggers"]
+      verbs     = ["get", "list", "watch"]
+    }]
+  })
+  depends_on = [helm_release.fission]
+}
+
+resource "kubectl_manifest" "pl_fission_executor_env_rbac_binding" {
+  count             = var.fission_enabled ? 1 : 0
+  server_side_apply = true
+  force_conflicts   = true
+  yaml_body = yamlencode({
+    apiVersion = "rbac.authorization.k8s.io/v1"
+    kind       = "RoleBinding"
+    metadata   = { name = "fission-executor-env-reader", namespace = var.fission_namespace }
+    roleRef = {
+      apiGroup = "rbac.authorization.k8s.io"
+      kind     = "Role"
+      name     = "fission-executor-env-reader"
+    }
+    subjects = [{
+      kind      = "ServiceAccount"
+      name      = "fission-executor"
+      namespace = var.fission_namespace
+    }]
+  })
+  depends_on = [kubectl_manifest.pl_fission_executor_env_rbac]
 }
 resource "kubectl_manifest" "pl_packages" {
   for_each          = local.pl_tools
@@ -100,11 +125,12 @@ resource "kubectl_manifest" "pl_packages" {
     kind       = "Package"
     metadata   = { name = "pl-pkg-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
     spec = {
-      environment = { name = "pl-fission-tools", namespace = var.fission_namespace }
-      source      = { type = "literal", literal = filebase64("${local.pl_build_dir}/${each.key}.zip") }
+      environment  = { name = "pl-fission-tools", namespace = var.fission_namespace }
+      deployment   = { type = "literal", literal = filebase64("${local.pl_build_dir}/${each.key}.zip") }
+      functionName = "fission_entry.handler"
     }
   })
-  depends_on = [kubectl_manifest.pl_fission_env, null_resource.pl_build_archives]
+  depends_on = [kubectl_manifest.pl_fission_env]
 }
 
 resource "kubectl_manifest" "pl_functions" {
@@ -116,8 +142,11 @@ resource "kubectl_manifest" "pl_functions" {
     kind       = "Function"
     metadata   = { name = "pl-fn-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
     spec = {
-      environment     = { name = "pl-fission-tools", namespace = var.fission_namespace }
-      package         = { packageref = { name = "pl-pkg-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name } }
+      environment = { name = "pl-fission-tools", namespace = var.fission_namespace }
+      package = {
+        packageref   = { name = "pl-pkg-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
+        functionName = "fission_entry.handler"
+      }
       functionTimeout = try(each.value.timeout, 900)
       concurrency     = 500
       InvokeStrategy = {

@@ -64,18 +64,9 @@ build {
   # Install system dependencies
   provisioner "shell" {
     inline = [
-      "export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y curl unzip ca-certificates git iputils-ping dnsutils netcat-openbsd iproute2 procps default-jre-headless nodejs npm golang-go jq nmap tcpdump traceroute wget",
+      "export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y curl unzip ca-certificates git iputils-ping dnsutils netcat-openbsd iproute2 procps nodejs npm golang-go jq nmap tcpdump traceroute wget",
       "rm -rf /var/lib/apt/lists/*",
       "mkdir -p /app/src"
-    ]
-  }
-  provisioner "shell" {
-    inline = [
-      "export DEBIAN_FRONTEND=noninteractive",
-      "apt-get update",
-      "apt-get upgrade -y perl libhttp-daemon-perl libexpat1 curl libxml2",
-      "apt-get install -y libexpat1-dev || true",
-      "rm -rf /var/lib/apt/lists/*"
     ]
   }
 
@@ -139,19 +130,11 @@ build {
     destination = "/app/requirements.txt"
   }
 
-  # Install torch CPU wheel first (scoped index to avoid polluting other package lookups)
+  # Install Python dependencies (sentence-transformers pulls its own torch CPU wheel)
   provisioner "shell" {
     inline = [
       "export PATH=\"/root/.local/bin:$PATH\"",
-      "uv pip install --system torch --extra-index-url https://download.pytorch.org/whl/cpu"
-    ]
-  }
-
-  # Install remaining Python dependencies using PyPI only
-  provisioner "shell" {
-    inline = [
-      "export PATH=\"/root/.local/bin:$PATH\"",
-      "cd /app && uv pip install --system -r requirements.txt"
+      "cd /app && uv pip install --system -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu"
     ]
   }
 
