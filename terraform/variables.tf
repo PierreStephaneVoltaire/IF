@@ -22,6 +22,21 @@ variable "ecr_repository_prefix" {
   default     = "if"
 }
 
+
+
+variable "powerlifting_s3_bucket" {
+  description = "S3 bucket with the OpenPowerlifting dataset (stats tools read from here)."
+  type        = string
+  default     = ""
+}
+
+variable "pl_internal_token" {
+  description = "Internal API token gating powerlifting Fission function HTTP triggers (X-Internal-Token)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "openrouter_api_key" {
   description = "OpenRouter API key"
   type        = string

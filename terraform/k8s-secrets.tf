@@ -38,6 +38,7 @@ resource "kubernetes_secret" "if_agent_api_secrets" {
 
   data = {
     OPENROUTER_API_KEY = var.openrouter_api_key
+    INTERNAL_API_TOKEN = var.pl_internal_token
     DISCORD_TOKEN      = var.discord_token
     GITHUB_TOKEN       = var.github_token
   }
@@ -294,4 +295,18 @@ resource "kubernetes_secret" "tinyauth_secrets" {
   }
 
   type = "Opaque"
+}
+
+resource "kubernetes_secret" "pl_fission_secrets" {
+  count = var.fission_enabled ? 1 : 0
+
+  metadata {
+    name      = "pl-fission-secrets"
+    namespace = var.fission_function_namespace
+  }
+
+  data = {
+    INTERNAL_API_TOKEN = var.pl_internal_token
+    OPENROUTER_API_KEY = var.openrouter_api_key
+  }
 }
