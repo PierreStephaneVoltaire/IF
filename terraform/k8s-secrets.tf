@@ -105,12 +105,11 @@ resource "kubernetes_config_map" "if_agent_api_config" {
 
     IF_SELF_REPO_URL = var.if_self_repo_url
 
-    # Fission router base URL. The IF agent API forwards every opencode job
-    # to {OPENCODE_FISSION_URL}/v1/opencode/execute (see flow/opencode_fission.py).
-    # The Fission router service fronts the HTTPTrigger that maps to the
-    # opencode-job function. Built from var.fission_namespace so it tracks
-    # the install namespace instead of being hardcoded.
+
     OPENCODE_FISSION_URL = "http://router.${var.fission_namespace}.svc.cluster.local:80"
+
+
+    POWERLIFTING_LAMBDA_BASE_URL = var.fission_enabled ? "http://router.${var.fission_namespace}.svc.cluster.local:80" : ""
   }
 }
 
@@ -248,7 +247,22 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
     JWT_SECRET                             = var.jwt_secret
     COOKIE_DOMAIN                          = var.cookie_domain
     COOKIE_SECURE                          = var.cookie_secure
+
+    POWERLIFTING_LAMBDA_BASE_URL = var.fission_enabled ? "http://router.${var.fission_namespace}.svc.cluster.local:80" : ""
   }
+}
+
+resource "kubernetes_secret" "powerlifting_app_secrets" {
+  metadata {
+    name      = "powerlifting-app-secrets"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+  }
+
+  data = {
+    INTERNAL_API_TOKEN = var.pl_internal_token
+  }
+
+  type = "Opaque"
 }
 
 resource "kubernetes_config_map" "directives_portal_config" {

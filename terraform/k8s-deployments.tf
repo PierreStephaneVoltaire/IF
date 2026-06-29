@@ -261,7 +261,7 @@ locals {
       port        = 3005
       has_db      = true
       db_table    = "powerlifting"
-      has_secrets = false
+      has_secrets = true
     }
     directives-portal = {
       port        = 3006
