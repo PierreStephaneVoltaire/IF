@@ -3,7 +3,7 @@ resource "kubernetes_persistent_volume_claim" "if_agent_data" {
     name      = "if-agent-data"
     namespace = kubernetes_namespace.if_portals.metadata[0].name
     annotations = {
-      "volume.kubernetes.io/selected-node" = var.node_name
+      "volume.kubernetes.io/selected-node" = local.node_name
     }
   }
 
@@ -24,7 +24,7 @@ resource "kubernetes_persistent_volume_claim" "if_agent_sandbox" {
     name      = "if-agent-sandbox"
     namespace = kubernetes_namespace.if_portals.metadata[0].name
     annotations = {
-      "volume.kubernetes.io/selected-node" = var.node_name
+      "volume.kubernetes.io/selected-node" = local.node_name
     }
   }
 
@@ -45,7 +45,7 @@ resource "kubernetes_persistent_volume_claim" "if_agent_conversations" {
     name      = "if-agent-conversations"
     namespace = kubernetes_namespace.if_portals.metadata[0].name
     annotations = {
-      "volume.kubernetes.io/selected-node" = var.node_name
+      "volume.kubernetes.io/selected-node" = local.node_name
     }
   }
 
@@ -66,7 +66,7 @@ resource "kubernetes_persistent_volume_claim" "if_agent_facts" {
     name      = "if-agent-facts"
     namespace = kubernetes_namespace.if_portals.metadata[0].name
     annotations = {
-      "volume.kubernetes.io/selected-node" = var.node_name
+      "volume.kubernetes.io/selected-node" = local.node_name
     }
   }
 

@@ -1,4 +1,10 @@
+data "external" "localhost_hostname" {
+  program = ["bash", "-c", "{\"hostname\": \"$(hostname)\"}"]
+}
+
 locals {
+  node_name = data.external.localhost_hostname.result.hostname
+
   # Load every utils/*/domain.yaml relative to the terraform/ directory.
   # Produces: { "powerlifting-app" => { domain, zone, google_auth? }, ... }
   app_domains = {

@@ -9,7 +9,7 @@ resource "kubernetes_persistent_volume_claim" "terminal_workspace" {
       app = "open-terminal"
     }
     annotations = {
-      "volume.kubernetes.io/selected-node" = var.node_name
+      "volume.kubernetes.io/selected-node" = local.node_name
     }
   }
 
