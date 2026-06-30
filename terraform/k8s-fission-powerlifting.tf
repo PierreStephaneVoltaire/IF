@@ -3,7 +3,7 @@ locals {
 
   pl_build_dir = "${path.module}/../utils/powerlifting-app/terraform/fission-build"
 
-  pl_skip_tools = toset(["layers", "pl_authorizer", "tool_registry"])
+  pl_skip_tools = toset(["layers", "pl_authorizer"])
 
   pl_dns_name = { for t in keys(local.pl_tools) : t => replace(t, "_", "-") }
 
@@ -71,8 +71,8 @@ resource "kubectl_manifest" "pl_fission_env" {
       builder                = { image = "ghcr.io/fission/python-builder" }
       terminationGracePeriod = 120
       resources = {
-        requests = { cpu = "100m", memory = "256Mi" }
-        limits   = { cpu = "1000m", memory = "1Gi" }
+        requests = { cpu = "500m", memory = "512Mi" }
+        limits   = { cpu = "2000m", memory = "2Gi" }
       }
     }
   })
@@ -208,8 +208,17 @@ resource "kubectl_manifest" "pl_triggers" {
     metadata   = { name = "pl-ht-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
     spec = {
       functionref = { type = "name", name = "pl-fn-${local.pl_dns_name[each.key]}" }
-      methods     = ["POST"]
-      relativeurl = "/${each.key}"
+      # tool_registry serves the OpenAPI discovery doc that health_lambda_mcp
+      # fetches (GET /openapi.json) to register the health tools. It must be a
+      # public GET — the IF agent API reads it during startup before it has a
+      # caller token. Every other tool stays POST. NOTE: Fission v1.26
+      # HTTPTrigger has NO authorizer/prefn field in its CRD schema (only
+      # functionref/methods/relativeurl/host/prefix/keepPrefix/routeConfig/
+      # corsConfig/createingress/ingressconfig). The pl-authorizer is NOT
+      # wired here; if per-tool auth is needed later it must live in the
+      # tool entrypoint or a Gateway API filter, not the trigger. (fission_repair.md)
+      methods     = each.value.is_registry ? ["GET"] : ["POST"]
+      relativeurl = each.value.is_registry ? "/openapi.json" : "/${each.key}"
     }
   })
   depends_on = [kubectl_manifest.pl_functions]
