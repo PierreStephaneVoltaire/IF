@@ -33,3 +33,33 @@ variable "facts_storage_gb" {
   type        = number
   default     = 2
 }
+
+variable "specialists_storage_gb" {
+  description = "Storage size for specialists directory (GB)"
+  type        = number
+  default     = 1
+}
+
+variable "tools_storage_gb" {
+  description = "Storage size for tools directory (GB)"
+  type        = number
+  default     = 1
+}
+
+variable "models_storage_gb" {
+  description = "Storage size for models directory (GB)"
+  type        = number
+  default     = 1
+}
+
+variable "scripts_storage_gb" {
+  description = "Storage size for scripts directory (GB)"
+  type        = number
+  default     = 1
+}
+
+variable "skills_storage_gb" {
+  description = "Storage size for skills directory (GB)"
+  type        = number
+  default     = 1
+}

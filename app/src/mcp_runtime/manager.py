@@ -81,10 +81,12 @@ class MCPToolManager:
             self._tool_index[name] = ("__builtin__", schema)
 
     async def start_all(self) -> None:
+        """Best-effort: every MCP category is independent. A failing or
+        unavailable server must never crash the app (FastAPI lifespan)."""
         for category in self.categories:
             try:
                 await self.start(category)
-            except Exception as exc:
+            except BaseException as exc:  # noqa: BLE001
                 logger.warning("MCP server %s failed to start: %s", category, exc)
 
     async def start(self, category: str) -> None:
@@ -106,32 +108,58 @@ class MCPToolManager:
             args=args,
             env={**os.environ, "IF_TOOLS_ROOT": str(self.tools_root)},
         )
-        client_cm = stdio_client(params)
-        read_stream, write_stream = await client_cm.__aenter__()
-        session_cm = ClientSession(read_stream, write_stream)
-        session = await session_cm.__aenter__()
-        await session.initialize()
-        tools_result = await session.list_tools()
-        managed = ManagedServer(
-            category=category,
-            session=session,
-            client_cm=client_cm,
-            session_cm=session_cm,
-        )
 
-        for tool in getattr(tools_result, "tools", []):
-            schema = {
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.inputSchema,
-                "_category": category,
-            }
-            managed.tools[tool.name] = schema
-            self._tool_index[tool.name] = (category, schema)
+        # Each async context manager below is entered explicitly so that a
+        # failure at any step is cleaned up. asyncio.CancelledError is a
+        # BaseException (pre-3.8 it was Exception); we must catch both so
+        # the lifespan never dies on a dead MCP subprocess.
+        client_cm = None
+        session_cm = None
+        client_entered = False
+        session_entered = False
+        try:
+            client_cm = stdio_client(params)
+            read_stream, write_stream = await client_cm.__aenter__()
+            client_entered = True
+            session_cm = ClientSession(read_stream, write_stream)
+            session = await session_cm.__aenter__()
+            session_entered = True
+            await session.initialize()
+            tools_result = await session.list_tools()
+            managed = ManagedServer(
+                category=category,
+                session=session,
+                client_cm=client_cm,
+                session_cm=session_cm,
+            )
 
-        self._servers[category] = managed
-        logger.info("MCP server %s started with %s tools", category, len(managed.tools))
+            for tool in getattr(tools_result, "tools", []):
+                schema = {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": tool.inputSchema,
+                    "_category": category,
+                }
+                managed.tools[tool.name] = schema
+                self._tool_index[tool.name] = (category, schema)
 
+            self._servers[category] = managed
+            logger.info("MCP server %s started with %s tools", category, len(managed.tools))
+        except BaseException:
+            # Roll back any partially-entered context managers so no cancel
+            # scope is leaked across tasks (which would later raise
+            # "Attempted to exit cancel scope in a different task").
+            if session_entered and session_cm is not None:
+                try:
+                    await session_cm.__aexit__(None, None, None)
+                except BaseException as cleanup_exc:  # noqa: BLE001
+                    logger.debug("MCP session close failed for %s: %s", category, cleanup_exc)
+            if client_entered and client_cm is not None:
+                try:
+                    await client_cm.__aexit__(None, None, None)
+                except BaseException as cleanup_exc:  # noqa: BLE001
+                    logger.debug("MCP client close failed for %s: %s", category, cleanup_exc)
+            raise
     async def stop(self, category: str) -> None:
         managed = self._servers.pop(category, None)
         if not managed:

@@ -191,7 +191,6 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
           name: ${var.fission_function_name}-pkg
           namespace: ${var.fission_function_namespace}
       podspec:
-        serviceAccountName: opencode-runner
         terminationGracePeriodSeconds: 360
         imagePullSecrets:
           - name: ${kubernetes_secret.ecr_registry.metadata[0].name}
@@ -202,9 +201,6 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
             command: ["/app/opencode-runner"]
             ports:
               - containerPort: 8888
-            securityContext:
-              privileged: true
-              runAsUser: 0
             readinessProbe:
               httpGet:
                 path: /healthz
@@ -243,16 +239,21 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
               - name: facts-storage
                 mountPath: /app/src/data/facts
               - name: aws-credentials
-                mountPath: /root/.aws
+                mountPath: /root/.aws/credentials
+                subPath: credentials
+                readOnly: true
+              - name: aws-credentials
+                mountPath: /root/.aws/config
+                subPath: config
                 readOnly: true
               - name: netrc
                 mountPath: /root/.netrc
                 subPath: .netrc
                 readOnly: true
-              # Runtime-mounted prompt / specialist / tool directories.
-              # These point at the live project dirs on the node so prompt
-              # and specialist YAML updates are picked up by the next pod
-              # Fission spawns — no image rebuild needed.
+              # Shared PVCs (same claims the agent API mounts) so prompt /
+              # specialist / tool / model / skill / script updates written to
+              # the PVC are picked up by the next pod Fission spawns — no image
+              # rebuild needed.
               - name: specialists-directory
                 mountPath: /app/specialists
                 readOnly: true
@@ -282,33 +283,26 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
             persistentVolumeClaim:
               claimName: ${kubernetes_persistent_volume_claim.if_agent_facts.metadata[0].name}
           - name: aws-credentials
-            hostPath:
-              path: ${var.aws_credentials_host_path}
-              type: Directory
+            secret:
+              secretName: ${kubernetes_secret.pl_aws_credentials[0].metadata[0].name}
           - name: netrc
             secret:
               secretName: opencode-runner-netrc
-          # HostPath mounts for live prompt / specialist / tool dirs.
           - name: specialists-directory
-            hostPath:
-              path: ${var.specialists_host_path}
-              type: DirectoryOrCreate
+            persistentVolumeClaim:
+              claimName: ${kubernetes_persistent_volume_claim.if_agent_specialists.metadata[0].name}
           - name: tools-directory
-            hostPath:
-              path: ${var.tools_host_path}
-              type: DirectoryOrCreate
+            persistentVolumeClaim:
+              claimName: ${kubernetes_persistent_volume_claim.if_agent_tools.metadata[0].name}
           - name: models-directory
-            hostPath:
-              path: ${var.models_host_path}
-              type: DirectoryOrCreate
+            persistentVolumeClaim:
+              claimName: ${kubernetes_persistent_volume_claim.if_agent_models.metadata[0].name}
           - name: skills-directory
-            hostPath:
-              path: ${var.skills_host_path}
-              type: DirectoryOrCreate
+            persistentVolumeClaim:
+              claimName: ${kubernetes_persistent_volume_claim.if_agent_skills.metadata[0].name}
           - name: scripts-directory
-            hostPath:
-              path: ${var.scripts_host_path}
-              type: DirectoryOrCreate
+            persistentVolumeClaim:
+              claimName: ${kubernetes_persistent_volume_claim.if_agent_scripts.metadata[0].name}
   YAML
 
   depends_on = [
@@ -319,6 +313,12 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
     kubernetes_persistent_volume_claim.if_agent_sandbox,
     kubernetes_persistent_volume_claim.if_agent_conversations,
     kubernetes_persistent_volume_claim.if_agent_facts,
+    kubernetes_persistent_volume_claim.if_agent_specialists,
+    kubernetes_persistent_volume_claim.if_agent_tools,
+    kubernetes_persistent_volume_claim.if_agent_models,
+    kubernetes_persistent_volume_claim.if_agent_scripts,
+    kubernetes_persistent_volume_claim.if_agent_skills,
+    kubernetes_secret.pl_aws_credentials[0],
     kubernetes_secret.if_agent_api_secrets,
     kubernetes_config_map.if_agent_api_config,
     kubernetes_config_map.if_agent_api_model_config,

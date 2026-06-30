@@ -32,7 +32,7 @@ locals {
 
   pl_scale = {
     ai    = { min = 0, max = 1, cpu = 70, timeout = 120 }
-    warm  = { min = 1, max = 2, cpu = 70, timeout = 60 }
+    warm  = { min = 0, max = 2, cpu = 70, timeout = 60 }
     stats = { min = 0, max = 2, cpu = 80, timeout = 120 }
     det   = { min = 0, max = 3, cpu = 70, timeout = 90 }
   }
@@ -71,8 +71,8 @@ resource "kubectl_manifest" "pl_fission_env" {
       builder                = { image = "ghcr.io/fission/python-builder" }
       terminationGracePeriod = 120
       resources = {
-        requests = { cpu = "100m", memory = "512Mi" }
-        limits   = { cpu = "1000m", memory = "2Gi" }
+        requests = { cpu = "100m", memory = "256Mi" }
+        limits   = { cpu = "1000m", memory = "1Gi" }
       }
     }
   })
@@ -117,6 +117,14 @@ resource "kubectl_manifest" "pl_fission_executor_env_rbac_binding" {
   })
   depends_on = [kubectl_manifest.pl_fission_executor_env_rbac]
 }
+
+# Powerlifting Fission tool Packages (source archive + buildcmd so the
+# python-builder runs pip install). If a package's `.status.buildstatus`
+# ever gets stuck at "none" (e.g. after migrating from a deployment
+# archive), delete the packages and re-apply, or run
+# scripts/reset-fission-packages.sh --recreate to nuke + rebuild them
+# one at a time (the single shared python-builder can't handle concurrent
+# builds — they collide on a shared temp zip path).
 resource "kubectl_manifest" "pl_packages" {
   for_each          = local.pl_tools
   server_side_apply = true
@@ -160,44 +168,34 @@ resource "kubectl_manifest" "pl_functions" {
           TargetCPUPercent      = local.pl_scale[each.value.class].cpu
         }
       }
+      # Fission-native secret mounting: the `secrets` field mounts each
+      # referenced Secret under /secrets/<namespace>/<secret-name>/<key>.
+      # This is the ONLY mechanism Fission v1.26 newdeploy honors — the
+      # Function podspec (env, volumes, volumeMounts, envFrom) is NOT merged
+      # into the runtime deployment by the newdeploy executor.
+      # fission_entry.py discovers /secrets/*/pl-aws-credentials/credentials
+      # at import time and sets AWS_SHARED_CREDENTIALS_FILE / AWS_REGION so
+      # boto3 finds the creds without any podspec env.
+      secrets = [
+        { name = "pl-aws-credentials", namespace = kubernetes_namespace.if_portals.metadata[0].name },
+        { name = "pl-fission-secrets", namespace = kubernetes_namespace.if_portals.metadata[0].name },
+      ]
       podspec = {
-        serviceAccountName = "default"
         containers = [
           {
             name            = "pl-fission-tools"
             image           = "ghcr.io/fission/python-env"
             imagePullPolicy = "IfNotPresent"
-            env = concat(
-              local.pl_common_env,
-              [{ name = "IF_TOOL_NAME", value = each.key }],
-              [
-                { name = "AWS_SHARED_CREDENTIALS_FILE", value = "/root/.aws/credentials" },
-                { name = "AWS_REGION", value = "ca-central-1" },
-                { name = "AWS_DEFAULT_REGION", value = "ca-central-1" },
-              ],
-              each.value.class == "ai" ? local.pl_ai_env : [],
-              try(each.value.s3_read, false) ? [{ name = "POWERLIFTING_S3_BUCKET", value = var.powerlifting_s3_bucket }] : [],
-            )
-            envFrom = [{ secretRef = { name = "pl-fission-secrets" } }]
-            volumeMounts = [
-              { name = "aws-credentials", mountPath = "/root/.aws", readOnly = true },
-            ]
             resources = {
               requests = { cpu = "100m", memory = "${max(128, try(each.value.memory, 256) / 2)}Mi" }
               limits   = { cpu = "1000m", memory = "${try(each.value.memory, 256)}Mi" }
             }
           },
         ]
-        volumes = [
-          {
-            name     = "aws-credentials"
-            hostPath = { path = var.aws_credentials_host_path, type = "Directory" }
-          },
-        ]
       }
     }
   })
-  depends_on = [kubectl_manifest.pl_packages, kubernetes_secret.pl_fission_secrets]
+  depends_on = [kubectl_manifest.pl_packages, kubernetes_secret.pl_fission_secrets, kubernetes_secret.pl_aws_credentials]
 }
 
 resource "kubectl_manifest" "pl_triggers" {

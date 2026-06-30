@@ -7,7 +7,7 @@ variable "fission_enabled" {
 variable "fission_version" {
   description = "Fission helm chart and CRD version. Must match a published chart at https://fission.github.io/fission-charts/. k3s 1.27+ supports 1.20.x; 1.25+ requires k8s 1.32+."
   type        = string
-  default     = "1.20.4"
+  default     = "1.26.0"
 }
 
 variable "fission_namespace" {

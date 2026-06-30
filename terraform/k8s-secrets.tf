@@ -324,3 +324,25 @@ resource "kubernetes_secret" "pl_fission_secrets" {
     OPENROUTER_API_KEY = var.openrouter_api_key
   }
 }
+
+# AWS credentials for powerlifting Fission function pods.
+# Fission v1.26 newdeploy executor does NOT merge Function podspec (env,
+# volumes, volumeMounts, envFrom) into the runtime deployment. The only
+# mechanism that works is the Fission-native `secrets` field on the Function
+# spec, which mounts each Secret under /secrets/<ns>/<secret>/<key>.
+# fission_entry.py materialises those files into env vars at import time.
+# Use file() (not filebase64()) - the kubernetes_secret resource base64-
+# encodes the value itself; filebase64() would double-encode it.
+resource "kubernetes_secret" "pl_aws_credentials" {
+  count = var.fission_enabled ? 1 : 0
+
+  metadata {
+    name      = "pl-aws-credentials"
+    namespace = var.fission_function_namespace
+  }
+
+  data = {
+    credentials = file("${var.aws_credentials_host_path}/credentials")
+    config      = file("${var.aws_credentials_host_path}/config")
+  }
+}
