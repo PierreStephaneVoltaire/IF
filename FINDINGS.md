@@ -513,3 +513,278 @@ NOTE payload must be wrapped in args key (handler does event.get(args,event)).
 
 ### ARCHITECTURE PROBLEM (user raised)
 Backend does DIRECT DynamoDB via controllers (budgetController, sessionController, etc) instead of routing to fission. Design intent: backend = router + auth only; functionality in fission functions. Need to migrate direct-DynamoDB routes to call fission functions instead.
+### STEP 26 - MIGRATION SCOPE (backend -> fission)
+ROUTES USING DIRECT DYNAMODB (controllers) that should call fission instead:
+
+HAVE MATCHING FISSION FN (just re-point route to invokeLambda):
+  dietNotes    -> health_get/update/delete_diet_note
+  maxes        -> health_get/update_current_maxes, glossary_set_e1rm
+  supplements  -> health_get/update_supplements
+  goals        -> health_get/update_goals
+  federations -> health_get/update_federation_library
+  setup        -> health_setup_initialize, health_setup_status
+  sessions     -> health_create/get/update/delete_session, get_sessions_range, add/remove_exercise, reschedule (ALREADY has some fission via coach; sessionController still direct)
+  programs     -> health_get_program, health_new_version, health_invalidate_program_cache, program_archive/unarchive
+  competitions -> health_create/get/update/delete/complete_competition (partial - already uses health_complete + snapshot)
+  budget       -> budget_advisor, budget_priority_timeline (items/config still direct - NO budget CRUD fission fn)
+  template     -> template_get/list/create_*/update/archive/publish/apply (full set exists)
+  import       -> import_parse_file/list/get_pending/apply/reject (full set exists)
+
+GAPS - NO FISSION FN EXISTS (need to build):
+  weight       -> need weight_get/update/list
+  blockNotes   -> need blocknote_get/update/delete/list
+  exercises    -> partial (health_add/remove_exercise) - need exercise list/library CRUD
+  settings     -> need settings_get/update
+  profiles     -> need profile_get/update (lift profiles)
+  videos       -> need video CRUD (video-thumbnail exists only)
+  budget CRUD  -> need budget_item/config CRUD (only AI advisor + timeline exist)
+
+ALREADY ON FISSION (correct):
+  analytics, stats, (competitions partial)
+
+PRIORITY: re-point the 9 routes that HAVE matching fns first (low risk, no new code);
+          then build the 7 gap functions. auth (pl_authorizer) and maxes should be first.
+
+### STEP 27 - MISSING FISSION FUNCTIONS BUILT
+
+Built all 33 missing fission functions across the 7 gap families, replacing the
+backend controller DynamoDB/S3 access. Each follows the existing `health_get_goals`
+pattern exactly (folder with `__init__.py`, `handler.py` w/ relative `from .core
+import`, async `core.py`, `resources.yaml`). Zips rebuilt via `fission-deploy.py`
+(131 archives). NOT deployed to kubernetes (per instruction).
+
+LAYER STORE EXTENSIONS:
+- `pl_glossary` GlossaryStore: added `_to_canonical`, `get_full_store(_sync)`,
+  `_persist_glossary_sync`, `remove_exercise(_sync)`, `set_archived(_sync)`,
+  `search_exercises(_sync)`, `upsert_exercise(_sync)`, `get_exercise_by_id(_sync)`.
+- NEW layer `pl_budget` (`layers/pl-budget/python/budget_store.py`): BudgetStore +
+  the full set of normalizers ported from `db/transforms.ts`
+  (`normalize_budget_item_from_store`, `normalize_budget_item_input`,
+  `normalize_budget_config_from_store`) + summary helpers
+  (`_spent_this_month`, `_recurring_monthly_total`, `_build_priority_breakdown`,
+  `_upcoming_one_time`). Registered in `fission_layers.py` LAYER_MODULE_DIRS +
+  LAYER_PIP_REQS.
+
+FISSION-DEPLOY ENV:
+- Added `IF_USER_TABLE=if-user`, `VIDEOS_BUCKET=powerlifting-session-videos`,
+  `POWERLIFTING_BUDGET_TABLE=if-powerlifting-budget`,
+  `BUDGET_MEDIA_BUCKET=powerlifting-budget-media` to both COMMON_ENV (python) and
+  `pl_common_env` (terraform LOOPS) in `fission-deploy.py`.
+
+FUNCTIONS BUILT (tool_id -> controller method replicated):
+1. WEIGHT (if-health table, sk=`weight_log#{version}`, pl_boto3):
+   - weight_get_log      -> getWeightLog(pk, version)
+   - weight_add_entry    -> addWeightEntry(pk, version, entry) [upsert by date, sort desc]
+   - weight_remove_entry -> removeWeightEntry(pk, version, date)
+2. BLOCK NOTES (if-health program item, meta.block_notes, pl_boto3):
+   - block_notes_get     -> getBlockNotes(pk, version) [resolves program#current -> ref_sk,
+                            prefers meta.block_notes, falls back to legacy top-level]
+   - block_notes_update  -> updateBlockNotes(pk, version, notes)
+                            [SET #meta.block_notes, #meta.updated_at, REMOVE block_notes]
+3. EXERCISES (glossary#v1, pl_glossary + pl_boto3):
+   - exercise_get_glossary -> getGlossary(pk) [full store record]
+   - exercise_upsert       -> upsertExercise(pk, exercise) [uuid id if missing, sort by name]
+   - exercise_remove       -> removeExercise(pk, id)
+   - exercise_search       -> searchExercises(pk, query) [name/desc/how_to/why/muscles]
+   - exercise_archive      -> archiveExercise(pk, id)
+   - exercise_unarchive    -> unarchiveExercise(pk, id)
+   - exercise_set_e1rm     -> setE1rmEstimate(pk, id, valueKg, method)
+                              [confidence medium(manual)/low(other), basis "Manual entry"(manual)/""]
+   (estimateExerciseE1rm/Fatigue/Muscles already exist as glossary_estimate_* — not rebuilt)
+4. SETTINGS (if-user table, pl_boto3; avatar uses S3 VIDEOS_BUCKET):
+   - settings_get                 -> getSettingsHandler [by username, then mapped_pk,
+                                     else default operator object]
+   - settings_update_nickname     -> updateNicknameHandler [validate ^[a-z0-9_-]{2,32}$]
+   - settings_update_profile      -> updateProfileHandler [visibility/display_name/bio/summary]
+   - settings_update_avatar       -> updateAvatarHandler [S3 profiles/{owner}/avatars/{uuid}.{ext},
+                                     delete previous; base64 file_b64 input]
+   - settings_update_ranking_location -> updateRankingLocationHandler
+   - settings_update_age_class    -> updateAgeClassHandler
+5. PROFILES (if-user scan + if-health program + if-sessions videos, pl_boto3):
+   - profile_search       -> searchProfilesHandler [scan user table, visibility filter,
+                             substring over nickname/display_name/discord_username/bio, top 50]
+   - profile_get_current  -> getCurrentProfileHandler [by mapped_pk, builds program maxes
+                             (current_maxes -> manual_maxes -> bestSessionLift -> targetMax),
+                             total/bodyweight/DOTS/federation/weight_class/lift_videos(top 24)]
+   - profile_get          -> getProfileHandler [by nickname, same build_profile aggregation]
+6. VIDEOS (if-sessions via pl_sessions SessionStore + S3 VIDEOS_BUCKET, pl_sessions + pl_boto3):
+   - video_upload           -> uploadSessionVideo [S3 videos/{date}/{uuid}.{ext}, patch session.videos]
+   - video_remove           -> removeSessionVideo [delete S3 video+thumbnail, filter session.videos]
+   - video_update_thumbnail -> updateVideoThumbnail [set thumbnail_s3_key + status]
+   - video_library_get      -> getVideoLibrary [videos+exercises, exercise match by set_number
+                                cumulative-offset, sort newest/oldest/volume/weight]
+   - video_update_metadata  -> updateSessionVideoMetadata [merge exercise_name/set_number/notes,
+                                empty clears, undefined preserves]
+7. BUDGET CRUD (if-powerlifting-budget, pl_budget + pl_boto3; photo S3 not built here):
+   - budget_get_config  -> getBudgetConfig(pk)
+   - budget_put_config  -> putBudgetConfig(pk, raw)
+   - budget_list_items  -> listBudgetItems(pk, filters) [comp_id/category/priority]
+   - budget_create_item -> createBudgetItem(pk, raw)
+   - budget_update_item -> updateBudgetItem(pk, itemId, raw) [carries preserved fields]
+   - budget_delete_item -> deleteBudgetItem(pk, itemId)
+   - budget_get_summary -> getBudgetSummary(pk, month) [spent_this_month,
+                           recurring_monthly_total, items_by_priority, upcoming_one_time]
+   (uploadItemPhoto/getBudgetAiAnalysis NOT built — photo S3 upload is a separate
+   media route; AI advisor already exists as budget_advisor fission fn.)
+
+NOTES / AMBIGUOUS DECISIONS:
+- S3 uploads (avatar, video) take `file_b64` (base64) in args since fission has no
+  multer; the backend router is expected to base64-encode the multipart file before
+  calling. video_upload/avatar memory raised to 512.
+- profile_get/profile_get_current aggregate program+sessions directly via boto3
+  (no ProgramStore cache) to stay self-contained; DOTS coefficients ported from
+  profilesController.
+- budget used a new shared `pl_budget` layer (BudgetStore) rather than duplicating
+  ~300 lines of normalizers across 7 fission folders; matches the glossary/program
+  layer-store design.
+- block_notes + weight have no layer store methods (ProgramStore lacks them); built
+  with direct boto3 on the health table, mirroring the TS controllers byte-for-byte.
+- exercise_set_e1rm is distinct from the existing glossary_set_e1rm: the former
+  mirrors backend setE1rmEstimate (confidence medium/low, basis "Manual entry"/""),
+  the latter is the simpler manual-only variant.
+
+### STEP 28 - MULTI-TENANT health_* FUNCTIONS
+
+**Goal:** Make all 32 health_* ProgramStore-backed fission functions (plus the 2
+federation_library functions) accept a `pk` argument from the caller and use it as the
+DynamoDB partition key, overriding the hardcoded "operator" default — without breaking
+the discord coach bot (which passes no `pk`, so it falls back to the shared operator
+partition via the HEALTH_PROGRAM_PK env var).
+
+**Pattern applied (mechanically to every core.py):**
+- Added a `_store_for(pk)` helper that returns the ProgramStore singleton and
+  retargets it to the given pk via the `store.pk` setter (which invalidates the cache
+  on change). When pk is None/missing the singleton keeps its default pk untouched.
+- Changed every exported `async def health_xxx(...)` signature so that `args` (a dict)
+  is the FIRST parameter. The original positional values (date, goals, patch, etc.) are
+  now extracted from `args` inside the body with `args.get("key")` (guarded by
+  `isinstance(args, dict)`), preserving backward compat for any direct positional call.
+- Each function reads `pk = args.get("pk") if isinstance(args, dict) else None` and
+  calls `store = _store_for(pk)` instead of `store = _get_store()`.
+- For files with helper functions that read `store.pk` via `_get_table_and_pk()`
+  (create_session, delete_session, reschedule_session, add/remove_exercise,
+  complete_competition, snapshot_competition_projection), the store is retargeted at
+  the top of the main function so the helpers pick up the new pk automatically. The
+  local `health_get_session` copies in add/remove_exercise were given an optional `pk`
+  param and use `_store_for(pk)`.
+- The two federation_library functions got a parallel `_federation_store_for(pk)`
+  helper (FederationStore also has a `pk` setter).
+- health_setup_initialize's local `health_setup_status` copy was given an `args`
+  param so the nested setup-status check runs against the same partition.
+
+**handler.py changes:** Every handler now calls `asyncio.run(health_xxx(args))` (the dict)
+instead of unpacking positional args. The handler already had `args = event.get("args", event)`.
+
+**Backward compat:** The discord bot (MCP runtime) calls these tools with an args dict
+that contains the function parameters (e.g. `{"date": "..."}`) but no `pk` key. With no
+`pk`, `_store_for(None)` returns the singleton with its env-default pk (operator), so all
+existing bot behavior is unchanged. The portal backend will pass `pk` = the user's
+discord id to scope operations to that user's partition.
+
+**New 33 functions (weight_*, block_notes_*, exercise_*, settings_*, profile_*,
+video_*, budget_*):** Verified — these were already built per-user. They all take `args`
+as the first param and resolve pk via `_resolve_pk(args)` (args.get("pk") or env
+HEALTH_PROGRAM_PK) or `store.pk = args.get("pk")`. settings_* and profile_* resolve pk
+indirectly via username/mapped_pk lookup against the user table, which is correct for
+their user-table-centric design. No changes needed.
+
+**health_rag_search:** No core.py; handler-only RAG tool that doesn't touch ProgramStore.
+Skipped (no pk concept applies).
+
+**Verification:**
+- All 34 modified core.py files pass `python3 -c "import ast; ast.parse(...)`".
+- All 34 handler.py files pass AST parse.
+- No handler still calls a health_* core with positional unpacking (grep confirmed).
+- `fission-deploy.py` rebuilt all 131 archives successfully.
+- NOT deployed to k8s (per instructions; operator will deploy).
+
+**Files modified (core.py + handler.py pairs):**
+health_add_exercise, health_complete_competition, health_create_competition,
+health_create_session, health_delete_competition, health_delete_diet_note,
+health_delete_session, health_get_competition, health_get_current_maxes,
+health_get_diet_notes, health_get_federation_library, health_get_goals,
+health_get_meta, health_get_phases, health_get_program, health_get_session,
+health_get_sessions_range, health_get_supplements, health_invalidate_program_cache,
+health_new_version, health_remove_exercise, health_reschedule_session,
+health_setup_initialize, health_setup_status, health_snapshot_competition_projection,
+health_update_competition, health_update_current_maxes, health_update_diet_note,
+health_update_goals, health_update_meta, health_update_phases, health_update_session,
+health_update_supplements, health_update_federation_library (34 functions = 32 ProgramStore + 2 FederationStore).
+### STEP 29 - DATA MODEL MISMATCH (BLOCKING simple re-point)
+The health_* fission functions use a DIVERGENT, RICHER data model embedded in the
+ProgramStore program JSON (e.g. health_update_goals goals have strategy_mode, risk_tolerance,
+target_competition_dates, weight_classes - richer than the portal AthleteGoal).
+The portal controllers use SEPARATE per-user DynamoDB tables (e.g. POWERLIFTING_GOALS_TABLE)
+with SIMPLER fields matching the frontend types (AthleteGoal).
+EXAMPLE: goals.ts frontend uses AthleteGoal[] (simple). health_update_goals writes program.goals
+(richer, different fields). Re-pointing goals.ts to health_update_goals would:
+  - lose portal goal fields (strategy_mode etc are extra; but target_total_kg/dots shape differs)
+  - split data across 2 tables (POWERLIFTING_GOALS_TABLE vs program.goals in if-health)
+  - break the GoalsPage UI (field name mismatches).
+CONCLUSION: migration is NOT mechanical re-point. For each route the fission fn must be made
+to use the PORTAL data model (same table + fields as the controller), OR the portal must migrate
+its data + types to the fission model. Reverted goals.ts. Pausing route migration pending decision.
+
+NOTE: some health_* fns DO match portal tables (e.g. competitions, sessions use if-health per-user
+items already). Need per-route analysis of which fns match the portal table/model vs which diverge.
+### STEP 30 - LAYER DEP FIX (pl_sessions missing)
+23 health_* functions listed pl_program but not pl_sessions in resources.yaml.
+program_store imports session_store (from session_store import SessionStore) when loading the
+full program (get_program -> list_sessions_sync), so these fns failed with No module named session_store.
+FIX: added pl_sessions to the layers of all 23. Rebuilt zips + re-applying terraform.
+This was a pre-existing latent bug (would have broken the discord bot goals/meta/phases/supplements too).
+
+### DECISION NEEDED (blocking route migration):
+The health_* fission fns use a RICHER, DIVERGENT data model embedded in the ProgramStore program JSON
+(e.g. goals have strategy_mode/risk_tolerance/target_competition_dates). The portal controllers use
+SEPARATE per-user DynamoDB tables (POWERLIFTING_GOALS_TABLE etc) with SIMPLER fields matching frontend types.
+Re-pointing a route to its health_* fn only works where the fns data model + table MATCH the controllers.
+Some match (competitions, sessions use the same if-health per-user items). Some diverge (goals).
+Need per-route determination of MATCH vs DIVERGE before re-pointing.
+### STEP 31 - FISSION FETCHER/BUILDER INFRA FIXES
+- Root cause of stuck builds: env pod fetcher OOM at 1Gi (FETCHER_MAXMEM=1Gi on executor) +
+  builder container readiness churn.
+- Fixes applied:
+  1. executor FETCHER_MAXMEM 1Gi -> 2Gi (kubectl set env deploy/executor -n fission)
+  2. executor rolled to new pod (deleted old to free CPU; cluster was at 97pct CPU)
+  3. culled 13 idle newdeploy function deployments to free ~6500m CPU
+  4. deleted env RS to recreate pod with new fetcher limit
+- New env pod 6b4p5: builder+fetcher both ready=True, restarts=0. Builds should now proceed.
+- NOTE: this cluster is CPU-starved (16 cores, 97pct). Recurring blocker for heavy functions.
+### STEP 32 - BUILD STATUS + DEFERRED
+128/131 packages built succeeded. 2 scipy-heavy packages fail repeatedly:
+  - analyze_rpe_drift: HTTP 413 Request Entity Too Large (archive exceeds fetcher upload body limit).
+  - health_snapshot_competition_projection: transient builder stat error.
+DEFERRED TODO: raise fission fetcher upload body limit (413) or strip scipy from these 2 large archives.
+NOTE: 128 functions deployable. The 2 failures are analytics-only (analyze_rpe_drift) + 1 health snapshot.
+
+CLUSTER CPU: recurrently at 97pct (16-core node over-subscribed by warm function pods). Culling idle
+newdeploy deployments frees CPU temporarily but they refill. Long-term: add node capacity or set
+all functions to scale-to-0 min=0 (already done) + lower env CPU further.
+### STEP 33 - CLUSTER CAPACITY CEILING (root of scheduling failures)
+16-core node at 97pct CPU baseline (~15610m) consumed by PERSISTENT services:
+  - 3 portal backends (directives/main/powerlifting) = 1500m
+  - 4 portal frontends = 500m
+  - fission control plane (buildermgr/executor/router/storagesvc/kubewatcher/keda/timer/webhook) = ~1900m
+  - if-mcp, coredns, etc
+This leaves ~390m headroom - NOT enough for a 500m function pod. So cold-start function pods
+routinely go Pending (Insufficient cpu). This is why tests time out.
+FIX OPTIONS: (a) add node capacity, (b) lower function CPU request below 390m (e.g. 200m),
+  (c) scale down ollama/monitoring if present, (d) accept cold-start latency (functions schedule when CPU frees).
+IMMEDIATE MITIGATION: I lowered env CPU request to 500m (was 4000m) but even 500m > 390m headroom.
+Could lower env request to 200m to fit. NOT done yet (needs env + executor FETCHER_MINCPU alignment).
+
+### CURRENT STATE SUMMARY
+- App baseline WORKING: backend /health=ok, frontend up.
+- 131 fission functions deployed; 128 packages built succeeded (2 scipy-large fail on 413/transient).
+- All health_* functions made MULTI-TENANT (accept pk, use it as DynamoDB partition key).
+- 33 NEW functions built (weight/blockNotes/exercise/settings/profile/video/budget-CRUD).
+- pl_sessions layer dep fixed for 23 health_* fns.
+- analysis_section + budget_advisor verified returning REAL data via direct fission call.
+- Multi-tenant health_get_goals NOT live-verified yet (blocked by CPU scheduling, not code).
+
+### BLOCKING DECISION for route migration (re-point backend -> fission):
+The health_* fns use a DIVERGENT richer data model (ProgramStore program JSON) vs the portal
+controllers SEPARATE per-user DynamoDB tables (POWERLIFTING_GOALS_TABLE etc) with SIMPLER fields.
+Re-pointing only works where fns data model + table MATCH the controllers (competitions/sessions match;
+goals diverge). Need per-route determination before re-pointing, or rewrite fns to use portal tables.
