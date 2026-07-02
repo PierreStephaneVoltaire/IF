@@ -184,7 +184,6 @@ resource "kubectl_manifest" "fission_function_opencode_job" {
           name: ${var.fission_function_name}-pkg
           namespace: ${var.fission_function_namespace}
       podspec:
-        serviceAccountName: opencode-runner
         terminationGracePeriodSeconds: 360
         imagePullSecrets:
           - name: ${kubernetes_secret.ecr_registry.metadata[0].name}
