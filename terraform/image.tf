@@ -78,13 +78,27 @@ resource "aws_ecr_repository" "if_mcp_base" {
   }
 }
 
+# One shared ECR repo for all powerlifting fission functions. Each function is
+# a distinct image TAG (tag = "<tool_id>-<source_sha>") within this repo, so a
+# code change produces a new tag and Fission re-pulls. Replaces the fission
+# source-package build path (HTTP 413 / buildmgr collisions on large archives).
+resource "aws_ecr_repository" "if_health_fns" {
+  name                 = "${var.ecr_repository_prefix}-if-health"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
 resource "aws_ecr_lifecycle_policy" "keep_5" {
   for_each = merge(
     { "if-agent-api" = aws_ecr_repository.if_agent_api.name },
     { "if-opencode-runner" = aws_ecr_repository.if_opencode_runner.name },
     { for k, v in aws_ecr_repository.portal_backends : k => v.name },
     { for k, v in aws_ecr_repository.portal_frontends : k => v.name },
-    { "if-mcp-base" = aws_ecr_repository.if_mcp_base.name }
+    { "if-mcp-base" = aws_ecr_repository.if_mcp_base.name },
+    { "if-health-fns" = aws_ecr_repository.if_health_fns.name }
   )
 
   repository = each.value

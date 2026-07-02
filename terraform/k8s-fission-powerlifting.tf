@@ -19,6 +19,17 @@ locals {
 
   pl_stats_tools = toset(["analyze_powerlifting_stats", "powerlifting_filter_categories", "powerlifting_ranking_percentile", "analyze_progression", "analyze_rpe_drift"])
 
+  # Per-function CPU/memory requests AND limits come from each tool's
+  # resources.yaml (resources.requests / resources.limits), with sane defaults.
+  # The Environment spec.resources only sets the poolmgr fetcher/builder floor;
+  # these per-function resources are merged into the Function podspec below so
+  # each function pod sizes itself instead of every pod sharing one hard-coded
+  # envelope.
+  pl_default_resources = {
+    requests = { cpu = "100m", memory = "128Mi" }
+    limits   = { cpu = "1000m", memory = "512Mi" }
+  }
+
   pl_tools = var.fission_enabled ? {
     for tool_id, yaml_path in local.pl_tool_yaml_paths :
     tool_id => {
@@ -27,6 +38,16 @@ locals {
       memory      = try(yamldecode(file(yaml_path)).memory, 256)
       timeout     = try(yamldecode(file(yaml_path)).timeout, 900)
       s3_read     = try(yamldecode(file(yaml_path)).s3_read, false)
+      # resources block straight from resources.yaml (cpu+memory req+limits),
+      # falling back to defaults where the yaml omits a field.
+      resources = merge(
+        local.pl_default_resources,
+        try(yamldecode(file(yaml_path)).resources, {}),
+      )
+      # Content hash of the built source zip -> unique image tag. A code change
+      # produces a new tag, so the Package spec below changes and Fission re-pulls
+      # the image. This is the watch-for-code-change mechanism.
+      image_tag = "${tool_id}-${substr(sha1(filebase64("${local.pl_build_dir}/${tool_id}.zip")), 0, 12)}"
     }
   } : {}
 
@@ -118,13 +139,17 @@ resource "kubectl_manifest" "pl_fission_executor_env_rbac_binding" {
   depends_on = [kubectl_manifest.pl_fission_executor_env_rbac]
 }
 
-# Powerlifting Fission tool Packages (source archive + buildcmd so the
-# python-builder runs pip install). If a package's `.status.buildstatus`
-# ever gets stuck at "none" (e.g. after migrating from a deployment
-# archive), delete the packages and re-apply, or run
-# scripts/reset-fission-packages.sh --recreate to nuke + rebuild them
-# one at a time (the single shared python-builder can't handle concurrent
-# builds — they collide on a shared temp zip path).
+# Powerlifting Fission tool Packages reference a PREBUILT OCI image per tool
+# (Package.spec.deployment.oci.image) instead of a source archive + buildcmd.
+# This sidesteps the fission buildmgr entirely: no source build, no fetcher
+# upload, no HTTP 413 on large scipy archives, no single-builder concurrency
+# collisions. The images are built by scripts/build-powerlifting-fn-images.sh
+# (and re-built automatically on `terraform apply` via the
+# null_resource.packer_build_pl_fn watch loop below) into the shared
+# ${prefix}-if-health ECR repo, tagged "<tool_id>-<source_sha>".
+#
+# NOTE: apply the ECR repo + run the image build BEFORE the first apply of these
+# Packages, or set pl_images_prebuilt=true to skip the packer trigger (see var).
 resource "kubectl_manifest" "pl_packages" {
   for_each          = local.pl_tools
   server_side_apply = true
@@ -135,11 +160,52 @@ resource "kubectl_manifest" "pl_packages" {
     metadata   = { name = "pl-pkg-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
     spec = {
       environment = { name = "pl-fission-tools", namespace = kubernetes_namespace.if_portals.metadata[0].name }
-      source      = { type = "literal", literal = filebase64("${local.pl_build_dir}/${each.key}.zip") }
-      buildcmd    = "./build.sh"
+      deployment = {
+        type = "oci"
+        oci = {
+          image = "${aws_ecr_repository.if_health_fns.repository_url}:${each.value.image_tag}"
+          imagePullSecrets = [
+            { name = kubernetes_secret.ecr_registry.metadata[0].name }
+          ]
+        }
+      }
     }
   })
-  depends_on = [kubectl_manifest.pl_fission_env]
+  depends_on = [kubectl_manifest.pl_fission_env, null_resource.packer_build_pl_fn]
+}
+
+# ─── Watch loop: rebuild a tool's OCI image when its source zip changes ───
+# Mirrors the portal frontend/backend image pattern in image.tf. The trigger is
+# the sha1 of the built source zip, so editing a function's code ->
+# fission-deploy.py rebuilds the zip -> terraform sees a new hash -> packer
+# rebuilds + pushes a new <tool>-<sha> image -> the Package spec.oci.image tag
+# changes -> Fission re-pulls and re-specialises the function pod.
+resource "null_resource" "packer_build_pl_fn" {
+  for_each = local.pl_tools
+
+  triggers = {
+    source_sha1 = sha1(filebase64("${local.pl_build_dir}/${each.key}.zip"))
+    repo_url    = aws_ecr_repository.if_health_fns.repository_url
+    image_tag   = each.value.image_tag
+  }
+
+  provisioner "local-exec" {
+    working_dir = "${path.module}/../docker"
+    command     = <<-EOT
+      set -e
+      aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+      aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin $(echo ${aws_ecr_repository.if_health_fns.repository_url} | cut -d'/' -f1)
+      packer init powerlifting-fn.pkr.hcl
+      packer build \
+        -var "image_repository=${aws_ecr_repository.if_health_fns.repository_url}" \
+        -var "image_tag=${each.value.image_tag}" \
+        -var "tool_id=${each.key}" \
+        -var "source_archive=${local.pl_build_dir}/${each.key}.zip" \
+        powerlifting-fn.pkr.hcl
+    EOT
+  }
+
+  depends_on = [aws_ecr_repository.if_health_fns, kubernetes_secret.ecr_registry]
 }
 
 resource "kubectl_manifest" "pl_functions" {
@@ -186,10 +252,7 @@ resource "kubectl_manifest" "pl_functions" {
             name            = "pl-fission-tools"
             image           = "ghcr.io/fission/python-env"
             imagePullPolicy = "IfNotPresent"
-            resources = {
-              requests = { cpu = "100m", memory = "${max(128, try(each.value.memory, 256) / 2)}Mi" }
-              limits   = { cpu = "1000m", memory = "${try(each.value.memory, 256)}Mi" }
-            }
+            resources       = each.value.resources
           },
         ]
       }
