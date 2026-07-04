@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /home/sirsimpalot/Downloads/discord-ai-bot/.claude/hooks/guard-destructive.sh"
+            "command": "bash ./.claude/hooks/guard-destructive.sh"
           }
         ]
       }
