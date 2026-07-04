@@ -1,5 +1,25 @@
 {
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
+  },
+  "permissions": {
+    "deny": [
+      "Bash(terraform destroy:*)",
+      "Bash(kubectl cordon:*)",
+      "Bash(kubectl drain:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/sirsimpalot/Downloads/discord-ai-bot/.claude/hooks/guard-destructive.sh"
+          }
+        ]
+      }
+    ]
   }
 }

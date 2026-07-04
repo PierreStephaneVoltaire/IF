@@ -253,7 +253,12 @@ scrape_configs:
           - localhost
         labels:
           job: container-logs
-          __path__: /var/log/containers/*.log
+          __path__: /var/log/containers/*_if-portals_*.log
+      - targets:
+          - localhost
+        labels:
+          job: container-logs
+          __path__: /var/log/containers/*_nginx-gateway_*.log
     pipeline_stages:
       - cri: {}
       - regex:

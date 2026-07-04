@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.7.0"
+  required_version = ">= 1.15.0"
 
   required_providers {
     aws = {
@@ -21,6 +21,14 @@ terraform {
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "~> 4.52"
+    }
+    authentik = {
+      source  = "goauthentik/authentik"
+      version = "~> 2026.5"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.7"
     }
 
   }

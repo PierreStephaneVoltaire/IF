@@ -77,6 +77,13 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "this" {
         http_host_header = local.logs_domain
       }
     }
+    ingress_rule {
+      hostname = local.authentik_domain
+      service  = "http://nginx-gateway-nginx.default.svc.cluster.local:80"
+      origin_request {
+        http_host_header = local.authentik_domain
+      }
+    }
     # Required catch-all — must be last.
     ingress_rule {
       service = "http_status:404"
