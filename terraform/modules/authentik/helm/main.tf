@@ -45,28 +45,12 @@ resource "helm_release" "authentik" {
   namespace  = var.namespace
 
   set {
-    name  = "authentik.secret_key"
-    value = local.secret_key_effective
+    name  = "authentik.existingSecret.secretName"
+    value = kubernetes_secret.authentik_env.metadata[0].name
   }
   set {
     name  = "postgresql.enabled"
     value = "false"
-  }
-  set {
-    name  = "postgresql.host"
-    value = var.postgresql_host
-  }
-  set {
-    name  = "postgresql.name"
-    value = var.postgresql_database
-  }
-  set {
-    name  = "postgresql.user"
-    value = var.postgresql_username
-  }
-  set_sensitive {
-    name  = "postgresql.password"
-    value = var.postgresql_password
   }
   set {
     name  = "redis.enabled"

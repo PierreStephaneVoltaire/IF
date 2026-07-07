@@ -379,13 +379,6 @@ template_create_from_block / template_copy / template_archive / template_unarchi
 program_archive / program_unarchive
   When: Operator explicitly asks to archive or restore a program.
 
-── RAG SEARCH ────────────────────────────────────────────────────────
-
-health_rag_search
-  When: Operator asks about IPF rules, weight class specs, anti-doping rules,
-        or any information from the rulebook/coaching documents.
-  Not when: The question is about their specific program data.
-
 {% if directives %}
 ═══════════════════════════════════════════
 DIRECTIVES

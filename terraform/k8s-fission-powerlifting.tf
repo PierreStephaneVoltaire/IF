@@ -38,25 +38,45 @@ locals {
       memory      = try(yamldecode(file(yaml_path)).memory, 256)
       timeout     = try(yamldecode(file(yaml_path)).timeout, 900)
       s3_read     = try(yamldecode(file(yaml_path)).s3_read, false)
-      # resources block straight from resources.yaml (cpu+memory req+limits),
-      # falling back to defaults where the yaml omits a field.
       resources = merge(
         local.pl_default_resources,
         try(yamldecode(file(yaml_path)).resources, {}),
       )
-      # Content hash of the built source zip -> unique image tag. A code change
-      # produces a new tag, so the Package spec below changes and Fission re-pulls
-      # the image. This is the watch-for-code-change mechanism.
-      image_tag = "${tool_id}-${substr(sha1(filebase64("${local.pl_build_dir}/${tool_id}.zip")), 0, 12)}"
+      image_tag  = tool_id
+      source_sha = sha1(filebase64("${local.pl_build_dir}/${tool_id}.zip"))
     }
   } : {}
 
-  pl_scale = {
-    ai    = { min = 0, max = 1, cpu = 70, timeout = 120 }
-    warm  = { min = 0, max = 2, cpu = 70, timeout = 60 }
-    stats = { min = 0, max = 2, cpu = 80, timeout = 120 }
-    det   = { min = 0, max = 3, cpu = 70, timeout = 90 }
+  # Scale values are read from each tool's resources.yaml so cold/warm behavior
+  # is owned by the function definition, not by a class lookup table. pod_*
+  # defaults to one warm replica because the portal hits them on every page
+  # load; everything else defaults to zero. max_replicas / target_cpu /
+  # idle_timeout_seconds fall back to the class profile when a tool omits
+  # them so the cluster does not get a free-for-all.
+  pl_scale_defaults = {
+    ai    = { max = 1, cpu = 70, timeout = 120 }
+    warm  = { max = 2, cpu = 70, timeout = 60 }
+    stats = { max = 2, cpu = 80, timeout = 120 }
+    det   = { max = 3, cpu = 70, timeout = 90 }
   }
+
+  pl_tool_scale = var.fission_enabled ? {
+    for tool_id, yaml_path in local.pl_tool_yaml_paths :
+    tool_id => merge(
+      {
+        min = startswith(tool_id, "pod_") ? 1 : 0
+      },
+      local.pl_scale_defaults[local.pl_tools[tool_id].class],
+      {
+        for k, v in {
+          min     = try(yamldecode(file(yaml_path)).min_replicas, null)
+          max     = try(yamldecode(file(yaml_path)).max_replicas, null)
+          cpu     = try(yamldecode(file(yaml_path)).target_cpu, null)
+          timeout = try(yamldecode(file(yaml_path)).idle_timeout_seconds, null)
+        } : k => v if v != null
+      },
+    )
+  } : {}
 
   pl_common_env = [
     { name = "IF_AWS_REGION", value = "ca-central-1" },
@@ -64,149 +84,24 @@ locals {
     { name = "IF_TEMPLATES_TABLE_NAME", value = "if-health-templates" },
     { name = "IF_SESSIONS_TABLE_NAME", value = "if-sessions" },
     { name = "IF_ANALYSIS_CACHE_TABLE_NAME", value = "if-powerlifting-analysis-cache" },
+    { name = "POWERLIFTING_MASTER_COMPETITIONS_TABLE", value = "if-powerlifting-master-competitions" },
+    { name = "POWERLIFTING_USER_COMPETITIONS_TABLE", value = "if-powerlifting-user-competitions" },
     { name = "HEALTH_PROGRAM_PK", value = "operator" },
     { name = "LLM_BASE_URL", value = "https://openrouter.ai/api/v1" },
   ]
 
   pl_ai_env = [
-    { name = "ANALYSIS_MODEL", value = "anthropic/claude-sonnet-4.6" },
-    { name = "ESTIMATE_MODEL", value = "anthropic/claude-sonnet-4.6" },
-    { name = "IMPORT_FAST_MODEL", value = "anthropic/claude-haiku-4.5" },
-    { name = "GLOSSARY_TEXT_MODEL", value = "google/gemini-3.1-flash-lite" },
+    { name = "ANALYSIS_MODEL", value = var.pl_analysis_model },
+    { name = "ESTIMATE_MODEL", value = var.pl_estimate_model },
+    { name = "IMPORT_FAST_MODEL", value = var.pl_import_fast_model },
+    { name = "GLOSSARY_TEXT_MODEL", value = var.pl_glossary_text_model },
   ]
   pl_resources_hash = sha1(join("\n", [for p in values(local.pl_tool_yaml_paths) : sha1(file(p))]))
 }
 
-resource "kubectl_manifest" "pl_fission_env" {
-  count             = var.fission_enabled ? 1 : 0
-  server_side_apply = true
-  force_conflicts   = true
-  yaml_body = yamlencode({
-    apiVersion = "fission.io/v1"
-    kind       = "Environment"
-    metadata   = { name = "pl-fission-tools", namespace = kubernetes_namespace.if_portals.metadata[0].name }
-    spec = {
-      version                = 3
-      keeparchive            = false
-      runtime                = { image = "ghcr.io/fission/python-env" }
-      builder                = { image = "ghcr.io/fission/python-builder" }
-      terminationGracePeriod = 120
-      resources = {
-        requests = { cpu = "500m", memory = "512Mi" }
-        limits   = { cpu = "2000m", memory = "2Gi" }
-      }
-    }
-  })
-  depends_on = [helm_release.fission]
-}
-
-resource "kubectl_manifest" "pl_fission_executor_env_rbac" {
-  count             = var.fission_enabled ? 1 : 0
-  server_side_apply = true
-  force_conflicts   = true
-  yaml_body = yamlencode({
-    apiVersion = "rbac.authorization.k8s.io/v1"
-    kind       = "Role"
-    metadata   = { name = "fission-executor-env-reader", namespace = var.fission_namespace }
-    rules = [{
-      apiGroups = ["fission.io"]
-      resources = ["environments", "functions", "packages", "httptriggers", "kuberneteswatchtriggers", "messagequeuetriggers", "timetriggers"]
-      verbs     = ["get", "list", "watch"]
-    }]
-  })
-  depends_on = [helm_release.fission]
-}
-
-resource "kubectl_manifest" "pl_fission_executor_env_rbac_binding" {
-  count             = var.fission_enabled ? 1 : 0
-  server_side_apply = true
-  force_conflicts   = true
-  yaml_body = yamlencode({
-    apiVersion = "rbac.authorization.k8s.io/v1"
-    kind       = "RoleBinding"
-    metadata   = { name = "fission-executor-env-reader", namespace = var.fission_namespace }
-    roleRef = {
-      apiGroup = "rbac.authorization.k8s.io"
-      kind     = "Role"
-      name     = "fission-executor-env-reader"
-    }
-    subjects = [{
-      kind      = "ServiceAccount"
-      name      = "fission-executor"
-      namespace = var.fission_namespace
-    }]
-  })
-  depends_on = [kubectl_manifest.pl_fission_executor_env_rbac]
-}
-
-# Powerlifting Fission tool Packages reference a PREBUILT OCI image per tool
-# (Package.spec.deployment.oci.image) instead of a source archive + buildcmd.
-# This sidesteps the fission buildmgr entirely: no source build, no fetcher
-# upload, no HTTP 413 on large scipy archives, no single-builder concurrency
-# collisions. The images are built by scripts/build-powerlifting-fn-images.sh
-# (and re-built automatically on `terraform apply` via the
-# null_resource.packer_build_pl_fn watch loop below) into the shared
-# ${prefix}-if-health ECR repo, tagged "<tool_id>-<source_sha>".
-#
-# NOTE: apply the ECR repo + run the image build BEFORE the first apply of these
-# Packages, or set pl_images_prebuilt=true to skip the packer trigger (see var).
-resource "kubectl_manifest" "pl_packages" {
-  for_each          = local.pl_tools
-  server_side_apply = true
-  force_conflicts   = true
-  yaml_body = yamlencode({
-    apiVersion = "fission.io/v1"
-    kind       = "Package"
-    metadata   = { name = "pl-pkg-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
-    spec = {
-      environment = { name = "pl-fission-tools", namespace = kubernetes_namespace.if_portals.metadata[0].name }
-      deployment = {
-        type = "oci"
-        oci = {
-          image = "${aws_ecr_repository.if_health_fns.repository_url}:${each.value.image_tag}"
-          imagePullSecrets = [
-            { name = kubernetes_secret.ecr_registry.metadata[0].name }
-          ]
-        }
-      }
-    }
-  })
-  depends_on = [kubectl_manifest.pl_fission_env, null_resource.packer_build_pl_fn]
-}
-
-# ─── Watch loop: rebuild a tool's OCI image when its source zip changes ───
-# Mirrors the portal frontend/backend image pattern in image.tf. The trigger is
-# the sha1 of the built source zip, so editing a function's code ->
-# fission-deploy.py rebuilds the zip -> terraform sees a new hash -> packer
-# rebuilds + pushes a new <tool>-<sha> image -> the Package spec.oci.image tag
-# changes -> Fission re-pulls and re-specialises the function pod.
-resource "null_resource" "packer_build_pl_fn" {
-  for_each = local.pl_tools
-
-  triggers = {
-    source_sha1 = sha1(filebase64("${local.pl_build_dir}/${each.key}.zip"))
-    repo_url    = aws_ecr_repository.if_health_fns.repository_url
-    image_tag   = each.value.image_tag
-  }
-
-  provisioner "local-exec" {
-    working_dir = "${path.module}/../docker"
-    command     = <<-EOT
-      set -e
-      aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
-      aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin $(echo ${aws_ecr_repository.if_health_fns.repository_url} | cut -d'/' -f1)
-      packer init powerlifting-fn.pkr.hcl
-      packer build \
-        -var "image_repository=${aws_ecr_repository.if_health_fns.repository_url}" \
-        -var "image_tag=${each.value.image_tag}" \
-        -var "tool_id=${each.key}" \
-        -var "source_archive=${local.pl_build_dir}/${each.key}.zip" \
-        powerlifting-fn.pkr.hcl
-    EOT
-  }
-
-  depends_on = [aws_ecr_repository.if_health_fns, kubernetes_secret.ecr_registry]
-}
+# With the container executor, the ECR image IS the function — no Environment,
+# no Package, no fetcher. The images are built and pushed by the powerlifting
+# repo's GitHub Actions workflow into the shared ECR repo, tagged "<tool_id>".
 
 resource "kubectl_manifest" "pl_functions" {
   for_each          = local.pl_tools
@@ -217,48 +112,57 @@ resource "kubectl_manifest" "pl_functions" {
     kind       = "Function"
     metadata   = { name = "pl-fn-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
     spec = {
-      environment = { name = "pl-fission-tools", namespace = kubernetes_namespace.if_portals.metadata[0].name }
-      package = {
-        packageref   = { name = "pl-pkg-${local.pl_dns_name[each.key]}", namespace = kubernetes_namespace.if_portals.metadata[0].name }
-        functionName = "main.main"
-      }
+      environment     = { namespace = kubernetes_namespace.if_portals.metadata[0].name }
+      package         = { functionName = "main" }
       functionTimeout = try(each.value.timeout, 900)
       concurrency     = 500
       InvokeStrategy = {
         StrategyType = "execution"
         ExecutionStrategy = {
-          ExecutorType          = "newdeploy"
-          MinScale              = local.pl_scale[each.value.class].min
-          MaxScale              = local.pl_scale[each.value.class].max
-          SpecializationTimeout = local.pl_scale[each.value.class].timeout
-          TargetCPUPercent      = local.pl_scale[each.value.class].cpu
+          ExecutorType          = "container"
+          MinScale              = local.pl_tool_scale[each.key].min
+          MaxScale              = local.pl_tool_scale[each.key].max
+          SpecializationTimeout = local.pl_tool_scale[each.key].timeout
+          TargetCPUPercent      = local.pl_tool_scale[each.key].cpu
         }
       }
-      # Fission-native secret mounting: the `secrets` field mounts each
-      # referenced Secret under /secrets/<namespace>/<secret-name>/<key>.
-      # This is the ONLY mechanism Fission v1.26 newdeploy honors — the
-      # Function podspec (env, volumes, volumeMounts, envFrom) is NOT merged
-      # into the runtime deployment by the newdeploy executor.
-      # fission_entry.py discovers /secrets/*/pl-aws-credentials/credentials
-      # at import time and sets AWS_SHARED_CREDENTIALS_FILE / AWS_REGION so
-      # boto3 finds the creds without any podspec env.
-      secrets = [
-        { name = "pl-aws-credentials", namespace = kubernetes_namespace.if_portals.metadata[0].name },
-        { name = "pl-fission-secrets", namespace = kubernetes_namespace.if_portals.metadata[0].name },
-      ]
       podspec = {
+        terminationGracePeriodSeconds = 120
         containers = [
           {
-            name            = "pl-fission-tools"
-            image           = "ghcr.io/fission/python-env"
-            imagePullPolicy = "IfNotPresent"
-            resources       = each.value.resources
+            name            = "pl-fn-${local.pl_dns_name[each.key]}"
+            image           = "${aws_ecr_repository.pl_fns.repository_url}:${each.value.image_tag}"
+            imagePullPolicy = "Always"
+            env = concat(
+              local.pl_common_env,
+              [{ name = "IF_TOOL_NAME", value = each.key }],
+              [
+                { name = "AWS_SHARED_CREDENTIALS_FILE", value = "/secrets/aws-credentials/credentials" },
+                { name = "AWS_CONFIG_FILE", value = "/secrets/aws-credentials/config" },
+              ],
+              each.value.class == "ai" ? local.pl_ai_env : [],
+              each.value.s3_read ? [{ name = "POWERLIFTING_S3_BUCKET", value = var.powerlifting_s3_bucket }] : [],
+            )
+            envFrom = [
+              { secretRef = { name = "pl-fission-secrets" } },
+            ]
+            ports     = [{ containerPort = 8888 }]
+            resources = each.value.resources
+            volumeMounts = [
+              { name = "aws-creds", mountPath = "/secrets/aws-credentials", readOnly = true },
+            ]
           },
+        ]
+        volumes = [
+          { name = "aws-creds", secret = { secretName = "pl-aws-credentials" } },
+        ]
+        imagePullSecrets = [
+          { name = kubernetes_secret.ecr_registry.metadata[0].name },
         ]
       }
     }
   })
-  depends_on = [kubectl_manifest.pl_packages, kubernetes_secret.pl_fission_secrets, kubernetes_secret.pl_aws_credentials]
+  depends_on = [aws_ecr_repository.pl_fns, kubernetes_secret.pl_fission_secrets, kubernetes_secret.pl_aws_credentials]
 }
 
 resource "kubectl_manifest" "pl_triggers" {

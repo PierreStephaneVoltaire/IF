@@ -36,7 +36,6 @@ tools:
   - health_list_competitions
   - health_get_diet_notes
   - health_get_supplements
-  - health_rag_search
   - health_update_competition
   - health_update_diet_note
   - health_update_supplements

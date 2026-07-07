@@ -79,11 +79,12 @@ resource "aws_ecr_repository" "if_mcp_base" {
 }
 
 # One shared ECR repo for all powerlifting fission functions. Each function is
-# a distinct image TAG (tag = "<tool_id>-<source_sha>") within this repo, so a
-# code change produces a new tag and Fission re-pulls. Replaces the fission
+# a distinct image TAG (tag = "<tool_id>") within this repo. ECR tag mutability
+# means a code change overwrites the same tag; the previous image becomes
+# untagged and the lifecycle rule below cleans it up. Replaces the fission
 # source-package build path (HTTP 413 / buildmgr collisions on large archives).
-resource "aws_ecr_repository" "if_health_fns" {
-  name                 = "${var.ecr_repository_prefix}-if-health"
+resource "aws_ecr_repository" "pl_fns" {
+  name                 = "${var.ecr_repository_prefix}-powerlifting-fns"
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
@@ -97,8 +98,7 @@ resource "aws_ecr_lifecycle_policy" "keep_5" {
     { "if-opencode-runner" = aws_ecr_repository.if_opencode_runner.name },
     { for k, v in aws_ecr_repository.portal_backends : k => v.name },
     { for k, v in aws_ecr_repository.portal_frontends : k => v.name },
-    { "if-mcp-base" = aws_ecr_repository.if_mcp_base.name },
-    { "if-health-fns" = aws_ecr_repository.if_health_fns.name }
+    { "if-mcp-base" = aws_ecr_repository.if_mcp_base.name }
   )
 
   repository = each.value
@@ -112,6 +112,28 @@ resource "aws_ecr_lifecycle_policy" "keep_5" {
           tagStatus   = "any"
           countType   = "imageCountMoreThan"
           countNumber = 5
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_ecr_lifecycle_policy" "pl_fns_untagged" {
+  repository = aws_ecr_repository.pl_fns.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Expire untagged images after 1 day"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 1
         }
         action = {
           type = "expire"

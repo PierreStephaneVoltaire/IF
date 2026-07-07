@@ -165,3 +165,26 @@ variable "orchestrator_analysis_max_turns" {
   type        = number
   default     = 10
 }
+variable "pl_analysis_model" {
+  description = "Model for powerlifting AI tools that do correlation / program evaluation / import parsing / budget advisor work."
+  type        = string
+  default     = "anthropic/claude-sonnet-4.6"
+}
+
+variable "pl_estimate_model" {
+  description = "Model for powerlifting AI tools that do fatigue / muscle-group / lift-profile estimation."
+  type        = string
+  default     = "anthropic/claude-sonnet-4.6"
+}
+
+variable "pl_import_fast_model" {
+  description = "Model for fast classification / glossary-resolution work in the powerlifting import flow."
+  type        = string
+  default     = "anthropic/claude-haiku-4.5"
+}
+
+variable "pl_glossary_text_model" {
+  description = "Model for powerlifting glossary text generation."
+  type        = string
+  default     = "google/gemini-3.1-flash-lite"
+}
