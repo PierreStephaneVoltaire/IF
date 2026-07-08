@@ -80,12 +80,17 @@ locals {
 
   pl_common_env = [
     { name = "IF_AWS_REGION", value = "ca-central-1" },
+    { name = "AWS_REGION", value = "ca-central-1" },
     { name = "IF_HEALTH_TABLE_NAME", value = "if-health" },
     { name = "IF_TEMPLATES_TABLE_NAME", value = "if-health-templates" },
     { name = "IF_SESSIONS_TABLE_NAME", value = "if-sessions" },
     { name = "IF_ANALYSIS_CACHE_TABLE_NAME", value = "if-powerlifting-analysis-cache" },
     { name = "POWERLIFTING_MASTER_COMPETITIONS_TABLE", value = "if-powerlifting-master-competitions" },
     { name = "POWERLIFTING_USER_COMPETITIONS_TABLE", value = "if-powerlifting-user-competitions" },
+    { name = "POWERLIFTING_MASTER_FEDERATIONS_TABLE", value = "if-powerlifting-master-federations" },
+    { name = "POWERLIFTING_USER_FEDERATIONS_TABLE", value = "if-powerlifting-user-federations" },
+    { name = "POWERLIFTING_BUDGET_TABLE", value = "if-powerlifting-budget" },
+    { name = "POWERLIFTING_GOALS_TABLE", value = "if-powerlifting-goals" },
     { name = "HEALTH_PROGRAM_PK", value = "operator" },
     { name = "LLM_BASE_URL", value = "https://openrouter.ai/api/v1" },
   ]
