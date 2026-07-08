@@ -959,6 +959,23 @@ resource "kubernetes_cluster_role" "event_exporter" {
     verbs      = ["get", "watch", "list"]
   }
 
+  # The event-exporter enriches each event with the referenced object's
+  # metadata (e.g. pod/deployment labels) before forwarding to Loki.  Without
+  # "get" on these resources across all namespaces it logs "Forbidden: cannot
+  # get resource pods/deployments" and discards the event, so if-portals
+  # events never reach Grafana.
+  rule {
+    api_groups = [""]
+    resources  = ["pods"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["apps"]
+    resources  = ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs      = ["get", "list"]
+  }
+
   rule {
     api_groups = ["coordination.k8s.io"]
     resources  = ["leases"]
@@ -994,7 +1011,16 @@ resource "kubernetes_config_map" "event_exporter_config" {
     "config.yaml" = <<-EOT
 logLevel: info
 logFormat: json
-maxEventAgeSeconds: 5
+# Events older than this are discarded.  30s gives enough headroom for the
+# event-exporter to process event bursts (e.g. ImagePullBackOff storms)
+# without dropping events.
+maxEventAgeSeconds: 30
+# Skip the K8s API metadata lookup for each event's involved object.  The
+# event JSON already contains namespace, pod name, reason, and message, so
+# the lookup only adds labels — but it requires read RBAC on every possible
+# resource type (pods, deployments, HPAs, etc.) and throttles under load.
+# Disabling it eliminates both the forbidden errors and the throttling delay.
+omitLookup: true
 route:
   routes:
     - match:
@@ -1003,11 +1029,12 @@ receivers:
   - name: "loki"
     loki:
       url: http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100/loki/api/v1/push
+      # streamLabels are STATIC — the Loki receiver does not support Go
+      # templates here (unlike Kinesis/Pubsub layout fields).  The event
+      # namespace/reason/type are inside the JSON message body, so in Grafana
+      # query with: {job="kubernetes-events"} | json | namespace="if-portals"
       streamLabels:
         job: kubernetes-events
-        namespace: '{{ .Namespace }}'
-        type: '{{ .Type }}'
-        reason: '{{ .Reason }}'
     EOT
   }
 }
