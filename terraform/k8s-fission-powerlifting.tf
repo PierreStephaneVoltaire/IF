@@ -69,9 +69,9 @@ locals {
       local.pl_scale_defaults[local.pl_tools[tool_id].class],
       {
         for k, v in {
-          min     = try(yamldecode(file(yaml_path)).min_replicas, null)
+          min     = try(yamldecode(file(yaml_path)).min_replicas, 0)
           max     = try(yamldecode(file(yaml_path)).max_replicas, null)
-          cpu     = try(yamldecode(file(yaml_path)).target_cpu, null)
+          cpu     = try(yamldecode(file(yaml_path)).target_cpu, 100)
           timeout = try(yamldecode(file(yaml_path)).idle_timeout_seconds, null)
         } : k => v if v != null
       },
