@@ -107,6 +107,20 @@ locals {
 # With the container executor, the ECR image IS the function — no Environment,
 # no Package, no fetcher. The images are built and pushed by the powerlifting
 # repo's GitHub Actions workflow into the shared ECR repo, tagged "<tool_id>".
+#
+# Each function's image is pinned by its immutable digest (resolved via a
+# data.aws_ecr_image lookup per tag) instead of the mutable tag. This guarantees
+# that a running pod's image cannot be silently swapped by a tag overwrite — a
+# new CI push must be followed by `terraform apply` to pick up the new digest.
+# Combined with imagePullPolicy=IfNotPresent, pods that already have the exact
+# digest cached will never re-pull unnecessarily.
+
+data "aws_ecr_image" "pl_fns" {
+  for_each = local.pl_tools
+
+  repository_name = aws_ecr_repository.pl_fns.name
+  image_tag       = each.value.image_tag
+}
 
 resource "kubectl_manifest" "pl_functions" {
   for_each          = local.pl_tools
@@ -136,8 +150,8 @@ resource "kubectl_manifest" "pl_functions" {
         containers = [
           {
             name            = "pl-fn-${local.pl_dns_name[each.key]}"
-            image           = "${aws_ecr_repository.pl_fns.repository_url}:${each.value.image_tag}"
-            imagePullPolicy = "Always"
+            image           = "${aws_ecr_repository.pl_fns.repository_url}@${data.aws_ecr_image.pl_fns[each.key].image_digest}"
+            imagePullPolicy = "IfNotPresent"
             env = concat(
               local.pl_common_env,
               [{ name = "IF_TOOL_NAME", value = each.key }],

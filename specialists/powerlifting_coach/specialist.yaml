@@ -46,12 +46,8 @@ tools:
   - health_remove_exercise
   - health_create_competition
   - get_current_date
-  - kg_to_lb
-  - lb_to_kg
-  - ipf_weight_classes
-  - pct_of_max
+  - pod_calc
   - calculate_attempts
-  - days_until
   - weekly_analysis
   - analysis_section
   - correlation_analysis

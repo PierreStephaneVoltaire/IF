@@ -280,22 +280,23 @@ get_current_date
   When: PRE-FETCHED STATE is absent (context builder failed). Never call if
         CURRENT STATE already shows today's date.
 
-kg_to_lb / lb_to_kg
-  When: Operator requests a weight conversion or prefers a specific unit.
+pod_calc
+  Stateless calculation pod. Dispatch one of the following operations in the
+  "function" field and include the operation arguments as top-level fields:
+  - kg_to_lb:   {function: "kg_to_lb",   kg: <number>}
+  - lb_to_kg:   {function: "lb_to_kg",   lb: <number>}
+  - pct_of_max: {function: "pct_of_max", max_kg: <number>, pct: <number>}
+  - ipf_weight_classes: {function: "ipf_weight_classes", sex: "M"|"F"}
+  - calculate_dots: {function: "calculate_dots", total_kg: <number>, bodyweight_kg: <number>, sex: "male"|"female"}
+  - estimate_1rm: {function: "estimate_1rm", weight_kg: <number>, reps: <integer>, rpe: <integer 6-10>}
+  - days_until: {function: "days_until", target_date: "YYYY-MM-DD", label: "..."}
 
-ipf_weight_classes
-  When: Operator asks about weight class cutoffs or their class relative to bodyweight.
-
-pct_of_max
-  When: Need to calculate a specific percentage of a max (e.g., "what's 85% of my squat?").
+  When: Operator requests a unit conversion, percentage of max, weight class
+        lookup, DOTS score, e1RM estimate, or days-until countdown.
 
 calculate_attempts
   When: Selecting attempt weights for a competition. Use projected maxes from
         PRE-FETCHED STATE plus operator prefs from health_get_operator_prefs.
-
-days_until
-  When: Calculating days until a date that isn't competition day (e.g., a deload start).
-  Not when: PRE-FETCHED STATE shows days to competition already.
 
 ── ANALYSIS — USE SPARINGLY (each is LLM-powered or slow) ───────────
 

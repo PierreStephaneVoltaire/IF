@@ -6,6 +6,12 @@ resource "kubernetes_namespace" "monitoring" {
       managed-by = "terraform"
     }
   }
+
+  lifecycle {
+    ignore_changes = [
+      metadata[0].annotations,
+    ]
+  }
 }
 
 resource "kubernetes_config_map" "loki_config" {
@@ -262,6 +268,7 @@ scrape_configs:
     pipeline_stages:
       - cri: {}
       - regex:
+          source: filename
           expression: '/var/log/containers/(?P<pod>[^_]+)_(?P<namespace>[^_]+)_(?P<container>.+)-[0-9a-f]{64}\.log$'
       - labels:
           pod:
@@ -287,6 +294,9 @@ resource "kubernetes_daemon_set_v1" "promtail" {
     template {
       metadata {
         labels = { app = "promtail" }
+        annotations = {
+          "promtail-config-hash" = sha256(kubernetes_config_map.promtail_config.data["promtail.yaml"])
+        }
       }
 
       spec {
@@ -501,6 +511,62 @@ scrape_configs:
         target_label: pod
       - source_labels: [__meta_kubernetes_pod_label_app]
         target_label: app
+
+  - job_name: 'kube-state-metrics'
+    static_configs:
+      - targets: ['kube-state-metrics.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:8080']
+    relabel_configs:
+      - target_label: cluster
+        replacement: ${local.node_name}
+
+  - job_name: 'node-exporter'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+            - ${kubernetes_namespace.monitoring.metadata[0].name}
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: node-exporter
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: metrics
+
+  - job_name: 'cadvisor'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+            - ${kubernetes_namespace.monitoring.metadata[0].name}
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: cadvisor
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: metrics
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+
+  - job_name: 'fission'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - fission
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        action: keep
+        regex: metrics
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_label_svc]
+        target_label: app
     EOT
   }
 }
@@ -536,10 +602,14 @@ resource "kubernetes_deployment" "prometheus" {
   spec {
     replicas = 1
     selector { match_labels = { app = "prometheus" } }
+    strategy { type = "Recreate" }
 
     template {
       metadata {
         labels = { app = "prometheus" }
+        annotations = {
+          "prometheus-config-hash" = sha256(kubernetes_config_map.prometheus_config.data["prometheus.yml"])
+        }
       }
 
       spec {
@@ -595,11 +665,11 @@ resource "kubernetes_deployment" "prometheus" {
 
           resources {
             limits = {
-              memory = "512Mi"
+              memory = "2Gi"
               cpu    = "500m"
             }
             requests = {
-              memory = "256Mi"
+              memory = "512Mi"
               cpu    = "100m"
             }
           }
@@ -667,6 +737,7 @@ deleteDatasources:
 
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:9090
@@ -675,6 +746,7 @@ datasources:
     jsonData:
       timeInterval: 15s
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki.${kubernetes_namespace.monitoring.metadata[0].name}.svc.cluster.local:3100
@@ -761,6 +833,24 @@ resource "kubernetes_config_map" "grafana_dashboards" {
   }
 }
     EOT
+
+    "dashboards.yaml" = <<-EOT
+apiVersion: 1
+providers:
+  - name: default
+    orgId: 1
+    folder: Kubernetes
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 60
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards
+    EOT
+
+    "node-exporter-full.json"     = file("${path.module}/dashboards/node-exporter-full.json")
+    "kube-state-metrics.json"     = file("${path.module}/dashboards/kube-state-metrics.json")
+    "kubernetes-pod-metrics.json" = file("${path.module}/dashboards/kubernetes-pod-metrics.json")
   }
 }
 
@@ -799,6 +889,10 @@ resource "kubernetes_deployment" "grafana" {
     template {
       metadata {
         labels = { app = "grafana" }
+        annotations = {
+          "grafana-datasources-hash" = sha256(kubernetes_config_map.grafana_datasources.data["datasources.yaml"])
+          "grafana-dashboards-hash"  = sha256(jsonencode(kubernetes_config_map.grafana_dashboards.data))
+        }
       }
 
       spec {
