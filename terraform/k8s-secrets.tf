@@ -249,6 +249,8 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
     COOKIE_SECURE                          = var.cookie_secure
 
     POWERLIFTING_LAMBDA_BASE_URL = var.fission_enabled ? "http://router.${var.fission_namespace}.svc.cluster.local:80" : ""
+
+    VALKEY_URL = "redis://pl-valkey.${kubernetes_namespace.if_portals.metadata[0].name}.svc.cluster.local:6379"
   }
 }
 

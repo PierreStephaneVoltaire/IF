@@ -393,6 +393,7 @@ resource "kubernetes_deployment" "portal_backends" {
   depends_on = [
     null_resource.packer_build_portal_backends,
     kubernetes_namespace.if_portals,
+    kubernetes_deployment.pl_valkey,
   ]
 }
 
