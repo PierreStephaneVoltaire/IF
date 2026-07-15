@@ -16,6 +16,9 @@ resource "kubernetes_persistent_volume_claim" "pl_valkey" {
       app        = "pl-valkey"
       managed-by = "terraform"
     }
+    annotations = {
+      "volume.kubernetes.io/selected-node" = local.node_name
+    }
   }
   spec {
     access_modes       = ["ReadWriteOnce"]

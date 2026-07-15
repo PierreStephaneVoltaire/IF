@@ -66,7 +66,7 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     IF_MODELS_TABLE_NAME             = var.dynamodb_models_table
     IF_EXECUTION_REGISTRY_TABLE_NAME = var.dynamodb_execution_registry_table
     IF_WEBHOOKS_TABLE_NAME           = var.dynamodb_webhooks_table
-    POWERLIFTING_S3_BUCKET           = aws_s3_bucket.powerlifting_data.id
+    POWERLIFTING_S3_BUCKET           = var.powerlifting_s3_bucket
     SPECIALISTS_PATH                 = var.specialists_path
     EXTERNAL_TOOLS_PATH              = var.tools_path
     MODELS_PATH                      = var.models_path
