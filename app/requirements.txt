@@ -47,3 +47,4 @@ num2words>=0.5.12
 
 openai-codex==0.154.0
 jsonschema>=4.20.0
+PyJWT>=2.10.1,<3

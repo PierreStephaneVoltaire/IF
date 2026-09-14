@@ -22,6 +22,7 @@ async def _fetch_templates(owner=None) -> list[dict]:
     import os
     import httpx
     from config import IF_MCP_NAMESPACE, IF_USER_PK
+    from api.powerlifting_principal import principal_token
 
     owner = owner or IF_USER_PK
     base = os.getenv(
@@ -36,6 +37,7 @@ async def _fetch_templates(owner=None) -> list[dict]:
                 "X-Internal-Token": os.environ["INTERNAL_API_TOKEN"],
                 "X-Athlete-Pk": owner,
                 "X-Person-Pk": owner,
+                "X-PL-Principal": principal_token(owner, owner, "template_list"),
             },
         )
         response.raise_for_status()

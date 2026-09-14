@@ -82,6 +82,24 @@ resource "aws_dynamodb_table" "if_powerlifting_requests" {
     type = "S"
   }
 
+  dynamic "attribute" {
+    for_each = toset(["inbox_pk", "inbox_sk", "sent_pk", "sent_sk", "roster_pk", "roster_sk"])
+    content {
+      name = attribute.value
+      type = "S"
+    }
+  }
+
+  dynamic "global_secondary_index" {
+    for_each = { InboxIndex = "inbox", SentIndex = "sent", RosterIndex = "roster" }
+    content {
+      name            = global_secondary_index.key
+      hash_key        = "${global_secondary_index.value}_pk"
+      range_key       = "${global_secondary_index.value}_sk"
+      projection_type = "ALL"
+    }
+  }
+
   lifecycle {
     prevent_destroy = true
   }

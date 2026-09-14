@@ -139,8 +139,9 @@ async def call_tool(job, role, name, arguments):
             dispatch = await get_execution_service().request("POST", f"/turns/{job.job_id}/domain-dispatch")
             if not dispatch["dispatch"]:
                 return dispatch["result"]
+        from api.powerlifting_principal import principal_token
         async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(base + path, json=arguments, headers={"X-Internal-Token": os.environ["INTERNAL_API_TOKEN"], "X-Athlete-Pk": athlete, "X-Person-Pk": job.owner, "X-IF-Turn-Id": job.job_id, **({"X-IF-Generation-Id": job.request.payload.get("generation_id", ""), "X-IF-Generation-Attempt": str(job.request.payload.get("generation_attempt", 0))} if name == job.request.payload.get("operation") else {})})
+            response = await client.post(base + path, json=arguments, headers={"X-Internal-Token": os.environ["INTERNAL_API_TOKEN"], "X-Athlete-Pk": athlete, "X-Person-Pk": job.owner, "X-PL-Principal": principal_token(job.owner, athlete, name), "X-IF-Turn-Id": job.job_id, **({"X-IF-Generation-Id": job.request.payload.get("generation_id", ""), "X-IF-Generation-Attempt": str(job.request.payload.get("generation_attempt", 0))} if name == job.request.payload.get("operation") else {})})
             response.raise_for_status()
             result = response.json()
             await get_execution_service().request("POST", f"/turns/{job.job_id}/domain-progress", json={**result, "operation": name, "domain": domain, "execution_id": arguments.get("execution_id") or result.get("execution_id")})

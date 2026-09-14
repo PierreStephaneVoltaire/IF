@@ -48,6 +48,7 @@ resource "kubernetes_secret" "if_agent_api_secrets" {
     INTERNAL_API_TOKEN   = var.pl_internal_token
     DISCORD_TOKEN        = var.discord_token
     GITHUB_TOKEN         = var.github_token
+    PL_PRINCIPAL_SECRET  = random_password.powerlifting_principal.result
   }
 
   type = "Opaque"
@@ -253,7 +254,7 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
     DISCORD_REDIRECT_URI                   = var.discord_redirect_uri
     AUTHENTIK_CLIENT_ID                    = data.kubernetes_secret.authentik_powerlifting_oidc.data["AUTHENTIK_CLIENT_ID"]
     AUTHENTIK_CLIENT_SECRET                = data.kubernetes_secret.authentik_powerlifting_oidc.data["AUTHENTIK_CLIENT_SECRET"]
-    AUTHENTIK_ISSUER_URL                   = "https://${local.authentik_domain}/application/o"
+    AUTHENTIK_ISSUER_URL                   = "https://${local.authentik_domain}/application/o/nolift-powerlifting/"
     AUTHENTIK_INTERNAL_URL                 = "http://authentik-server.${kubernetes_namespace.if_portals.metadata[0].name}.svc.cluster.local/application/o"
     AUTHENTIK_REDIRECT_URI                 = "https://${local.app_domains["powerlifting-app"].domain}/api/auth/authentik/callback"
     JWT_SECRET                             = var.jwt_secret
@@ -272,7 +273,9 @@ resource "kubernetes_secret" "powerlifting_app_secrets" {
   }
 
   data = {
-    INTERNAL_API_TOKEN = var.pl_internal_token
+    INTERNAL_API_TOKEN  = var.pl_internal_token
+    PL_PRINCIPAL_SECRET = random_password.powerlifting_principal.result
+    SESSION_SECRET      = random_password.powerlifting_session.result
   }
 
   type = "Opaque"

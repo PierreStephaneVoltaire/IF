@@ -8,6 +8,10 @@ data "authentik_flow" "default_source_authentication" {
   slug = "default-source-authentication"
 }
 
+data "authentik_flow" "default_source_enrollment" {
+  slug = "default-source-enrollment"
+}
+
 # The default self-signed certificate installed by authentik on first boot.
 # Used as the signing key for the OAuth2 provider.
 data "authentik_certificate_key_pair" "default" {
@@ -76,31 +80,33 @@ resource "authentik_source_oauth" "discord" {
   name                = "discord"
   slug                = var.discord_source_slug
   authentication_flow = data.authentik_flow.default_source_authentication.id
+  enrollment_flow     = data.authentik_flow.default_source_enrollment.id
   provider_type       = "discord"
   consumer_key        = var.discord_client_id
   consumer_secret     = var.discord_client_secret
   enabled             = true
   user_path_template  = "authentik:%%(username)s"
   group_matching_mode = "name_link"
-  user_matching_mode  = "email_link"
+  user_matching_mode  = "identifier"
   additional_scopes   = "email identify"
   policy_engine_mode  = "any"
 }
 
 resource "authentik_provider_oauth2" "powerlifting" {
-  name                = "nolift-powerlifting"
-  client_id           = "nolift-powerlifting"
-  client_type         = "confidential"
-  authorization_flow  = data.authentik_flow.default_authorization.id
-  invalidation_flow   = data.authentik_flow.default_invalidation.id
-  signing_key         = data.authentik_certificate_key_pair.default.id
-  grant_types         = ["authorization_code"]
+  name               = "nolift-powerlifting"
+  client_id          = "nolift-powerlifting"
+  client_type        = "confidential"
+  authorization_flow = data.authentik_flow.default_authorization.id
+  invalidation_flow  = data.authentik_flow.default_invalidation.id
+  signing_key        = data.authentik_certificate_key_pair.default.id
+  grant_types        = ["authorization_code"]
   property_mappings = [
     data.authentik_property_mapping_provider_scope.openid.id,
     data.authentik_property_mapping_provider_scope.email.id,
     data.authentik_property_mapping_provider_scope.profile.id,
     authentik_property_mapping_provider_scope.powerlifting_groups.id,
     authentik_property_mapping_provider_scope.powerlifting_roles.id,
+    authentik_property_mapping_provider_scope.verified_discord_subjects.id,
   ]
   allowed_redirect_uris = [
     {
