@@ -551,22 +551,6 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: pod
 
-  - job_name: 'fission'
-    kubernetes_sd_configs:
-      - role: pod
-        namespaces:
-          names:
-            - fission
-    relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_container_port_name]
-        action: keep
-        regex: metrics
-      - source_labels: [__meta_kubernetes_namespace]
-        target_label: namespace
-      - source_labels: [__meta_kubernetes_pod_name]
-        target_label: pod
-      - source_labels: [__meta_kubernetes_pod_label_svc]
-        target_label: app
     EOT
   }
 }

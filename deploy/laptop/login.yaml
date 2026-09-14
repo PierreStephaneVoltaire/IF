@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: if-codex-login-laptop
+  namespace: if-portals
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: local-path-wait
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: if-codex-login-laptop
+  namespace: if-portals
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+  containers:
+  - name: login
+    image: 429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api@sha256:ca816dfdbe7b6083d55adb61c5123434d7de28c7b10d7affb805d43f010c5636
+    imagePullPolicy: IfNotPresent
+    command:
+    - python
+    - -m
+    - execution.login
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: '1'
+        memory: 512Mi
+    volumeMounts:
+    - name: login
+      mountPath: /var/lib/codex
+  volumes:
+  - name: login
+    persistentVolumeClaim:
+      claimName: if-codex-login-laptop
+  nodeSelector:
+    if.codex/worker: laptop
+  imagePullSecrets:
+  - name: ecr-registry

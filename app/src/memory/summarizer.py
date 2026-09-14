@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import List, Dict, Any, TYPE_CHECKING
 
-from config import LLM_BASE_URL, OPENROUTER_API_KEY, SUGGESTION_MODEL
+from flow.codex_llm import call_codex_chat
 from agent.prompts.loader import render_template
 
 from .user_facts import (
@@ -63,23 +63,11 @@ async def summarize_and_store(
         conversation = "\n".join(conv_lines)
         prompt = render_template("summary.j2", conversation=conversation)
         
-        resp = await http_client.post(
-            f"{LLM_BASE_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": SUGGESTION_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 150,
-                "temperature": 0.3,
-            },
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        summary = resp.json()["choices"][0]["message"]["content"].strip()
-        
+        summary = (await call_codex_chat(
+            model="gpt-5.6-luna", messages=[{"role": "user", "content": prompt}],
+            priority=10, conversation_id=context_id or cache_key,
+        )).strip()
+
         store = get_user_fact_store()
 
         ctx_id = context_id or cache_key

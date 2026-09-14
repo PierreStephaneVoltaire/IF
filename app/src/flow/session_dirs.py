@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from pathlib import Path
 from typing import Any, Optional
 
 import shutil
 
-from config import OPENCODE_WORKSPACE_BASE, SANDBOX_PATH
+from config import IF_WORKSPACE_BASE, SANDBOX_PATH
 
 if False:
     from storage.models import WebhookRecord
@@ -63,10 +64,20 @@ def resolve_session_dir(
     cache_key: str,
 ) -> Path:
 
-    guild_id = safe_segment(request_guild_id(request_data, webhook), "guild")
-    channel_id = safe_segment(request_channel_id(request_data, webhook, cache_key), "channel")
-    path = Path(OPENCODE_WORKSPACE_BASE) / guild_id / channel_id
+    from config import IF_USER_PK
+    owner = request_data.get("_owner") or IF_USER_PK
+    conversation = request_data.get("conversation_id") or request_channel_id(request_data, webhook, cache_key)
+    identity = hashlib.sha256((owner + "\0" + conversation).encode()).hexdigest()
+    path = Path(IF_WORKSPACE_BASE) / "people" / identity
     path.mkdir(parents=True, exist_ok=True)
+    if owner == IF_USER_PK and not (path / "history.json").exists():
+        guild = request_guild_id(request_data, webhook)
+        channel = request_channel_id(request_data, webhook, cache_key)
+        if guild == safe_segment(guild) and channel == safe_segment(channel):
+            legacy = Path(IF_WORKSPACE_BASE) / guild / channel
+            for name in ("history.json", "history.md", ".thread-reset"):
+                if (legacy / name).is_file():
+                    shutil.copy2(legacy / name, path / name)
     return path
 
 def clear_session_dir(
@@ -76,9 +87,8 @@ def clear_session_dir(
 ) -> Path:
 
     path = resolve_session_dir(request_data, webhook, cache_key)
-    if path.exists():
-        shutil.rmtree(path)
-    path.mkdir(parents=True, exist_ok=True)
+    from datetime import datetime, timezone
+    (path / ".thread-reset").write_text(datetime.now(timezone.utc).isoformat())
     return path
 
 def resolve_direct_tool_dir(conversation_id: str) -> Path:

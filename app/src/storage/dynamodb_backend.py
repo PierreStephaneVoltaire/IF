@@ -20,6 +20,40 @@ class DynamoDBWebhookStore:
         self._region = region
         self._pk = pk
         self._table = None
+        self._backend = self
+
+    def record_activity(self, cache_key: str, webhook_id: str | None = None) -> None:
+        if webhook_id:
+            webhook = self.get(webhook_id)
+            if webhook:
+                cache_key = webhook.get_config().get("channel_id", cache_key)
+        now = datetime.now(timezone.utc).isoformat()
+        item = self.get_activity(cache_key) or {
+            "pk": self._pk,
+            "sk": f"activity#{cache_key}",
+            "cache_key": cache_key,
+            "last_message_at": now,
+        }
+        item["last_message_at"] = now
+        if webhook_id:
+            item["webhook_id"] = webhook_id
+        self.table.put_item(Item=item)
+
+    def record_heartbeat(self, cache_key: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        item = self.get_activity(cache_key) or {
+            "pk": self._pk,
+            "sk": f"activity#{cache_key}",
+            "cache_key": cache_key,
+            "last_message_at": now,
+        }
+        item["last_heartbeat_at"] = now
+        self.table.put_item(Item=item)
+
+    def get_activity(self, cache_key: str) -> dict | None:
+        return self.table.get_item(
+            Key={"pk": self._pk, "sk": f"activity#{cache_key}"}
+        ).get("Item")
 
     @property
     def table(self):
@@ -85,7 +119,7 @@ class DynamoDBWebhookStore:
             Key={"pk": self._pk, "sk": webhook_id}
         )
         item = response.get("Item")
-        if item is None:
+        if item is None or "platform" not in item:
             return None
         return self._item_to_record(item)
 
@@ -95,7 +129,7 @@ class DynamoDBWebhookStore:
             KeyConditionExpression=Key("pk").eq(self._pk)
         )
         items = response.get("Items", [])
-        return [self._item_to_record(item) for item in items]
+        return [self._item_to_record(item) for item in items if "platform" in item]
 
     def list_active(self) -> List[WebhookRecord]:
 
@@ -104,9 +138,12 @@ class DynamoDBWebhookStore:
             FilterExpression=Key("status").eq("active"),
         )
         items = response.get("Items", [])
-        return [self._item_to_record(item) for item in items]
+        return [self._item_to_record(item) for item in items if "platform" in item]
 
     def deactivate(self, webhook_id: str) -> bool:
+
+        if self.get(webhook_id) is None:
+            return False
 
         now = datetime.now(timezone.utc).isoformat()
         response = self.table.update_item(

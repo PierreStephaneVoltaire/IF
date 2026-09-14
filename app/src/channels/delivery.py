@@ -40,6 +40,10 @@ async def _deliver_discord(
     from config import DISCORD_MAX_CONTENT_CHARS, DISCORD_MAX_ATTACHMENTS_PER_MESSAGE
     from channels.chunker import chunk_response
 
+    if discord_loop is None:
+        client = getattr(getattr(channel, "_state", None), "_client", None)
+        discord_loop = getattr(client, "loop", None)
+
     # --- Build discord.File objects from attachments ---
     discord_files: List[discord.File] = []
     skipped_attachments: List[str] = []
@@ -89,6 +93,7 @@ async def _deliver_discord(
 
     # --- Distribute discord.File attachments across chunks (max 10 per message) ---
     file_idx = 0
+    send_error = None
     for i, chunk in enumerate(safe_chunks):
         files_for_this_chunk: List[discord.File] = []
         while (
@@ -111,9 +116,11 @@ async def _deliver_discord(
             logger.debug(f"Sent Discord chunk {i+1}/{len(safe_chunks)}")
         except discord.HTTPException as e:
             logger.error(f"Discord send failed: {e}")
+            send_error = e
             break
         except Exception as e:
             logger.error(f"Unexpected Discord error: {e}")
+            send_error = e
             break
 
         is_last = i == len(safe_chunks) - 1
@@ -142,10 +149,14 @@ async def _deliver_discord(
             logger.info(f"Sent {len(batch)} leftover attachment(s) in extra message")
         except discord.HTTPException as e:
             logger.error(f"Discord send failed for leftover attachments: {e}")
+            send_error = e
             break
         except Exception as e:
             logger.error(f"Unexpected Discord error for leftover attachments: {e}")
+            send_error = e
             break
+    if send_error is not None:
+        raise send_error
 
 async def _deliver_openwebui(
     channel_ref: Dict[str, str],
@@ -187,12 +198,16 @@ async def _deliver_openwebui(
                     f"OpenWebUI delivery failed: {resp.status_code} - "
                     f"{resp.text[:200]}"
                 )
+                resp.raise_for_status()
         except httpx.TimeoutException:
             logger.error("OpenWebUI delivery timeout")
+            raise
         except httpx.RequestError as e:
             logger.error(f"OpenWebUI connection error: {e}")
+            raise
         except Exception as e:
             logger.error(f"OpenWebUI delivery error: {e}")
+            raise
 
 async def send_typing_indicator(platform: str, channel_ref: Any) -> None:
 
@@ -203,6 +218,7 @@ async def send_error_message(
     platform: str,
     channel_ref: Any,
     error_message: str,
+    discord_loop: Any = None,
 ) -> None:
 
     await deliver_to_channel(
@@ -210,6 +226,7 @@ async def send_error_message(
         channel_ref=channel_ref,
         chunks=[f"❌ Error: {error_message}"],
         attachments=[],
+        discord_loop=discord_loop,
     )
 
 async def deliver_to_openwebui(

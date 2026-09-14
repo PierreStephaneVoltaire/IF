@@ -13,8 +13,6 @@ import httpx
 from config import (
     OPENWEBUI_TASK_MARKERS,
     SUGGESTION_MODEL,
-    OPENROUTER_BASE_URL,
-    OPENROUTER_HEADERS,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,19 +69,6 @@ def detect_openwebui_task(messages: List[Dict[str, Any]]) -> bool:
         if marker in content:
             return True
     
-    if len(messages) <= 2:
-        suggestion_patterns = [
-            "suggest",
-            "title",
-            "follow-up",
-            "tags",
-            "summarize",
-        ]
-        content_lower = content.lower()
-        if any(pattern in content_lower for pattern in suggestion_patterns):
-            if len(content) < 500:
-                return True
-    
     return False
 
 async def call_suggestion_model(
@@ -105,34 +90,12 @@ async def call_suggestion_model(
 
 
 
-    url = f"{OPENROUTER_BASE_URL}/chat/completions"
-    
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": stream,
-    }
-    
+    from flow.codex_llm import call_codex_chat
     try:
-        response = await http_client.post(
-            url,
-            headers=OPENROUTER_HEADERS,
-            json=payload,
-            timeout=30.0
-        )
-        response.raise_for_status()
-        return response.json()
-    except httpx.HTTPStatusError as e:
-        error_detail = e.response.text if e.response else str(e)
-        return {
-            "error": f"OpenRouter API error: {e.response.status_code}",
-            "detail": error_detail
-        }
-    except Exception as e:
-        return {
-            "error": "Failed to call suggestion model",
-            "detail": str(e)
-        }
+        content = await call_codex_chat(model="gpt-5.6-luna", messages=messages, priority=10)
+        return {"choices": [{"message": {"role": "assistant", "content": content}}]}
+    except Exception as exc:
+        return {"error": "Codex suggestion failed", "detail": str(exc)}
 
 async def intercept_request(
     messages: List[Dict[str, Any]],

@@ -52,7 +52,7 @@ class OpinionFormer:
             from flow.model_catalog import load_model_ids
 
             model_ids = load_model_ids()
-            candidate = REFLECTION_MODEL.replace("openrouter/", "")
+            candidate = REFLECTION_MODEL
             llm_model = candidate if candidate in model_ids else (model_ids[0] if model_ids else candidate)
 
         self.store = store
@@ -118,7 +118,7 @@ class OpinionFormer:
 
 
         from memory.user_facts import FactCategory, FactSource, UserFact, OpinionPair
-        from config import LLM_BASE_URL, LLM_API_KEY
+        from flow.codex_llm import call_codex_chat
         
         try:
             prompt = render_template(
@@ -127,31 +127,12 @@ class OpinionFormer:
                 user_position=user_position,
             )
             
-            headers = {
-                "Authorization": f"Bearer {LLM_API_KEY}",
-                "Content-Type": "application/json",
-            }
-            
-            payload = {
-                "model": self.llm_model,
-                "messages": [
-                    {"role": "system", "content": load_prompt("opinion_formation_system.j2")},
-                    {"role": "user", "content": prompt},
-                ],
-                "max_tokens": 500,
-                "temperature": 0.7,
-            }
-            
-            response = await self.http_client.post(
-                f"{LLM_BASE_URL}/chat/completions",
-                headers=headers,
-                json=payload,
+            content = await call_codex_chat(
+                model="gpt-5.6-sol",
+                messages=[{"role": "system", "content": load_prompt("opinion_formation_system.j2")}, {"role": "user", "content": prompt}],
+                priority=10, conversation_id=self.context_id if hasattr(self, "context_id") else "reflection",
             )
-            response.raise_for_status()
-            data = response.json()
-            
-            content = data["choices"][0]["message"]["content"]
-            
+
             import json
             try:
                 json_start = content.find("{")

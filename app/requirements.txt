@@ -44,3 +44,6 @@ nltk>=3.8.0
 
 # Number to words conversion
 num2words>=0.5.12
+
+openai-codex==0.154.0
+jsonschema>=4.20.0

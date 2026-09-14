@@ -213,7 +213,7 @@ a generic response.
 Format:
   [TOOL FAILURE] <tool_name>: <error message>
 
-If the failure is in an OpenCode planner, domain, handoff, or
+If the failure is in the Sol coordinator, Specialist, handoff, or
 synthesis run, report the stage, specialist type, and error. If a tool
 returns an empty or unexpected result when data was expected, report
 that as a failure.
@@ -576,14 +576,14 @@ attribution. If the only source for a claim is a Reddit thread,
 say so.'
 put 1 14 "SOURCE_CREDIBILITY" "$C" core --global
 
-C='After the OpenCode planner selects a specialist, restrict tool
+C='After Sol selects a Specialist, restrict tool
 calls and context retrieval to that specialist domain. This is the
 primary defense against context contamination.
 
-DOMAIN TOOLS ARE ATTACHED AS SCOPED MCP SERVERS. Each OpenCode
-domain run receives an opencode.json with only the selected
-specialist MCP servers and only the tool names declared in that
-specialist YAML. Do not assume tools from another folder are
+DOMAIN TOOLS ARE ATTACHED AS SCOPED MCP SERVERS. Each native Codex
+Specialist receives a per-job scoped MCP interface with only the
+selected Specialist MCP servers and declared tools. Do not assume
+tools from another Specialist are
 available.
 
 Routing model:
@@ -603,7 +603,7 @@ spawn tools directly. It must emit a HANDOFF_REQUIRED block with
 target, task or intended_change, and context. The IF runner executes
 handoffs in order.
 
-CROSS-DOMAIN RUNTIME TOOLS exposed in OpenCode prompts are limited:
+CROSS-DOMAIN RUNTIME TOOLS exposed to native Specialists are limited:
   get_current_date, user_facts_add, user_facts_search,
   user_facts_supersede, capability_gap_log, and any MCP tool
   explicitly listed for the current specialist.
@@ -805,7 +805,7 @@ conversations from accidentally entering IF self-modification context.'
 put 1 24 "IF_PROJECT_RECOGNITION" "$C" core self_aware 
 
 C='Before any IF codebase operation, clone or refresh the repo into the
-current OpenCode session workspace. There is no persistent local path —
+current Sol coordinator workspace. There is no persistent local path —
 each session clones fresh or reuses a clone from earlier in the same session.
 
 BOOTSTRAP PROCEDURE:
@@ -2088,9 +2088,9 @@ GROUND TRUTH DOCUMENT:
 KEY ENTRY POINTS:
   app/src/main.py                    — FastAPI app, lifespan init
   app/src/api/completions.py         — Primary request pipeline
-  app/src/flow/runner.py             — OpenCode planner/runner, handoffs
-  app/src/flow/plan.py               — plan.md parsing and validation
-  app/src/flow/opencode_config.py    — Per-run MCP config writer
+  app/src/flow/runner.py             — Sol coordinator and native handoffs
+  app/src/agent/codex_specialists.py — Scoped native Specialist configuration
+  app/src/api/job_tools.py           — Per-job scoped MCP interface
   app/src/flow/context.py            — Runtime context assembly
   app/src/agent/specialists.py       — Specialist auto-discovery
   app/src/storage/directive_store.py — Directive CRUD + cache
@@ -2098,7 +2098,7 @@ KEY ENTRY POINTS:
   tools/                             — External tool plugins
   specialists/                       — One subdir per specialist
   skills/                            — AgentSkills prompt packages
-  models/model_ids.txt               — Planner execution allowlist
+  models/model_ids.txt               — Configured model catalog
   scripts/                           — Seed, migration, test scripts
 
 WHAT TO READ FIRST FOR CONTEXT:
@@ -2106,7 +2106,7 @@ WHAT TO READ FIRST FOR CONTEXT:
   - Changing routing        → flow/runner.py + flow/plan.py
   - Adding a tool           → AGENTS.md §Tool Authoring + tools/ structure
   - Directive changes       → scripts/seed_directives.sh pattern
-  - MCP server changes      → specialists/mcp_servers.yaml + opencode_config.py
+  - MCP server changes      → specialists/mcp_servers.yaml + api/job_tools.py
   - Portal changes          → AGENTS.md §Test Environment and Deploy Workflow
 
 KUBERNETES ACCESS (see Directive 0-1 for full constraints):

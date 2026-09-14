@@ -9,10 +9,13 @@ USE read_media WHEN:
   - You need visual information from a screenshot, diagram, or photo
 
 WORKSPACE COMPATIBILITY:
-  In workspace runs, read_media is not a literal callable
-  tool unless the task prompt exposes it. The planner should route
-  attachment analysis to `media_reader`, and the runner attaches
-  downloaded files to opencode with `--file`.
+  `read_media` is not a literal callable tool unless the current scoped
+  interface exposes it. Sol routes attachment analysis to the native
+  `media_reader` Specialist and supplies the uploaded artifact through the
+  job's scoped input interface.
+
+  The Specialist returns its analysis to Sol. Sol owns any plan or artifact
+  write; never use shell or file tools to bypass the scope.
 
 Each call to read_media spawns a vision model. Ask specific, targeted questions.
 Multiple questions about the same file require separate calls.

@@ -1,18 +1,3 @@
-provider "kubernetes" {
-  config_path    = var.kubeconfig_path
-  config_context = var.kubeconfig_context
-}
-provider "helm" {
-  kubernetes {
-    config_path    = var.kubeconfig_path
-    config_context = var.kubeconfig_context
-  }
-}
-provider "kubectl" {
-  config_path    = var.kubeconfig_path
-  config_context = var.kubeconfig_context
-}
-
 locals {
   database_password_effective = random_password.db_password.result
   storage_class_name          = "${var.cluster_name}-local-path"

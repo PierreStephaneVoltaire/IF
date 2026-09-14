@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+import asyncio
 import json
 import uuid
 import hashlib
@@ -7,6 +8,8 @@ import logging
 from typing import TYPE_CHECKING, Dict, List, Any, Optional, Tuple, AsyncGenerator
 
 from fastapi import APIRouter, HTTPException, Request
+from .jobs import internal_auth, owner_scope
+from execution.service import HostError, ExecutionFailure
 from fastapi.responses import StreamingResponse
 
 from .schemas import (
@@ -129,72 +132,23 @@ def resolve_cache_key(
     if platform and channel_id:
         return str(channel_id)
 
-    chat_id = request_data.get("chat_id")
+    chat_id = request_data.get("conversation_id") or request_data.get("chat_id")
     if chat_id:
         return chat_id
 
-    messages = request_data.get("messages", [])
-    if messages:
-        content = messages[0].get("content", "")
-        if isinstance(content, list):
-            text_parts = []
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    text_parts.append(part.get("text", ""))
-                elif isinstance(part, str):
-                    text_parts.append(part)
-            content = " ".join(text_parts)
-        return hashlib.sha256(content.encode()).hexdigest()[:16]
-
-    return "default"
-
-def build_context_id(
-    request_data: Dict[str, Any],
-    webhook: Optional["WebhookRecord"] = None
-) -> str:
+    return str(request_data.setdefault("_request_id", uuid.uuid4().hex))
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+def build_context_id(request_data, webhook=None):
     if webhook:
-        config = webhook.get_config()
-        platform = webhook.platform.lower()
-        channel_id = config.get("channel_id", webhook.conversation_id)
-        return f"{platform}_{channel_id}"
+        return str(webhook.conversation_id)
+    stable = request_data.get("conversation_id") or request_data.get("chat_id")
+    if stable:
+        return str(stable)
+    if request_data.get("platform") and request_data.get("channel_id"):
+        return str(request_data["platform"]) + "_" + str(request_data["channel_id"])
+    return str(request_data.setdefault("_request_id", uuid.uuid4().hex))
 
-    platform = request_data.get("platform")
-    channel_id = request_data.get("channel_id")
-    if platform and channel_id:
-        return f"{str(platform).lower()}_{channel_id}"
-
-    chat_id = request_data.get("chat_id")
-    if chat_id:
-        return f"openwebui_{chat_id}"
-
-    messages = request_data.get("messages", [])
-    if messages:
-        content = messages[0].get("content", "")
-        if isinstance(content, list):
-            text_parts = []
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    text_parts.append(part.get("text", ""))
-                elif isinstance(part, str):
-                    text_parts.append(part)
-            content = " ".join(text_parts)
-        return f"openwebui_{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-    return "openwebui_default"
 
 def format_conversation_history(messages: List[Dict], max_messages: int = 50) -> str:
 
@@ -304,8 +258,11 @@ async def process_chat_completion_internal(
     messages = request_data.get("messages", [])
     stream = request_data.get("stream", False)
 
-    cache_key = resolve_cache_key(request_data, webhook)
     context_id = build_context_id(request_data, webhook)
+    request_data.setdefault("conversation_id", context_id)
+    from flow.runner import conversation_scope
+    from config import IF_USER_PK
+    cache_key = conversation_scope(request_data.get("_owner", IF_USER_PK), resolve_cache_key(request_data, webhook))
     last_user_message = extract_last_user_message(messages)
     logger.info(f"[Request] cache_key={cache_key} | user={request_data.get('user', '?')} | prompt={last_user_message[:80]}")
 
@@ -322,6 +279,7 @@ async def process_chat_completion_internal(
             return json.dumps({"error": f"Invalid tool arguments: {e}"}), []
 
         args["_conversation_id"] = cache_key
+        args["_user_pk"] = request_data.get("_owner", IF_USER_PK)
 
         registry = get_mcp_manager()
         if not registry.has_tool(tool_name):
@@ -379,6 +337,8 @@ async def process_chat_completion_internal(
             except Exception as e:
                 logger.warning(f"[Cache] Failed to persist eviction: {e}")
             logger.info(f"[Cache] Evicted cache key: {cache_key}")
+            from execution.service import get_execution_service
+            await get_execution_service().request("POST", "/conversations/reset", params={"owner": request_data.get("_owner", IF_USER_PK), "conversation": context_id})
             clear_session_dir(request_data, webhook, cache_key)
 
             return cmd.response_text, []
@@ -433,6 +393,7 @@ async def process_chat_completion_internal(
                         context_id=context_id,
                         cache_key=cache_key,
                         selected_model=_specialist_model_override(request_data),
+                    owner=request_data.get("_owner", "operator"),
                     )
                     content, refs = result
                     if refs:
@@ -441,7 +402,7 @@ async def process_chat_completion_internal(
                     return content, attachments
 
                 registry = get_mcp_manager()
-                result = await registry.call_tool(cmd.target, args)
+                result = await registry.call_tool(cmd.target, {**args, "_conversation_id": cache_key, "_user_pk": request_data.get("_owner", IF_USER_PK)})
                 return result, []
             except Exception as e:
                 logger.error(f"[Command] Error executing tool {cmd.target}: {e}")
@@ -468,6 +429,7 @@ async def process_chat_completion_internal(
                     context_id=context_id,
                     cache_key=cache_key,
                     selected_model=_specialist_model_override(request_data),
+                    owner=request_data.get("_owner", "operator"),
                 )
                 content, refs = result
                 if refs:
@@ -505,7 +467,7 @@ async def process_chat_completion_internal(
         locked_specialist = webhook.pinned_specialist.strip()
         if locked_specialist:
             task = last_user_message or "No message provided."
-            logger.info(f"[PinnedSpecialist] channel locked to {locked_specialist!r}, bypassing planner")
+            logger.info(f"[PinnedSpecialist] channel locked to {locked_specialist!r}")
             try:
                 result = await run_specialist_flow(
                     specialist_slug=locked_specialist,
@@ -515,6 +477,7 @@ async def process_chat_completion_internal(
                     context_id=context_id,
                     cache_key=cache_key,
                     selected_model=_specialist_model_override(request_data),
+                    owner=request_data.get("_owner", "operator"),
                 )
                 content, refs = result
                 if refs:
@@ -614,13 +577,98 @@ async def process_chat_completion_internal(
     logger.info(f"[Response] cache_key={cache_key} | content_len={len(flow_result.content)} | attachments={len(attachments)}")
     return flow_result.content, attachments
 
+
+async def _stream_completion(
+    request_data: Dict[str, Any],
+    http_client: "httpx.AsyncClient",
+    chunk_id: str,
+    direct_invoke: bool,
+) -> AsyncGenerator[str, None]:
+    events: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
+
+    async def emit(event: str, data: dict[str, Any]) -> None:
+        await events.put((event, data))
+
+    request_data["_emit"] = emit
+    response_task = asyncio.create_task(
+        process_chat_completion_internal(
+            request_data=request_data,
+            http_client=http_client,
+            direct_invoke=direct_invoke,
+        )
+    )
+    streamed = False
+    buffer = FilesStripBuffer()
+    response_text = ""
+    try:
+        while True:
+            if response_task.done():
+                while not events.empty():
+                    event, data = events.get_nowait()
+                    if event == "delta" and data.get("delta"):
+                        streamed = True
+                        emitted = buffer.feed(str(data["delta"]))
+                        if emitted:
+                            yield make_sse_chunk(emitted, chunk_id, API_MODEL_NAME)
+                response_text, _ = response_task.result()
+                break
+            pending_event = asyncio.create_task(events.get())
+            done, _ = await asyncio.wait({response_task, pending_event}, return_when=asyncio.FIRST_COMPLETED)
+            if pending_event not in done:
+                pending_event.cancel()
+                await asyncio.gather(pending_event, return_exceptions=True)
+                continue
+            event, data = pending_event.result()
+            if event != "delta" or not data.get("delta"):
+                continue
+            streamed = True
+            emitted = buffer.feed(str(data["delta"]))
+            if emitted:
+                yield make_sse_chunk(emitted, chunk_id, API_MODEL_NAME)
+
+        remaining, file_refs = buffer.finalize()
+        if not streamed:
+            response_text, direct_refs = strip_files_line(response_text)
+            file_refs.extend(direct_refs)
+        if remaining:
+            yield make_sse_chunk(remaining, chunk_id, API_MODEL_NAME)
+        if file_refs:
+            log_file_refs(build_context_id(request_data), file_refs)
+        if not streamed and response_text:
+            yield make_sse_chunk(response_text, chunk_id, API_MODEL_NAME)
+        finish_chunk = ChatCompletionChunk(
+            id=chunk_id,
+            model=API_MODEL_NAME,
+            choices=[
+                ChatCompletionChunkChoice(
+                    index=0,
+                    delta=ChatCompletionChunkDelta(),
+                    finish_reason="stop",
+                )
+            ],
+        )
+        yield f"{SSE_PREFIX}{finish_chunk.model_dump_json()}\n\n"
+        yield SSE_DONE
+    except (HostError, ExecutionFailure) as exc:
+        yield "data: " + json.dumps({"error": {"code": exc.code, "message": str(exc)}}) + "\n\n"
+        yield SSE_DONE
+    finally:
+        if not response_task.done():
+            response_task.cancel()
+            try:
+                await response_task
+            except asyncio.CancelledError:
+                pass
+
 @router.post("/v1/chat/completions")
 async def chat_completions(
     request: ChatCompletionRequest,
     raw_request: Request
 ):
 
-    if request.model != API_MODEL_NAME:
+    internal_auth(raw_request.headers.get("X-Internal-Token", ""))
+    owner = owner_scope(None, raw_request.headers.get("X-Person-Pk", ""))
+    if request.model not in {API_MODEL_NAME, "gpt-5.6-sol", "gpt-6-astra"}:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid model '{request.model}'. Only '{API_MODEL_NAME}' model is supported."
@@ -629,52 +677,39 @@ async def chat_completions(
     http_client = raw_request.app.state.http_client
     
     request_data = request.model_dump(exclude_none=True)
+    request_data["_owner"] = owner
+    request_data["_idempotency_key"] = raw_request.headers.get("Idempotency-Key") or uuid.uuid4().hex
     
     stream = request_data.get("stream", False)
     
+    direct_invoke = raw_request.headers.get("X-Direct-Tool-Invoke", "").lower() == "true"
+    chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+
+    if stream:
+        return StreamingResponse(
+            _stream_completion(request_data, http_client, chunk_id, direct_invoke),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
+
     try:
-        direct_invoke = raw_request.headers.get("X-Direct-Tool-Invoke", "").lower() == "true"
         response_text, attachments = await process_chat_completion_internal(
             request_data=request_data,
             http_client=http_client,
             direct_invoke=direct_invoke,
         )
+    except HostError as exc:
+        raise HTTPException(exc.status, {"code": exc.code, "message": str(exc)}) from exc
+    except ExecutionFailure as exc:
+        raise HTTPException(503, {"code": exc.code, "message": str(exc)}) from exc
     except Exception as e:
         logger.error(f"Chat completion failed: {e}")
         raise HTTPException(
             status_code=500,
             detail=str(e)
-        )
-    
-    chunk_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
-    
-    if stream:
-        async def generate_stream():
-
-            yield make_sse_chunk(response_text, chunk_id, API_MODEL_NAME)
-            
-            finish_chunk = ChatCompletionChunk(
-                id=chunk_id,
-                model=API_MODEL_NAME,
-                choices=[
-                    ChatCompletionChunkChoice(
-                        index=0,
-                        delta=ChatCompletionChunkDelta(),
-                        finish_reason="stop",
-                    )
-                ],
-            )
-            yield f"{SSE_PREFIX}{finish_chunk.model_dump_json()}\n\n"
-            
-            yield SSE_DONE
-        
-        return StreamingResponse(
-            generate_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            }
         )
     
     return ChatCompletionResponse(

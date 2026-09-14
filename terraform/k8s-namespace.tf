@@ -6,6 +6,10 @@ resource "kubernetes_namespace" "if_portals" {
       managed-by = "terraform"
     }
   }
+
+  lifecycle {
+    ignore_changes = [metadata[0].annotations]
+  }
 }
 
 resource "kubernetes_persistent_volume_claim" "pl_valkey" {

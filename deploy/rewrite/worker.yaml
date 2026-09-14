@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: if-codex-login
+  namespace: if-portals
+spec:
+  storageClassName: local-path-wait
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: if-codex-state
+  namespace: if-portals
+spec:
+  storageClassName: local-path-wait
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: if-codex-worker
+  namespace: if-portals
+spec:
+  selector:
+    app: if-codex-worker
+  ports:
+  - name: host
+    port: 8001
+    targetPort: 8001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: if-codex-worker
+  namespace: if-portals
+spec:
+  replicas: 0
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: if-codex-worker
+  template:
+    metadata:
+      labels:
+        app: if-codex-worker
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: sirsimpalot-g5-5000
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+      - name: worker
+        image: if-codex-worker:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: INTERNAL_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: powerlifting-app-secrets
+              key: INTERNAL_API_TOKEN
+        ports:
+        - containerPort: 8001
+          name: host
+        readinessProbe:
+          tcpSocket:
+            port: host
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: '2'
+            memory: 3Gi
+        volumeMounts:
+        - name: login
+          mountPath: /var/lib/codex
+        - name: workspace
+          mountPath: /work
+      volumes:
+      - name: login
+        persistentVolumeClaim:
+          claimName: if-codex-login
+      - name: workspace
+        persistentVolumeClaim:
+          claimName: if-codex-state

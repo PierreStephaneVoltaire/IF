@@ -1,0 +1,115 @@
+{
+  "basic": {
+    "thread_reuse": true,
+    "independent_threads": true,
+    "concurrent": true,
+    "native_delegation": true,
+    "scoped_deterministic_tool": true,
+    "native_executions": [
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "1d8b5a0af3664f75885f772e95158fb3",
+        "thread_id": "01a09e2a-e3a5-7893-838c-6229f96beced",
+        "turn_id": "01a09e2a-e3ef-7c63-bed0-53764c2dfebf"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "83fc9ae6aacb4ef18ee21f57b0661ac5",
+        "thread_id": "01a09e2a-e3a5-7893-838c-6229f96beced",
+        "turn_id": "01a09e2a-eff3-7061-8525-63942b1e5cd4"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "3a7f8a66e400415d916bea5b448903e4",
+        "thread_id": "01a09e2a-fb63-7dd2-963f-4e53446ed9ce",
+        "turn_id": "01a09e2a-fb97-7812-9334-015fc66f4b14"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "022678d60e7045248c78df7691ead34e",
+        "thread_id": "01a09e2a-fc00-7f51-8073-d17ce20308b1",
+        "turn_id": "01a09e2a-fc33-79f1-a647-8d45034c68c1"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "b8b4f5dd4b344738a5e0bae5992f6c90",
+        "thread_id": "01a09e2b-0a0a-7421-81d7-eb91b574ce65",
+        "turn_id": "01a09e2b-0a3d-7441-991f-e47ac5a535e8"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "d84ea14eb4cd41b384c418a29fe4e70b",
+        "thread_id": "01a09e2b-37f4-75f1-9f76-91eb3f195e54",
+        "turn_id": "01a09e2b-3823-7790-95bf-043b1ce16961"
+      }
+    ]
+  },
+  "extended": {
+    "report_generation": {
+      "job_id": "d9b9f72ddd044397b5eff06d593016e3",
+      "status": "starting",
+      "generation_id": "39a80c3f345ce64f3b7d8e6a4fb581c0a6b623bab74a4f9663b272485a0eb54b"
+    },
+    "report_cached": true,
+    "report_native_delegation": true,
+    "read_only_status": true,
+    "persisted_result_recovery": true,
+    "steering": true,
+    "cancellation": true,
+    "sdk_restart_thread_reuse": true,
+    "native_executions": [
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "d9b9f72ddd044397b5eff06d593016e3",
+        "thread_id": "01a09e36-d4e6-7ed3-809f-79fc68756b09",
+        "turn_id": "01a09e36-d4f5-79c0-aaed-9e52be4500df"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "44b95887e94542bebf0bb4d07cce14c5",
+        "thread_id": "01a09e38-b483-7841-b71f-739fd0637aa8",
+        "turn_id": "01a09e38-b521-7142-b389-11446c8c3650"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "02a680b3da4643e7ade3da62bef17360",
+        "thread_id": "01a09e38-b483-7841-b71f-739fd0637aa8",
+        "turn_id": "01a09e39-1669-7cf1-8aec-50df480a245a"
+      }
+    ]
+  },
+  "final_runtime": {
+    "report_generation": {
+      "job_id": "702d666364ad47c8881491c54052638e",
+      "status": "starting",
+      "generation_id": "68ff63f42b7fb0fde0a15f1053a0fc0fbe468e5eb20decf672b6c260fbff71c2"
+    },
+    "report_cached": true,
+    "report_native_delegation": true,
+    "read_only_status": true,
+    "persisted_result_recovery": true,
+    "steering": true,
+    "cancellation": true,
+    "sdk_restart_thread_reuse": true,
+    "native_executions": [
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "702d666364ad47c8881491c54052638e",
+        "thread_id": "01a09e41-afad-7e82-af5e-d5b44d36bc4a",
+        "turn_id": "01a09e41-afc4-7ff2-9f53-5bcc0d9fc0ed"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "c764de5dc8e446e9ade34375cbae6daa",
+        "thread_id": "01a09e42-83a6-7d61-9504-64d2d07d7b89",
+        "turn_id": "01a09e42-83cf-78c1-8cc2-afef106ddddd"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "job_id": "7002b19a0ab04a62aab3f111461087ad",
+        "thread_id": "01a09e42-83a6-7d61-9504-64d2d07d7b89",
+        "turn_id": "01a09e42-c855-7ab1-a474-60d93c0c3d5a"
+      }
+    ]
+  }
+}

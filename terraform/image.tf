@@ -78,11 +78,6 @@ resource "aws_ecr_repository" "if_mcp_base" {
   }
 }
 
-# One shared ECR repo for all powerlifting fission functions. Each function is
-# a distinct image TAG (tag = "<tool_id>") within this repo. ECR tag mutability
-# means a code change overwrites the same tag; the previous image becomes
-# untagged and the lifecycle rule below cleans it up. Replaces the fission
-# source-package build path (HTTP 413 / buildmgr collisions on large archives).
 resource "aws_ecr_repository" "pl_fns" {
   name                 = "${var.ecr_repository_prefix}-powerlifting-fns"
   image_tag_mutability = "MUTABLE"
@@ -146,9 +141,17 @@ resource "aws_ecr_lifecycle_policy" "pl_fns_untagged" {
 locals {
   docker_hash = filesha1("${path.module}/../docker/build.pkr.hcl")
 
-  main_api_hash = sha1(join("", [
-    for f in fileset("${path.module}/../app/src", "**/*") :
-    filesha1("${path.module}/../app/src/${f}")
+  main_api_hash = sha1(join("", concat(
+    [filesha1("${path.module}/../app/main_system_prompt.txt")],
+    [for f in fileset("${path.module}/../app/src", "**/*") :
+      filesha1("${path.module}/../app/src/${f}")
+      if !strcontains(f, "__pycache__/") && !endswith(f, ".pyc")
+    ]
+  )))
+
+  powerlifting_operations_hash = sha1(join("", [
+    for f in fileset("${path.module}/../utils/powerlifting-app/services/operations", "**/*.json") :
+    filesha1("${path.module}/../utils/powerlifting-app/services/operations/${f}")
   ]))
 
   portal_backend_hashes = {
@@ -191,13 +194,6 @@ locals {
     )
   }
 
-  opencode_runner_hash = sha1(join("", [
-    filesha1("${path.module}/../docker/opencode-runner.pkr.hcl"),
-    filesha1("${path.module}/../utils/opencode-runner/Cargo.toml"),
-    filesha1("${path.module}/../utils/opencode-runner/src/main.rs"),
-    fileexists("${path.module}/../utils/opencode-runner/Cargo.lock") ? filesha1("${path.module}/../utils/opencode-runner/Cargo.lock") : "no-lock",
-  ]))
-
   mcp_base_image_hash = sha1(join("", [
     filesha1("${path.module}/../docker/mcp-server.pkr.hcl"),
     filesha1("${path.module}/../docker/mcp-server-entrypoint.sh"),
@@ -226,9 +222,10 @@ locals {
 }
 resource "null_resource" "packer_build_main_api" {
   triggers = {
-    dir_sha1    = local.docker_hash
-    source_sha1 = local.main_api_hash
-    repo_url    = aws_ecr_repository.if_agent_api.repository_url
+    dir_sha1                = local.docker_hash
+    source_sha1             = local.main_api_hash
+    powerlifting_operations = local.powerlifting_operations_hash
+    repo_url                = aws_ecr_repository.if_agent_api.repository_url
   }
 
   provisioner "local-exec" {
@@ -245,11 +242,11 @@ resource "null_resource" "packer_build_main_api" {
 
 resource "null_resource" "rollout_restart_main_api" {
   triggers = {
-    source_sha1 = local.main_api_hash
+    image_sha1 = sha1(jsonencode(null_resource.packer_build_main_api.triggers))
   }
 
   provisioner "local-exec" {
-    command = "kubectl rollout restart deployment/if-agent-api -n if-portals"
+    command = "kubectl rollout status deployment/if-agent-api -n if-portals --timeout=10m"
   }
 
   depends_on = [
@@ -340,26 +337,6 @@ resource "null_resource" "rollout_restart_portal_frontends" {
     kubernetes_deployment.portal_frontends,
   ]
 }
-
-resource "null_resource" "packer_build_opencode_runner" {
-  triggers = {
-    source_sha1 = local.opencode_runner_hash
-    repo_url    = aws_ecr_repository.if_opencode_runner.repository_url
-  }
-
-  provisioner "local-exec" {
-    working_dir = "${path.module}/../docker"
-    command     = <<-EOT
-      aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
-      aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin $(echo ${aws_ecr_repository.if_opencode_runner.repository_url} | cut -d'/' -f1)
-      packer init opencode-runner.pkr.hcl
-      packer build -var "image_repository=${aws_ecr_repository.if_opencode_runner.repository_url}" -var "image_tag=latest" opencode-runner.pkr.hcl
-    EOT
-  }
-
-  depends_on = [aws_ecr_repository.if_opencode_runner]
-}
-
 
 resource "null_resource" "packer_build_mcp_base" {
   triggers = {

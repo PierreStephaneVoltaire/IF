@@ -1,13 +1,9 @@
 MCP tool protocol:
-- Native MCP tools are attached to this OpenCode run when available.
-- IF local MCP servers are filtered so they only list this specialist's declared tools.
-- Native OpenCode MCP tool names are server-prefixed, e.g. `if_health_health_get_session`.
-- If native MCP tools are unavailable, use this shell bridge fallback:
-  `{{ invoke_command }} <tool_name> '<json_args>'`
-- Example:
-  `{{ invoke_command }} get_current_date '{}'`
-- Call only the tools exposed in this run or listed below. Keep generated files in this session directory.
-- Before long operations and after tool calls, append a concise progress line to `.if/status.log`.
+- Native MCP tools are attached to this Specialist job with only its declared scope.
+- Call only the MCP and memory tools exposed below. Never infer access from another role.
+- Do not use shell, file, plugin, or permission tools. Return findings to Sol.
+- Sol coordinates dependent calls serially, may start at most two fresh Specialists for independent work, and alone writes plans and requested artifacts.
+- Never enqueue another job or start another Specialist from this run.
 
 Available tool schemas for this specialist:
 {% if schemas %}
@@ -18,4 +14,3 @@ Available tool schemas for this specialist:
 {% else %}
 - No specialist MCP tools declared; `get_current_date` remains available.
 {% endif %}
-

@@ -75,7 +75,7 @@ class ReflectionEngine:
             from flow.model_catalog import load_model_ids
 
             model_ids = load_model_ids()
-            candidate = REFLECTION_MODEL.replace("openrouter/", "")
+            candidate = REFLECTION_MODEL
             llm_model = candidate if candidate in model_ids else (model_ids[0] if model_ids else candidate)
         self.store = store
         self.http_client = http_client

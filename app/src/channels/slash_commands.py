@@ -18,6 +18,38 @@ logger = logging.getLogger(__name__)
 _synced_guilds: set[tuple[int, int]] = set()
 _sync_lock = threading.Lock()
 
+async def _fetch_templates(owner=None) -> list[dict]:
+    import os
+    import httpx
+    from config import IF_MCP_NAMESPACE, IF_USER_PK
+
+    owner = owner or IF_USER_PK
+    base = os.getenv(
+        "PL_SERVICE_URL_TEMPLATE",
+        "http://pl-{domain}.{namespace}.svc.cluster.local:8000",
+    ).format(domain="templates", namespace=IF_MCP_NAMESPACE)
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(
+            f"{base}/operations/template_list",
+            json={"pk": owner, "include_archived": False},
+            headers={
+                "X-Internal-Token": os.environ["INTERNAL_API_TOKEN"],
+                "X-Athlete-Pk": owner,
+                "X-Person-Pk": owner,
+            },
+        )
+        response.raise_for_status()
+        parsed = response.json()
+    return parsed if isinstance(parsed, list) else parsed.get("templates", [])
+
+def _template_choices(templates: list[dict], current: str) -> list[app_commands.Choice[str]]:
+    needle = current.lower()
+    return [
+        app_commands.Choice(name=t["name"], value=t.get("sk", t["name"]))
+        for t in templates
+        if isinstance(t, dict) and "name" in t and needle in t["name"].lower()
+    ][:25]
+
 def should_sync(bot_user_id: int, guild_id: int) -> bool:
 
 
@@ -48,28 +80,32 @@ def setup_command_tree(
 
 
 
-    cache_key = str(channel_id)
-    context_id = f"discord_{channel_id}"
-
-    def _clear_opencode_session(interaction: discord.Interaction) -> None:
+    async def _clear_runtime_session(interaction: discord.Interaction) -> None:
         from flow.session_dirs import clear_session_dir
+        from execution.service import get_execution_service
+        from channels.channel_coordinator import discord_owner, discord_conversation
 
         request_data = {
             "platform": "discord",
             "channel_id": str(interaction.channel_id or channel_id),
             "guild_id": str(interaction.guild_id or ""),
-            "conversation_id": str(interaction.channel_id or channel_id),
+            "conversation_id": discord_conversation(interaction.channel_id or channel_id),
         }
-        clear_session_dir(request_data, None, cache_key)
+        request_data["_owner"] = discord_owner(interaction.user.id)
+        await get_execution_service().request("POST", "/conversations/reset", params={"owner": request_data["_owner"], "conversation": request_data["conversation_id"]})
+        clear_session_dir(request_data, None, request_data["channel_id"])
 
     @tree.command(
         name="end_convo",
-        description="Clear conversation state and force reclassification",
+        description="End the current Codex thread and start fresh on the next message",
     )
     async def end_convo_cmd(interaction: discord.Interaction):
         try:
             from routing.cache import get_cache
 
+            from channels.channel_coordinator import discord_owner, discord_conversation
+            from flow.runner import conversation_scope
+            cache_key = conversation_scope(discord_owner(interaction.user.id), discord_conversation(interaction.channel_id or channel_id))
             cache = get_cache()
             cache.evict(cache_key)
 
@@ -82,17 +118,38 @@ def setup_command_tree(
             except Exception as e:
                 logger.warning(f"[SlashCmd] Failed to persist eviction: {e}")
 
-            _clear_opencode_session(interaction)
+            await _clear_runtime_session(interaction)
 
             await interaction.response.send_message(
-                "Acknowledged. Categorisation state cleared. "
-                "Next message will be re-evaluated."
+                "Conversation ended. The next message starts a fresh thread; history is retained."
             )
         except Exception as e:
             logger.error(f"[SlashCmd] /end_convo error: {e}")
             await interaction.response.send_message(
                 f"Error: {e}", ephemeral=True
             )
+
+    @tree.command(name="status", description="Show the current Codex turn")
+    async def status_cmd(interaction: discord.Interaction):
+        from execution.service import get_execution_service
+        from channels.channel_coordinator import discord_owner, discord_conversation
+        await interaction.response.defer(ephemeral=True)
+        turns = await get_execution_service().list(discord_owner(interaction.user.id), discord_conversation(interaction.channel_id or channel_id))
+        latest = turns[-1] if turns else None
+        await interaction.followup.send(f"{latest.status}: {latest.turn_id or latest.job_id}" if latest else "No turns in this Conversation.", ephemeral=True)
+
+    @tree.command(name="cancel", description="Interrupt the active Codex turn")
+    async def cancel_cmd(interaction: discord.Interaction):
+        from execution.service import get_execution_service
+        from execution.store import TERMINAL
+        from channels.channel_coordinator import discord_owner, discord_conversation
+        await interaction.response.defer(ephemeral=True)
+        owner = discord_owner(interaction.user.id)
+        turns = await get_execution_service().list(owner, discord_conversation(interaction.channel_id or channel_id))
+        active = next((turn for turn in reversed(turns) if turn.status not in TERMINAL), None)
+        if active:
+            await get_execution_service().cancel(active.job_id, owner)
+        await interaction.followup.send("Interruption requested. Check any completed changes before retrying." if active else "No active turn.", ephemeral=True)
 
     @tree.command(
         name="pondering",
@@ -102,6 +159,9 @@ def setup_command_tree(
         try:
             from routing.cache import get_cache
 
+            from channels.channel_coordinator import discord_owner, discord_conversation
+            from flow.runner import conversation_scope
+            cache_key = conversation_scope(discord_owner(interaction.user.id), discord_conversation(interaction.channel_id or channel_id))
             cache = get_cache()
             cache.pin(cache_key, 2)
 
@@ -156,7 +216,7 @@ def setup_command_tree(
 
         try:
             deleted = await interaction.channel.purge(limit=amount)
-            _clear_opencode_session(interaction)
+            await _clear_runtime_session(interaction)
             await interaction.followup.send(
                 f"Deleted {len(deleted)} message(s).", ephemeral=True
             )
@@ -275,7 +335,7 @@ def setup_command_tree(
                 store = get_user_fact_store()
                 reflection_engine = get_reflection_engine()
                 cmd_handler = get_command_handler(
-                    store, reflection_engine, context_id
+                    store, reflection_engine, f"discord_{interaction.channel_id or channel_id}"
                 )
 
                 result = cmd_handler.handle(f"/{command_name}", args)
@@ -336,7 +396,7 @@ def setup_command_tree(
         await interaction.response.defer()
         try:
             prompt = f"Process the uploaded file {file.filename} as a program/template import."
-            result = await _invoke_via_agent(prompt, interaction)
+            result = await _invoke_via_agent(prompt, interaction, file)
             await _send_chunked(interaction, result)
         except Exception as e:
             logger.error(f"[SlashCmd] /import error: {e}")
@@ -372,19 +432,10 @@ def setup_command_tree(
         current: str,
     ) -> List[app_commands.Choice[str]]:
         try:
-            from mcp_runtime import get_mcp_manager
-            import json
-
-            raw = await get_mcp_manager().call_tool("template_list", {"include_archived": False})
-            parsed = json.loads(raw)
-            templates = parsed.get("templates", parsed if isinstance(parsed, list) else [])
+            from channels.channel_coordinator import discord_owner
+            templates = await _fetch_templates(discord_owner(interaction.user.id))
             
-            choices = [
-                app_commands.Choice(name=t["name"], value=t.get("sk", t["name"]))
-                for t in templates
-                if isinstance(t, dict) and "name" in t and current.lower() in t["name"].lower()
-            ]
-            return choices[:25]
+            return _template_choices(templates, current)
         except Exception as e:
             logger.warning(f"[Autocomplete] Failed: {e}")
             return []
@@ -410,29 +461,49 @@ def setup_command_tree(
     _register_dynamic_commands(tree, channel_id, conversation_id)
 
 STATIC_COMMAND_NAMES = {
-    "end_convo", "pondering", "clear", "chat_history", "reflect", "gaps",
+    "end_convo", "status", "cancel", "pondering", "clear", "chat_history", "reflect", "gaps",
     "patterns", "opinions", "growth", "meta", "tools",
     "import", "template", "program_archive",
 }
 
 MAX_DISCORD_CHAT_INPUT_COMMANDS = 100
 
-async def _invoke_via_agent(message_content: str, interaction: discord.Interaction):
+async def _invoke_via_agent(message_content: str, interaction: discord.Interaction, attachment=None):
 
     from main import app
     from api.completions import process_chat_completion_internal
     from config import API_MODEL_NAME
 
+    from channels.channel_coordinator import discord_owner, discord_conversation
     http_client = app.state.http_client
     request_data = {
         "model": API_MODEL_NAME,
+        "_owner": discord_owner(interaction.user.id),
+        "_idempotency_key": "slash:" + str(interaction.id),
         "messages": [{"role": "user", "content": message_content}],
         "platform": "discord",
         "channel_id": str(interaction.channel_id) if interaction.channel_id else "",
         "guild_id": str(interaction.guild_id) if interaction.guild_id else "",
-        "conversation_id": str(interaction.channel_id) if interaction.channel_id else "",
+        "conversation_id": discord_conversation(interaction.channel_id) if interaction.channel_id else "",
         "user": str(interaction.user.id),
     }
+    if attachment is not None:
+        from channels.attachments import download_discord_attachments
+        from flow.session_dirs import resolve_session_dir
+
+        pending = [{
+            "filename": attachment.filename,
+            "url": attachment.url,
+            "content_type": attachment.content_type or "application/octet-stream",
+        }]
+        session_dir = resolve_session_dir(
+            request_data, webhook=None, cache_key=request_data["channel_id"]
+        )
+        request_data["_uploaded_files"] = await download_discord_attachments(
+            pending,
+            request_data["conversation_id"],
+            target_uploads_dir=session_dir / "uploads",
+        )
 
     response_text, _ = await process_chat_completion_internal(
         request_data=request_data,

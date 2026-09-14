@@ -1,28 +1,28 @@
 locals {
-  authentik_domain = "auth.dev.nolift.training"
+  authentik_domain = "auth.nolift.training"
   authentik_zone   = "nolift.training"
 }
 
 module "postgres" {
   source = "./modules/postgres"
 
-  kubeconfig_path    = var.kubeconfig_path
-  kubeconfig_context = var.kubeconfig_context
-  namespace          = kubernetes_namespace.if_portals.metadata[0].name
+  namespace = kubernetes_namespace.if_portals.metadata[0].name
 }
 
 module "authentik_helm" {
   source = "./modules/authentik/helm"
 
-  kubeconfig_path    = var.kubeconfig_path
-  kubeconfig_context = var.kubeconfig_context
-  namespace          = kubernetes_namespace.if_portals.metadata[0].name
+  namespace = kubernetes_namespace.if_portals.metadata[0].name
 
   postgresql_host     = module.postgres.host
   postgresql_port     = module.postgres.port
   postgresql_database = module.postgres.database
   postgresql_username = module.postgres.username
   postgresql_password = module.postgres.password
+
+  bootstrap_email    = var.authentik_bootstrap_email
+  bootstrap_password = var.authentik_bootstrap_password
+  bootstrap_token    = var.authentik_bootstrap_token
 }
 
 resource "cloudflare_record" "authentik_cname" {

@@ -1,6 +1,6 @@
 # IF — Intelligent Agent Service
 
-Personal FastAPI agent: a planner routes each request to a Specialist, keeps
+Personal FastAPI agent: Sol coordinates requests and native Specialists, keeps
 durable memory across conversations, and delivers via Discord / OpenWebUI / HTTP.
 Domain terms are in [CONTEXT.md](CONTEXT.md); decisions in [docs/adr/](docs/adr/).
 Read both before working here — this file is only the operating rules.
@@ -11,7 +11,9 @@ Read both before working here — this file is only the operating rules.
 cd app && pip install -r requirements.txt
 python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
-Needs `OPENROUTER_API_KEY`, `opencode` on `PATH`, AWS/DynamoDB access.
+Needs AWS/DynamoDB access, an internal API token, and a separately running worker
+using pinned `openai-codex==0.154.0` with persistent ChatGPT subscription login.
+See [deploy/rewrite/README.md](deploy/rewrite/README.md).
 
 ## Infra
 
@@ -60,10 +62,10 @@ k3s kubeconfig — there is no CI deploy pipeline. The app is live. See ADR-0002
 that context's vocabulary (Athlete, Session, Competition Event, etc.), not this
 repo's.
 
-The powerlifting tools run as Fission nano-functions. Cline has a Fission MCP
-(`fission-powerlifting` in MCP settings) that discovers and calls them — use it
-to test functions as you develop them. When Fission is disabled the MCP will fail
-to start; that's expected until it's turned on.
+Powerlifting runs as sixteen Services and Deployments. Each exposes typed HTTP
+operations and MCP from `services/operations/*.json`. Test with
+`scripts/test_powerlifting_services_live.py`; the retired Fission MCP is no longer
+a test target. Existing domain handlers and storage remain in the subrepo.
 
 ## Technical note
 

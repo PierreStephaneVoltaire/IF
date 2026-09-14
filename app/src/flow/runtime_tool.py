@@ -62,7 +62,7 @@ def _user_facts_supersede(args: dict[str, Any]) -> dict[str, Any]:
     context_id = str(args.get("context_id") or "")
     old_fact_id = str(args.get("old_fact_id") or "")
     new_content = str(args.get("new_content") or "")
-    reason = str(args.get("reason") or "updated by opencode runtime")
+    reason = str(args.get("reason") or "updated by Codex runtime")
     if not context_id or not old_fact_id or not new_content:
         raise ValueError("context_id, old_fact_id, and new_content are required")
     fact = get_user_fact_store().supersede(
@@ -91,7 +91,7 @@ def _capability_gap_log(args: dict[str, Any]) -> dict[str, Any]:
         ).strip()
 
     fact_id = get_user_fact_store().log_capability_gap(
-        context_id=REFLECTION_CONTEXT_ID,
+        context_id=source_context_id or REFLECTION_CONTEXT_ID,
         content=content,
         trigger_context=trigger_context,
         cache_key=str(args.get("cache_key") or ""),

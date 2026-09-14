@@ -22,8 +22,6 @@ except ImportError:
 from config import (
     CONTEXT_CONDENSE_THRESHOLD,
     MESSAGE_WINDOW,
-    OPENROUTER_API_KEY,
-    LLM_BASE_URL,
     CONDENSER_MODEL,
     TOKENIZER_MODEL,
 )
@@ -122,7 +120,7 @@ def extract_older_messages(
     window = window or MESSAGE_WINDOW
     return messages[:-window] if len(messages) > window else []
 
-async def condense_with_openrouter(
+async def condense_with_codex(
     messages: List[Dict[str, Any]],
     http_client: Any,
     model: str = None
@@ -156,33 +154,12 @@ async def condense_with_openrouter(
     user_prompt = render_template("condenser_user.j2", conversation_text=conversation_text)
 
     try:
-        import httpx
-        
-        response = await http_client.post(
-            f"{LLM_BASE_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/if-prototype",
-                "X-Title": "IF Prototype A1"
-            },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 0.3,
-                "max_tokens": 2000
-            },
-            timeout=30.0
+        from flow.codex_llm import call_codex_chat
+        return await call_codex_chat(
+            model="gpt-5.6-luna",
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
         )
-        
-        response.raise_for_status()
-        data = response.json()
-        
-        return data["choices"][0]["message"]["content"]
-        
+
     except Exception as e:
         return f"[Condensation failed: {str(e)}]\nConversation had {len(messages)} messages before recent window."
 
@@ -231,7 +208,7 @@ async def condense_conversation(
             was_condensed=False
         )
     
-    summary = await condense_with_openrouter(
+    summary = await condense_with_codex(
         older_messages,
         http_client,
         condensation_model

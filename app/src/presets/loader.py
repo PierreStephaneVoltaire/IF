@@ -46,7 +46,7 @@ STATIC_PRESETS = [
             "If the topic is primarily about security posture, threat modeling, or "
             "compliance, prefer security instead."
         ),
-        model="@preset/architecture"
+        model="gpt-5.6-sol"
     ),
     Preset(
         slug="code",
@@ -66,7 +66,7 @@ STATIC_PRESETS = [
             "If the request would result in a one-liner command or very short shell "
             "script, prefer shell instead."
         ),
-        model="@preset/code"
+        model="gpt-5.6-sol"
     ),
     Preset(
         slug="shell",
@@ -82,7 +82,7 @@ STATIC_PRESETS = [
             "If the request requires a full script with logic, loops, error handling, or "
             "structured code beyond a short snippet, prefer code instead."
         ),
-        model="@preset/shell"
+        model="gpt-5.6-luna"
     ),
     Preset(
         slug="security",
@@ -101,7 +101,7 @@ STATIC_PRESETS = [
             "from the command line, prefer shell. Security is for the analysis, strategy, "
             "and evaluation layer."
         ),
-        model="@preset/security"
+        model="gpt-5.6-sol"
     ),
     Preset(
         slug="health",
@@ -118,7 +118,7 @@ STATIC_PRESETS = [
             "Does not include healthcare costs, insurance, or medical billing — those "
             "belong in general or finance."
         ),
-        model="@preset/health"
+        model="gpt-5.6-sol"
     ),
     Preset(
         slug="mental_health",
@@ -137,7 +137,7 @@ STATIC_PRESETS = [
             "symptoms of a specific disorder), prefer health. Mental health is for "
             "the human experience of struggling, not the clinical framing of it."
         ),
-        model="@preset/mental_health"
+        model="gpt-5.6-sol"
     ),
     Preset(
         slug="finance",
@@ -157,7 +157,7 @@ STATIC_PRESETS = [
             "irresponsibly, back pay disputes, whether to cut someone off financially. "
             "Those belong in general."
         ),
-        model="@preset/finance"
+        model="gpt-5.6-sol"
     ),
     Preset(
         slug="proofreader",
@@ -173,7 +173,7 @@ STATIC_PRESETS = [
             "If the text being edited is code, documentation comments, or README files "
             "within a code project, prefer code instead."
         ),
-        model="@preset/proofreader"
+        model="gpt-5.6-luna"
     ),
     Preset(
         slug="social",
@@ -189,7 +189,7 @@ STATIC_PRESETS = [
             "If the operator is expressing genuine emotional pain or distress even "
             "casually, prefer mental_health."
         ),
-        model="@preset/social"
+        model="gpt-5.6-luna"
     ),
     Preset(
         slug="general",
@@ -206,7 +206,7 @@ STATIC_PRESETS = [
             "This is the catch-all. If a message genuinely fits no other preset, it "
             "belongs here. Always non-technical."
         ),
-        model="@preset/general"
+        model="gpt-5.6-sol"
     ),
     Preset(
         slug="pondering",
@@ -216,7 +216,7 @@ STATIC_PRESETS = [
             "about the operator — goals, preferences, context, plans. "
             "Not for technical problem-solving."
         ),
-        model="@preset/pondering"
+        model="gpt-5.6-sol"
     ),
 ]
 

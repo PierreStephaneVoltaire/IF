@@ -1,5 +1,12 @@
 data "aws_ecr_authorization_token" "private" {}
 
+data "kubernetes_secret" "authentik_powerlifting_oidc" {
+  metadata {
+    name      = "authentik-powerlifting-oidc"
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
+  }
+}
+
 locals {
   ecr_registry_server  = replace(data.aws_ecr_authorization_token.private.proxy_endpoint, "https://", "")
   ecr_registry_auth    = base64encode("${data.aws_ecr_authorization_token.private.user_name}:${data.aws_ecr_authorization_token.private.password}")
@@ -37,10 +44,10 @@ resource "kubernetes_secret" "if_agent_api_secrets" {
   }
 
   data = {
-    OPENROUTER_API_KEY = var.openrouter_api_key
-    INTERNAL_API_TOKEN = var.pl_internal_token
-    DISCORD_TOKEN      = var.discord_token
-    GITHUB_TOKEN       = var.github_token
+    ALPHAVANTAGE_API_KEY = var.alphavantage_api_key
+    INTERNAL_API_TOKEN   = var.pl_internal_token
+    DISCORD_TOKEN        = var.discord_token
+    GITHUB_TOKEN         = var.github_token
   }
 
   type = "Opaque"
@@ -94,7 +101,9 @@ resource "kubernetes_config_map" "if_agent_api_config" {
 
     HEALTH_PROGRAM_PK = var.health_program_pk
 
-    IF_USER_PK = var.if_user_pk
+    IF_USER_PK             = var.if_user_pk
+    IF_OPERATOR_DISCORD_ID = "400750817382236160"
+    IF_CODEX_HOST_URL      = "http://if-codex-worker:8001"
 
     DIARY_TTL_DAYS                      = tostring(var.diary_ttl_days)
     DIARY_SIGNAL_COMPUTE_INTERVAL_HOURS = tostring(var.diary_signal_compute_interval_hours)
@@ -106,10 +115,8 @@ resource "kubernetes_config_map" "if_agent_api_config" {
     IF_SELF_REPO_URL = var.if_self_repo_url
 
 
-    OPENCODE_FISSION_URL = "http://router.${var.fission_namespace}.svc.cluster.local:80"
 
 
-    POWERLIFTING_LAMBDA_BASE_URL = var.fission_enabled ? "http://router.${var.fission_namespace}.svc.cluster.local:80" : ""
   }
 }
 
@@ -244,11 +251,15 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
     DISCORD_CLIENT_ID                      = var.discord_client_id
     DISCORD_CLIENT_SECRET                  = var.discord_client_secret
     DISCORD_REDIRECT_URI                   = var.discord_redirect_uri
+    AUTHENTIK_CLIENT_ID                    = data.kubernetes_secret.authentik_powerlifting_oidc.data["AUTHENTIK_CLIENT_ID"]
+    AUTHENTIK_CLIENT_SECRET                = data.kubernetes_secret.authentik_powerlifting_oidc.data["AUTHENTIK_CLIENT_SECRET"]
+    AUTHENTIK_ISSUER_URL                   = "https://${local.authentik_domain}/application/o"
+    AUTHENTIK_INTERNAL_URL                 = "http://authentik-server.${kubernetes_namespace.if_portals.metadata[0].name}.svc.cluster.local/application/o"
+    AUTHENTIK_REDIRECT_URI                 = "https://${local.app_domains["powerlifting-app"].domain}/api/auth/authentik/callback"
     JWT_SECRET                             = var.jwt_secret
     COOKIE_DOMAIN                          = var.cookie_domain
     COOKIE_SECURE                          = var.cookie_secure
 
-    POWERLIFTING_LAMBDA_BASE_URL = var.fission_enabled ? "http://router.${var.fission_namespace}.svc.cluster.local:80" : ""
 
     VALKEY_URL = "redis://pl-valkey.${kubernetes_namespace.if_portals.metadata[0].name}.svc.cluster.local:6379"
   }
@@ -313,34 +324,12 @@ resource "kubernetes_secret" "tinyauth_secrets" {
   type = "Opaque"
 }
 
-resource "kubernetes_secret" "pl_fission_secrets" {
-  count = var.fission_enabled ? 1 : 0
-
-  metadata {
-    name      = "pl-fission-secrets"
-    namespace = var.fission_function_namespace
-  }
-
-  data = {
-    INTERNAL_API_TOKEN = var.pl_internal_token
-    OPENROUTER_API_KEY = var.openrouter_api_key
-  }
-}
-
-# AWS credentials for powerlifting Fission function pods.
-# Fission v1.26 newdeploy executor does NOT merge Function podspec (env,
-# volumes, volumeMounts, envFrom) into the runtime deployment. The only
-# mechanism that works is the Fission-native `secrets` field on the Function
-# spec, which mounts each Secret under /secrets/<ns>/<secret>/<key>.
-# fission_entry.py materialises those files into env vars at import time.
-# Use file() (not filebase64()) - the kubernetes_secret resource base64-
-# encodes the value itself; filebase64() would double-encode it.
 resource "kubernetes_secret" "pl_aws_credentials" {
-  count = var.fission_enabled ? 1 : 0
+  count = 1
 
   metadata {
     name      = "pl-aws-credentials"
-    namespace = var.fission_function_namespace
+    namespace = kubernetes_namespace.if_portals.metadata[0].name
   }
 
   data = {

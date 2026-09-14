@@ -1,11 +1,3 @@
-variable "kubeconfig_path" {
-  type    = string
-  default = "~/.kube/config"
-}
-variable "kubeconfig_context" {
-  type    = string
-  default = "default"
-}
 variable "namespace" {
   type    = string
   default = "if-portals"

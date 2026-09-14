@@ -1,0 +1,32 @@
+{
+  "if-codex-worker:native": {
+    "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api@sha256:ca816dfdbe7b6083d55adb61c5123434d7de28c7b10d7affb805d43f010c5636",
+    "digest": "sha256:ca816dfdbe7b6083d55adb61c5123434d7de28c7b10d7affb805d43f010c5636",
+    "tag": "native-20260914-worker-cleanup"
+  },
+  "if-powerlifting-services:native": {
+    "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:1aed2fdbb71a750576d478700be761490e5d5ef8f26ff5d6709423b2b9984bcd",
+    "digest": "sha256:1aed2fdbb71a750576d478700be761490e5d5ef8f26ff5d6709423b2b9984bcd",
+    "tag": "native-20260914-services"
+  },
+  "if-powerlifting-analytics:native": {
+    "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:138fadf8bf38298c1de9b88bae9b88b46fd207bcd10e242c9d7dfd7e9e24b10a",
+    "digest": "sha256:138fadf8bf38298c1de9b88bae9b88b46fd207bcd10e242c9d7dfd7e9e24b10a",
+    "tag": "native-20260914-analytics"
+  },
+  "if-powerlifting-backend:native": {
+    "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:40a54ba282e28a8f5cbc8cbc0201c328a0f2b132129d95721477fe8fbb9b687d",
+    "digest": "sha256:40a54ba282e28a8f5cbc8cbc0201c328a0f2b132129d95721477fe8fbb9b687d",
+    "tag": "native-20260914-backend"
+  },
+  "if-powerlifting-frontend:native": {
+    "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-frontend@sha256:b06fbfb3d24f6f7230504629c58062c03509ba5d03fac4a602947156545273fe",
+    "digest": "sha256:b06fbfb3d24f6f7230504629c58062c03509ba5d03fac4a602947156545273fe",
+    "tag": "native-20260914-frontend"
+  },
+  "if-agent-api:native": {
+    "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api@sha256:e2025f76d6111589c07b665ef491829bf8302778ef311f0dc70a1d53bfddf2a8",
+    "digest": "sha256:e2025f76d6111589c07b665ef491829bf8302778ef311f0dc70a1d53bfddf2a8",
+    "tag": "latest"
+  }
+}

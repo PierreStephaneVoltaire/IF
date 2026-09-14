@@ -24,9 +24,6 @@ class StatusType(Enum):
     TOOL_STARTED = "tool_started"
     TOOL_COMPLETED = "tool_completed"
     TOOL_FAILED = "tool_failed"
-    CLASSIFICATION_STARTED = "classification_started"
-    CLASSIFICATION_COMPLETED = "classification_completed"
-    CLASSIFICATION_FAILED = "classification_failed"
     INTENT_DECIDED = "intent_decided"
     TASK_STARTED = "task_started"
     TASK_COMPLETED = "task_completed"
@@ -43,9 +40,6 @@ _STATUS_COLORS = {
     StatusType.TOOL_STARTED: 0x9B59B6,
     StatusType.TOOL_COMPLETED: 0x2ECC71,
     StatusType.TOOL_FAILED: 0xE74C3C,
-    StatusType.CLASSIFICATION_STARTED: 0x3498DB,
-    StatusType.CLASSIFICATION_COMPLETED: 0x2ECC71,
-    StatusType.CLASSIFICATION_FAILED: 0xE74C3C,
     StatusType.INTENT_DECIDED: 0x1ABC9C,
     StatusType.TASK_STARTED: 0xF39C12,
     StatusType.TASK_COMPLETED: 0x2ECC71,
@@ -121,9 +115,11 @@ async def _fire_embed(
     try:
         embed = _build_embed(status_type, title, description, fields)
         coro = channel.send(embed=embed)
-        if discord_loop.is_running():
+        if discord_loop is asyncio.get_running_loop():
+            await coro
+        elif discord_loop.is_running():
             future = asyncio.run_coroutine_threadsafe(coro, discord_loop)
-            future.add_done_callback(lambda f: None)
+            await asyncio.wrap_future(future)
         else:
             await coro
     except Exception as e:

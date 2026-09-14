@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -87,19 +88,25 @@ def write_history(
     history_events: list[dict[str, Any]] | None = None,
 ) -> Path:
     session_dir.mkdir(parents=True, exist_ok=True)
-    json_path = session_dir / "history.json"
-    existing = _load_events(json_path)
+    with (session_dir / "history.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        json_path = session_dir / "history.json"
+        existing = _load_events(json_path)
 
-    source = history_events if history_events is not None else messages
-    for index, msg in enumerate(source, start=1):
-        event = _normalize_event(index, msg)
-        if event is None:
-            continue
-        existing[event["id"]] = {**existing.get(event["id"], {}), **event}
+        source = history_events if history_events is not None else messages
+        for index, msg in enumerate(source, start=1):
+            event = _normalize_event(index, msg)
+            if event is None:
+                continue
+            existing[event["id"]] = {**existing.get(event["id"], {}), **event}
 
-    ordered = sorted(existing.values(), key=_event_sort_key)
-    json_path.write_text(json.dumps(ordered, indent=2, ensure_ascii=False), encoding="utf-8")
+        ordered = sorted(existing.values(), key=_event_sort_key)
+        staging = session_dir / ".history.json.tmp"
+        staging.write_text(json.dumps(ordered, indent=2, ensure_ascii=False), encoding="utf-8")
+        staging.replace(json_path)
 
-    path = session_dir / "history.md"
-    path.write_text(render_history_markdown(ordered), encoding="utf-8")
-    return path
+        path = session_dir / "history.md"
+        staging = session_dir / ".history.md.tmp"
+        staging.write_text(render_history_markdown(ordered), encoding="utf-8")
+        staging.replace(path)
+        return path

@@ -73,7 +73,9 @@ class MCPToolManager:
         categories: list[str] | None = None,
         tools_root: str | Path | None = None,
     ):
-        self.categories = categories or list(MCP_SERVER_CATEGORIES)
+        from mcp_servers.config import get_available_servers
+        self.external = {name: config for name, config in get_available_servers().items() if name not in MCP_SERVER_CATEGORIES}
+        self.categories = categories or [name for name in MCP_SERVER_CATEGORIES if name not in {"health", "health_lambda"}] + list(self.external)
         self.tools_root = Path(tools_root or EXTERNAL_TOOLS_PATH or EXTERNAL_TOOLS_FALLBACK)
         self._servers: dict[str, ManagedServer] = {}
         self._tool_index: dict[str, tuple[str, dict[str, Any]]] = {}
@@ -100,14 +102,16 @@ class MCPToolManager:
 
         server_script = self.tools_root / "mcp_server.py"
         args = [str(server_script), category]
-        if category == "health_lambda":
-            server_script = self.tools_root / "health_lambda_mcp" / "server.py"
-            args = [str(server_script)]
-        params = StdioServerParameters(
-            command=sys.executable,
-            args=args,
-            env={**os.environ, "IF_TOOLS_ROOT": str(self.tools_root)},
-        )
+        command = sys.executable
+        environment = {**os.environ, "IF_TOOLS_ROOT": str(self.tools_root)}
+        if category in self.external:
+            definition = self.external[category]
+            configured = definition["command"]
+            command = configured[0] if isinstance(configured, list) else configured
+            args = configured[1:] if isinstance(configured, list) else definition.get("args", [])
+            environment.update({key: os.path.expandvars(str(value)) for key, value in definition.get("env", definition.get("environment", {})).items()})
+        params = StdioServerParameters(command=command, args=args, env=environment)
+
 
         # Each async context manager below is entered explicitly so that a
         # failure at any step is cleaned up. asyncio.CancelledError is a
@@ -134,14 +138,16 @@ class MCPToolManager:
             )
 
             for tool in getattr(tools_result, "tools", []):
+                name = f"external__{category}__{tool.name}" if category in self.external else tool.name
                 schema = {
-                    "name": tool.name,
+                    "name": name,
+                    "_remote_name": tool.name,
                     "description": tool.description,
                     "inputSchema": tool.inputSchema,
                     "_category": category,
                 }
-                managed.tools[tool.name] = schema
-                self._tool_index[tool.name] = (category, schema)
+                managed.tools[name] = schema
+                self._tool_index[name] = (category, schema)
 
             self._servers[category] = managed
             logger.info("MCP server %s started with %s tools", category, len(managed.tools))
@@ -249,7 +255,7 @@ class MCPToolManager:
             await self.start(category)
         managed = self._servers[category]
         async with managed.lock:
-            result = await managed.session.call_tool(name, args)
+            result = await managed.session.call_tool(_schema.get("_remote_name", name), args)
         return _text_from_mcp_result(result)
 
 def init_mcp_manager() -> MCPToolManager:

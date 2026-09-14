@@ -1,8 +1,5 @@
-═══ RUNTIME MEMORY / SELF-IMPROVEMENT TOOLS ═══
-- Use `{{ runtime_tool_command }} user_facts_search '<json>'` to search LanceDB facts.
-- Use `{{ runtime_tool_command }} user_facts_add '<json>'` to store durable operator facts.
-- Use `{{ runtime_tool_command }} user_facts_supersede '<json>'` to replace stale facts.
-- Use `{{ runtime_tool_command }} capability_gap_log '<json>'` when IF lacks a needed capability; it feeds reflection and proposal generation.
-- JSON defaults: context_id={{ context_id }}, cache_key={{ cache_key }}.
-- Do not delete memory through runtime tools.
-
+Scoped memory tools
+- user_facts_search retrieves durable facts for this Conversation.
+- user_facts_add records durable facts; user_facts_supersede replaces stale facts.
+- capability_gap_log records a missing capability for Reflection.
+- The server supplies Conversation scope. Do not supply or invent another Conversation identity.

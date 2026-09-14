@@ -1,0 +1,1067 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-program
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-program
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-program
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-program
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: program
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: program
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-sessions
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-sessions
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-sessions
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-sessions
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: sessions
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: sessions
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-competition
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-competition
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-competition
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-competition
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: competition
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: competition
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-federation
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-federation
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-federation
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-federation
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: federation
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: federation
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-glossary
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-glossary
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-glossary
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-glossary
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: glossary
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: glossary
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-goals
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-goals
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-goals
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-goals
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: goals
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: goals
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-budget
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-budget
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-budget
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-budget
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: budget
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: budget
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-calculations
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-calculations
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-calculations
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-calculations
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: calculations
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: calculations
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-performance
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-performance
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-performance
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-performance
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: performance
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: performance
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-weight-log
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-weight-log
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-weight-log
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-weight-log
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: weight-log
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: weight-log
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-templates
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-templates
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-templates
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-templates
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: templates
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: templates
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-imports
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-imports
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-imports
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-imports
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: imports
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: imports
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-profile
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-profile
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-profile
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-profile
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: profile
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: profile
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-lift-profiles
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-lift-profiles
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-lift-profiles
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-lift-profiles
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: lift-profiles
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: lift-profiles
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-analytics
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-analytics
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-analytics
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-analytics
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: analytics
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: analytics
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        - name: ANALYTICS_NODE_URL
+          value: http://127.0.0.1:8091
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      - name: reports
+        image: if-powerlifting-analytics:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: ANALYTICS_NODE_PORT
+          value: '8091'
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: '1'
+            memory: 512Mi
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pl-videos
+  namespace: if-portals
+spec:
+  selector:
+    app: pl-videos
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pl-videos
+  namespace: if-portals
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: pl-videos
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: videos
+        image: if-powerlifting-services:rewrite
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PL_DOMAIN
+          value: videos
+        - name: IF_API_URL
+          value: http://if-agent-api:8000
+        - name: AWS_SHARED_CREDENTIALS_FILE
+          value: /secrets/aws/credentials
+        - name: AWS_CONFIG_FILE
+          value: /secrets/aws/config
+        envFrom:
+        - secretRef:
+            name: powerlifting-app-secrets
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+        volumeMounts:
+        - name: aws
+          mountPath: /secrets/aws
+          readOnly: true
+      volumes:
+      - name: aws
+        secret:
+          secretName: pl-aws-credentials

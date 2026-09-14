@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-14",
+  "environment": "main-node k3s deployments",
+  "checks": {
+    "thread_reuse_and_dedup": true,
+    "concurrency_capacity_status": true,
+    "person_and_token_authorization": true,
+    "native_specialists": true,
+    "scoped_calculation": true,
+    "native_steering": true,
+    "native_cancellation": true,
+    "chat_completions_sse": true,
+    "deployed_report_generation_cache": {
+      "generation_id": "eca6db12234a9a321421f98a1cb7e05320536f74ad62f1d92cabecbb7c5b68ba",
+      "job_id": "9ba66a76c51c4e5084b890406c31cf72"
+    },
+    "template_import_review_apply": {
+      "job_id": "6d7f739378144f749f5e3d7e8082dcae",
+      "import_id": "3882d584-c081-4f35-b1f3-0e92bbfb48f0",
+      "target_sk": "template#20260914T061538370319Z#606c2ea3"
+    },
+    "restart_inflight_started": {
+      "job_id": "02aa8ce37dde4ec5b89734c2635a126f"
+    },
+    "actual_host_pod_restart": {
+      "interrupted_status": "uncertain",
+      "same_thread": true
+    }
+  },
+  "domain_contract": {
+    "services": 16,
+    "checks_passed": 20
+  },
+  "legacy_drain": {
+    "accepted_during_publication": 11,
+    "all_completed": true,
+    "queued_at_switch": 0
+  },
+  "startup_canary": {
+    "first_attempt": "failed before native turn because API Service was not ready",
+    "explicit_retry_after_readiness": "passed"
+  },
+  "limitations": [
+    "No Discord message sent; actual Discord edit/outbox delivery test still needs an authorized destination.",
+    "No laptop deployment or cross-node acceptance.",
+    "No deliberate quota exhaustion."
+  ],
+  "final_cleanup_rollout": {
+    "status": "deployed_and_verified",
+    "deployments_ready": 20,
+    "api_image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api@sha256:e2025f76d6111589c07b665ef491829bf8302778ef311f0dc70a1d53bfddf2a8",
+    "worker_image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api@sha256:ca816dfdbe7b6083d55adb61c5123434d7de28c7b10d7affb805d43f010c5636",
+    "same_thread_after_final_images": true,
+    "interrupted_turn_not_replayed": true,
+    "historical_job_lookup": true,
+    "operator_discord_mapping": true,
+    "obsolete_runtime_code_absent": true,
+    "current_if_tests_passed": 39,
+    "targeted_terraform_apply": "1 local trigger added, 2 Kubernetes resources changed, 1 local trigger replaced"
+  },
+  "final_resources": {
+    "cpu_millicores": 2604,
+    "memory_mib": 13950,
+    "disk_free_gib": 28,
+    "memory_pressure": false,
+    "disk_pressure": false,
+    "local_rollback_images_retained": 6
+  }
+}

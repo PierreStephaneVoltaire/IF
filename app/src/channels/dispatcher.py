@@ -100,6 +100,8 @@ async def dispatch_channel_batch(
         request_data = translate_openwebui_batch(messages, conversation_id)
     else:
         logger.error(f"Unknown platform: {platform}")
+        from channels.context import clear_platform_context
+        clear_platform_context()
         return
 
     from api.completions import process_chat_completion_internal
@@ -134,6 +136,16 @@ async def dispatch_channel_batch(
                 request_data["messages"].insert(0, {"role": "system", "content": nudge})
                 logger.info(f"[Dispatcher] Injected nudge for {filename}")
 
+    async def emit(event: str, data: Dict[str, Any]) -> None:
+        if event == "started":
+            await send_status(StatusType.MODEL_SELECTED, "Thinking", fields={"model": data.get("model", "—")})
+        elif event == "delegation":
+            await send_status(StatusType.SUBAGENT_SPAWNING, "Specialist working", fields={"children": str(data.get("children", ""))[:900]})
+        elif event == "completed":
+            await send_status(StatusType.SUBAGENT_COMPLETED, "Response ready")
+        elif event == "failed":
+            await send_status(StatusType.TOOL_FAILED, "Response failed", description=str(data.get("message", ""))[:900])
+
     webhook = None
     try:
         store = get_webhook_store()
@@ -146,6 +158,7 @@ async def dispatch_channel_batch(
         logger.warning(f"Could not fetch webhook record: {e}")
 
     try:
+        request_data["_emit"] = emit
         response_text, attachments = await process_chat_completion_internal(
             request_data=request_data,
             http_client=http_client,
@@ -158,7 +171,10 @@ async def dispatch_channel_batch(
             platform=platform,
             channel_ref=channel_ref,
             error_message=str(e),
+            discord_loop=discord_loop,
         )
+        from channels.context import clear_platform_context
+        clear_platform_context()
         return
     
     logger.info(
@@ -169,19 +185,21 @@ async def dispatch_channel_batch(
     chunks = chunk_response(response_text)
     logger.info(f"Response split into {len(chunks)} chunks")
     
-    await deliver_to_channel(
-        platform=platform,
-        channel_ref=channel_ref,
-        chunks=chunks,
-        attachments=attachments,
-        discord_loop=discord_loop,
-    )
+    try:
+        await deliver_to_channel(
+            platform=platform,
+            channel_ref=channel_ref,
+            chunks=chunks,
+            attachments=attachments,
+            discord_loop=discord_loop,
+        )
+    except Exception:
+        from channels.context import clear_platform_context
+        clear_platform_context()
+        raise
     
     logger.info(f"Delivery completed for {conversation_id}")
 
-    from channels.context import clear_platform_context
-    clear_platform_context()
-    
     try:
         from heartbeat.activity import ActivityTracker
         from storage.factory import get_webhook_store
@@ -192,12 +210,16 @@ async def dispatch_channel_batch(
             tracker.record_activity(conversation_id, webhook_id=webhook_id)
     except Exception as e:
         logger.debug(f"[Activity] Failed to record outbound: {e}")
+    finally:
+        from channels.context import clear_platform_context
+        clear_platform_context()
 
 async def dispatch_single_message(
     message: Dict[str, Any],
     conversation_id: str,
     platform: str,
     channel_ref: Any,
+    discord_loop: Any = None,
 ) -> None:
 
 
@@ -214,4 +236,5 @@ async def dispatch_single_message(
         conversation_id=conversation_id,
         platform=platform,
         channel_ref=channel_ref,
+        discord_loop=discord_loop,
     )

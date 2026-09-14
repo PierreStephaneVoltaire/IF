@@ -1,0 +1,2566 @@
+[
+  {
+    "name": "get_analysis_markdown",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.handler",
+    "legacy": [
+      "get_analysis_markdown"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 496
+      }
+    ]
+  },
+  {
+    "name": "analysis_section",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.analysis_section.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 153
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 271
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 534
+      }
+    ]
+  },
+  {
+    "name": "analyze_powerlifting_stats",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.analyze_powerlifting_stats.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/stats.ts",
+        "line": 31
+      }
+    ]
+  },
+  {
+    "name": "analyze_progression",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.analyze_progression.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": []
+  },
+  {
+    "name": "analyze_rpe_drift",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.analyze_rpe_drift.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": []
+  },
+  {
+    "name": "block_correlation_analysis",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.block_correlation_analysis.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 176
+      }
+    ]
+  },
+  {
+    "name": "block_program_evaluation",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.block_program_evaluation.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 192
+      }
+    ]
+  },
+  {
+    "name": "correlation_analysis",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.correlation_analysis.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": []
+  },
+  {
+    "name": "multi_block_comparison_analysis",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.multi_block_comparison_analysis.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": []
+  },
+  {
+    "name": "powerlifting_filter_categories",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.powerlifting_filter_categories.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/stats.ts",
+        "line": 10
+      }
+    ]
+  },
+  {
+    "name": "powerlifting_ranking_percentile",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.powerlifting_ranking_percentile.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/stats.ts",
+        "line": 64
+      }
+    ]
+  },
+  {
+    "name": "program_evaluation",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.program_evaluation.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": []
+  },
+  {
+    "name": "regenerate_analysis",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.regenerate_analysis.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": []
+  },
+  {
+    "name": "weekly_analysis",
+    "domain": "analytics",
+    "handler": "lambda.pod_analysis.handlers.weekly_analysis.handler",
+    "legacy": [
+      "pod_analysis"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_suggest_e1rm_multipliers",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.suggest_e1rm_multipliers",
+    "legacy": [
+      "health_suggest_e1rm_multipliers"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 325
+      }
+    ]
+  },
+  {
+    "name": "analytics.manifest",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.manifest",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 23
+      }
+    ]
+  },
+  {
+    "name": "analytics.sections_queue",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.sections_queue",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 35
+      }
+    ]
+  },
+  {
+    "name": "analytics.sections_get",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.sections_get",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 49
+      }
+    ]
+  },
+  {
+    "name": "analytics.sections_invalidate",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.sections_invalidate",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 60
+      }
+    ]
+  },
+  {
+    "name": "analytics.weekly",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.weekly",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 105
+      }
+    ]
+  },
+  {
+    "name": "analytics.bundle",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.bundle",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 71
+      }
+    ]
+  },
+  {
+    "name": "analytics.blocks_list",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.blocks_list",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 119
+      }
+    ]
+  },
+  {
+    "name": "analytics.blocks_get",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.blocks_get",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 124
+      }
+    ]
+  },
+  {
+    "name": "analytics.blocks_regenerate",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.blocks_regenerate",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 129
+      }
+    ]
+  },
+  {
+    "name": "analytics.block_evaluation",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.block_evaluation",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 134
+      }
+    ]
+  },
+  {
+    "name": "analytics.correlation",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.correlation",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 139
+      }
+    ]
+  },
+  {
+    "name": "analytics.export",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.analytics_export",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 146
+      }
+    ]
+  },
+  {
+    "name": "analytics.compare",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.compare",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 154
+      }
+    ]
+  },
+  {
+    "name": "analytics.compare_ai",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.compare_ai",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 159
+      }
+    ]
+  },
+  {
+    "name": "analytics.regenerate",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.regenerate",
+    "legacy": [
+      "analysis_regenerate"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 82
+      }
+    ]
+  },
+  {
+    "name": "analytics.markdown",
+    "domain": "analytics",
+    "handler": "lambda.get_analysis_markdown.handler",
+    "legacy": [
+      "analysis_markdown"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analyticsService.ts",
+        "line": 94
+      }
+    ]
+  },
+  {
+    "name": "budget_advisor",
+    "domain": "budget",
+    "handler": "lambda.pod_budget.handlers.budget_advisor.handler",
+    "legacy": [
+      "pod_budget"
+    ],
+    "callers": []
+  },
+  {
+    "name": "budget_create_item",
+    "domain": "budget",
+    "handler": "lambda.pod_budget.handlers.budget_create_item.handler",
+    "legacy": [
+      "pod_budget"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/budgetController.ts",
+        "line": 86
+      }
+    ]
+  },
+  {
+    "name": "budget_delete_item",
+    "domain": "budget",
+    "handler": "lambda.pod_budget.handlers.budget_delete_item.handler",
+    "legacy": [
+      "pod_budget"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/budgetController.ts",
+        "line": 100
+      }
+    ]
+  },
+  {
+    "name": "budget_get_config",
+    "domain": "budget",
+    "handler": "lambda.pod_budget.handlers.budget_get_config.handler",
+    "legacy": [
+      "pod_budget"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/budgetController.ts",
+        "line": 67
+      }
+    ]
+  },
+  {
+    "name": "budget_get_summary",
+    "domain": "budget",
+    "handler": "lambda.pod_budget.handlers.budget_get_summary.handler",
+    "legacy": [
+      "pod_budget"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/budgetController.ts",
+        "line": 116
+      }
+    ]
+  },
+  {
+    "name": "budget_list_items",
+    "domain": "budget",
+    "handler": "lambda.pod_budget.handlers.budget_list_items.handler",
+    "legacy": [
+      "pod_budget"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/budgetController.ts",
+        "line": 81
+      }
+    ]
+  },
+  {
+    "name": "budget_priority_timeline",
+    "domain": "budget",
+    "handler": "lambda.pod_budget.handlers.budget_priority_timeline.handler",
+    "legacy": [
+      "pod_budget"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/budgetController.ts",
+        "line": 258
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 1069
+      }
+    ]
+  },
+  {
+    "name": "budget_put_config",
+    "domain": "budget",
+    "handler": "lambda.pod_budget.handlers.budget_put_config.handler",
+    "legacy": [
+      "pod_budget"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/budgetController.ts",
+        "line": 72
+      }
+    ]
+  },
+  {
+    "name": "budget_update_item",
+    "domain": "budget",
+    "handler": "lambda.pod_budget.handlers.budget_update_item.handler",
+    "legacy": [
+      "pod_budget"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/budgetController.ts",
+        "line": 93
+      }
+    ]
+  },
+  {
+    "name": "lb_to_kg",
+    "domain": "calculations",
+    "handler": "lambda.pod_calc.handlers.lb_to_kg.handler",
+    "legacy": [
+      "pod_calc"
+    ],
+    "callers": []
+  },
+  {
+    "name": "kg_to_lb",
+    "domain": "calculations",
+    "handler": "lambda.pod_calc.handlers.kg_to_lb.handler",
+    "legacy": [
+      "pod_calc"
+    ],
+    "callers": []
+  },
+  {
+    "name": "pct_of_max",
+    "domain": "calculations",
+    "handler": "lambda.pod_calc.handlers.pct_of_max.handler",
+    "legacy": [
+      "pod_calc"
+    ],
+    "callers": []
+  },
+  {
+    "name": "ipf_weight_classes",
+    "domain": "calculations",
+    "handler": "lambda.pod_calc.handlers.ipf_weight_classes.handler",
+    "legacy": [
+      "pod_calc"
+    ],
+    "callers": []
+  },
+  {
+    "name": "calculate_dots",
+    "domain": "calculations",
+    "handler": "lambda.pod_calc.handlers.calculate_dots.handler",
+    "legacy": [
+      "pod_calc"
+    ],
+    "callers": []
+  },
+  {
+    "name": "estimate_1rm",
+    "domain": "calculations",
+    "handler": "lambda.pod_calc.handlers.estimate_1rm.handler",
+    "legacy": [
+      "pod_calc"
+    ],
+    "callers": []
+  },
+  {
+    "name": "days_until",
+    "domain": "calculations",
+    "handler": "lambda.pod_calc.handlers.days_until.handler",
+    "legacy": [
+      "pod_calc"
+    ],
+    "callers": []
+  },
+  {
+    "name": "calculate_attempts",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.calculate_attempts.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_list_competitions",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.health_list_competitions.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/competitionController.ts",
+        "line": 9
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/competitionController.ts",
+        "line": 25
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/competitionController.ts",
+        "line": 41
+      }
+    ]
+  },
+  {
+    "name": "health_update_user_competition",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.health_list_competitions.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_complete_user_competition",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.health_list_competitions.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_complete_competition",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.health_complete_competition.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/competitionController.ts",
+        "line": 101
+      }
+    ]
+  },
+  {
+    "name": "health_create_competition",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.health_create_competition.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_delete_competition",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.health_delete_competition.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_get_competition",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.health_get_competition.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_snapshot_competition_projection",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.health_snapshot_competition_projection.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/competitionController.ts",
+        "line": 91
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 96
+      }
+    ]
+  },
+  {
+    "name": "health_update_competition",
+    "domain": "competition",
+    "handler": "lambda.pod_competition.handlers.health_update_competition.handler",
+    "legacy": [
+      "pod_competition"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/competitionController.ts",
+        "line": 74
+      }
+    ]
+  },
+  {
+    "name": "federation_master_list",
+    "domain": "federation",
+    "handler": "lambda.pod_federation.handlers.federation_master_list.handler",
+    "legacy": [
+      "pod_federation"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/federationsController.ts",
+        "line": 24
+      }
+    ]
+  },
+  {
+    "name": "federation_master_update",
+    "domain": "federation",
+    "handler": "lambda.pod_federation.handlers.federation_master_update.handler",
+    "legacy": [
+      "pod_federation"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/federationsController.ts",
+        "line": 28
+      }
+    ]
+  },
+  {
+    "name": "federation_user_library_get",
+    "domain": "federation",
+    "handler": "lambda.pod_federation.handlers.federation_user_library_get.handler",
+    "legacy": [
+      "pod_federation"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/federationsController.ts",
+        "line": 32
+      }
+    ]
+  },
+  {
+    "name": "federation_user_library_set",
+    "domain": "federation",
+    "handler": "lambda.pod_federation.handlers.federation_user_library_set.handler",
+    "legacy": [
+      "pod_federation"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/federationsController.ts",
+        "line": 39
+      }
+    ]
+  },
+  {
+    "name": "health_get_federation_library",
+    "domain": "federation",
+    "handler": "lambda.pod_federation.handlers.health_get_federation_library.handler",
+    "legacy": [
+      "pod_federation"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_update_federation_library",
+    "domain": "federation",
+    "handler": "lambda.pod_federation.handlers.health_update_federation_library.handler",
+    "legacy": [
+      "pod_federation"
+    ],
+    "callers": []
+  },
+  {
+    "name": "federation_library_get",
+    "domain": "federation",
+    "handler": "lambda.pod_federation.handlers.federation_library_get.handler",
+    "legacy": [
+      "pod_federation"
+    ],
+    "callers": []
+  },
+  {
+    "name": "federation_library_set",
+    "domain": "federation",
+    "handler": "lambda.pod_federation.handlers.federation_library_set.handler",
+    "legacy": [
+      "pod_federation"
+    ],
+    "callers": []
+  },
+  {
+    "name": "federation_list",
+    "domain": "federation",
+    "handler": "lambda.pod_federation.handlers.federation_list.handler",
+    "legacy": [
+      "pod_federation"
+    ],
+    "callers": []
+  },
+  {
+    "name": "glossary_add",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.glossary_add.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": []
+  },
+  {
+    "name": "glossary_list_terms",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.glossary_list_terms.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": []
+  },
+  {
+    "name": "glossary_set_e1rm",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.glossary_set_e1rm.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": []
+  },
+  {
+    "name": "glossary_update",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.glossary_update.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": []
+  },
+  {
+    "name": "exercise_upsert",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.exercise_upsert.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/exerciseController.ts",
+        "line": 76
+      }
+    ]
+  },
+  {
+    "name": "exercise_archive",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.exercise_archive.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/exerciseController.ts",
+        "line": 104
+      }
+    ]
+  },
+  {
+    "name": "exercise_unarchive",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.exercise_unarchive.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/exerciseController.ts",
+        "line": 108
+      }
+    ]
+  },
+  {
+    "name": "exercise_remove",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.exercise_remove.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/exerciseController.ts",
+        "line": 80
+      }
+    ]
+  },
+  {
+    "name": "exercise_search",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.exercise_search.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": []
+  },
+  {
+    "name": "exercise_get_glossary",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.exercise_get_glossary.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/exerciseController.ts",
+        "line": 60
+      }
+    ]
+  },
+  {
+    "name": "exercise_set_e1rm",
+    "domain": "glossary",
+    "handler": "lambda.pod_glossary.handlers.exercise_set_e1rm.handler",
+    "legacy": [
+      "pod_glossary"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/exerciseController.ts",
+        "line": 117
+      }
+    ]
+  },
+  {
+    "name": "glossary_estimate_e1rm",
+    "domain": "glossary",
+    "handler": "lambda.pod_lift_profile_ai.handlers.glossary_estimate_e1rm.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/exerciseController.ts",
+        "line": 121
+      }
+    ]
+  },
+  {
+    "name": "glossary_estimate_fatigue",
+    "domain": "glossary",
+    "handler": "lambda.pod_lift_profile_ai.handlers.glossary_estimate_fatigue.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/exerciseController.ts",
+        "line": 125
+      }
+    ]
+  },
+  {
+    "name": "glossary_estimate_muscles",
+    "domain": "glossary",
+    "handler": "lambda.pod_lift_profile_ai.handlers.glossary_estimate_muscles.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/exerciseController.ts",
+        "line": 129
+      }
+    ]
+  },
+  {
+    "name": "glossary_generate_text",
+    "domain": "glossary",
+    "handler": "lambda.pod_lift_profile_ai.handlers.glossary_generate_text.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 965
+      }
+    ]
+  },
+  {
+    "name": "goals_list",
+    "domain": "goals",
+    "handler": "lambda.pod_goals.handlers.goals_list.handler",
+    "legacy": [
+      "pod_goals"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/goalsController.ts",
+        "line": 5
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/services/analysisCache.ts",
+        "line": 312
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/services/blockAnalytics.ts",
+        "line": 561
+      }
+    ]
+  },
+  {
+    "name": "goals_replace",
+    "domain": "goals",
+    "handler": "lambda.pod_goals.handlers.goals_replace.handler",
+    "legacy": [
+      "pod_goals"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/goalsController.ts",
+        "line": 10
+      }
+    ]
+  },
+  {
+    "name": "health_get_goals",
+    "domain": "goals",
+    "handler": "lambda.pod_goals.handlers.health_get_goals.handler",
+    "legacy": [
+      "pod_goals"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_update_goals",
+    "domain": "goals",
+    "handler": "lambda.pod_goals.handlers.health_update_goals.handler",
+    "legacy": [
+      "pod_goals"
+    ],
+    "callers": []
+  },
+  {
+    "name": "import_apply",
+    "domain": "imports",
+    "handler": "lambda.pod_imports.handlers.import_apply.handler",
+    "legacy": [
+      "pod_import"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/importController.ts",
+        "line": 49
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 241
+      }
+    ]
+  },
+  {
+    "name": "import_get_pending",
+    "domain": "imports",
+    "handler": "lambda.pod_imports.handlers.import_get_pending.handler",
+    "legacy": [
+      "pod_import"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/importController.ts",
+        "line": 36
+      }
+    ]
+  },
+  {
+    "name": "import_list",
+    "domain": "imports",
+    "handler": "lambda.pod_imports.handlers.import_list.handler",
+    "legacy": [
+      "pod_import"
+    ],
+    "callers": []
+  },
+  {
+    "name": "import_list_pending",
+    "domain": "imports",
+    "handler": "lambda.pod_imports.handlers.import_list_pending.handler",
+    "legacy": [
+      "pod_import"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/importController.ts",
+        "line": 26
+      }
+    ]
+  },
+  {
+    "name": "import_parse_file",
+    "domain": "imports",
+    "handler": "lambda.pod_imports.handlers.import_parse_file.handler",
+    "legacy": [
+      "pod_import"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/importController.ts",
+        "line": 16
+      }
+    ]
+  },
+  {
+    "name": "import_reject",
+    "domain": "imports",
+    "handler": "lambda.pod_imports.handlers.import_reject.handler",
+    "legacy": [
+      "pod_import"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/importController.ts",
+        "line": 67
+      }
+    ]
+  },
+  {
+    "name": "fatigue_profile_estimate",
+    "domain": "lift-profiles",
+    "handler": "lambda.pod_lift_profile_ai.handlers.fatigue_profile_estimate.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 934
+      }
+    ]
+  },
+  {
+    "name": "muscle_group_estimate",
+    "domain": "lift-profiles",
+    "handler": "lambda.pod_lift_profile_ai.handlers.muscle_group_estimate.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 946
+      }
+    ]
+  },
+  {
+    "name": "lift_profile_estimate_stimulus",
+    "domain": "lift-profiles",
+    "handler": "lambda.pod_lift_profile_ai.handlers.lift_profile_estimate_stimulus.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 999
+      }
+    ]
+  },
+  {
+    "name": "lift_profile_review",
+    "domain": "lift-profiles",
+    "handler": "lambda.pod_lift_profile_ai.handlers.lift_profile_review.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 979
+      }
+    ]
+  },
+  {
+    "name": "lift_profile_rewrite",
+    "domain": "lift-profiles",
+    "handler": "lambda.pod_lift_profile_ai.handlers.lift_profile_rewrite.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 989
+      }
+    ]
+  },
+  {
+    "name": "lift_profile_rewrite_and_estimate",
+    "domain": "lift-profiles",
+    "handler": "lambda.pod_lift_profile_ai.handlers.lift_profile_rewrite_and_estimate.handler",
+    "legacy": [
+      "pod_lift_profile_ai"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 1009
+      }
+    ]
+  },
+  {
+    "name": "program_update_lift_profiles",
+    "domain": "lift-profiles",
+    "handler": "lambda.pod_training_program.handlers.program_update_lift_profiles.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 46
+      }
+    ]
+  },
+  {
+    "name": "health_get_current_maxes",
+    "domain": "performance",
+    "handler": "lambda.pod_maxes.handlers.health_get_current_maxes.handler",
+    "legacy": [
+      "pod_maxes"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_update_current_maxes",
+    "domain": "performance",
+    "handler": "lambda.pod_maxes.handlers.health_update_current_maxes.handler",
+    "legacy": [
+      "pod_maxes"
+    ],
+    "callers": []
+  },
+  {
+    "name": "max_history_add",
+    "domain": "performance",
+    "handler": "lambda.pod_maxes.handlers.max_history_add.handler",
+    "legacy": [
+      "pod_maxes"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/maxController.ts",
+        "line": 15
+      }
+    ]
+  },
+  {
+    "name": "max_history_get",
+    "domain": "performance",
+    "handler": "lambda.pod_maxes.handlers.max_history_get.handler",
+    "legacy": [
+      "pod_maxes"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/maxController.ts",
+        "line": 5
+      }
+    ]
+  },
+  {
+    "name": "max_target_get",
+    "domain": "performance",
+    "handler": "lambda.pod_maxes.handlers.max_target_get.handler",
+    "legacy": [
+      "pod_maxes"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/maxController.ts",
+        "line": 48
+      }
+    ]
+  },
+  {
+    "name": "max_target_update",
+    "domain": "performance",
+    "handler": "lambda.pod_maxes.handlers.max_target_update.handler",
+    "legacy": [
+      "pod_maxes"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/maxController.ts",
+        "line": 33
+      }
+    ]
+  },
+  {
+    "name": "master_copy_seed_user",
+    "domain": "profile",
+    "handler": "lambda.master_copy_seed_user.handler",
+    "legacy": [
+      "master_copy_seed_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/masterCopy.ts",
+        "line": 4
+      }
+    ]
+  },
+  {
+    "name": "profile_get",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.profile_get.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/profilesController.ts",
+        "line": 26
+      }
+    ]
+  },
+  {
+    "name": "profile_get_current",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.profile_get_current.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/profilesController.ts",
+        "line": 15
+      }
+    ]
+  },
+  {
+    "name": "profile_search",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.profile_search.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/profilesController.ts",
+        "line": 7
+      }
+    ]
+  },
+  {
+    "name": "settings_create",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_create.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 406
+      }
+    ]
+  },
+  {
+    "name": "settings_get",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_get.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 283
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 295
+      }
+    ]
+  },
+  {
+    "name": "settings_update_age_class",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_update_age_class.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 349
+      }
+    ]
+  },
+  {
+    "name": "settings_update_avatar",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_update_avatar.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/settingsController.ts",
+        "line": 223
+      }
+    ]
+  },
+  {
+    "name": "settings_update_nickname",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_update_nickname.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 307
+      }
+    ]
+  },
+  {
+    "name": "settings_update_profile",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_update_profile.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 321
+      }
+    ]
+  },
+  {
+    "name": "settings_update_ranking_location",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_update_ranking_location.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 336
+      }
+    ]
+  },
+  {
+    "name": "settings_update_athlete_basics",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_update_athlete_basics.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 561
+      }
+    ]
+  },
+  {
+    "name": "settings_update_onboarding_profile",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_update_onboarding_profile.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 625
+      }
+    ]
+  },
+  {
+    "name": "settings_update_role",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_update_role.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 682
+      }
+    ]
+  },
+  {
+    "name": "settings_tag_add",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_tag_add.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 359
+      }
+    ]
+  },
+  {
+    "name": "settings_tag_remove",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_tag_remove.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 368
+      }
+    ]
+  },
+  {
+    "name": "settings_tag_approve",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_tag_approve.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 377
+      }
+    ]
+  },
+  {
+    "name": "settings_tag_propose",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.settings_tag_propose.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/userSettings.ts",
+        "line": 390
+      }
+    ]
+  },
+  {
+    "name": "onboarding_status",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.onboarding_status.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": []
+  },
+  {
+    "name": "grant_check",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.grant_check.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/grants.ts",
+        "line": 118
+      }
+    ]
+  },
+  {
+    "name": "grant_create",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.grant_create.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/grants.ts",
+        "line": 79
+      }
+    ]
+  },
+  {
+    "name": "grant_list",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.grant_list.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/grants.ts",
+        "line": 109
+      }
+    ]
+  },
+  {
+    "name": "grant_revoke",
+    "domain": "profile",
+    "handler": "lambda.pod_user.handlers.grant_revoke.handler",
+    "legacy": [
+      "pod_user"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/grants.ts",
+        "line": 100
+      }
+    ]
+  },
+  {
+    "name": "health_delete_diet_note",
+    "domain": "program",
+    "handler": "lambda.health_delete_diet_note.handler",
+    "legacy": [
+      "health_delete_diet_note"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/dietNotesController.ts",
+        "line": 25
+      }
+    ]
+  },
+  {
+    "name": "health_get_diet_notes",
+    "domain": "program",
+    "handler": "lambda.health_get_diet_notes.handler",
+    "legacy": [
+      "health_get_diet_notes"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/dietNotesController.ts",
+        "line": 31
+      }
+    ]
+  },
+  {
+    "name": "health_get_meta",
+    "domain": "program",
+    "handler": "lambda.health_get_meta.handler",
+    "legacy": [
+      "health_get_meta"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_get_phases",
+    "domain": "program",
+    "handler": "lambda.health_get_phases.handler",
+    "legacy": [
+      "health_get_phases"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_get_program",
+    "domain": "program",
+    "handler": "lambda.health_get_program.handler",
+    "legacy": [
+      "health_get_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/competitionController.ts",
+        "line": 61
+      }
+    ]
+  },
+  {
+    "name": "health_get_supplements",
+    "domain": "program",
+    "handler": "lambda.health_get_supplements.handler",
+    "legacy": [
+      "health_get_supplements"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/supplementController.ts",
+        "line": 13
+      }
+    ]
+  },
+  {
+    "name": "health_update_diet_note",
+    "domain": "program",
+    "handler": "lambda.health_update_diet_note.handler",
+    "legacy": [
+      "health_update_diet_note"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/dietNotesController.ts",
+        "line": 16
+      }
+    ]
+  },
+  {
+    "name": "health_update_meta",
+    "domain": "program",
+    "handler": "lambda.health_update_meta.handler",
+    "legacy": [
+      "health_update_meta"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_update_phases",
+    "domain": "program",
+    "handler": "lambda.health_update_phases.handler",
+    "legacy": [
+      "health_update_phases"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_update_supplements",
+    "domain": "program",
+    "handler": "lambda.health_update_supplements.handler",
+    "legacy": [
+      "health_update_supplements"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/supplementController.ts",
+        "line": 9
+      }
+    ]
+  },
+  {
+    "name": "program_get",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.program_get.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 7
+      }
+    ]
+  },
+  {
+    "name": "program_list",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.program_list.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": []
+  },
+  {
+    "name": "program_list_full",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.program_list_full.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 11
+      }
+    ]
+  },
+  {
+    "name": "program_archive",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.program_archive.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 50
+      }
+    ]
+  },
+  {
+    "name": "program_unarchive",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.program_unarchive.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 54
+      }
+    ]
+  },
+  {
+    "name": "program_update_meta_field",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.program_update_meta_field.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 20
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 28
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 29
+      }
+    ]
+  },
+  {
+    "name": "program_update_phases",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.program_update_phases.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 38
+      }
+    ]
+  },
+  {
+    "name": "block_notes_get",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.block_notes_get.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/blockNotesController.ts",
+        "line": 5
+      }
+    ]
+  },
+  {
+    "name": "block_notes_update",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.block_notes_update.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/blockNotesController.ts",
+        "line": 10
+      }
+    ]
+  },
+  {
+    "name": "diet_notes_get",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.diet_notes_get.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": []
+  },
+  {
+    "name": "diet_notes_update",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.diet_notes_update.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": []
+  },
+  {
+    "name": "supplement_phases_get",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.supplement_phases_get.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": []
+  },
+  {
+    "name": "supplement_phases_update",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.supplement_phases_update.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": []
+  },
+  {
+    "name": "export_program_history",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.export_program_history.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/export.ts",
+        "line": 23
+      }
+    ]
+  },
+  {
+    "name": "export_program_markdown",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.export_program_markdown.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 309
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/analytics.ts",
+        "line": 632
+      }
+    ]
+  },
+  {
+    "name": "health_new_version",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.health_new_version.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_setup_initialize",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.health_setup_initialize.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/setupController.ts",
+        "line": 64
+      }
+    ]
+  },
+  {
+    "name": "health_setup_status",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.health_setup_status.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/setupController.ts",
+        "line": 41
+      }
+    ]
+  },
+  {
+    "name": "health_invalidate_program_cache",
+    "domain": "program",
+    "handler": "lambda.pod_training_program.handlers.health_invalidate_program_cache.handler",
+    "legacy": [
+      "pod_training_program"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/routes/programs.ts",
+        "line": 149
+      }
+    ]
+  },
+  {
+    "name": "session_create",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.session_create.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 90
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 16
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/services/sessionStore.ts",
+        "line": 20
+      }
+    ]
+  },
+  {
+    "name": "session_delete",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.session_delete.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 25
+      }
+    ]
+  },
+  {
+    "name": "session_get",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.session_get.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 102
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 6
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 34
+      }
+    ]
+  },
+  {
+    "name": "session_list",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.session_list.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 66
+      }
+    ]
+  },
+  {
+    "name": "session_list_full",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.session_list_full.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/sessionStore.ts",
+        "line": 10
+      }
+    ]
+  },
+  {
+    "name": "session_patch",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.session_patch.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/programController.ts",
+        "line": 116
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 55
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 66
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 88
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 107
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 128
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 146
+      },
+      {
+        "path": "utils/powerlifting-app/backend/src/services/sessionStore.ts",
+        "line": 31
+      }
+    ]
+  },
+  {
+    "name": "session_patch_by_date",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.session_patch_by_date.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/sessionStore.ts",
+        "line": 41
+      }
+    ]
+  },
+  {
+    "name": "session_replace",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.session_replace.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/sessionController.ts",
+        "line": 44
+      }
+    ]
+  },
+  {
+    "name": "session_replace_all",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.session_replace_all.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/services/sessionStore.ts",
+        "line": 50
+      }
+    ]
+  },
+  {
+    "name": "health_add_exercise",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.health_add_exercise.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_remove_exercise",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.health_remove_exercise.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_create_session",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.health_create_session.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_delete_session",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.health_delete_session.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_get_session",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.health_get_session.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_get_sessions_range",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.health_get_sessions_range.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_reschedule_session",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.health_reschedule_session.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": []
+  },
+  {
+    "name": "health_update_session",
+    "domain": "sessions",
+    "handler": "lambda.pod_sessions.handlers.health_update_session.handler",
+    "legacy": [
+      "pod_sessions"
+    ],
+    "callers": []
+  },
+  {
+    "name": "template_apply",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_apply.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 130
+      }
+    ]
+  },
+  {
+    "name": "template_apply_confirm",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_apply_confirm.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 141
+      }
+    ]
+  },
+  {
+    "name": "template_archive",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_archive.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 99
+      }
+    ]
+  },
+  {
+    "name": "template_copy",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_copy.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 89
+      }
+    ]
+  },
+  {
+    "name": "template_create_blank",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_create_blank.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 59
+      }
+    ]
+  },
+  {
+    "name": "template_create_from_block",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_create_from_block.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 49
+      }
+    ]
+  },
+  {
+    "name": "template_create_from_payload",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_create_from_payload.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": []
+  },
+  {
+    "name": "template_evaluate",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_evaluate.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 119
+      }
+    ]
+  },
+  {
+    "name": "template_get",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_get.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 38
+      }
+    ]
+  },
+  {
+    "name": "template_list",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_list.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 28
+      }
+    ]
+  },
+  {
+    "name": "template_publish",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_publish.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 159
+      }
+    ]
+  },
+  {
+    "name": "template_unarchive",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_unarchive.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 109
+      }
+    ]
+  },
+  {
+    "name": "template_unpublish",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_unpublish.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 169
+      }
+    ]
+  },
+  {
+    "name": "template_update",
+    "domain": "templates",
+    "handler": "lambda.pod_templates.handlers.template_update.handler",
+    "legacy": [
+      "pod_templates"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/templateController.ts",
+        "line": 77
+      }
+    ]
+  },
+  {
+    "name": "video_library_get",
+    "domain": "videos",
+    "handler": "lambda.pod_videos.handlers.video_library_get.handler",
+    "legacy": [
+      "video_library_get"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/videoController.ts",
+        "line": 89
+      }
+    ]
+  },
+  {
+    "name": "video_upload_presign",
+    "domain": "videos",
+    "handler": "lambda.pod_videos.handlers.video_upload_presign.handler",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/videoController.ts",
+        "line": 19
+      }
+    ]
+  },
+  {
+    "name": "video_upload_confirm",
+    "domain": "videos",
+    "handler": "lambda.pod_videos.handlers.video_upload_confirm.handler",
+    "legacy": [],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/videoController.ts",
+        "line": 38
+      }
+    ]
+  },
+  {
+    "name": "video_remove",
+    "domain": "videos",
+    "handler": "lambda.pod_videos.handlers.video_remove.handler",
+    "legacy": [
+      "video_remove"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/videoController.ts",
+        "line": 56
+      }
+    ]
+  },
+  {
+    "name": "video_update_metadata",
+    "domain": "videos",
+    "handler": "lambda.pod_videos.handlers.video_update_metadata.handler",
+    "legacy": [
+      "video_update_metadata"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/videoController.ts",
+        "line": 104
+      }
+    ]
+  },
+  {
+    "name": "video_update_thumbnail",
+    "domain": "videos",
+    "handler": "lambda.pod_videos.handlers.video_update_thumbnail.handler",
+    "legacy": [
+      "video_update_thumbnail"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/videoController.ts",
+        "line": 73
+      }
+    ]
+  },
+  {
+    "name": "video_upload",
+    "domain": "videos",
+    "handler": "lambda.pod_videos.handlers.video_upload.handler",
+    "legacy": [
+      "video_upload"
+    ],
+    "callers": []
+  },
+  {
+    "name": "weight_log_get",
+    "domain": "weight-log",
+    "handler": "lambda.pod_weight.handlers.weight_log_get.handler",
+    "legacy": [
+      "pod_weight"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/weightController.ts",
+        "line": 5
+      }
+    ]
+  },
+  {
+    "name": "weight_get_log",
+    "domain": "weight-log",
+    "handler": "lambda.pod_weight.handlers.weight_get_log.handler",
+    "legacy": [
+      "pod_weight"
+    ],
+    "callers": []
+  },
+  {
+    "name": "weight_log_add",
+    "domain": "weight-log",
+    "handler": "lambda.pod_weight.handlers.weight_log_add.handler",
+    "legacy": [
+      "pod_weight"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/weightController.ts",
+        "line": 19
+      }
+    ]
+  },
+  {
+    "name": "weight_add_entry",
+    "domain": "weight-log",
+    "handler": "lambda.pod_weight.handlers.weight_add_entry.handler",
+    "legacy": [
+      "pod_weight"
+    ],
+    "callers": []
+  },
+  {
+    "name": "weight_log_remove",
+    "domain": "weight-log",
+    "handler": "lambda.pod_weight.handlers.weight_log_remove.handler",
+    "legacy": [
+      "pod_weight"
+    ],
+    "callers": [
+      {
+        "path": "utils/powerlifting-app/backend/src/controllers/weightController.ts",
+        "line": 33
+      }
+    ]
+  },
+  {
+    "name": "weight_remove_entry",
+    "domain": "weight-log",
+    "handler": "lambda.pod_weight.handlers.weight_remove_entry.handler",
+    "legacy": [
+      "pod_weight"
+    ],
+    "callers": []
+  }
+]

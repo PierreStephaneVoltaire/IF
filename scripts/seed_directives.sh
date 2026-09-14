@@ -104,7 +104,7 @@ a generic response.
 Format:
   [TOOL FAILURE] <tool_name>: <error message>
 
-If the failure is in an OpenCode planner, domain, handoff, or
+If the failure is in the Sol coordinator, Specialist, handoff, or
 synthesis run, report the stage, specialist type, and error. If a tool
 returns an empty or unexpected result when data was expected, report
 that as a failure.
@@ -468,14 +468,14 @@ put 1 14 "SOURCE_CREDIBILITY" "$C" core
 
 # ─── NEW: Domain Isolation ────────────────────────────────────────────────────
 
-C='After the OpenCode planner selects a specialist, restrict tool
+C='After Sol selects a Specialist, restrict tool
 calls and context retrieval to that specialist domain. This is the
 primary defense against context contamination.
 
-DOMAIN TOOLS ARE ATTACHED AS SCOPED MCP SERVERS. Each OpenCode
-domain run receives an opencode.json with only the selected
-specialist MCP servers and only the tool names declared in that
-specialist YAML. Do not assume tools from another folder are
+DOMAIN TOOLS ARE ATTACHED AS SCOPED MCP SERVERS. Each native Codex
+Specialist receives a per-job scoped MCP interface with only the
+selected Specialist MCP servers and declared tools. Do not assume
+tools from another Specialist are
 available.
 
 Routing model:
@@ -495,7 +495,7 @@ spawn tools directly. It must emit a HANDOFF_REQUIRED block with
 target, task or intended_change, and context. The IF runner executes
 handoffs in order.
 
-CROSS-DOMAIN RUNTIME TOOLS exposed in OpenCode prompts are limited:
+CROSS-DOMAIN RUNTIME TOOLS exposed to native Specialists are limited:
   get_current_date, user_facts_add, user_facts_search,
   user_facts_supersede, capability_gap_log, and any MCP tool
   explicitly listed for the current specialist.

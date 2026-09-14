@@ -1,11 +1,12 @@
-variable "authentik_url" {
-  type = string
-}
-variable "authentik_token" {
+variable "discord_client_id" {
   type      = string
   sensitive = true
 }
-variable "authentik_insecure" {
-  type    = bool
-  default = true
+variable "discord_client_secret" {
+  type      = string
+  sensitive = true
+}
+variable "discord_source_slug" {
+  type    = string
+  default = "discord"
 }

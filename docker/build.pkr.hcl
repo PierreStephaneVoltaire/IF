@@ -21,11 +21,6 @@ variable "tag_latest" {
   default = true
 }
 
-variable "opencode_version" {
-  type    = string
-  default = "1.14.48"
-}
-
 variable "gh_version" {
   type    = string
   default = "2.67.0"
@@ -53,6 +48,7 @@ source "docker" "if_agent" {
   changes = [
     "WORKDIR /app/src",
     "ENV PATH=/root/.local/bin:/root/.cargo/bin:/usr/local/bin:$PATH",
+    "ENV PL_OPERATIONS_DIR=/app/powerlifting-operations",
     "CMD [\"python\", \"-m\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]"
   ]
 }
@@ -107,14 +103,6 @@ build {
     ]
   }
 
-  # Install OpenCode runtime used by planner/domain/technical subprocess runs.
-  provisioner "shell" {
-    inline = [
-      "npm install -g opencode-ai@${var.opencode_version}",
-      "opencode --version"
-    ]
-  }
-
   # Install uv for fast Python package management
   provisioner "shell" {
     inline = [
@@ -134,7 +122,8 @@ build {
   provisioner "shell" {
     inline = [
       "export PATH=\"/root/.local/bin:$PATH\"",
-      "cd /app && uv pip install --system -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu"
+      "uv pip install --system torch --index-url https://download.pytorch.org/whl/cpu",
+      "cd /app && uv pip install --system -r requirements.txt"
     ]
   }
 
@@ -155,6 +144,11 @@ build {
   provisioner "file" {
     source      = "../tools"
     destination = "/app/"
+  }
+
+  provisioner "file" {
+    source      = "../utils/powerlifting-app/services/operations"
+    destination = "/app/powerlifting-operations"
   }
 
   # Copy main system prompt to /app/

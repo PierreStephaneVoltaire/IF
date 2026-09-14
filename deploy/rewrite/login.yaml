@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: if-codex-login
+  namespace: if-portals
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+  containers:
+  - name: login
+    image: if-codex-worker:rewrite
+    imagePullPolicy: IfNotPresent
+    command:
+    - python
+    - -m
+    - execution.login
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: '1'
+        memory: 512Mi
+    volumeMounts:
+    - name: login
+      mountPath: /var/lib/codex
+  volumes:
+  - name: login
+    persistentVolumeClaim:
+      claimName: if-codex-login

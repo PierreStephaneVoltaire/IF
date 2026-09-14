@@ -10,6 +10,10 @@ resource "kubernetes_deployment" "if_agent_api" {
   spec {
     replicas = 1
 
+    strategy {
+      type = "Recreate"
+    }
+
     selector {
       match_labels = {
         app = "if-agent-api"
@@ -24,6 +28,7 @@ resource "kubernetes_deployment" "if_agent_api" {
         annotations = {
           "checksum/config"       = sha1(jsonencode(kubernetes_config_map.if_agent_api_config.data))
           "checksum/model-config" = sha1(jsonencode(kubernetes_config_map.if_agent_api_model_config.data))
+          "checksum/image"        = sha1(jsonencode(null_resource.packer_build_main_api.triggers))
         }
       }
 

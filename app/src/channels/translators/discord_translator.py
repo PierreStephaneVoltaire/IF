@@ -75,7 +75,7 @@ def translate_discord_batch(
     for msg in messages:
         text = msg.get("content", "")
         author = msg.get("author", "unknown")
-        if text:
+        if text or msg.get("attachments"):
             api_messages.append({
                 "role": "user",
                 "content": f"[{author}]: {text}",

@@ -1,0 +1,21 @@
+resources:
+  - rewrite/powerlifting.yaml
+  - rewrite/worker.yaml
+images:
+  - name: if-codex-worker
+    newName: 429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api
+    digest: sha256:ca816dfdbe7b6083d55adb61c5123434d7de28c7b10d7affb805d43f010c5636
+  - name: if-powerlifting-services
+    newName: 429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns
+    digest: sha256:1aed2fdbb71a750576d478700be761490e5d5ef8f26ff5d6709423b2b9984bcd
+  - name: if-powerlifting-analytics
+    newName: 429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend
+    digest: sha256:138fadf8bf38298c1de9b88bae9b88b46fd207bcd10e242c9d7dfd7e9e24b10a
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value:
+          - name: ecr-registry

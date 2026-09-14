@@ -29,19 +29,19 @@ variable "tier_heavy_limit" {
 }
 
 variable "tier_air_preset" {
-  description = "OpenRouter preset for air tier"
+  description = "Subscription model preset for air tier"
   type        = string
   default     = "@preset/air"
 }
 
 variable "tier_standard_preset" {
-  description = "OpenRouter preset for standard tier"
+  description = "Subscription model preset for standard tier"
   type        = string
   default     = "@preset/standard"
 }
 
 variable "tier_heavy_preset" {
-  description = "OpenRouter preset for heavy tier"
+  description = "Subscription model preset for heavy tier"
   type        = string
   default     = "@preset/heavy"
 }
@@ -91,67 +91,67 @@ variable "embedding_model" {
 variable "suggestion_model" {
   description = "Model for suggestions and title generation"
   type        = string
-  default     = "mistralai/mistral-nemo"
+  default     = "gpt-5.6-luna"
 }
 
 variable "directive_rewrite_model" {
   description = "Model for directive content rewriting"
   type        = string
-  default     = "openrouter/@preset/heavy"
+  default     = "gpt-5.6-sol"
 }
 
 variable "model_router_model" {
   description = "Fast model for subagent routing"
   type        = string
-  default     = "anthropic/claude-haiku-4.5"
+  default     = "gpt-5.6-sol"
 }
 
 variable "health_helper_model" {
   description = "Cheaper model for narrow powerlifting helper flows"
   type        = string
-  default     = "openai/gpt-5.4-mini"
+  default     = "gpt-5.6-luna"
 }
 
 variable "condenser_model" {
   description = "Model for conversation condensation"
   type        = string
-  default     = "openrouter/@preset/general"
+  default     = "gpt-5.6-luna"
 }
 
 variable "reflection_model" {
   description = "Model for reflection engine"
   type        = string
-  default     = "openrouter/@preset/general"
+  default     = "gpt-5.6-sol"
 }
 
 variable "orchestrator_subagent_model" {
   description = "Model for orchestrator subagents"
   type        = string
-  default     = "openrouter/@preset/standard"
+  default     = "gpt-5.6-luna"
 }
 
 variable "orchestrator_analysis_model" {
   description = "Model for parallel analysis"
   type        = string
-  default     = "openrouter/@preset/air"
+  default     = "gpt-5.6-terra"
 }
 
 variable "orchestrator_synthesis_model" {
   description = "Model for synthesis of analysis results"
   type        = string
-  default     = "openrouter/@preset/standard"
+  default     = "gpt-5.6-sol"
 }
 
 variable "research_agent_model" {
   description = "Model for research agent"
   type        = string
-  default     = "openrouter/@preset/research"
+  default     = "gpt-5.6-sol"
 }
 
 variable "diary_signal_model" {
   description = "Model for diary signal computation"
   type        = string
-  default     = "openrouter/@preset/air"
+  default     = "gpt-5.6-luna"
 }
 
 variable "orchestrator_max_turns" {

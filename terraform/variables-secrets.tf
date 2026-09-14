@@ -5,15 +5,9 @@ variable "powerlifting_s3_bucket" {
 }
 
 variable "pl_internal_token" {
-  description = "Internal API token gating powerlifting Fission function HTTP triggers (X-Internal-Token)."
+  description = "Internal API token authenticating IF and Powerlifting service requests (X-Internal-Token)."
   type        = string
   default     = ""
-  sensitive   = true
-}
-
-variable "openrouter_api_key" {
-  description = "OpenRouter API key"
-  type        = string
   sensitive   = true
 }
 

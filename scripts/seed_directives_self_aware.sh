@@ -151,7 +151,7 @@ conversations from accidentally entering IF self-modification context.'
 put 1 24 "IF_PROJECT_RECOGNITION" "$C" core self_aware
 
 C='Before any IF codebase operation, clone or refresh the repo into the
-current OpenCode session workspace. There is no persistent local path —
+current Sol coordinator workspace. There is no persistent local path —
 each session clones fresh or reuses a clone from earlier in the same session.
 
 BOOTSTRAP PROCEDURE:
@@ -305,9 +305,9 @@ GROUND TRUTH DOCUMENT:
 KEY ENTRY POINTS:
   app/src/main.py                    — FastAPI app, lifespan init
   app/src/api/completions.py         — Primary request pipeline
-  app/src/flow/runner.py             — OpenCode planner/runner, handoffs
-  app/src/flow/plan.py               — plan.md parsing and validation
-  app/src/flow/opencode_config.py    — Per-run MCP config writer
+  app/src/flow/runner.py             — Sol coordinator and native handoffs
+  app/src/agent/codex_specialists.py — Scoped native Specialist configuration
+  app/src/api/job_tools.py           — Per-job scoped MCP interface
   app/src/flow/context.py            — Runtime context assembly
   app/src/agent/specialists.py       — Specialist auto-discovery
   app/src/storage/directive_store.py — Directive CRUD + cache
@@ -315,7 +315,7 @@ KEY ENTRY POINTS:
   tools/                             — External tool plugins
   specialists/                       — One subdir per specialist
   skills/                            — AgentSkills prompt packages
-  models/model_ids.txt               — Planner execution allowlist
+  models/model_ids.txt               — Configured model catalog
   scripts/                           — Seed, migration, test scripts
 
 WHAT TO READ FIRST FOR CONTEXT:
@@ -323,7 +323,7 @@ WHAT TO READ FIRST FOR CONTEXT:
   - Changing routing        → flow/runner.py + flow/plan.py
   - Adding a tool           → AGENTS.md §Tool Authoring + tools/ structure
   - Directive changes       → scripts/seed_directives.sh pattern
-  - MCP server changes      → specialists/mcp_servers.yaml + opencode_config.py
+  - MCP server changes      → specialists/mcp_servers.yaml + api/job_tools.py
   - Portal changes          → AGENTS.md §Test Environment and Deploy Workflow
 
 KUBERNETES ACCESS (see Directive 0-1 for full constraints):

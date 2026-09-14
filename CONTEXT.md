@@ -2,10 +2,13 @@
 
 The ubiquitous-language glossary for the IF agent service — the API, its
 infrastructure, the Discord bot, and the agentic flow. IF is a personal AI agent
-that routes each request through a planner to a Specialist, remembers the
+that coordinates each request through Sol and native Specialists, remembers the
 Operator across conversations, and delivers through multiple Channels.
 
 ## People & Identity
+
+**Person**:
+An authenticated participant. Person identity comes from trusted channel or gateway credentials, never from message text. The Operator is one Person; other Persons keep separate Conversation and memory scopes.
 
 **Operator**:
 The admin user IF serves. All personal data — Facts, health, finance, diary —
@@ -43,13 +46,11 @@ _Avoid_: rule, instruction, setting, prompt
 
 **Specialist**:
 A domain expert IF delegates work to, with its own focus, scoped tools, and
-applicable Directive types. One Specialist is selected per request, and a
-Specialist can request another via a Handoff.
+applicable Directive types. Sol delegates when useful through native Codex children; ordinary conversation needs no Specialist selection. A Specialist returns its result or a further Handoff request to Sol.
 _Avoid_: agent (use IF for the agent), subagent, role
 
 **Route**:
-The kind of work a request is: social (direct conversation), domain (Specialist
-work), or technical (build with review).
+A historical classification term. The native coordinator now chooses how to handle a request without a compulsory classification or planning stage.
 _Avoid_: mode, flow path
 
 **Handoff**:
@@ -65,8 +66,7 @@ its own message flow.
 _Avoid_: platform, interface, endpoint
 
 **Conversation**:
-An ongoing exchange between the Operator and IF on a Channel. A Conversation
-keeps its own history and state across messages, and Facts are scoped to it.
+An ongoing exchange between a Person and IF. The Person and stable Conversation ID identify one persistent Codex thread across messages and restarts. A Conversation keeps its own history, native turns and scoped Facts.
 _Avoid_: session (portal domains use Session for a training day; auth uses it
 for login sessions), thread, chat
 

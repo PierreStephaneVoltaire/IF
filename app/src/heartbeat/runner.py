@@ -13,8 +13,6 @@ from config import (
     HEARTBEAT_IDLE_HOURS,
     HEARTBEAT_COOLDOWN_HOURS,
     HEARTBEAT_QUIET_HOURS,
-    LLM_BASE_URL,
-    LLM_API_KEY,
     HEARTBEAT_FALLBACK_MODEL,
 )
 from memory.user_facts import FactCategory
@@ -64,36 +62,16 @@ async def call_llm(
 
 
 
-    import httpx
-    
-    headers = {
-        "Authorization": f"Bearer {LLM_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            *messages
-        ],
-        "max_tokens": max_tokens,
-    }
-    
-    response = await http_client.post(
-        f"{LLM_BASE_URL}/chat/completions",
-        headers=headers,
-        json=payload,
+    from types import SimpleNamespace
+    from flow.codex_llm import call_codex_chat
+
+    content = await call_codex_chat(
+        model="gpt-5.6-sol",
+        messages=[{"role": "system", "content": system_prompt}, *messages],
+        priority=10,
+        conversation_id="heartbeat",
     )
-    response.raise_for_status()
-    data = response.json()
-    
-    class LLMResponse:
-        pass
-    
-    result = LLMResponse()
-    result.content = data["choices"][0]["message"]["content"]
-    return result
+    return SimpleNamespace(content=content)
 
 class HeartbeatRunner:
 
@@ -275,7 +253,7 @@ class HeartbeatRunner:
             from flow.model_catalog import load_model_ids
 
             model_ids = load_model_ids()
-            model = model_ids[0] if model_ids else HEARTBEAT_FALLBACK_MODEL.replace("openrouter/", "")
+            model = model_ids[0] if model_ids else HEARTBEAT_FALLBACK_MODEL
             
             response = await call_llm(
                 model=model,

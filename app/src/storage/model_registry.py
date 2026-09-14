@@ -13,9 +13,7 @@
 from __future__ import annotations
 
 import logging
-import urllib.request
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import boto3
@@ -205,63 +203,3 @@ class ModelRegistry:
         except ClientError as e:
             logger.error(f"[ModelRegistry] Batch write failed: {e}")
             raise
-
-    def refresh_endpoint_stats(self, api_key: str) -> int:
-
-
-
-
-
-
-
-
-
-
-
-
-        import json as _json
-
-        updated = 0
-
-        for model_id in list(self._cache.keys()):
-            try:
-                req = urllib.request.Request(
-                    f"https://openrouter.ai/api/v1/models/{model_id}/endpoints",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                )
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    endpoints = (
-                        _json.loads(resp.read())
-                        .get("data", {})
-                        .get("endpoints", [])
-                    )
-
-                latencies = []
-                throughputs = []
-                for ep in endpoints:
-                    lat = ep.get("latency_last_30m", {})
-                    thr = ep.get("throughput_last_30m", {})
-                    if isinstance(lat, dict) and lat.get("p50"):
-                        latencies.append(lat["p50"])
-                    if isinstance(thr, dict) and thr.get("p50"):
-                        throughputs.append(thr["p50"])
-
-                if not latencies and not throughputs:
-                    continue
-
-                best_latency = min(latencies) if latencies else None
-                best_throughput = max(throughputs) if throughputs else None
-
-                info = self._cache[model_id]
-                info.latency = best_latency
-                info.throughput = best_throughput
-                info.updated_at = datetime.now(timezone.utc).isoformat()
-
-                self.table.put_item(Item=info.to_dynamodb_item())
-                updated += 1
-
-            except Exception as e:
-                logger.warning(f"[ModelRegistry] Failed to refresh stats for {model_id}: {e}")
-
-        logger.info(f"[ModelRegistry] Refreshed endpoint stats for {updated} models")
-        return updated

@@ -17,7 +17,7 @@ class ModelList(BaseModel):
 
 class ChatCompletionMessage(BaseModel):
 
-    role: Literal["system", "user", "assistant", "tool"]
+    role: Literal["system", "developer", "user", "assistant", "tool"]
     content: Optional[Union[str, List[Dict[str, Any]]]] = None
     name: Optional[str] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
@@ -39,6 +39,8 @@ class ChatCompletionRequest(BaseModel):
     user: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
     chat_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    reasoning_effort: str = "medium"
 
 class ChatCompletionChoice(BaseModel):
 

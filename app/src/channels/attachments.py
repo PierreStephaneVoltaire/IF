@@ -46,18 +46,24 @@ async def download_discord_attachments(
                 updated_attachments.append(att)
                 continue
                 
+            if Path(filename).name != filename or filename in {".", ".."}:
+                raise ValueError("Invalid attachment filename")
             local_path = uploads_dir / filename
             try:
                 logger.info(f"[Attachments] Downloading {filename} from {url}")
-                response = await client.get(url, timeout=30.0)
-                response.raise_for_status()
-                
-                local_path.write_bytes(response.content)
+                content = bytearray()
+                async with client.stream("GET", url, timeout=30.0) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes():
+                        content.extend(chunk)
+                        if len(content) > 25 * 1024 * 1024:
+                            raise ValueError("Attachment exceeds 25 MiB")
+                local_path.write_bytes(content)
                 logger.info(f"[Attachments] Downloaded to {local_path}")
                 
                 updated_att = dict(att)
                 updated_att["local_path"] = str(local_path)
-                updated_att["size_kb"] = len(response.content) // 1024
+                updated_att["size_kb"] = len(content) // 1024
                 updated_attachments.append(updated_att)
             except Exception as e:
                 logger.error(f"[Attachments] Failed to download {filename}: {e}")

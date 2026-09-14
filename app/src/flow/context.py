@@ -221,11 +221,12 @@ def build_runtime_context(
     uploaded_files: list[dict[str, Any]] | None = None,
     thinking_mode_requested: bool = False,
     self_aware: bool = False,
+    owner: str = IF_USER_PK,
 ) -> str:
 
     blocks: list[str] = []
 
-    signals = get_current_signals()
+    signals = get_current_signals(owner)
     if signals:
         blocks.append(f"═══ CURRENT SIGNALS ═══\n{json.dumps(signals, indent=2, default=str)}")
 
@@ -241,14 +242,7 @@ def build_runtime_context(
 
     blocks.append(_load_prompt_text("discord_delivery_contract"))
 
-    runtime_tool = _runtime_tool_command()
-    from agent.prompts.loader import render_template
-    blocks.append(render_template(
-        "runtime_memory_tools",
-        runtime_tool_command=runtime_tool,
-        context_id=context_id,
-        cache_key=cache_key,
-    ))
+    blocks.append(_load_prompt_text("runtime_memory_tools.j2"))
 
     memory_protocol = _load_prompt_text("memory_protocol.j2")
     if memory_protocol:

@@ -5,12 +5,13 @@
 from __future__ import annotations
 import logging
 from typing import List, Optional
+from datetime import datetime, timezone
 
 from sqlmodel import SQLModel, Session, create_engine, select
 from sqlalchemy import text
 
 from config import STORAGE_DB_PATH
-from storage.models import WebhookRecord
+from storage.models import ActivityLogEntry, WebhookRecord
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,40 @@ class _SQLiteBackend:
         if _engine is None:
             raise RuntimeError("SQLite not initialized. Call init_sqlite().")
         return Session(_engine)
+
+    def record_activity(self, cache_key: str, webhook_id: str | None = None) -> None:
+        if webhook_id:
+            webhook = self.get_webhook(webhook_id)
+            if webhook:
+                cache_key = webhook.get_config().get("channel_id", cache_key)
+        now = datetime.now(timezone.utc).isoformat()
+        with Session(self.engine) as session:
+            entry = session.get(ActivityLogEntry, cache_key)
+            if entry:
+                entry.last_message_at = now
+                if webhook_id:
+                    entry.webhook_id = webhook_id
+            else:
+                session.add(ActivityLogEntry(cache_key=cache_key, webhook_id=webhook_id, last_message_at=now))
+            session.commit()
+
+    def record_heartbeat(self, cache_key: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with Session(self.engine) as session:
+            entry = session.get(ActivityLogEntry, cache_key)
+            if entry:
+                entry.last_heartbeat_at = now
+            else:
+                session.add(ActivityLogEntry(cache_key=cache_key, last_message_at=now, last_heartbeat_at=now))
+            session.commit()
+
+    def get_activity(self, cache_key: str) -> ActivityLogEntry | None:
+        with Session(self.engine) as session:
+            return session.get(ActivityLogEntry, cache_key)
+
+    def get_webhook(self, webhook_id: str) -> WebhookRecord | None:
+        with Session(self.engine) as session:
+            return session.get(WebhookRecord, webhook_id)
 
 class SQLiteWebhookStore:
 

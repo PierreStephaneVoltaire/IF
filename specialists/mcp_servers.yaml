@@ -20,14 +20,21 @@ aws_docs:
 yahoo_finance:
   command: uvx
   args:
+    - --with
+    - mcp==1.7.1
     - mcp-yahoo-finance
   env:
     FASTMCP_LOG_LEVEL: ERROR
 
 alpha_vantage:
-  command: uvx
+  command: sh
   args:
-    - alphavantage-mcp
+    - -c
+    - >-
+      d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && printf
+      '[project]\nname="if-mcp-runner"\nversion="0.0.0"\nrequires-python=">=3.12"\n'
+      >"$d/pyproject.toml" && cd "$d" && uvx --with python-dotenv --with mcp==1.9.4
+      alphavantage-mcp
   env:
     ALPHAVANTAGE_API_KEY: ${ALPHAVANTAGE_API_KEY}
     FASTMCP_LOG_LEVEL: ERROR

@@ -82,9 +82,12 @@ class DirectiveStore:
         try:
             logger.info(f"[DirectiveStore] Loading directives from {self.table_name}...")
             response = self.table.query(
-                KeyConditionExpression=Key("pk").eq(self._pk)
+                KeyConditionExpression=Key("pk").eq(self._pk), ConsistentRead=True
             )
             items = response.get("Items", [])
+            while response.get("LastEvaluatedKey"):
+                response = self.table.query(KeyConditionExpression=Key("pk").eq(self._pk), ConsistentRead=True, ExclusiveStartKey=response["LastEvaluatedKey"])
+                items.extend(response.get("Items", []))
             logger.info(f"[DirectiveStore] Retrieved {len(items)} raw items from DynamoDB")
         except Exception as e:
             logger.error(f"[DirectiveStore] FAILED to query DynamoDB: {type(e).__name__}: {e}")

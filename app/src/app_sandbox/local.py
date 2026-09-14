@@ -2,20 +2,19 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import Optional
+
+from config import IF_WORKSPACE_BASE
 
 logger = logging.getLogger(__name__)
 
 _manager: Optional["LocalSandboxManager"] = None
 
-WORKSPACE_BASE = os.getenv("WORKSPACE_BASE", "/app/src/data/conversations")
-
 class LocalSandboxManager:
 
 
-    def __init__(self, workspace_base: str = WORKSPACE_BASE):
+    def __init__(self, workspace_base: str = IF_WORKSPACE_BASE):
         self.workspace_base = Path(workspace_base)
 
     def get_workspace(self, chat_id: str) -> Path:
@@ -32,7 +31,7 @@ class LocalSandboxManager:
 
         return None
 
-def init_local_sandbox(workspace_base: str = WORKSPACE_BASE) -> LocalSandboxManager:
+def init_local_sandbox(workspace_base: str = IF_WORKSPACE_BASE) -> LocalSandboxManager:
 
     global _manager
     _manager = LocalSandboxManager(workspace_base)
