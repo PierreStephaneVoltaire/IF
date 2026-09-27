@@ -1,0 +1,56 @@
+{
+  "timestamp": "2026-09-15T09:00:46Z",
+  "image": {
+    "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns",
+    "tag": "backlog-20260915-template-replay-v2",
+    "digest": "sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a",
+    "ecr": "ACTIVE"
+  },
+  "deployments": {
+    "pl-program": {
+      "image_digest": "sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a",
+      "ready": "1/1",
+      "generation": 13,
+      "observed_generation": 13
+    },
+    "pl-templates": {
+      "image_digest": "sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a",
+      "ready": "1/1",
+      "generation": 12,
+      "observed_generation": 12
+    }
+  },
+  "raw_replay_proof": {
+    "http": {
+      "request_sha256": "b61ca08d85fde857d1fcc3505562282bdb13b8ea04ed33ff0e2bf5a5c9388b74",
+      "expected_revision": 8,
+      "first_status": 200,
+      "replay_status": 200,
+      "first_body_sha256": "80bc34636e28909df923b7aa474fe385d989296b5f249311604b18bc65983803",
+      "replay_body_sha256": "80bc34636e28909df923b7aa474fe385d989296b5f249311604b18bc65983803",
+      "identical_request_body": true,
+      "identical_result": true,
+      "changed_payload_status": 422,
+      "block_delta": 1,
+      "completed_delta": 1,
+      "active_delta": 0,
+      "session_delta": 1
+    },
+    "mcp": {
+      "request_sha256": "7ad3814d7fe7e4467c313d3303c29ad43b5a6218d94e6811752350d08868aa13",
+      "expected_revision": 9,
+      "first_status": 200,
+      "replay_status": 200,
+      "first_is_error": false,
+      "replay_is_error": false,
+      "identical_request_body": true,
+      "identical_result": true,
+      "mutation_delta_on_replay": 0
+    }
+  },
+  "service_harness": {
+    "services": "16/16",
+    "checks": "22/22"
+  },
+  "credentials_or_record_bodies": "omitted"
+}

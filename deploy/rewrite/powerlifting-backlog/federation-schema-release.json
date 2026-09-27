@@ -1,0 +1,18 @@
+{
+  "source_checks": {
+    "federation_schema_tests": "5 passed"
+  },
+  "image": {
+    "repository": "if-powerlifting-fns",
+    "tag": "profile-federation-20260916-0515",
+    "digest": "sha256:97de3419f4c10df4cfcf52a628415332f74d159db2b8b6c4921ed36661547622"
+  },
+  "deployment": {
+    "component": "pl-federation",
+    "generation": 12,
+    "readyReplicas": 1,
+    "digest": "sha256:97de3419f4c10df4cfcf52a628415332f74d159db2b8b6c4921ed36661547622",
+    "fresh_authenticated_read": "200 MISS 23 rows",
+    "cache_invalidation": "deleted only pl:cache:*:item:%2Fapi%2Ffederations keys"
+  }
+}

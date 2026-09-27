@@ -1,0 +1,216 @@
+{
+  "checked_at": "2026-09-16T04:38:27.034717+00:00",
+  "namespace": "if-portals",
+  "deployments_ready": 18,
+  "deployments": [
+    {
+      "deployment": "pl-analytics",
+      "generation": 22,
+      "observed_generation": 22,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "analytics": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+        "reports": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:2f9ea2299d91289e699be33bf561f2cb3e16574f5579cad3ef49645562a4d262"
+      }
+    },
+    {
+      "deployment": "pl-budget",
+      "generation": 10,
+      "observed_generation": 10,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "budget": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+      }
+    },
+    {
+      "deployment": "pl-calculations",
+      "generation": 10,
+      "observed_generation": 10,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "calculations": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+      }
+    },
+    {
+      "deployment": "pl-competition",
+      "generation": 10,
+      "observed_generation": 10,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "competition": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+      }
+    },
+    {
+      "deployment": "pl-federation",
+      "generation": 12,
+      "observed_generation": 12,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "federation": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:97de3419f4c10df4cfcf52a628415332f74d159db2b8b6c4921ed36661547622"
+      }
+    },
+    {
+      "deployment": "pl-glossary",
+      "generation": 10,
+      "observed_generation": 10,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "glossary": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+      }
+    },
+    {
+      "deployment": "pl-goals",
+      "generation": 10,
+      "observed_generation": 10,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "goals": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+      }
+    },
+    {
+      "deployment": "pl-imports",
+      "generation": 10,
+      "observed_generation": 10,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "imports": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+      }
+    },
+    {
+      "deployment": "pl-lift-profiles",
+      "generation": 10,
+      "observed_generation": 10,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "lift-profiles": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+      }
+    },
+    {
+      "deployment": "pl-performance",
+      "generation": 11,
+      "observed_generation": 11,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "performance": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:6d0a745a531b1deba442b263f3bd65013deb69228f9138e35c16885c7b01016a"
+      }
+    },
+    {
+      "deployment": "pl-profile",
+      "generation": 13,
+      "observed_generation": 13,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "profile": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba"
+      }
+    },
+    {
+      "deployment": "pl-program",
+      "generation": 13,
+      "observed_generation": 13,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "program": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a"
+      }
+    },
+    {
+      "deployment": "pl-sessions",
+      "generation": 10,
+      "observed_generation": 10,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "sessions": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+      }
+    },
+    {
+      "deployment": "pl-templates",
+      "generation": 12,
+      "observed_generation": 12,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "templates": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a"
+      }
+    },
+    {
+      "deployment": "pl-videos",
+      "generation": 16,
+      "observed_generation": 16,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "videos": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba"
+      }
+    },
+    {
+      "deployment": "pl-weight-log",
+      "generation": 10,
+      "observed_generation": 10,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "weight-log": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+      }
+    },
+    {
+      "deployment": "powerlifting-app-backend",
+      "generation": 31,
+      "observed_generation": 31,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "backend": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:b688e943a910ec37b23285f75586f0a7b8f2c346c08653e1509b6b5520130f62"
+      }
+    },
+    {
+      "deployment": "powerlifting-app-frontend",
+      "generation": 14,
+      "observed_generation": 14,
+      "ready_replicas": 1,
+      "desired_replicas": 1,
+      "images": {
+        "frontend": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-frontend@sha256:b9d2ac18f54463b2dd88d125f8fa92cb177dede6b0d048a552b03481aad72d2e"
+      }
+    }
+  ],
+  "pod_restarts": {
+    "pl-analytics-d6876cbfd-262jg": 0,
+    "pl-budget-69fd49c8f6-dr2vp": 0,
+    "pl-calculations-9db9649b5-6nxh8": 0,
+    "pl-competition-85dfcdcd76-nkm6x": 0,
+    "pl-federation-5ff6bb9646-t5wdn": 0,
+    "pl-glossary-55dd596d4c-6k565": 0,
+    "pl-goals-5749f76f8c-g96zb": 0,
+    "pl-imports-5f67c68585-cfbh2": 0,
+    "pl-lift-profiles-77987d57d5-xpct8": 0,
+    "pl-performance-78c89995d-ztq4j": 0,
+    "pl-profile-59fb95db47-bv86h": 0,
+    "pl-program-7cb5545994-nj76c": 1,
+    "pl-sessions-7cc69bc76d-qw5fd": 0,
+    "pl-templates-79998d46b7-6gpdf": 0,
+    "pl-videos-695fb679dc-xxw7m": 0,
+    "pl-weight-log-676cbbbd54-nvgfq": 0,
+    "powerlifting-app-backend-5c4d86bdd9-9hjgs": 0,
+    "powerlifting-app-frontend-7cd59797c-n6zzb": 0
+  },
+  "protected_images": {
+    "if-agent-api": [
+      "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api@sha256:3076896f4dd3ca09e779ece06cd58b7e593a32196349b6e970d8f67428a4343f"
+    ],
+    "if-codex-worker": [
+      "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api@sha256:ca816dfdbe7b6083d55adb61c5123434d7de28c7b10d7affb805d43f010c5636"
+    ]
+  }
+}

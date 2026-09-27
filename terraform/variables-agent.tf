@@ -4,6 +4,17 @@ variable "message_window" {
   default     = 8
 }
 
+variable "if_agent_api_image_digest" {
+  description = "Optional immutable digest for the IF API image; empty preserves the latest-tag deployment"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.if_agent_api_image_digest == "" || can(regex("^sha256:[0-9a-f]{64}$", var.if_agent_api_image_digest))
+    error_message = "if_agent_api_image_digest must be empty or a sha256 digest"
+  }
+}
+
 variable "context_condense_threshold" {
   description = "Context size threshold for condensation"
   type        = number

@@ -1,0 +1,66 @@
+{
+  "checked_at": "2026-09-15T08:18:25Z",
+  "status": "deployed_browser_acceptance_complete_with_limits",
+  "deployment": "powerlifting-app-frontend",
+  "frontend_image_digest": "sha256:a7aad69a7c399a115bc4c5b69510ef8a419728d1d86cf0ab1766c72b9d405bd6",
+  "ecr_tag": "backlog-20260915-frontend-session-drawer",
+  "build": {
+    "typecheck": "passed",
+    "production_build": "passed",
+    "packer_publish": "passed"
+  },
+  "rollout": {
+    "generation": "10/10",
+    "ready": "1/1",
+    "pod_ready": true,
+    "restart_count": 0,
+    "health": "200"
+  },
+  "source": {
+    "file": "frontend/src/components/sessions/SessionDrawer.tsx",
+    "accepted_action_heights": [
+      1559,
+      1568,
+      1578
+    ],
+    "delete_height": 1541
+  },
+  "browser": {
+    "authenticated_dashboard_landing": "passed",
+    "guest_search_about": "passed",
+    "guest_public_profile_read": {
+      "status": "passed",
+      "http_status": 200,
+      "visibility": "public_before_cleanup"
+    },
+    "guest_back_restoration": "passed",
+    "session_detail": {
+      "status": "passed",
+      "same_day_choices": 2,
+      "stable_route_ids": true,
+      "primary_actions_44px": true,
+      "scrollable": true,
+      "stable_exercise_id": true,
+      "logged_edit": true,
+      "save_http_status": 200,
+      "browser_errors": 0,
+      "temporary_sessions_cleanup_http_status": [
+        200,
+        200
+      ]
+    },
+    "remaining": []
+  },
+  "cleanup": {
+    "search_handler_marker": "search-handler-notification-acceptance-20260915",
+    "fixtures_retained": 21,
+    "fixtures_set_private": 21,
+    "public_search_hidden": true,
+    "private_profile_read_status": 404,
+    "aws_deletions": 0
+  },
+  "limits": [
+    "Cloudflare 500 MiB allowance remains pending",
+    "positive operator tag/catalog approval remains unverified"
+  ]
+}

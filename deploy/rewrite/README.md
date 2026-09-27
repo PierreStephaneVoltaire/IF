@@ -48,7 +48,7 @@ kubectl rollout status -n if-portals deployment/if-codex-worker --timeout=180s
 
 The protected API uses [apply-api.sh](apply-api.sh): publish its image first, then apply only the reviewed API/configuration/registry targets. Its Recreate strategy prevents concurrent writers on the shared persistent volumes. The image checksum triggers one rollout; the historical rollout resource waits for status. A future protected deployment still needs operator approval for its concrete reviewed scope. The current rewrite deployment is already approved; see [api-plan-review.md](api-plan-review.md).
 
-Powerlifting portal builds remain separate from root Terraform portal builds. Use its nested Packer templates from `utils/powerlifting-app/docker/`. The frontend requires the existing CloudFront media origin at build time. Do not combine root deployment changes with Authentik/Postgres edits or nested AWS Terraform changes.
+Powerlifting portal builds remain separate from root Terraform portal builds. Use its nested Packer templates from `utils/powerlifting-app/docker/`. The frontend serves media through authorized `/api` GET/HEAD/Range endpoints. The approved media rollout disabled the retained CloudFront distribution and completed cache invalidation. Current image pins and acceptance limits are recorded in [Powerlifting deployment evidence](powerlifting-backlog/deployment-evidence.md). Do not combine root deployment changes with Authentik/Postgres edits or nested AWS Terraform changes.
 
 ## Authentication and configuration
 

@@ -1,0 +1,149 @@
+{
+  "recorded_at": "2026-09-15T17:41:03.744372+00:00",
+  "status": "deployed_verified_scoped_correction",
+  "environment": "https://dev.nolift.training",
+  "review": "entry-mobile-review.md",
+  "runtime_inventory": "entry-mobile-runtime-inventory.json",
+  "gateway": {
+    "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:8740348739cfbce86ef59e800e6c80146dc36897067a57dbcc9413d100ff5b4e",
+    "tag": "dual-login-fix-20260915-1740",
+    "generation": 30,
+    "ready": true,
+    "ecr_status": "ACTIVE",
+    "rollback": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:d4cbce473ab1dd4f6d7f4e7105dbc47f8da362a708f179af43b000369e056cd0",
+    "source_hashes": {
+      "backend/src/controllers/authController.ts": "e0a29d00658c8bfbd9e12e92936ca5c082922a43d8604002b33f66e182af49f8",
+      "backend/src/controllers/authLogin.test.ts": "494d055fed70ff1b0b2e532d7a07cecbc252aed9d67e2eeaa6cfc89cbe7f1c9d",
+      "backend/dist/controllers/authController.js": "58dee5156895e3ed81dd23dee5bec0047d1d2e28c4b088ca51de0d04fd5d7bd5"
+    },
+    "compiled_regression_sha256": "b8503a8bc3d64b9086eddec153f1bc0b1315b2b40a5b5500b0004c0637df0ff5"
+  },
+  "frontend": {
+    "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-frontend@sha256:5bb25bdb27864d990ecd2b4587a458226eb9f1cc86aedb7396b076afa45c64fe",
+    "tag": "dashboard-fix-20260915-1750",
+    "generation": 12,
+    "ready": true,
+    "ecr_status": "ACTIVE",
+    "rollback": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-frontend@sha256:7c77cf5ea872f56df56d37d303a493a30f75ceedb1f5cbe55ecf326596b8015a",
+    "earlier_rollback": "sha256:a7aad69a7c399a115bc4c5b69510ef8a419728d1d86cf0ab1766c72b9d405bd6",
+    "source_hashes": {
+      "frontend/src/App.tsx": "8b31b13654520fef0be4a1c4aa441de4f9c60ef64f6b8bcf99f12abae24bf811",
+      "frontend/src/auth/AuthProvider.tsx": "252b907886e1ba8c1958fd0b43fd16473c74c8120670e26cdf1b51c5e49a7551",
+      "frontend/src/pages/LandingPage.tsx": "c83e01b79a14951439fa4f93ba1b8514a10450a1355176246916c8ddece1be24",
+      "frontend/src/pages/LoginPage.tsx": "09d01170ad1aa232519e7e8443564e8cca3ab4905f9749a429ef5427dbb72ff1",
+      "frontend/src/components/auth/LoginOptions.tsx": "afdf855a75e9e25e8120fdd5c7cbadb75dc0d821888d64dc4a628258b89c30dc",
+      "frontend/src/components/shared/ReadOnlyBanner.tsx": "463490a2e9a9029efe549e1595a1197b23a32722626d75caf2fa1ecd4624f234",
+      "frontend/src/components/layout/AthleteContext.tsx": "65d4997328eaa6705a1edb5d04430e509b143c79b5f7f181e5c9f4b94b8149c5",
+      "frontend/src/components/layout/Sidebar.tsx": "c2b959a24119e1cc18c1d5512b711635571ad8318311900558604479126c67f7",
+      "frontend/src/index.css": "3bf31f20dc97a586a56c543988e0d303b308f67b67b206731dda2477ba841720"
+    }
+  },
+  "local_checks": {
+    "workspace_typecheck": "passed",
+    "workspace_build": "passed",
+    "final_frontend_typecheck_build": "passed",
+    "passport_middleware_tests_passed": 3,
+    "mocked_browser_assertions_passed": 39,
+    "mocked_browser_uncovered": [
+      "offline conflict dialog"
+    ],
+    "api_interception": true
+  },
+  "deployed_checks": {
+    "api_interception": false,
+    "discord_dispatch_chain": [
+      "dev.nolift.training/api/auth/discord/login",
+      "auth.nolift.training/source/oauth/login/discord/",
+      "discord.com/api/oauth2/authorize"
+    ],
+    "authentik_fresh_login": {
+      "status": 200,
+      "person_pk": "live-acceptance-echo",
+      "own_athlete_pk": "live-acceptance-echo"
+    },
+    "invalid_state_callback": {
+      "status": 302,
+      "destination": "/login?error=auth_failed"
+    },
+    "public_pages": {
+      "routes": [
+        "/",
+        "/login",
+        "/profiles",
+        "/about"
+      ],
+      "viewports": [
+        [
+          320,
+          568
+        ],
+        [
+          375,
+          667
+        ],
+        [
+          1440,
+          900
+        ]
+      ],
+      "dedicated_landing": true,
+      "discord_and_authentik_choices": true,
+      "read_only_notice_absent": true,
+      "horizontal_overflow": false,
+      "captured_frontend_digest": "sha256:7c77cf5ea872f56df56d37d303a493a30f75ceedb1f5cbe55ecf326596b8015a"
+    },
+    "dashboard_final": [
+      {
+        "viewport": {
+          "width": 320,
+          "height": 568
+        },
+        "scrollWidth": 320,
+        "bodyScrollWidth": 320,
+        "clientWidth": 320,
+        "heading": "Dashboard",
+        "contentLoaded": true,
+        "noDocumentOverflow": true,
+        "noBodyOverflow": true
+      },
+      {
+        "viewport": {
+          "width": 375,
+          "height": 568
+        },
+        "scrollWidth": 375,
+        "bodyScrollWidth": 375,
+        "clientWidth": 375,
+        "heading": "Dashboard",
+        "contentLoaded": true,
+        "noDocumentOverflow": true,
+        "noBodyOverflow": true
+      }
+    ],
+    "more_menu": {
+      "artifact": "entry-mobile-more.json",
+      "links": 10,
+      "scroll_to_bottom": true,
+      "horizontal_overflow": false
+    },
+    "context": {
+      "artifact": "entry-mobile-context.json",
+      "compact_and_expand": "passed",
+      "cross_athlete_round_trip": "not fully reverified"
+    }
+  },
+  "limits": [
+    "Discord authorization dispatch verified; a Discord identity login was not completed.",
+    "A complete cross-Athlete switch and return was not fully reverified during this correction.",
+    "Known unrelated public avatar 401 and ranking_percentile 404 responses are recorded in root bug.md."
+  ],
+  "local_cleanup": "Published gateway and final frontend Docker candidates removed after ECR and container-reference checks; containerd, rollback archives and AWS resources retained.",
+  "superseding_discord_regression": {
+    "status": "repaired_and_deployed",
+    "configured_callback": "https://dev.nolift.training/api/auth/discord/callback",
+    "incorrect_callback": "https://auth.nolift.training/source/oauth/callback/discord/",
+    "finding": "Dispatch-only evidence did not verify Discord login.",
+    "evidence": "discord-login-correction.md",
+    "gateway_digest": "sha256:b688e943a910ec37b23285f75586f0a7b8f2c346c08653e1509b6b5520130f62"
+  }
+}

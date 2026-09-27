@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "scope": "pl-performance only",
+  "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns",
+  "tag": "acceptance-20260915-maxes-lift",
+  "digest": "sha256:6d0a745a531b1deba442b263f3bd65013deb69228f9138e35c16885c7b01016a",
+  "rollout": {
+    "ready_replicas": 1,
+    "replicas": 1
+  },
+  "focused_tests": "24 passed",
+  "other_service_pins_changed": false,
+  "ecr_digest_verified": true
+}

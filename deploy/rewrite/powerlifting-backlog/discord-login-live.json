@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-09-15T22:06:07.369Z",
+  "gateway_digest": "sha256:b688e943a910ec37b23285f75586f0a7b8f2c346c08653e1509b6b5520130f62",
+  "direct": {
+    "host": "discord.com",
+    "path": "/oauth2/authorize",
+    "client_id": "1459678985473757400",
+    "redirect_uri": "https://dev.nolift.training/api/auth/discord/callback",
+    "response_type": "code",
+    "pkce_method": "S256",
+    "invalid_state": {
+      "status": 302,
+      "location": "https://dev.nolift.training/login?error=auth_failed"
+    },
+    "discord_error_text_present": false
+  },
+  "authentik": {
+    "final_host": "dev.nolift.training",
+    "final_path": "/",
+    "me_status": 200,
+    "authenticated": true,
+    "provider": "authentik",
+    "person_pk_present": true,
+    "own_athlete_pk_present": true
+  },
+  "limitation": "Discord consent and identity callback were not performed."
+}

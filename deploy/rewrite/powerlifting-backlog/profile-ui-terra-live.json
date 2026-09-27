@@ -1,0 +1,78 @@
+{
+  "review": "profile-ui-terra",
+  "status": "accepted_with_explicit_limits",
+  "live_validation": {
+    "frontend_rollout": "ready_generation_14_sha256_b9d2ac18f54463b2dd88d125f8fa92cb177dede6b0d048a552b03481aad72d2e",
+    "federation_rollout": "ready_generation_12_sha256_97de3419f4c10df4cfcf52a628415332f74d159db2b8b6c4921ed36661547622",
+    "normal_auth_browser_ui_wave": "passed for verified flows",
+    "operator_impersonation": false
+  },
+  "postdeploy_required": [
+    "owner/operator browser and video playback"
+  ],
+  "mocked_browser": {
+    "typecheck_and_build": "passed",
+    "settings_320_375_no_horizontal_overflow": "passed",
+    "desktop_delegated_context_restore": "passed",
+    "coach_no_athlete_grants": "passed",
+    "active_role_continue": "passed",
+    "tag_catalog_miss_pending_feedback_without_main_pill": "passed"
+  },
+  "normal_auth_live_reads": {
+    "auth_me_status": 200,
+    "settings_320_375_no_horizontal_overflow": true,
+    "competitions_status": 200,
+    "competition_rows": 196,
+    "federations_status": 200,
+    "federation_rows": 23,
+    "federation_error": null,
+    "federation_cache": "fresh MISS 23, bare HIT 23 after narrow invalidation",
+    "personal_library_rows": 6
+  },
+  "normal_auth_live_ui": {
+    "mobile_more_to_settings": true,
+    "settings_profile_separation": true,
+    "global_context_banner_absent": true,
+    "competition_page_rendered": true,
+    "videos_page_rendered_read_only": true,
+    "tag_request_post_status": 200,
+    "caller_pending_tag_visible": true,
+    "tag_cleanup_delete_status": 200,
+    "tag_cleanup_confirmed": true,
+    "role_limit": "Echo has one Athlete role; Coach/Handler chooser not exercised",
+    "onboarding_master_dropdown_options": 23,
+    "river_empty_personal_library_status": 200,
+    "river_empty_personal_library_rows": 0,
+    "river_onboarding_master_dropdown_options": 23
+  },
+  "normal_auth_multi_role_live": {
+    "luna_auth_me_status": 200,
+    "luna_roles": 3,
+    "chooser_visible": true,
+    "coach_continue_to_roster": true,
+    "mobile_more_to_settings": true,
+    "settings_role_switch_visible": true,
+    "coach_no_athlete_grants": true,
+    "river_auth_me_status": 200,
+    "river_roles": 1
+  },
+  "excluded_actions": [
+    "operator data writes",
+    "tag approval",
+    "identity migration",
+    "in-pod probes"
+  ],
+  "limits": [
+    "Owner/operator browser and video-playback not exercised"
+  ],
+  "resolved_history": [
+    "initial federation schema adapter failure: fresh 500 and cached empty response; resolved by federation97de plus narrow cache invalidation"
+  ],
+  "analytics": {
+    "reports_image": "if-powerlifting-app-backend@sha256:2f9ea2299d91289e699be33bf561f2cb3e16574f5579cad3ef49645562a4d262",
+    "routed_blocks_status": 200,
+    "routed_blocks_count": 6,
+    "compiled_blockAnalytics_sha256": "fff02acb50ba2e58f684a32c2a367cc7c4e47b546fece75c4e8eb4da4d0dbf44"
+  },
+  "reconciliation_note": "Removed obsolete empty-library limit after Terra verified normal River library0 and profile dropdown23."
+}

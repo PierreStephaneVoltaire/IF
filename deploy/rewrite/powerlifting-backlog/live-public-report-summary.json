@@ -1,0 +1,145 @@
+{
+  "status": "final_live_probe_complete",
+  "analytics_image": "sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+  "reports_sidecar": "sha256:c868c906c383fd5afd6018e78ce774c5af19354b98b68521fa379da3a5d1b510",
+  "deployment_ready": true,
+  "dry_run_patch_count": 18,
+  "cache_record_count_before": 148,
+  "cache_record_count_after": 148,
+  "initial_generation_proof": {
+    "generation_prefix": "b9c0a41764a3",
+    "job_prefix": "52b2095499d3",
+    "status": "succeeded",
+    "source_fingerprint_prefix": "b9c0a41764a3",
+    "cached": true,
+    "insufficient_data": false
+  },
+  "results": [
+    {
+      "label": "echo_generation_1",
+      "status": 200,
+      "generation_prefix": "b9c0a41764a3",
+      "job_present": false,
+      "keys": [
+        "cached",
+        "findings",
+        "generated_at",
+        "insufficient_data",
+        "insufficient_data_reason",
+        "summary",
+        "weeks",
+        "window_start"
+      ],
+      "sha256": "28459fb10c5a6528f9ee90b132017c97e4ce55d64c6f7375f7b716558ddeb9f4"
+    },
+    {
+      "label": "echo_generation_2",
+      "status": 200,
+      "generation_prefix": "b9c0a41764a3",
+      "job_present": false,
+      "keys": [
+        "cached",
+        "findings",
+        "generated_at",
+        "insufficient_data",
+        "insufficient_data_reason",
+        "summary",
+        "weeks",
+        "window_start"
+      ],
+      "sha256": "28459fb10c5a6528f9ee90b132017c97e4ce55d64c6f7375f7b716558ddeb9f4"
+    },
+    {
+      "label": "luna_selected_echo_cache_only",
+      "status": 200,
+      "generation_prefix": "b9c0a41764a3",
+      "job_present": false,
+      "keys": [
+        "cached",
+        "findings",
+        "generated_at",
+        "insufficient_data",
+        "insufficient_data_reason",
+        "summary",
+        "weeks",
+        "window_start"
+      ],
+      "sha256": "28459fb10c5a6528f9ee90b132017c97e4ce55d64c6f7375f7b716558ddeb9f4"
+    },
+    {
+      "label": "luna_selected_echo_generation_denied",
+      "status": 403,
+      "generation_prefix": null,
+      "job_present": false,
+      "keys": [],
+      "sha256": "63ecb1d2219d76668f87d4d59ef782ba90b5c18ffa62ee2316ddd5fd56fb59b4"
+    },
+    {
+      "label": "luna_selected_echo_current_analysis_cache_only",
+      "status": 200,
+      "generation_prefix": null,
+      "job_present": false,
+      "cached": true,
+      "insufficient_data": false,
+      "keys": [
+        "block",
+        "cached",
+        "generatedAt",
+        "historical",
+        "schemaVersion",
+        "sourceFingerprint",
+        "weekly"
+      ],
+      "sha256": "45acb19b884fd8507ad248715484b865ac04914a4e6625446b05c752a614b65f"
+    },
+    {
+      "label": "luna_selected_echo_unknown_analysis_cache_only",
+      "status": 404,
+      "generation_prefix": null,
+      "job_present": false,
+      "cached": null,
+      "insufficient_data": null,
+      "keys": [],
+      "sha256": "d6b096c7693141405ef7e5b59d406e4606a29fa54704a7c334e8ede6335f9724"
+    },
+    {
+      "label": "luna_unknown_block_correlation_cache_only",
+      "status": 404,
+      "generation_prefix": null,
+      "job_present": false,
+      "cached": null,
+      "insufficient_data": null,
+      "keys": [],
+      "sha256": "11ef09075c8446ea6220ab26f8bc7b0b215a9944fc245a700bad7b7ce1ab6543"
+    },
+    {
+      "label": "echo_current_block_analysis_cache_only",
+      "status": 200,
+      "generation_prefix": null,
+      "job_present": false,
+      "cached": true,
+      "insufficient_data": false,
+      "keys": [
+        "block",
+        "cached",
+        "generatedAt",
+        "historical",
+        "schemaVersion",
+        "sourceFingerprint",
+        "weekly"
+      ],
+      "sha256": "42ccd66b12d658c5cf72f44113249002c69dda2e88ebc7c0d078763fbac0ae2c"
+    },
+    {
+      "label": "echo_unknown_block_analysis_cache_only",
+      "status": 404,
+      "generation_prefix": null,
+      "job_present": false,
+      "cached": null,
+      "insufficient_data": null,
+      "keys": [],
+      "sha256": "d6b096c7693141405ef7e5b59d406e4606a29fa54704a7c334e8ede6335f9724"
+    }
+  ],
+  "private_payloads_recorded": false
+}

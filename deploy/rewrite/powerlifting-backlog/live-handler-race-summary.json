@@ -1,0 +1,53 @@
+{
+  "checked_at": "2026-09-15T10:07:50.025Z",
+  "environment": "https://dev.nolift.training",
+  "fixture": "live-acceptance-echo",
+  "race": {
+    "river_request_id": "bb55f7ee14e245668d074f7333359c05",
+    "luna_request_id": "f5109e97d5594f23a6aec3b36feeb4c6",
+    "statuses": [
+      200,
+      409
+    ],
+    "winner": "bb55f7ee14e245668d074f7333359c05",
+    "loser": "f5109e97d5594f23a6aec3b36feeb4c6",
+    "winner_state_after_cleanup": "revoked",
+    "loser_state_after_cleanup": "cancelled"
+  },
+  "requests": {
+    "loser_cancel": {
+      "status": 200,
+      "state": "cancelled",
+      "code": null,
+      "relationship_id": "f5109e97d5594f23a6aec3b36feeb4c6"
+    },
+    "restore_create": {
+      "status": 200,
+      "state": "pending",
+      "code": null,
+      "relationship_id": "5dfac996fe9644c0989befc2aa086c23"
+    },
+    "restore_approval": {
+      "status": 200,
+      "state": "approved",
+      "code": null,
+      "relationship_id": "5dfac996fe9644c0989befc2aa086c23"
+    }
+  },
+  "state": {
+    "active_handler_count": 1,
+    "restored_relationship_id": "5dfac996fe9644c0989befc2aa086c23",
+    "same_tie_restored": true,
+    "loser_cancelled": true,
+    "river_roles_restored": true
+  },
+  "limits": {
+    "race_statuses": [
+      200,
+      409
+    ],
+    "existing_peer_grants_preserved": true,
+    "source_program_preserved": true,
+    "original_handler_permissions_restored_by_defaults": true
+  }
+}

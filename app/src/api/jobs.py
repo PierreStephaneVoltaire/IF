@@ -90,6 +90,7 @@ async def _check_profile_access(operation: str, arguments: dict[str, Any], perso
         raise HTTPException(503, "Powerlifting permission service unavailable") from exc
     if response.status_code != 200:
         raise HTTPException(response.status_code if response.status_code in {401, 403} else 503, "Powerlifting operation access denied")
+    return response.json()
 
 
 async def _domain_job(job_id: str, person: str, principal: str, action: str):
@@ -108,6 +109,7 @@ async def _domain_job(job_id: str, person: str, principal: str, action: str):
         raise HTTPException(403, "Only the submitting Person may cancel this job")
     if action == DOMAIN_JOB_READ:
         arguments.update(cache_only=True, refresh=False)
+        arguments['_required_access'] = job.request.payload.get('access_requirements')
     await _check_profile_access(operation, arguments, person, athlete, principal)
     return job
 
@@ -157,7 +159,11 @@ async def submit(request: JobRequest, owner: str = Depends(owner_scope), x_pl_pr
     internal_fields = {key for key in request.payload.get('arguments', {}) if key.startswith('_')}
     if internal_fields - ({'_report_source'} if claims['iss'] == 'if-native' else set()):
         raise HTTPException(403, 'Internal operation fields cannot be supplied')
-    await _check_profile_access(request.payload["operation"], request.payload.get("arguments", {}), owner, athlete, x_pl_principal)
+    access = await _check_profile_access(request.payload["operation"], request.payload.get("arguments", {}), owner, athlete, x_pl_principal)
+    request.payload['access_requirements'] = {
+        'permissions': sorted(permission for permission in access.get('permissions', []) if permission.endswith(':read') and permission.split(':')[0] not in {'settings', 'grants', 'operator'}),
+        'competition_ids': access.get('competition_scope', {}).get('read', []),
+    }
     request.payload.update(domain=operation["domain"], athlete=athlete)
     request.payload.update(await asyncio.to_thread(instruction_payload, owner))
     return _job_view(await native(get_execution_service().submit, owner, request))

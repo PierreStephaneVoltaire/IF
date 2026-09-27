@@ -1,0 +1,72 @@
+{
+  "repair": {
+    "mode": "conditional_pointer_restore",
+    "current_ref_before": "program#v021",
+    "current_ref_after": "program#v020",
+    "pointer_version": 21,
+    "pointer_revision": 1,
+    "session_counts": {
+      "program#v020": 453,
+      "program#v021": 0
+    },
+    "program_hashes_match_snapshots": {
+      "v020": true,
+      "v021": true
+    }
+  },
+  "source_checks": {
+    "federation_tests": "4 passed",
+    "frontend_typecheck": "passed",
+    "frontend_build": "passed",
+    "competition_partition_test": "passed",
+    "context_restore_test": "passed",
+    "onboarding_role_test": "passed",
+    "git_diff_check": "passed",
+    "repair_script_compile": "passed"
+  },
+  "deployment": "deployed",
+  "changed_components": [
+    "frontend",
+    "pl-federation"
+  ],
+  "image_preparation": {
+    "frontend_recipe": "docker/powerlifting-frontend.pkr.hcl",
+    "federation_recipe": "services/Dockerfile",
+    "packer_init": "passed",
+    "publication": "published and deployed"
+  },
+  "images": {
+    "frontend": {
+      "tag": "profile-federation-20260916-0405",
+      "digest": "sha256:bb362bbb37e96396c9265d24bf51f13d816133c1cade2c6443ed971e64d0e2ff",
+      "rollback": "sha256:5bb25bdb27864d990ecd2b4587a458226eb9f1cc86aedb7396b076afa45c64fe"
+    },
+    "pl_federation": {
+      "tag": "profile-federation-20260916-0405",
+      "digest": "sha256:7a55a0f050ce1e7548ba2f41c649309edafeab996844543d02e208a3c8dc4f54",
+      "rollback": "sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4"
+    }
+  },
+  "rollout": {
+    "powerlifting-app-frontend": {
+      "generation": 13,
+      "readyReplicas": 1,
+      "updatedReplicas": 1,
+      "digest": "sha256:bb362bbb37e96396c9265d24bf51f13d816133c1cade2c6443ed971e64d0e2ff"
+    },
+    "pl-federation": {
+      "generation": 11,
+      "readyReplicas": 1,
+      "updatedReplicas": 1,
+      "digest": "sha256:7a55a0f050ce1e7548ba2f41c649309edafeab996844543d02e208a3c8dc4f54"
+    }
+  },
+  "accidental_latest_tag": {
+    "repository": "if-powerlifting-app-frontend",
+    "tag": "latest",
+    "digest": "sha256:ff397147ea296ed9a15334b9f182d8c9cb9630579d54718aaa7146cd836bbb35",
+    "runtime_reference": "none; deployment is digest pinned"
+  },
+  "recorded_at": "2026-09-16T04:12:05.952614+00:00",
+  "live_acceptance": "Settings 320/375 and Competition API normal-auth reads passed; Federation master API empty, correction in progress"
+}

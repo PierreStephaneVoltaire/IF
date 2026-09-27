@@ -1,0 +1,99 @@
+{
+  "status": "passed",
+  "source": {
+    "repository": "/home/sirsimpalot/Downloads/discord-ai-bot/utils/powerlifting-app",
+    "file": "backend/src/routes/programs.ts",
+    "sha256": "55f57a5cd4c1eb93591b26d00976ca085b2142031576639fe281cd21b6b39e86",
+    "typecheck": "passed",
+    "build": "passed"
+  },
+  "gateway": {
+    "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend",
+    "digest": "sha256:d4cbce473ab1dd4f6d7f4e7105dbc47f8da362a708f179af43b000369e056cd0",
+    "previous_digest": "sha256:176eafe171ece074a53d1e26f474a37fa71cd3f388977db512461f340af44026",
+    "ecr_tag": "cache-coherence-20260915",
+    "ecr_verified": true,
+    "local_candidate_pruned": true,
+    "rollout": "passed",
+    "health": "passed",
+    "aws_mount": "/home/nodejs/.aws read-only",
+    "aws_env": [
+      "AWS_SHARED_CREDENTIALS_FILE",
+      "AWS_CONFIG_FILE"
+    ],
+    "oidc_valkey_sessions": "preserved via existing ConfigMap/Secret references"
+  },
+  "native_portal": {
+    "athlete": "live-acceptance-luna",
+    "url": "https://dev.nolift.training/api/programs/v034-861d377a34c84dfbb80fd3ed413300ce",
+    "http_statuses": {
+      "program_get_prime": 200,
+      "native_change": 200,
+      "program_get_after_change": 200,
+      "native_restore": 200,
+      "program_get_after_restore": 200,
+      "replacement_upload": 200,
+      "replacement_pending_get": 200,
+      "replacement_ready_get": 200,
+      "replacement_remove": 200,
+      "original_remove": 200,
+      "cleanup_get": 200
+    },
+    "squat": [
+      185,
+      186,
+      185
+    ],
+    "source_revisions": [
+      64,
+      65,
+      66
+    ],
+    "snapshots": {
+      "before": {
+        "squat": 185,
+        "source_revision": 64,
+        "ready_video_id": "b045b905-1ab6-5988-bab9-00b491eab573",
+        "processing_status": "ready",
+        "target_revision": 1,
+        "allocation_revision": 1
+      },
+      "pending": {
+        "published_video_id": "b045b905-1ab6-5988-bab9-00b491eab573",
+        "pending_media_id": "8d86428d-9051-5d2d-90a5-6b52a7c3e838",
+        "processing_status": "pending",
+        "target_revision": 2,
+        "allocation_revision": 2
+      },
+      "ready": {
+        "published_video_id": "8d86428d-9051-5d2d-90a5-6b52a7c3e838",
+        "processing_status": "ready",
+        "target_revision": 2,
+        "allocation_revision": 2
+      },
+      "after_cleanup": {}
+    },
+    "ready_slot_preserved_during_max_change": {
+      "video_id": "b045b905-1ab6-5988-bab9-00b491eab573",
+      "processing_status": "ready",
+      "target_revision": 1,
+      "allocation_revision": 1
+    },
+    "transport": "Signed normal HTTP POST health_update_current_maxes to pl-performance through kubectl port-forward svc/pl-performance 18080:8000; X-Internal-Token plus X-PL-Principal JWT, X-Person-Pk and X-Athlete-Pk scoped to live-acceptance-luna.",
+    "baseline_note": "Earlier isolated Luna source test started at squat 135 and restored 135 at source revisions 58-60. This later independent acceptance observed the same dedicated fixture after subsequent authorized fixture tests at squat 185 and restored it to 185 at revisions 64-66.",
+    "mutation_author": "normal signed typed native-domain HTTP operation; no Codex-generated mutation",
+    "same_url_no_cachebuster": true,
+    "ready_video_id": "b045b905-1ab6-5988-bab9-00b491eab573",
+    "replacement_video_id": "8d86428d-9051-5d2d-90a5-6b52a7c3e838",
+    "pending_preserved_ready": true,
+    "replacement_ready": true,
+    "replacement_target_revision": 2,
+    "normal_cleanup": true,
+    "stale_worker_race": "not attempted in this scoped test; separate worker-owned acceptance"
+  },
+  "service_harness": {
+    "services": 16,
+    "checks": 22,
+    "status": "passed"
+  }
+}

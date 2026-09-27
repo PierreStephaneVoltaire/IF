@@ -28,7 +28,8 @@ resource "kubernetes_deployment" "if_agent_api" {
         annotations = {
           "checksum/config"       = sha1(jsonencode(kubernetes_config_map.if_agent_api_config.data))
           "checksum/model-config" = sha1(jsonencode(kubernetes_config_map.if_agent_api_model_config.data))
-          "checksum/image"        = sha1(jsonencode(null_resource.packer_build_main_api.triggers))
+          "checksum/secrets"      = nonsensitive(sha1(jsonencode(kubernetes_secret.if_agent_api_secrets.data)))
+          "checksum/image"        = local.if_agent_api_image_checksum
         }
       }
 
@@ -117,7 +118,7 @@ resource "kubernetes_deployment" "if_agent_api" {
 
         container {
           name              = "api"
-          image             = "${aws_ecr_repository.if_agent_api.repository_url}:latest"
+          image             = local.if_agent_api_image
           image_pull_policy = "Always"
 
           port {
@@ -233,7 +234,6 @@ resource "kubernetes_deployment" "if_agent_api" {
     }
   }
 
-  depends_on = [null_resource.packer_build_main_api]
 }
 
 locals {
@@ -367,9 +367,25 @@ resource "kubernetes_deployment" "portal_backends" {
             }
           }
 
+          dynamic "env" {
+            for_each = each.key == "powerlifting-app" ? [1] : []
+            content {
+              name  = "AWS_SHARED_CREDENTIALS_FILE"
+              value = "/home/nodejs/.aws/credentials"
+            }
+          }
+
+          dynamic "env" {
+            for_each = each.key == "powerlifting-app" ? [1] : []
+            content {
+              name  = "AWS_CONFIG_FILE"
+              value = "/home/nodejs/.aws/config"
+            }
+          }
+
           volume_mount {
             name       = "aws-credentials"
-            mount_path = "/root/.aws"
+            mount_path = each.key == "powerlifting-app" ? "/home/nodejs/.aws" : "/root/.aws"
             read_only  = true
           }
 

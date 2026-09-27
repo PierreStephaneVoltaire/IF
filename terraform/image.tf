@@ -99,9 +99,22 @@ resource "aws_ecr_lifecycle_policy" "keep_5" {
   repository = each.value
 
   policy = jsonencode({
-    rules = [
-      {
+    rules = concat(
+      each.key == "if-agent-api" ? [{
         rulePriority = 1
+        description  = "Retain tagged API images"
+        selection = {
+          tagStatus      = "tagged"
+          tagPatternList = ["*"]
+          countType      = "imageCountMoreThan"
+          countNumber    = 999
+        }
+        action = {
+          type = "expire"
+        }
+      }] : [],
+      [{
+        rulePriority = each.key == "if-agent-api" ? 2 : 1
         description  = "Keep last 5 images"
         selection = {
           tagStatus   = "any"
@@ -111,8 +124,8 @@ resource "aws_ecr_lifecycle_policy" "keep_5" {
         action = {
           type = "expire"
         }
-      }
-    ]
+      }]
+    )
   })
 }
 
@@ -153,6 +166,17 @@ locals {
     for f in fileset("${path.module}/../utils/powerlifting-app/services/operations", "**/*.json") :
     filesha1("${path.module}/../utils/powerlifting-app/services/operations/${f}")
   ]))
+
+  if_agent_api_build_checksum = sha1(jsonencode({
+    dir_sha1                = local.docker_hash
+    source_sha1             = local.main_api_hash
+    powerlifting_operations = local.powerlifting_operations_hash
+    repo_url                = aws_ecr_repository.if_agent_api.repository_url
+  }))
+
+  if_agent_api_image = var.if_agent_api_image_digest != "" ? "${aws_ecr_repository.if_agent_api.repository_url}@${var.if_agent_api_image_digest}" : "${aws_ecr_repository.if_agent_api.repository_url}:latest"
+
+  if_agent_api_image_checksum = var.if_agent_api_image_digest != "" ? sha1(local.if_agent_api_image) : local.if_agent_api_build_checksum
 
   portal_backend_hashes = {
     for name, config in local.portals : name => sha1(join("", [
@@ -242,7 +266,9 @@ resource "null_resource" "packer_build_main_api" {
 
 resource "null_resource" "rollout_restart_main_api" {
   triggers = {
-    image_sha1 = sha1(jsonencode(null_resource.packer_build_main_api.triggers))
+    image_sha1  = local.if_agent_api_image_checksum
+    config_sha1 = sha1(jsonencode(kubernetes_config_map.if_agent_api_config.data))
+    secret_sha1 = nonsensitive(sha1(jsonencode(kubernetes_secret.if_agent_api_secrets.data)))
   }
 
   provisioner "local-exec" {
@@ -250,7 +276,6 @@ resource "null_resource" "rollout_restart_main_api" {
   }
 
   depends_on = [
-    null_resource.packer_build_main_api,
     kubernetes_deployment.if_agent_api,
   ]
 }
@@ -305,6 +330,7 @@ resource "null_resource" "packer_build_portal_frontends" {
     repo_url    = aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url
     portal_name = each.key
     api_path    = local.portal_api_paths[each.key]
+    media_url   = lookup(local.portal_media_base_urls, each.key, "")
   }
 
   provisioner "local-exec" {
@@ -314,7 +340,7 @@ resource "null_resource" "packer_build_portal_frontends" {
       aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
       aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin $(echo ${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url} | cut -d'/' -f1)
       packer init portals-frontend.pkr.hcl
-      packer build -var "image_repository=${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url}" -var "image_tag=latest" -var "portal_name=${each.key}" -var "api_url=${local.portal_api_paths[each.key]}" portals-frontend.pkr.hcl
+      packer build -var "image_repository=${aws_ecr_repository.portal_frontends["${each.key}-frontend"].repository_url}" -var "image_tag=latest" -var "portal_name=${each.key}" -var "api_url=${local.portal_api_paths[each.key]}" -var "cloudfront_media_base_url=${lookup(local.portal_media_base_urls, each.key, "")}" portals-frontend.pkr.hcl
     EOT
   }
 

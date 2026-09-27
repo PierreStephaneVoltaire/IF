@@ -60,6 +60,11 @@ spec:
             group: gateway.nginx.org
             kind: SnippetsFilter
             name: security-only
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.nginx.org
+            kind: SnippetsFilter
+            name: authentik-public
       backendRefs:
         - name: ${module.authentik_helm.server_service_name}
           namespace: ${module.authentik_helm.namespace}

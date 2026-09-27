@@ -1,0 +1,80 @@
+{
+  "recorded_at": "2026-09-16T03:32:15.228311+00:00",
+  "status": "pointer_repair_applied_storage_integrity_verified",
+  "repair": {
+    "mode": "conditional_pointer_restore",
+    "current_ref_before": "program#v021",
+    "current_ref_after": "program#v020",
+    "pointer_version": 21,
+    "pointer_revision": 1,
+    "session_counts": {
+      "program#v020": 453,
+      "program#v021": 0
+    },
+    "program_hashes_match_snapshots": {
+      "v020": true,
+      "v021": true
+    }
+  },
+  "sessions": {
+    "total": 453,
+    "unique_ids": 453,
+    "canonical_status_counts": {
+      "completed": 407,
+      "planned": 46
+    },
+    "legacy_completed_boolean_count": 417,
+    "earliest_date": "2023-05-10",
+    "latest_date": "2026-08-22",
+    "block_count": 6,
+    "legacy_current_block_sessions": 92,
+    "video_references": 41,
+    "sessions_with_videos": 10
+  },
+  "competition_entry_records": 196,
+  "program_semantic_diff_paths": [
+    "sk",
+    "meta.updated_at",
+    "meta.version_label",
+    "meta.template_lineage"
+  ],
+  "snapshots": {
+    "operator-training-if-health-20260915.json": {
+      "sha256": "2f788e908879fb688a7bd4636758d584893caf57a4dccfcd3542b85ee38ec5dd",
+      "mode": "0o600",
+      "location": "private /tmp; raw contents excluded from release records"
+    },
+    "operator-training-if-sessions-20260915.json": {
+      "sha256": "e080498ad62be6a1e67db78349c3d603adbe1d2373ba9ec22c138691d8493c70",
+      "mode": "0o600",
+      "location": "private /tmp; raw contents excluded from release records"
+    },
+    "operator-training-programs-20260915.json": {
+      "sha256": "15508a6291df6636c22ec749442c82ee0e5072b77b380ebb39388cbd49a43bd3",
+      "mode": "0o600",
+      "location": "private /tmp; raw contents excluded from release records"
+    }
+  },
+  "independent_checks": {
+    "both_programs_snapshot_identical": true,
+    "all_453_session_rows_snapshot_identical": true,
+    "program_and_video_reads_resolve_pointer_per_request": true,
+    "isolated_normal_auth_program_read_status": 200,
+    "operator_normal_auth_browser_payload": "unverified; normal operator session unavailable",
+    "pointer_revision_coherent_with_current_program_load_and_mutation_cas": true,
+    "revision_coherence_scope": "Source trace plus prior private snapshots: v020 lacks stored meta.revision; loader exposes pointer revision1, mutations use the same expected revision, allocator version21 remains separate. No operator mutation probe performed."
+  },
+  "verification_incident": {
+    "component": "pl-program",
+    "extra_in_pod_probe": "OOM caused one pod restart; probe stopped",
+    "current_state": "Ready; health 200",
+    "restart_count": 1,
+    "record_mutations_from_probe": false
+  },
+  "provenance": "Predecessor template apply replaced the complete session set with generated template sessions. Timestamp and record shape support this as the initiating path; exact old live image execution was not reconstructed.",
+  "review": "production-visibility-recovery-review.md",
+  "remaining": [
+    "Normal operator browser payload and video playback verification"
+  ],
+  "followup_release": "profile-ui-release.json"
+}

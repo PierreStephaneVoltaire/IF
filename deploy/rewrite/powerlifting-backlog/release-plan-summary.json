@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-09-14T23:58:00Z",
+  "applied": false,
+  "terraform_applied": false,
+  "kubernetes_mutated": false,
+  "aws_deleted": false,
+  "plans": {
+    "api_foundation": {
+      "path": "/tmp/if-release-api-foundation.tfplan",
+      "log": "/tmp/if-release-api-foundation-plan.log",
+      "candidate_api_digest": "sha256:3076896f4dd3ca09e779ece06cd58b7e593a32196349b6e970d8f67428a4343f",
+      "actions": {"create": 5, "update": 6, "destroy": 1},
+      "destroy_scope": "null_resource.rollout_restart_main_api bookkeeping replacement only",
+      "approval_command": "terraform -chdir=terraform apply -input=false /tmp/if-release-api-foundation.tfplan"
+    },
+    "authentik_provider": {
+      "path": "/tmp/if-release-authentik-provider.tfplan",
+      "log": "/tmp/if-release-authentik-provider-plan.log",
+      "actions": {"create": 0, "update": 0, "destroy": 0},
+      "required_action": "no apply required; verified subject mapping is already present live"
+    },
+    "media": {
+      "path": "/tmp/if-release-media.tfplan",
+      "log": "/tmp/if-release-media-plan.log",
+      "actions": {"create": 0, "update": 3, "destroy": 0},
+      "approval_command": "terraform -chdir=utils/powerlifting-app/terraform apply -input=false /tmp/if-release-media.tfplan"
+    }
+  },
+  "retention": {
+    "api_payload": "deploy/rewrite/powerlifting-backlog/ecr-retention-api-policy.json",
+    "backend_payload": "deploy/rewrite/powerlifting-backlog/ecr-retention-backend-policy.json",
+    "terraform_plans": "UNAPPLICABLE; do not apply",
+    "put_lifecycle_policy_applied": false
+  }
+}

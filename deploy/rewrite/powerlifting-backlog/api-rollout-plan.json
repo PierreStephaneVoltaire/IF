@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-09-14T23:12:06Z",
+  "status": "terra-reviewed-pending-protected-operator-approval",
+  "required_next_step": "Protected operator approval and live rollback-digest verification; do not apply without both",
+  "plan_file": "/tmp/powerlifting-if-api-digest-foundation.tfplan",
+  "candidate_digest": "sha256:3076896f4dd3ca09e779ece06cd58b7e593a32196349b6e970d8f67428a4343f",
+  "api_image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api@sha256:3076896f4dd3ca09e779ece06cd58b7e593a32196349b6e970d8f67428a4343f",
+  "plan_command": "terraform -chdir=terraform plan -input=false -lock-timeout=30s -out=/tmp/powerlifting-if-api-digest-foundation.tfplan -var-file=../deploy/rewrite/models.tfvars.json -var=if_agent_api_image_digest=sha256:3076896f4dd3ca09e779ece06cd58b7e593a32196349b6e970d8f67428a4343f -target=aws_dynamodb_table.powerlifting_tags -target=aws_dynamodb_table.powerlifting_notifications -target=aws_dynamodb_table.if_powerlifting_requests -target=kubernetes_config_map.powerlifting_app_config -target=random_password.powerlifting_principal -target=random_password.powerlifting_session -target=kubernetes_config_map.if_agent_api_config -target=kubernetes_config_map.if_agent_api_model_config -target=kubernetes_secret.if_agent_api_secrets -target=kubernetes_secret.powerlifting_app_secrets -target=kubernetes_secret.ecr_registry -target=kubernetes_deployment.if_agent_api -target=null_resource.rollout_restart_main_api",
+  "raw_show_command": "terraform -chdir=terraform init -input=false -upgrade=false && terraform -chdir=terraform show -json /tmp/powerlifting-if-api-digest-foundation.tfplan",
+  "actions": {
+    "create": 5,
+    "update": 6,
+    "delete": 1,
+    "replacement_delete": "null_resource.rollout_restart_main_api bookkeeping only"
+  },
+  "resource_actions": [
+    "aws_dynamodb_table.if_powerlifting_requests update",
+    "aws_dynamodb_table.powerlifting_notifications create",
+    "aws_dynamodb_table.powerlifting_tags create",
+    "kubernetes_config_map.powerlifting_app_config update",
+    "kubernetes_deployment.if_agent_api update",
+    "kubernetes_secret.ecr_registry update",
+    "kubernetes_secret.if_agent_api_secrets update",
+    "kubernetes_secret.powerlifting_app_secrets update",
+    "null_resource.rollout_restart_main_api delete/create",
+    "random_password.powerlifting_principal create",
+    "random_password.powerlifting_session create"
+  ],
+  "checks": {
+    "packer_build_main_api": "no action",
+    "api_deployment_image": "exact candidate digest",
+    "protected_api_mutation": "kubernetes_deployment.if_agent_api update only",
+    "persistent_volumes": "no action",
+    "native_host_paths": "unchanged",
+    "aws_deletes": "none"
+  },
+  "approval_command": "terraform -chdir=terraform apply -input=false /tmp/if-release-api-foundation.tfplan"
+}

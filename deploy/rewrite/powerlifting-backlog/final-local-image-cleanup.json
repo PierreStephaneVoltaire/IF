@@ -1,0 +1,93 @@
+{
+  "captured_at": "2026-09-15T10:22:25Z",
+  "scope": "exact gateway coherence disposable local build",
+  "ecr_verification": {
+    "repository": "if-powerlifting-app-backend",
+    "digest": "sha256:d4cbce473ab1dd4f6d7f4e7105dbc47f8da362a708f179af43b000369e056cd0",
+    "tag": "cache-coherence-20260915",
+    "status": "published and verified before local removal"
+  },
+  "removed": [
+    {
+      "image_id": "sha256:d4cbce473ab1dd4f6d7f4e7105dbc47f8da362a708f179af43b000369e056cd0",
+      "repository": "if-powerlifting-app-backend",
+      "tags": [
+        "cache-coherence-20260915"
+      ],
+      "ecr_verified": true,
+      "containers_using_image": 0
+    },
+    {
+      "image_id": "sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+      "repository": "if-powerlifting-fns",
+      "tags": [
+        "live-20260915-shared-fixes-v3"
+      ],
+      "ecr_verified": true,
+      "containers_using_image": 0
+    },
+    {
+      "image_id": "sha256:6d0a745a531b1deba442b263f3bd65013deb69228f9138e35c16885c7b01016a",
+      "repository": "if-powerlifting-fns",
+      "tags": [
+        "acceptance-20260915-maxes-lift"
+      ],
+      "ecr_verified": true,
+      "containers_using_image": 0
+    },
+    {
+      "image_id": "sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a",
+      "repository": "if-powerlifting-fns",
+      "tags": [
+        "backlog-20260915-template-replay-v2"
+      ],
+      "ecr_verified": true,
+      "containers_using_image": 0
+    },
+    {
+      "image_id": "sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4",
+      "repository": "if-powerlifting-fns",
+      "tags": [
+        "backlog-20260915-session-identity"
+      ],
+      "ecr_verified": true,
+      "containers_using_image": 0
+    },
+    {
+      "image_id": "sha256:a7aad69a7c399a115bc4c5b69510ef8a419728d1d86cf0ab1766c72b9d405bd6",
+      "repository": "if-powerlifting-app-frontend",
+      "tags": [
+        "backlog-20260915-frontend-session-drawer",
+        "latest"
+      ],
+      "ecr_verified": true,
+      "containers_using_image": 0
+    }
+  ],
+  "retained": {
+    "running_docker_container": "grafana/mcp-grafana",
+    "k3s_containerd_images": true,
+    "oci_rollback_archives": true,
+    "base_images": true,
+    "unknown_images": true,
+    "aws_resources": true,
+    "broad_prune": false
+  },
+  "result": "exact tags and image removed after ECR verification; no broad prune",
+  "remaining_task_images": [
+    {
+      "repository": "if-powerlifting-app-backend",
+      "digest": "sha256:c868c906c383fd5afd6018e78ce774c5af19354b98b68521fa379da3a5d1b510",
+      "local_tags": [],
+      "status": "already absent locally; retained ECR/live k3s pin"
+    }
+  ],
+  "verification_note": "All six remaining task Docker build image IDs were ECR verified before exact tag/image removal. No task image had a Docker container reference. c868 analytics sidecar was already absent locally. K3s containerd images, OCI rollback archives, base images, unknown images, and AWS resources were preserved.",
+  "docker_runtime_proof": {
+    "docker_container_count": 1,
+    "task_image_container_refs": 0,
+    "unrelated_docker_container": "grafana/mcp-grafana",
+    "k3s_runtime": "containerd://2.1.5-k3s1",
+    "interpretation": "k3s containerd workload pins do not keep Docker build images in use"
+  }
+}

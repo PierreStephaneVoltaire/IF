@@ -1,0 +1,269 @@
+{
+  "generated_at": "2026-09-16T04:38:27.034717+00:00",
+  "review_status": "accepted",
+  "repositories_existing_only": true,
+  "deployment_applied": false,
+  "targeted_deployments_applied": [
+    "pl-analytics",
+    "powerlifting-app-backend"
+  ],
+  "terraform_applied": false,
+  "frontend_built": true,
+  "api_candidate": {
+    "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api",
+    "tag": "backlog-20260914-api-refresh",
+    "digest": "sha256:3076896f4dd3ca09e779ece06cd58b7e593a32196349b6e970d8f67428a4343f",
+    "rebuilt": true
+  },
+  "candidates": {
+    "services_analytics": {
+      "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns",
+      "tag": "live-20260915-shared-fixes-v3",
+      "digest": "sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+      "recipe": "utils/powerlifting-app/services/Dockerfile",
+      "base": "python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea",
+      "deployments": [
+        "pl-analytics"
+      ]
+    },
+    "services_program": {
+      "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns",
+      "tag": "live-20260915-program-template",
+      "digest": "sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a",
+      "recipe": "utils/powerlifting-app/services/Dockerfile",
+      "base": "python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea",
+      "deployments": [
+        "pl-program",
+        "pl-templates"
+      ]
+    },
+    "services_performance": {
+      "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns",
+      "tag": "live-20260915-performance",
+      "digest": "sha256:6d0a745a531b1deba442b263f3bd65013deb69228f9138e35c16885c7b01016a",
+      "recipe": "utils/powerlifting-app/services/Dockerfile",
+      "base": "python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea",
+      "deployments": [
+        "pl-performance"
+      ]
+    },
+    "services_other": {
+      "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns",
+      "tag": "live-20260915-services-other",
+      "digest": "sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4",
+      "recipe": "utils/powerlifting-app/services/Dockerfile",
+      "base": "python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea",
+      "deployments": [
+        "pl-sessions",
+        "pl-competition",
+        "pl-glossary",
+        "pl-goals",
+        "pl-budget",
+        "pl-calculations",
+        "pl-weight-log",
+        "pl-imports",
+        "pl-lift-profiles"
+      ]
+    },
+    "services_videos": {
+      "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns",
+      "tag": "live-20260915-shared-fixes-v3",
+      "digest": "sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+      "recipe": "utils/powerlifting-app/services/Dockerfile",
+      "base": "python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea",
+      "deployments": [
+        "pl-videos"
+      ]
+    },
+    "services_profile": {
+      "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns",
+      "tag": "live-20260915-shared-fixes-v3",
+      "digest": "sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+      "recipe": "utils/powerlifting-app/services/Dockerfile",
+      "base": "python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea",
+      "deployments": [
+        "pl-profile"
+      ]
+    },
+    "analytics_sidecar": {
+      "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend",
+      "tag": "block-label-analytics-20260916-0555",
+      "digest": "sha256:2f9ea2299d91289e699be33bf561f2cb3e16574f5579cad3ef49645562a4d262",
+      "recipe": "utils/powerlifting-app/services/analytics.Dockerfile",
+      "base": "node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553",
+      "deployment": "pl-analytics",
+      "container": "reports"
+    },
+    "gateway_backend": {
+      "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend",
+      "tag": "discord-direct-20260915-180322",
+      "digest": "sha256:b688e943a910ec37b23285f75586f0a7b8f2c346c08653e1509b6b5520130f62",
+      "recipe": "deploy/rewrite/powerlifting-backlog/discord-login-gateway.Dockerfile",
+      "base": "node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293",
+      "base_workaround": "Packer failed during provisioning; scoped Docker packaging used the existing local official Node base.",
+      "deployment": "powerlifting-app-backend",
+      "container": "backend"
+    },
+    "services_federation": {
+      "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns",
+      "tag": "profile-federation-20260916-0515",
+      "digest": "sha256:97de3419f4c10df4cfcf52a628415332f74d159db2b8b6c4921ed36661547622",
+      "recipe": "utils/powerlifting-app/services/Dockerfile",
+      "base": "python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea",
+      "deployments": [
+        "pl-federation"
+      ]
+    }
+  },
+  "frontend": {
+    "enabled": true,
+    "deployment": "powerlifting-app-frontend",
+    "requires_accepted_digest": true,
+    "repository": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-frontend",
+    "tag": "profile-federation-20260916-0545",
+    "digest": "sha256:b9d2ac18f54463b2dd88d125f8fa92cb177dede6b0d048a552b03481aad72d2e",
+    "rollback_digest": "sha256:bb362bbb37e96396c9265d24bf51f13d816133c1cade2c6443ed971e64d0e2ff",
+    "recipe": "utils/powerlifting-app/docker/powerlifting-frontend.pkr.hcl",
+    "base": "node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293",
+    "source_hashes": {
+      "frontend/src/App.tsx": "a2adac4ae20d5a41625cd36bc34c961d032b31b3c2723e07e0a5387e886ea695",
+      "frontend/src/auth/AuthProvider.tsx": "05e84e317baff4988dde1ce4543dd29c7d7d57137a5c773097852fb32a303aee",
+      "frontend/src/auth/contextRestore.ts": "9bfe45dba38f6584d192724f2779ebb7b75607574767ea9fddcb4f95726817e8",
+      "frontend/src/auth/routes.ts": "9b3ed9710ad59c87c77e7af832ed65d72e8353ee5fff73952dc547f9cca7c36f",
+      "frontend/src/pages/SettingsPage.tsx": "e91c3dcb8016f60c8151fdf87f36bc53d96a845b5aa28d686a5ffb7915029160",
+      "frontend/src/pages/OnboardingPage.tsx": "73331ca638270d1b21db7e686200df610b50f9dd18637c4afe608d22ffb57b9c",
+      "frontend/src/pages/onboardingStep.ts": "bda75c4e03902f6f4621c1a2e7d4d6244baaa4ee841077fc1d921f99c941f774",
+      "frontend/src/pages/ProfilePage.tsx": "058382b845850ddd0736ec97f6c3751fabc8ef2d88cad620948c1a858bf89eeb",
+      "frontend/src/pages/CompetitionsPage.tsx": "6c6eba35886474a973ce18207bcc7d9abd166705486dfced8ffeb02ad6d42ec6",
+      "frontend/src/components/layout/AppShell.tsx": "254070bb18f3889ae778c115c7b5db144c1a61421d3557ea7feafce0a1620809",
+      "frontend/src/components/layout/Sidebar.tsx": "9c2047e194c8b855f1d845833c9f2ed90dc697443293fb15240165a9a05cecbb",
+      "frontend/src/components/layout/SettingsDrawer.tsx": "8a2c539ca9c150340df476e6a13e2607da4c6f21e2a4d3bd5a6f9289f2957abe",
+      "frontend/src/components/settings/ProfileTags.tsx": "945a080670191184234cfa7dba2d1e8a4334c73e676ea992614e3fbdfa29f383",
+      "frontend/src/store/competitionsStore.ts": "f486af7e28114d023e135b5628a5d265c28614f2d4e0ee38d31c9c55294248cf",
+      "frontend/src/store/competitionRequestGuard.ts": "e75d91cdc3c63a16222312f7be6735cde88ff238ba7092b59e170563a09d5534",
+      "frontend/src/api/client.ts": "cbcd18e68a43828fa38288e762d409173d036a9fbeee422bb2404506dce46c77"
+    },
+    "recipe_temporary_hash": "da173ff1c19eccd1b5679e16c1435afe9f5843af9f49d84730d96ab11ed593c2",
+    "review_status": "accepted"
+  },
+  "source_hashes": {
+    "services": "652eea32954b7622b4b9c5ce9560a8ddddeccfdc26b6a5edb65e2615d17a38c5",
+    "lambda": "7f1206a367f3c279bef43203cee5a79a3fbbea45e8e9c81ac5d2168fae0a098c",
+    "backend_src": "ee593f04adafe95a46424f6962d59c723c662e71e330db8b95aa3bb80df6a3f0",
+    "backend_dist": "8067636de1521c22370343b8240d800661b586381df8e5e5f1a52d728deba7d0",
+    "analytics_backend_dist": "63027ecd40744c0a5c37bbe1cb8e1f6cd2c597a99f8dda39eda7f212760893d6",
+    "packages_types": "a8af254105823e020ce9337e762054e8fedd1bcfdfd4f5924ab166e33f2e8124",
+    "packages_types_dist": "67f32a2fa27f43fc7a6dd898eccc0f7e1d48cad28124b54d6e77e1783c269604",
+    "operations": "16e606a690e8dc2bf58752ffdb8b4afc03d9faf958d18c97553aaf483f483036",
+    "root_manifests": "01cadfabe453e595e784818526c39a52f1af99f93a1c32aeb7e0c3997c90916d",
+    "package_manifest": "01cadfabe453e595e784818526c39a52f1af99f93a1c32aeb7e0c3997c90916d",
+    "services_dockerfile": "5f8169e3b6de85d2153c326f86da5f2a7ff4c130dc807dd624f6684096668ade",
+    "analytics_dockerfile": "8754758cfaa388e57d79cb8f0645520f0ecf7924b06b3e5a48870a1b04d7eaa6",
+    "gateway_packer_recipe": "89a8930119d4f712cde30b8eb73900f29c6e907d7369f15dd556cbb460c7a9a7",
+    "api_temporary_recipe": "temporary docker/.if-api-refresh.pkr.hcl, base-only substitution, hash not retained after removal",
+    "services_temporary_recipe": "f7ec008e54e82f193513562335cd4c008f5516b202f415f8a3c74db8c270d705",
+    "analytics_temporary_recipe": "557223461c2232f32755cb3194648ecfc98830e9865b77b1d35faea67588b014",
+    "gateway_temporary_recipe": "d70422b9f501abb24c4bbffbebaa4666aba06b5831810fba19d11efe2ae77209"
+  },
+  "live_rollback_digests": {
+    "api": "sha256:e2025f76d6111589c07b665ef491829bf8302778ef311f0dc70a1d53bfddf2a8",
+    "worker": "sha256:ca816dfdbe7b6083d55adb61c5123434d7de28c7b10d7affb805d43f010c5636",
+    "services": "sha256:1aed2fdbb71a750576d478700be761490e5d5ef8f26ff5d6709423b2b9984bcd",
+    "analytics_sidecar": "sha256:c868c906c383fd5afd6018e78ce774c5af19354b98b68521fa379da3a5d1b510",
+    "gateway_backend": "sha256:8740348739cfbce86ef59e800e6c80146dc36897067a57dbcc9413d100ff5b4e",
+    "frontend": "sha256:bb362bbb37e96396c9265d24bf51f13d816133c1cade2c6443ed971e64d0e2ff",
+    "services_federation": "sha256:7a55a0f050ce1e7548ba2f41c649309edafeab996844543d02e208a3c8dc4f54"
+  },
+  "checks": {
+    "services_tests": "223 passed",
+    "root_api_tests": "8 passed",
+    "backend_typecheck": "passed",
+    "backend_build": "passed",
+    "ecr_candidate_verification": "passed for all four refreshed candidates",
+    "deployed_candidate_acceptance": "targeted analytics and gateway rollout passed readiness; shared service hook has legacy profile/videos failures",
+    "rollback_recovery": {
+      "analytics_digest": "sha256:138fadf8bf38298c1de9b88bae9b88b46fd207bcd10e242c9d7dfd7e9e24b10a",
+      "cache_archive": "/tmp/if-analytics-image.ZIonqN/analytics-rollback.oci.tar",
+      "cache_archive_bytes": 89369600,
+      "historical_index_digest": "sha256:138fadf8bf38298c1de9b88bae9b88b46fd207bcd10e242c9d7dfd7e9e24b10a",
+      "missing_attestation_digest": "sha256:b0ca641f650a411cef395108ca90663e1effbd3b71678f5b595fa39a47198363",
+      "recovered_child_digest": "sha256:a81b36df0c9b717db2d882f9d1434eae0b2061ad318ffda601fa55dbc90f4c17",
+      "recovered_child_tag": "rollback-20260914-analytics-amd64",
+      "recovered_child_status": "ACTIVE",
+      "recovered_child_platform": {
+        "os": "linux",
+        "architecture": "amd64"
+      },
+      "recovered_child_manifest_media_type": "application/vnd.oci.image.manifest.v1+json",
+      "recovered_child_config_digest": "sha256:06ed17841e3c963f48bef3398d7889953e665f3945fdff710fa3ed4eeb5002f3",
+      "recovered_child_entrypoint": [
+        "docker-entrypoint.sh"
+      ],
+      "recovered_child_cmd": [
+        "node",
+        "dist/analyticsSidecar.js"
+      ],
+      "recovered_child_layer_digests": [
+        "sha256:a8ac7f6c67abc236e4c745052c404112b8fab6fe8ac3a329d1ef3b867ad67c71",
+        "sha256:9f6b7612ad6931b5ff604ab41e2dfed94aad78d11388cc8231d6a395a6aac9d9",
+        "sha256:6345e76995359217c142322a7de521f340a48752a39a3ae15493e095675bb403",
+        "sha256:cd1f23a0f33e8a977157cb897344282db05dc6325371f1395dc8831b717ca159",
+        "sha256:3477b72abf7bb02418a74d33b40c67c1357b466fd2c0d75c686bda5aa2d5d99e",
+        "sha256:b70cfa9f777822377e42f124012775b91282d2d26ca45603a723b00e464c56c9",
+        "sha256:6c8c9b820f19c5b4ac1ebcac5fa6cea58f2ddee04bd3a018d045d9a97a0fdc2b",
+        "sha256:ed75e924885bfc3908ee2643bf73f7791d479b785e0f5e88c66e54db16509dd2",
+        "sha256:920a47305e01fee6e33c5bad4a4a14a68aef3c156dbca8b9bf882ffed825eb61",
+        "sha256:60cd86a14d9b82afc7bc6e0a3a2f4fd95622c61d773441fb6907ca521841d02a",
+        "sha256:d622aadd14cf172019c055d137be5dc5a3d41c046d91b0ff3d41c8a6654b2166",
+        "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1"
+      ],
+      "candidate_dist_manifest": "deploy/rewrite/powerlifting-backlog/analytics-candidate-dist-manifest.txt",
+      "candidate_dist_manifest_sha256": "63027ecd40744c0a5c37bbe1cb8e1f6cd2c597a99f8dda39eda7f212760893d6",
+      "historical_rollback_dist_manifest": "deploy/rewrite/powerlifting-backlog/analytics-dist-manifest.txt",
+      "ecr_republish": "recovered_child_only_missing_attestation_sha256:b0ca641f650a411cef395108ca90663e1effbd3b71678f5b595fa39a47198363",
+      "exact_index_active_in_ecr": false,
+      "recovered_child_active_in_ecr": true,
+      "candidate_acceptance_unchanged": true,
+      "retention_plan": "deploy/rewrite/powerlifting-backlog/rollback-recovery.md"
+    },
+    "entry_mobile_correction": "accepted; entry-mobile-summary.json and entry-mobile-review.md",
+    "discord_login_correction": "accepted source and deployed checks; discord-login-release.json, discord-login-review.md, discord-login-live.json",
+    "discord_login_source_files_sha256": {
+      "backend/src/middleware/auth.ts": "d1f1fe6972cc2bef91be0bd065e3a936516dae174add62ac417c0563278b2e66",
+      "backend/src/controllers/authController.ts": "7ec4bbe7913d9bd46c1610d14b7089c3672b86ba7c4edf4f166fc60613335599",
+      "backend/src/controllers/authLogin.test.ts": "6a8d8dda9370c8ecacd0f6b9af4eee77475c74100e7f75421e4e123ea217dbee",
+      "backend/src/routes/auth.ts": "cbf3a0caf5b07b05683df44df24b3bd3bdb152b84f9bc8ac4e4dfea83eea1dae",
+      "backend/src/services/userSettings.ts": "fa6d8a746f1964cc0a079433c22faceeddcc71bc3e2bb5525873a03250cfdb72",
+      "backend/package.json": "9ea645475f47f7bec7bf91571bc73dea352c815155e30a62c5de10ac60c06565",
+      "package-lock.json": "de5394d90936f405b3c57877c39aedb9e37046ae7a946132ab0cd00a4e6d67c4"
+    },
+    "profile_ui_source_review": "accepted; profile-ui-terra-review.md",
+    "profile_ui_live_acceptance": "See profile-ui-terra-live.json",
+    "block_label_release": "block-label-release.json",
+    "final_workspace_build": "passed",
+    "final_workspace_typecheck": "passed"
+  },
+  "restart_order": [
+    "foundation",
+    "configmaps-and-secrets-preserving-PL_PRINCIPAL_SECRET-and-SESSION_SECRET",
+    "if-agent-api",
+    "powerlifting-app-backend",
+    "pl-analytics",
+    "pl-program",
+    "pl-sessions",
+    "pl-competition",
+    "pl-federation",
+    "pl-glossary",
+    "pl-goals",
+    "pl-budget",
+    "pl-calculations",
+    "pl-performance",
+    "pl-weight-log",
+    "pl-templates",
+    "pl-imports",
+    "pl-profile",
+    "pl-lift-profiles",
+    "pl-videos"
+  ],
+  "source_hashes_note": "Earlier aggregate hashes describe prior full-backlog artifacts. Current scoped gateway auth source hashes are in checks.discord_login_source_files_sha256 and discord-login-release.json."
+}

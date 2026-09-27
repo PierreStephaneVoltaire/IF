@@ -1,0 +1,66 @@
+{
+  "checked_at": "2026-09-15T09:43:43.624Z",
+  "environment": "https://dev.nolift.training",
+  "fixture": "live-acceptance-echo",
+  "actors": {
+    "owner": "live-acceptance-echo",
+    "coach_a": "live-acceptance-river",
+    "coach_b": "live-acceptance-luna"
+  },
+  "requests": {
+    "concurrent_race_coach_a": {
+      "relationship_id": "e0afcfdc55284ee19396381181ee5f8a",
+      "status": 200,
+      "state": "approved"
+    },
+    "concurrent_race_coach_b": {
+      "relationship_id": "ceae3854617a4a2eb674bed016f0f72b",
+      "status": 409,
+      "code": "relationship_conflict"
+    },
+    "true_unconfirmed_replacement": {
+      "status": 422,
+      "state": null,
+      "code": "validation"
+    },
+    "pending_cancel": {
+      "status": 200,
+      "state": "cancelled",
+      "code": null
+    },
+    "explicit_replacement_create": {
+      "status": 200,
+      "state": "pending",
+      "code": null
+    },
+    "explicit_replacement_approval": {
+      "status": 200,
+      "state": "approved",
+      "code": null
+    },
+    "new_coach_revoke": {
+      "status": 200,
+      "state": "revoked",
+      "code": null
+    }
+  },
+  "readbacks": {
+    "concurrent_race": {
+      "statuses": [
+        200,
+        409
+      ],
+      "transactional_single_winner": true
+    },
+    "old_river_access_status": 403,
+    "luna_peer_read_status": 200,
+    "replacement_history_status": 200,
+    "final_history_status": 200,
+    "active_coach_count_after_cleanup": 0
+  },
+  "limits": {
+    "echo_program_preserved": true,
+    "existing_peer_handler_grants_preserved": true,
+    "created_coach_grants_revoked": true
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "source_checks": {
+    "backend_typecheck": "passed",
+    "block_label_tests": "2 passed",
+    "template_integrity": "8 passed",
+    "frontend_typecheck": "passed",
+    "frontend_build": "passed",
+    "federation_schema_test": "5 passed",
+    "workspace_typecheck": "passed",
+    "workspace_build": "passed"
+  },
+  "image": {
+    "repository": "if-powerlifting-app-backend",
+    "tag": "block-label-analytics-20260916-0555",
+    "digest": "sha256:2f9ea2299d91289e699be33bf561f2cb3e16574f5579cad3ef49645562a4d262",
+    "rollback": "sha256:c868c906c383fd5afd6018e78ce774c5af19354b98b68521fa379da3a5d1b510"
+  },
+  "deployment": {
+    "component": "pl-analytics",
+    "container": "reports",
+    "generation": 22,
+    "readyReplicas": 1,
+    "updatedReplicas": 1,
+    "digest": "sha256:2f9ea2299d91289e699be33bf561f2cb3e16574f5579cad3ef49645562a4d262",
+    "analytics_container_unchanged": "sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba"
+  },
+  "target": "pl-analytics:reports",
+  "gateway_candidate_unused": {
+    "digest": "sha256:39347e66840c04624b200795391ef841c8c5cde8789ece45621d796ca966797f",
+    "runtime_reference": "unchanged gateway b688"
+  },
+  "live": "Terra verified federation fresh MISS23 and bare HIT23; analytics sidecar Ready"
+}

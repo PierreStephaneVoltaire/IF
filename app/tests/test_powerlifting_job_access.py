@@ -50,7 +50,7 @@ def test_domain_job_read_is_bound_to_current_actor_and_cached_permission(monkeyp
         assert response.status_code == 200
         assert response.json()['result'] == {'content': '{"summary": "report"}'}
         assert 'private' not in response.text and 'original-actor' not in response.text
-        assert checked == [("analytics.markdown", {"pk": "athlete-a", "cache_only": True, "refresh": False}, "current-actor", "athlete-a")]
+        assert checked == [("analytics.markdown", {"pk": "athlete-a", "cache_only": True, "refresh": False, "_required_access": None}, "current-actor", "athlete-a")]
 
     asyncio.run(run())
 

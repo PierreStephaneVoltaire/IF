@@ -1,32 +1,13 @@
-"""Copy the current operator health program and sessions to pk=test.
-
-This is meant for the private test environment. It copies:
-  - if-health: pk=operator, sk=program#current pointer
-  - if-health: the current program item pointed to by that pointer
-  - if-sessions: all standalone session items for that program version
-  - if-health-templates: pk=template_library global templates to pk=test
-  - if-user: a deterministic test profile settings record mapped to pk=test
-
-Every copied item is tagged with test_seed_marker so cleanup can remove the
-seeded test data without guessing at keys.
-
-Examples:
-  python scripts/copy_operator_health_to_test.py --dry-run
-  python scripts/copy_operator_health_to_test.py
-  python scripts/copy_operator_health_to_test.py --replace
-  python scripts/copy_operator_health_to_test.py --cleanup --dry-run
-  python scripts/copy_operator_health_to_test.py --cleanup
-"""
-
 from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import os
 import re
 import sys
 import uuid
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -35,15 +16,35 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
+
 POINTER_SK = "program#current"
-PROGRAM_SK_PREFIX = "program#v"
 SESSION_SK_PREFIX = "session#"
 TEMPLATE_SK_PREFIX = "template#"
-DEFAULT_BLOCK = "current"
-SEED_MARKER = "operator-health-current-to-test"
+SEED_MARKER = "operator-health-to-private-test-v2"
+IDENTITY_FIELDS = {
+    "person_pk", "author_person_pk", "owner_person_pk", "athlete_person_pk",
+    "grantee_person_pk", "recipient_person_pk", "requester_person_pk",
+    "user_pk", "mapped_pk", "athlete_mapped_pk", "grantee_mapped_pk",
+    "owner_pk", "athlete_pk", "author_pk", "created_by", "updated_by",
+    "actor", "person", "owner", "athlete", "source_pk", "author_person", "owner_person",
+}
+IDENTITY_LINK_FIELDS = {
+    "identity_provider", "identity_issuer", "identity_sub", "authentik_sub",
+    "discord_id", "discord_username",
+}
+IDENTIFIER_FIELDS = {"session_id", "note_id", "attachment_id", "cache_id", "generation_id", "analysis_id", "generated_cache_id", "source_fingerprint"}
+IDENTIFIER_ALIASES = {
+    "source_fingerprint": "generation_id", "generated_cache_id": "generation_id",
+    "cache_id": "generation_id", "analysis_id": "generation_id",
+}
+TEMPLATE_REF_FIELDS = {
+    "template_sk", "source_template_sk", "parent_template_sk", "template_ref",
+    "applied_template_sk", "derived_from_template_sk",
+}
+FORBIDDEN_SK_PREFIXES = ("Identity#", "Grant#", "Relationship#", "RelationshipPending#", "Event#", "Notification")
+
 
 def to_dynamo(value: Any) -> Any:
-    """Recursively convert Python floats for DynamoDB writes."""
     if isinstance(value, float):
         return Decimal(str(value))
     if isinstance(value, dict):
@@ -52,568 +53,475 @@ def to_dynamo(value: Any) -> Any:
         return [to_dynamo(child) for child in value]
     return value
 
-def int_value(value: Any, default: int = 0) -> int:
-    if isinstance(value, Decimal):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            return default
-    return default
 
-def version_number(program_sk: str) -> int | None:
-    if not program_sk.startswith(PROGRAM_SK_PREFIX):
-        return None
-    try:
-        return int(program_sk.removeprefix(PROGRAM_SK_PREFIX))
-    except ValueError:
-        return None
-
-def version_label(program_sk: str) -> str:
-    return program_sk.removeprefix("program#") if program_sk.startswith("program#") else program_sk
-
-def session_prefix(program_sk: str) -> str:
-    return f"{SESSION_SK_PREFIX}{program_sk}#"
-
-def parse_week_number(session: dict[str, Any]) -> int:
-    raw_week_number = session.get("week_number")
-    parsed = int_value(raw_week_number, default=-1)
-    if parsed >= 0:
-        return parsed
-
-    week = session.get("week")
-    if isinstance(week, str):
-        match = re.search(r"W(\d+)", week, flags=re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-    return int_value(week)
-
-def phase_block(phase: dict[str, Any]) -> str:
-    return str(phase.get("block") or DEFAULT_BLOCK)
-
-def resolve_phase(session: dict[str, Any], phases: list[dict[str, Any]]) -> dict[str, Any]:
-    week_number = parse_week_number(session)
-    block = str(session.get("block") or DEFAULT_BLOCK)
-    for phase in phases:
-        if not isinstance(phase, dict) or phase_block(phase) != block:
-            continue
-        start_week = int_value(phase.get("start_week"))
-        end_week = int_value(phase.get("end_week"))
-        if start_week <= week_number <= end_week:
-            return copy.deepcopy(phase)
-
-    existing_phase = session.get("phase")
-    if isinstance(existing_phase, dict) and existing_phase:
-        phase = copy.deepcopy(existing_phase)
-        phase.setdefault("block", block)
-        return phase
-    if isinstance(existing_phase, str) and existing_phase:
-        return {
-            "name": existing_phase,
-            "intent": "",
-            "start_week": week_number,
-            "end_week": week_number,
-            "block": block,
-        }
-    return {
-        "name": "Unscheduled",
-        "intent": "",
-        "start_week": week_number,
-        "end_week": week_number,
-        "block": block,
-    }
-
-def phase_ref(phase: dict[str, Any]) -> str:
-    block = str(phase.get("block") or DEFAULT_BLOCK)
-    name = str(phase.get("name") or "Unscheduled").replace("#", "-")
-    return f"phase#{block}#W{phase.get('start_week', 0)}-{phase.get('end_week', 0)}#{name}"
-
-def seed_tags(source_pk: str, target_pk: str, copied_at: str, source_sk: str | None = None) -> dict[str, Any]:
-    tags = {
-        "test_seed_marker": SEED_MARKER,
-        "test_seed_source_pk": source_pk,
-        "test_seed_target_pk": target_pk,
-        "test_seed_copied_at": copied_at,
-    }
-    if source_sk:
-        tags["test_seed_source_sk"] = source_sk
-    return tags
-
-def query_by_prefix(table: Any, pk: str, sk_prefix: str) -> list[dict[str, Any]]:
+def query_partition(table: Any, pk: str) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
-    kwargs: dict[str, Any] = {
-        "KeyConditionExpression": Key("pk").eq(pk) & Key("sk").begins_with(sk_prefix),
-    }
+    request: dict[str, Any] = {"KeyConditionExpression": Key("pk").eq(pk)}
     while True:
-        response = table.query(**kwargs)
+        response = table.query(**request)
         items.extend(response.get("Items", []))
-        last_key = response.get("LastEvaluatedKey")
-        if not last_key:
-            break
-        kwargs["ExclusiveStartKey"] = last_key
-    return items
+        if not response.get("LastEvaluatedKey"):
+            return items
+        request["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
-def get_item(table: Any, pk: str, sk: str) -> dict[str, Any] | None:
-    return table.get_item(Key={"pk": pk, "sk": sk}).get("Item")
 
-def list_programs(table: Any, pk: str) -> list[dict[str, Any]]:
-    programs = query_by_prefix(table, pk, PROGRAM_SK_PREFIX)
-    return sorted(programs, key=lambda item: version_number(str(item.get("sk", ""))) or 0)
+def get_item(table: Any, key: dict[str, Any]) -> dict[str, Any] | None:
+    return table.get_item(Key=key, ConsistentRead=True).get("Item")
 
-def resolve_current_program(table: Any, pk: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    pointer = get_item(table, pk, POINTER_SK)
-    if pointer:
-        ref_sk = str(pointer.get("ref_sk") or "")
-        if ref_sk:
-            program = get_item(table, pk, ref_sk)
-            if not program:
-                raise RuntimeError(f"Pointer for pk={pk!r} references missing program {ref_sk!r}")
-            return pointer, program
 
-    programs = list_programs(table, pk)
-    if not programs:
-        raise RuntimeError(f"No program versions found for pk={pk!r}")
+def identity_key(issuer: str, subject: str) -> str:
+    return "Identity#" + hashlib.sha256(f"{issuer}\0{subject}".encode()).hexdigest()
 
-    program = programs[-1]
-    program_sk = str(program["sk"])
-    pointer = {
-        "pk": pk,
-        "sk": POINTER_SK,
-        "version": version_number(program_sk) or 0,
-        "ref_sk": program_sk,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
-    return pointer, program
 
-def sort_session_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(
-        items,
-        key=lambda item: (
-            str(item.get("date") or ""),
-            int_value(item.get("same_day_ordinal")),
-            int_value(item.get("source_index")),
-            str(item.get("sk") or ""),
-        ),
-    )
+def stable_identifier(value: Any, kind: str, source_person: str, target_person: str) -> str:
+    digest = uuid.uuid5(uuid.NAMESPACE_URL, f"if-test:{kind}:{source_person}:{target_person}:{value}")
+    return f"test-{kind}-{digest.hex[:24]}"
 
-def list_session_items(table: Any, pk: str, program_sk: str) -> list[dict[str, Any]]:
-    return sort_session_items(query_by_prefix(table, pk, session_prefix(program_sk)))
 
-def stable_session_id(source_pk: str, program_sk: str, source_index: int, session: dict[str, Any]) -> str:
-    existing = session.get("id") or session.get("session_id")
-    if existing:
-        return str(existing)
-    seed = f"{source_pk}:{program_sk}:{source_index}:{session.get('date', '')}"
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, seed))
+class Remapper:
+    def __init__(self, source_person: str, source_athlete: str, target_person: str, target_athlete: str):
+        self.persons = {source_person: target_person, source_athlete: target_athlete}
+        self.identifier_maps: dict[tuple[str, str], str] = {}
+        self.source_person = source_person
+        self.source_athlete = source_athlete
+        self.target_person = target_person
+        self.target_athlete = target_athlete
+        self.template_maps: dict[str, str] = {}
 
-def build_session_from_embedded(
-    *,
-    source_pk: str,
-    target_pk: str,
-    program_sk: str,
-    session: dict[str, Any],
-    source_index: int,
-    same_day_ordinal: int,
-    phases: list[dict[str, Any]],
-    copied_at: str,
-    source_table_name: str,
-) -> dict[str, Any]:
-    session_copy = copy.deepcopy(session)
-    session_id = stable_session_id(source_pk, program_sk, source_index, session_copy)
-    date_value = str(session_copy.get("date") or "undated")
-    block = str(session_copy.get("block") or DEFAULT_BLOCK)
-    status = str(session_copy.get("status") or ("completed" if session_copy.get("completed") else "planned"))
-    completed = bool(session_copy.get("completed")) or status in {"logged", "completed"}
-    phase = resolve_phase({**session_copy, "block": block}, phases)
-    sk = f"{session_prefix(program_sk)}{date_value}#{same_day_ordinal:03d}#{session_id}"
+    def person(self, value: Any) -> Any:
+        return self.persons.get(str(value), value)
 
-    session_copy.update(
-        {
-            "id": session_id,
-            "session_id": session_id,
-            "date": date_value,
-            "block": block,
-            "status": status,
-            "completed": completed,
-            "week_number": parse_week_number(session_copy),
-            "phase": phase,
-            "phase_name": str(phase.get("name") or "Unscheduled"),
-            "planned_exercises": session_copy.get("planned_exercises")
-            if isinstance(session_copy.get("planned_exercises"), list)
-            else [],
-            "exercises": session_copy.get("exercises") if isinstance(session_copy.get("exercises"), list) else [],
-        }
-    )
-    return {
-        **session_copy,
-        "pk": target_pk,
-        "sk": sk,
-        "entity_type": "session",
-        "source_pk": target_pk,
-        "source_table": source_table_name,
-        "program_sk": program_sk,
-        "program_version": version_label(program_sk),
-        "program_version_number": version_number(program_sk),
-        "source_index": source_index,
-        "same_day_ordinal": same_day_ordinal,
-        "phase_ref": phase_ref(phase),
-        "updated_at": str(session_copy.get("updated_at") or copied_at),
-        **seed_tags(source_pk, target_pk, copied_at, sk),
-    }
+    def identifier(self, value: Any, kind: str) -> str:
+        kind = IDENTIFIER_ALIASES.get(kind, kind)
+        key = (kind, str(value))
+        if key not in self.identifier_maps:
+            self.identifier_maps[key] = stable_identifier(value, kind, self.source_person, self.target_person)
+        return self.identifier_maps[key]
 
-def copy_program_item(program: dict[str, Any], source_pk: str, target_pk: str, copied_at: str) -> dict[str, Any]:
-    item = copy.deepcopy(program)
+    def value(self, value: Any, field: str = "", identifier_kind: str | None = None) -> Any:
+        if isinstance(value, dict):
+            return {key: self.value(child, str(key), identifier_kind) for key, child in value.items() if key not in IDENTITY_LINK_FIELDS}
+        if isinstance(value, list):
+            return [self.value(child, field, identifier_kind) for child in value]
+        if field in IDENTITY_FIELDS and value not in (None, ""):
+            return self.person(value)
+        if field in TEMPLATE_REF_FIELDS and str(value) in self.template_maps:
+            return self.template_maps[str(value)]
+        if field in IDENTIFIER_FIELDS and value not in (None, ""):
+            return self.identifier(value, field)
+        if identifier_kind and field == "id" and value not in (None, ""):
+            return self.identifier(value, f"{identifier_kind}_id")
+        return value
+
+    def key(self, value: str, identifier_kind: str | None = None) -> str:
+        if value in self.persons:
+            return str(self.person(value))
+        result = value
+        if self.persons:
+            sources = sorted(self.persons, key=len, reverse=True)
+            pattern = rf"(?<![A-Za-z0-9])(?:{'|'.join(re.escape(source) for source in sources)})(?![A-Za-z0-9])"
+            result = re.sub(pattern, lambda match: str(self.persons[match.group(0)]), result)
+        if identifier_kind == "session" and result.startswith(SESSION_SK_PREFIX):
+            parts = result.split("#")
+            if len(parts) > 4:
+                parts[-1] = self.identifier(parts[-1], "session_id")
+                result = "#".join(parts)
+        if identifier_kind == "note" and result.startswith(("Note#", "SharedNote#")):
+            parts = result.split("#")
+            if len(parts) > 1:
+                parts[1] = self.identifier(parts[1], "note_id" if result.startswith("Note#") else "attachment_id")
+                result = "#".join(parts)
+        if identifier_kind == "cache" and result.startswith("native_generation#"):
+            parts = result.split("#")
+            if len(parts) > 1:
+                parts[1] = self.identifier(parts[1], "generation_id")
+                result = "#".join(parts)
+        return result
+
+
+def identifier_kind(item: dict[str, Any]) -> str | None:
+    sk = str(item.get("sk") or "")
+    entity = str(item.get("entity_type") or item.get("entity") or "").lower()
+    if sk.startswith(SESSION_SK_PREFIX) or entity == "session" or isinstance(item.get("sessions"), list):
+        return "session"
+    if sk.startswith(("Note#", "SharedNote#", "NoteMutation#")) or "note" in entity:
+        return "note"
+    if sk.startswith("analysis#") or sk.startswith("weekly_analysis#") or sk.startswith("native_generation#") or "cache" in entity or "analysis" in entity or "generation" in entity:
+        return "cache"
+    return None
+
+
+def has_unmapped_identity_reference(value: Any, field: str, remapper: Remapper) -> bool:
+    if isinstance(value, dict):
+        return any(has_unmapped_identity_reference(child, str(key), remapper) for key, child in value.items())
+    if isinstance(value, list):
+        return any(has_unmapped_identity_reference(child, field, remapper) for child in value)
+    known = set(remapper.persons) | {remapper.target_person, remapper.target_athlete}
+    return field in IDENTITY_FIELDS and value not in (None, "") and str(value) not in known
+
+
+def forbidden_item(item: dict[str, Any], remapper: Remapper) -> bool:
+    sk = str(item.get("sk") or "")
+    if sk.startswith(FORBIDDEN_SK_PREFIXES):
+        return True
+    if str(item.get("entity") or item.get("entity_type") or "").lower() in {"grant", "notification", "relationship", "relationship_request"}:
+        return True
+    return has_unmapped_identity_reference(item, "", remapper)
+
+
+def copy_item(item: dict[str, Any], partition: str, remapper: Remapper, table_name: str, readonly: bool = False) -> dict[str, Any] | None:
+    if forbidden_item(item, remapper):
+        return None
+    copied = remapper.value(copy.deepcopy(item), identifier_kind=identifier_kind(item))
+    copied["pk"] = partition
+    copied["sk"] = remapper.key(str(item.get("sk") or ""), identifier_kind(item))
+    for key in IDENTITY_LINK_FIELDS:
+        copied.pop(key, None)
+    copied.update({
+        "test_seed_marker": SEED_MARKER,
+        "test_seed_source_table": table_name,
+        "test_seed_source_pk": str(item.get("pk") or ""),
+        "test_seed_source_sk": str(item.get("sk") or ""),
+    })
+    if readonly:
+        copied["read_only"] = True
+    if str(item.get("sk") or "").startswith("Media#") or str(item.get("entity") or item.get("entity_type") or "").lower() in {"media", "video", "media_registry"}:
+        copied["readonly"] = True
+    return copied
+
+
+def source_owned_template(item: dict[str, Any], remapper: Remapper) -> bool:
+    if str(item.get("sk") or "") in {"template#index", "template#current_list"}:
+        return False
+    meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+    author = str(meta.get("author_pk") or item.get("author_pk") or "")
+    author_person = str(meta.get("author_person_pk") or item.get("author_person_pk") or "")
+    return author in {remapper.source_person, remapper.source_athlete} or author_person == remapper.source_person
+
+
+def owned_template_key(source_sk: str, target_person: str) -> str:
+    digest = uuid.uuid5(uuid.NAMESPACE_URL, f"if-test-template:{target_person}:{source_sk}")
+    return f"template#test-owned-{digest.hex[:24]}"
+
+
+def copy_owned_template(item: dict[str, Any], remapper: Remapper, table_name: str) -> dict[str, Any] | None:
+    if not source_owned_template(item, remapper):
+        return None
+    copied = copy_item(item, item.get("pk", "template_library"), remapper, table_name)
+    if copied is None:
+        return None
     source_sk = str(item.get("sk") or "")
-    item["pk"] = target_pk
-    item.update(seed_tags(source_pk, target_pk, copied_at, source_sk))
-    return item
-
-def copy_pointer_item(pointer: dict[str, Any], source_pk: str, target_pk: str, copied_at: str) -> dict[str, Any]:
-    item = copy.deepcopy(pointer)
-    item["pk"] = target_pk
-    item["sk"] = POINTER_SK
-    item.update(seed_tags(source_pk, target_pk, copied_at, POINTER_SK))
-    return item
-
-def copy_session_item(item: dict[str, Any], source_pk: str, target_pk: str, copied_at: str) -> dict[str, Any]:
-    copied = copy.deepcopy(item)
-    source_sk = str(copied.get("sk") or "")
-    copied["pk"] = target_pk
-    copied["source_pk"] = target_pk
-    copied.update(seed_tags(source_pk, target_pk, copied_at, source_sk))
+    copied["sk"] = owned_template_key(source_sk, remapper.target_person)
+    meta = copied.setdefault("meta", {})
+    meta["legacy_author_pk"] = str((item.get("meta") or {}).get("author_pk") or item.get("author_pk") or "")
+    meta["author_pk"] = remapper.target_person
+    meta["author_person_pk"] = remapper.target_person
+    meta["published"] = False
+    meta.pop("published_at", None)
+    if "author_pk" in copied:
+        copied["author_pk"] = remapper.target_person
     return copied
 
-def copy_template_item(item: dict[str, Any], source_pk: str, target_pk: str, copied_at: str) -> dict[str, Any]:
-    copied = copy.deepcopy(item)
-    source_sk = str(copied.get("sk") or "")
-    copied["pk"] = target_pk
-    copied.update(seed_tags(source_pk, target_pk, copied_at, source_sk))
-    return copied
 
-def build_user_settings_item(args: argparse.Namespace, copied_at: str) -> dict[str, Any]:
-    display_name = args.target_user_display_name or "Powerlifting Test"
-    username = args.target_user_pk
+def private_note_owned(item: dict[str, Any], remapper: Remapper) -> bool:
+    sk = str(item.get("sk") or "")
+    if sk.startswith("Note#"):
+        return str(item.get("author_person_pk") or "") == remapper.source_person
+    if sk.startswith("NoteMutation#"):
+        return str(item.get("actor") or "") == remapper.source_person
+    return False
+
+
+def template_summary(item: dict[str, Any]) -> dict[str, Any]:
+    meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
     return {
-        "pk": args.target_user_pk,
-        "username": username,
-        "discord_id": args.target_user_discord_id,
-        "discord_username": username,
-        "avatar_url": None,
-        "nickname": args.target_user_nickname,
-        "mapped_pk": args.target_pk,
-        "profile_visibility": "public",
-        "display_name": display_name,
-        "bio": "Seeded profile settings for the private powerlifting test namespace.",
-        "public_training_summary_enabled": True,
-        "created_at": copied_at,
-        "updated_at": copied_at,
-        **seed_tags(args.source_user_pk, args.target_user_pk, copied_at, args.source_user_pk),
+        "sk": item.get("sk"),
+        "name": meta.get("name"),
+        "source_filename": meta.get("source_filename"),
+        "source_file_hash": meta.get("source_file_hash"),
+        "estimated_weeks": meta.get("estimated_weeks"),
+        "days_per_week": meta.get("days_per_week"),
+        "archived": bool(meta.get("archived", False)),
+        "created_at": meta.get("created_at"),
+        "updated_at": meta.get("updated_at"),
+        "author": meta.get("author"),
+        "author_pk": meta.get("author_pk"),
+        "published": bool(meta.get("published", True)),
+        "published_at": meta.get("published_at"),
+        "import_job_id": meta.get("import_job_id"),
     }
 
-def get_user_item(table: Any, pk: str) -> dict[str, Any] | None:
-    return table.get_item(Key={"pk": pk}).get("Item")
 
-def put_user_item(table: Any, item: dict[str, Any]) -> None:
-    table.put_item(Item=to_dynamo(item))
+def update_template_index(table: Any, library_pk: str, copied_templates: list[dict[str, Any]]) -> tuple[int, int]:
+    if not copied_templates:
+        return 0, 0
+    summaries = [template_summary(item) for item in copied_templates]
+    for _ in range(5):
+        current = get_item(table, {"pk": library_pk, "sk": "template#index"})
+        if current is None:
+            current = get_item(table, {"pk": library_pk, "sk": "template#current_list"}) or {}
+        existing = list(current.get("templates") or [])
+        by_sk = {str(summary.get("sk")): summary for summary in existing if summary.get("sk")}
+        before = dict(by_sk)
+        by_sk.update({str(summary["sk"]): summary for summary in summaries})
+        templates = sorted(by_sk.values(), key=lambda summary: str(summary.get("created_at") or ""))
+        revision = int(current.get("index_revision", 0))
+        if before == by_sk and current.get("sk") == "template#index":
+            return 0, len(summaries)
+        index = to_dynamo({
+            **current,
+            "pk": library_pk,
+            "sk": "template#index",
+            "templates": templates,
+            "updated_at": max(
+                [str(current.get("updated_at") or "")]
+                + [str(summary.get("updated_at") or "") for summary in summaries]
+            ),
+            "index_revision": revision + 1,
+        })
+        condition = "attribute_not_exists(pk) OR attribute_not_exists(#revision) OR #revision = :revision"
+        try:
+            table.put_item(
+                Item=index,
+                ConditionExpression=condition,
+                ExpressionAttributeNames={"#revision": "index_revision"},
+                ExpressionAttributeValues={":revision": revision},
+            )
+            return len(summaries), 0
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                raise
+    raise RuntimeError("template index changed repeatedly; refusing an unsafe update")
 
-def delete_user_items(table: Any, items: list[dict[str, Any]], dry_run: bool) -> int:
-    if dry_run:
-        return len(items)
-    for item in items:
-        table.delete_item(Key={"pk": item["pk"]})
-    return len(items)
 
-def existing_keys(table: Any, items: list[dict[str, Any]]) -> list[tuple[str, str]]:
-    conflicts: list[tuple[str, str]] = []
-    for item in items:
-        pk = str(item["pk"])
-        sk = str(item["sk"])
-        if get_item(table, pk, sk):
-            conflicts.append((pk, sk))
+def remove_template_index_entries(table: Any, library_pk: str, removed_sks: set[str]) -> bool:
+    if not removed_sks:
+        return False
+    for _ in range(5):
+        current = get_item(table, {"pk": library_pk, "sk": "template#index"})
+        if current is None:
+            return False
+        templates = [summary for summary in current.get("templates") or [] if str(summary.get("sk")) not in removed_sks]
+        if len(templates) == len(current.get("templates") or []):
+            return False
+        revision = int(current.get("index_revision", 0))
+        index = to_dynamo({**current, "templates": templates, "updated_at": datetime.now(timezone.utc).isoformat(), "index_revision": revision + 1})
+        try:
+            table.put_item(
+                Item=index,
+                ConditionExpression="attribute_exists(pk) AND (attribute_not_exists(#revision) OR #revision = :revision)",
+                ExpressionAttributeNames={"#revision": "index_revision"},
+                ExpressionAttributeValues={":revision": revision},
+            )
+            return True
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                raise
+    raise RuntimeError("template index changed repeatedly; refusing an unsafe cleanup")
+
+
+def seed_marker_matches(item: dict[str, Any], source_table: str, source_pk: str, source_sk: str) -> bool:
+    return item.get("test_seed_marker") == SEED_MARKER and item.get("test_seed_source_table") == source_table and item.get("test_seed_source_pk") == source_pk and item.get("test_seed_source_sk") == source_sk
+
+
+def same_key(item: dict[str, Any]) -> dict[str, Any]:
+    return {"pk": item["pk"], "sk": item["sk"]} if "sk" in item else {"pk": item["pk"]}
+
+
+def validate_target_person(table: Any, person_pk: str, athlete_pk: str) -> dict[str, Any]:
+    person = get_item(table, {"pk": person_pk})
+    if not person:
+        raise RuntimeError(f"target Person {person_pk!r} does not exist")
+    if str(person.get("mapped_pk") or "") != athlete_pk:
+        raise RuntimeError(f"target Person {person_pk!r} is not mapped to Athlete {athlete_pk!r}")
+    issuer = str(person.get("identity_issuer") or "").strip()
+    subject = str(person.get("identity_sub") or "").strip()
+    pointer = get_item(table, {"pk": identity_key(issuer, subject)}) if issuer and subject else None
+    if not pointer or str(pointer.get("mapped_pk") or "") != person_pk or pointer.get("identity_issuer") != issuer or str(pointer.get("identity_sub") or "") != subject:
+        raise RuntimeError(f"target Person {person_pk!r} has no verified login mapping")
+    if person.get("profile_visibility") != "private":
+        raise RuntimeError(f"target Person {person_pk!r} must have a private profile")
+    return person
+
+
+def table_plans(args: argparse.Namespace) -> list[tuple[str, Any, str, Any, str, bool]]:
+    dynamodb = boto3.resource("dynamodb", region_name=args.region)
+    names = [
+        ("health", args.health_table, args.source_pk, args.health_table, args.target_pk, False),
+        ("sessions", args.sessions_table, args.source_pk, args.sessions_table, args.target_pk, False),
+        ("private_notes", args.health_table, args.source_person_pk, args.health_table, args.target_person_pk, False),
+        ("global_templates", args.templates_table, args.source_template_library_pk, args.templates_table, args.source_template_library_pk, False),
+        ("competition_entries", args.competitions_table, args.source_pk, args.competitions_table, args.target_pk, False),
+        ("goals", args.goals_table, args.source_pk, args.goals_table, args.target_pk, False),
+        ("budget", args.budget_table, args.source_pk, args.budget_table, args.target_pk, False),
+        ("analysis_cache", args.analysis_cache_table, f"analysis#{args.source_pk}", args.analysis_cache_table, f"analysis#{args.target_pk}", True),
+    ]
+    return [(label, dynamodb.Table(source_table), source_pk, dynamodb.Table(target_table), target_pk, readonly) for label, source_table, source_pk, target_table, target_pk, readonly in names if source_table]
+
+
+def planned_items(args: argparse.Namespace, remapper: Remapper) -> tuple[list[tuple[str, Any, Any, dict[str, Any]]], Counter[str]]:
+    plans: list[tuple[str, Any, Any, dict[str, Any]]] = []
+    counts: Counter[str] = Counter()
+    all_plans = table_plans(args)
+    template_sources = next((query_partition(source_table, source_pk) for label, source_table, source_pk, _, _, _ in all_plans if label == "global_templates"), [])
+    remapper.template_maps = {
+        str(item.get("sk")): owned_template_key(str(item.get("sk") or ""), remapper.target_person)
+        for item in template_sources
+        if source_owned_template(item, remapper) and str(item.get("sk") or "") not in {"template#index", "template#current_list"}
+    }
+    for label, source_table, source_pk, target_table, target_pk, readonly in all_plans:
+        for item in query_partition(source_table, source_pk):
+            if label == "private_notes" and not private_note_owned(item, remapper):
+                counts["skipped_private_notes"] += 1
+                continue
+            if label != "private_notes" and str(item.get("sk") or "").startswith(("Note#", "NoteMutation#")):
+                counts["skipped_private_notes"] += 1
+                continue
+            if label == "global_templates":
+                copied = copy_owned_template(item, remapper, source_table.name)
+            else:
+                copied = copy_item(item, target_pk, remapper, source_table.name, readonly)
+            if copied is None:
+                counts[f"skipped_{label}"] += 1
+                continue
+            plans.append((label, source_table, target_table, copied))
+            counts[label] += 1
+    return plans, counts
+
+
+def check_conflicts(plans: list[tuple[str, Any, Any, dict[str, Any]]]) -> list[tuple[str, dict[str, Any], str]]:
+    conflicts: list[tuple[str, dict[str, Any], str]] = []
+    for label, _, target_table, item in plans:
+        existing = get_item(target_table, same_key(item))
+        if existing and not seed_marker_matches(existing, str(item["test_seed_source_table"]), str(item["test_seed_source_pk"]), str(item["test_seed_source_sk"])):
+            conflicts.append((label, same_key(item), str(target_table.name)))
     return conflicts
 
-def put_items(table: Any, items: list[dict[str, Any]]) -> None:
-    with table.batch_writer() as batch:
-        for item in items:
-            batch.put_item(Item=to_dynamo(item))
 
-def delete_items(table: Any, items: list[dict[str, Any]], dry_run: bool) -> int:
+def write_plans(plans: list[tuple[str, Any, Any, dict[str, Any]]]) -> tuple[int, int]:
+    written = skipped = 0
+    for _, _, target_table, item in plans:
+        existing = get_item(target_table, same_key(item))
+        if existing:
+            skipped += 1
+            continue
+        target_table.put_item(Item=to_dynamo(item), ConditionExpression="attribute_not_exists(pk)")
+        written += 1
+    return written, skipped
+
+
+def report(plans: list[tuple[str, Any, Any, dict[str, Any]]], counts: Counter[str], dry_run: bool) -> None:
+    print("[operator-health-copy] private test data plan")
+    print(f"  mode: {'dry-run' if dry_run else 'apply'}")
+    labels = sorted({plan[0] for plan in plans} | {key.removeprefix('skipped_') for key in counts if key.startswith('skipped_')})
+    for label in labels:
+        print(f"  {label}: {counts.get(label, 0)} copied, {counts.get('skipped_' + label, 0)} skipped")
+    index_planned = counts.get("global_templates", 0) > 0
+    if index_planned:
+        print("  global_template_index: 1 planned, 0 skipped")
+    print(f"  total planned keys: {len(plans) + int(index_planned)}")
+    for _, _, target_table, item in plans[:5]:
+        print(f"    {target_table.name} pk={item['pk']} sk={item.get('sk', '<none>')}")
+    if index_planned:
+        template_plan = next(item for item in plans if item[0] == "global_templates")
+        print(f"    {template_plan[2].name} pk={template_plan[3]['pk']} sk=template#index")
     if dry_run:
-        return len(items)
-    with table.batch_writer() as batch:
-        for item in items:
-            batch.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
-    return len(items)
+        print("Dry run only; no DynamoDB writes or deletes performed.")
 
-def is_seeded(item: dict[str, Any], source_pk: str, target_pk: str) -> bool:
-    return (
-        item.get("test_seed_marker") == SEED_MARKER
-        and item.get("test_seed_source_pk") == source_pk
-        and item.get("test_seed_target_pk") == target_pk
-    )
 
-def collect_cleanup_items(health_table: Any, sessions_table: Any, source_pk: str, target_pk: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    health_items = [
-        item
-        for item in query_by_prefix(health_table, target_pk, "program#")
-        if is_seeded(item, source_pk, target_pk)
-    ]
-    session_items = [
-        item
-        for item in query_by_prefix(sessions_table, target_pk, SESSION_SK_PREFIX)
-        if is_seeded(item, source_pk, target_pk)
-    ]
-    return health_items, session_items
-
-def collect_template_cleanup_items(template_table: Any, source_pk: str, target_pk: str) -> list[dict[str, Any]]:
-    return [
-        item
-        for item in query_by_prefix(template_table, target_pk, TEMPLATE_SK_PREFIX)
-        if is_seeded(item, source_pk, target_pk)
-    ]
-
-def collect_user_cleanup_items(user_table: Any, source_pk: str, target_pk: str) -> list[dict[str, Any]]:
-    item = get_user_item(user_table, target_pk)
-    return [item] if item and is_seeded(item, source_pk, target_pk) else []
-
-def copy_current(args: argparse.Namespace) -> int:
-    dynamodb = boto3.resource("dynamodb", region_name=args.region)
-    health_table = dynamodb.Table(args.health_table)
-    sessions_table = dynamodb.Table(args.sessions_table)
-    template_table = dynamodb.Table(args.templates_table)
-    user_table = dynamodb.Table(args.user_table)
-    copied_at = datetime.now(timezone.utc).isoformat()
-
-    pointer, program = resolve_current_program(health_table, args.source_pk)
-    program_sk = str(program["sk"])
-    source_sessions = list_session_items(sessions_table, args.source_pk, program_sk)
-    embedded_sessions = program.get("sessions") if isinstance(program.get("sessions"), list) else []
-
-    if source_sessions:
-        target_sessions = [
-            copy_session_item(item, args.source_pk, args.target_pk, copied_at)
-            for item in source_sessions
-        ]
-        session_source = "if-sessions"
-    else:
-        phases = program.get("phases") if isinstance(program.get("phases"), list) else []
-        ordinals: defaultdict[str, int] = defaultdict(int)
-        target_sessions = []
-        for source_index, session in enumerate(embedded_sessions):
-            if not isinstance(session, dict):
-                continue
-            date_value = str(session.get("date") or "undated")
-            ordinals[date_value] += 1
-            target_sessions.append(
-                build_session_from_embedded(
-                    source_pk=args.source_pk,
-                    target_pk=args.target_pk,
-                    program_sk=program_sk,
-                    session=session,
-                    source_index=source_index,
-                    same_day_ordinal=ordinals[date_value],
-                    phases=phases,
-                    copied_at=copied_at,
-                    source_table_name=args.health_table,
-                )
-            )
-        session_source = "embedded program sessions"
-
-    target_program = copy_program_item(program, args.source_pk, args.target_pk, copied_at)
-    target_pointer = copy_pointer_item(pointer, args.source_pk, args.target_pk, copied_at)
-    health_items = [target_program, target_pointer]
-    target_templates: list[dict[str, Any]] = []
-    existing_target_templates: list[dict[str, Any]] = []
-    if not args.skip_templates:
-        source_templates = query_by_prefix(template_table, args.source_template_library_pk, TEMPLATE_SK_PREFIX)
-        target_templates = [
-            copy_template_item(item, args.source_template_library_pk, args.target_template_library_pk, copied_at)
-            for item in source_templates
-        ]
-        existing_target_templates = query_by_prefix(template_table, args.target_template_library_pk, TEMPLATE_SK_PREFIX)
-
-    target_user_settings = None if args.skip_user_settings else build_user_settings_item(args, copied_at)
-    existing_target_user = None if args.skip_user_settings else get_user_item(user_table, args.target_user_pk)
-
-    existing_target_sessions = list_session_items(sessions_table, args.target_pk, program_sk)
-    if not args.replace:
-        conflicts = existing_keys(health_table, health_items)
-        if existing_target_sessions:
-            conflicts.extend((str(item["pk"]), str(item["sk"])) for item in existing_target_sessions[:10])
-        if existing_target_templates:
-            conflicts.extend((str(item["pk"]), str(item["sk"])) for item in existing_target_templates[:10])
-        if existing_target_user:
-            conflicts.append((str(existing_target_user["pk"]), "<user-settings>"))
-        if conflicts:
-            print("Refusing to copy because target items already exist. Re-run with --replace to overwrite pk=test.")
-            for pk, sk in conflicts[:25]:
-                print(f"  existing: pk={pk} sk={sk}")
-            if len(conflicts) > 25:
-                print(f"  ... {len(conflicts) - 25} more")
-            return 2
-
-    print("[operator-health-copy] Copy current operator program to test")
-    print(f"  Health table:       {args.health_table}")
-    print(f"  Sessions table:     {args.sessions_table}")
-    print(f"  Templates table:    {args.templates_table}")
-    print(f"  User table:         {args.user_table}")
-    print(f"  Region:             {args.region}")
-    print(f"  Source PK:          {args.source_pk}")
-    print(f"  Target PK:          {args.target_pk}")
-    print(f"  Source templates PK:{args.source_template_library_pk}")
-    print(f"  Target templates PK:{args.target_template_library_pk}")
-    print(f"  Program SK:         {program_sk}")
-    print(f"  Source sessions:    {len(target_sessions)} ({session_source})")
-    print(f"  Source templates:   {len(target_templates)}")
-    print(f"  Existing target sessions for program: {len(existing_target_sessions)}")
-    print(f"  Existing target templates: {len(existing_target_templates)}")
-    print(f"  Target user settings: {'skipped' if args.skip_user_settings else args.target_user_pk}")
-    print(f"  Replace:            {args.replace}")
-    print(f"  Dry run:            {args.dry_run}")
-
-    if target_sessions:
-        date_counts = Counter(str(item.get("date") or "undated") for item in target_sessions)
-        same_day_dates = sum(1 for count in date_counts.values() if count > 1)
-        print(f"  Same-day dates:     {same_day_dates}")
-        print("  Sample session SKs:")
-        for item in target_sessions[: args.sample_keys]:
-            print(f"    {item['sk']}")
-
+def copy_data(args: argparse.Namespace) -> int:
+    user_table = boto3.resource("dynamodb", region_name=args.region).Table(args.user_table)
+    validate_target_person(user_table, args.target_person_pk, args.target_pk)
+    remapper = Remapper(args.source_person_pk, args.source_pk, args.target_person_pk, args.target_pk)
+    plans, counts = planned_items(args, remapper)
+    conflicts = check_conflicts(plans)
+    report(plans, counts, args.dry_run)
+    if conflicts:
+        print("Refusing to overwrite unrelated target items:", file=sys.stderr)
+        for label, key, table_name in conflicts[:25]:
+            print(f"  {label} {table_name} {key}", file=sys.stderr)
+        return 2
     if args.dry_run:
-        print("Dry run only; no DynamoDB writes performed.")
         return 0
-
-    if args.replace and existing_target_sessions:
-        deleted = delete_items(sessions_table, existing_target_sessions, dry_run=False)
-        print(f"Deleted existing target sessions for {program_sk}: {deleted}")
-    if args.replace and existing_target_templates:
-        deleted = delete_items(template_table, existing_target_templates, dry_run=False)
-        print(f"Deleted existing target templates: {deleted}")
-
-    put_items(health_table, [target_program])
-    put_items(sessions_table, target_sessions)
-    put_items(template_table, target_templates)
-    if target_user_settings:
-        put_user_item(user_table, target_user_settings)
-    put_items(health_table, [target_pointer])
-
-    print("Copy complete.")
-    print(f"  Wrote health items:   {len(health_items)}")
-    print(f"  Wrote session items:  {len(target_sessions)}")
-    print(f"  Wrote template items: {len(target_templates)}")
-    print(f"  Wrote user settings:  {0 if args.skip_user_settings else 1}")
-    print("Cleanup command:")
-    print("  python scripts/copy_operator_health_to_test.py --cleanup")
+    written, skipped = write_plans(plans)
+    template_table = next((target_table for label, _, target_table, _ in plans if label == "global_templates"), None)
+    copied_templates = [item for label, _, _, item in plans if label == "global_templates"]
+    indexed, already_indexed = update_template_index(template_table, args.source_template_library_pk, copied_templates) if template_table else (0, 0)
+    print(f"Applied conditional copies: wrote {written}, already seeded {skipped}; template index wrote {indexed}, already current {already_indexed}.")
     return 0
+
 
 def cleanup(args: argparse.Namespace) -> int:
     dynamodb = boto3.resource("dynamodb", region_name=args.region)
-    health_table = dynamodb.Table(args.health_table)
-    sessions_table = dynamodb.Table(args.sessions_table)
-    template_table = dynamodb.Table(args.templates_table)
-    user_table = dynamodb.Table(args.user_table)
-    health_items, session_items = collect_cleanup_items(
-        health_table,
-        sessions_table,
-        args.source_pk,
-        args.target_pk,
-    )
-    template_items = [] if args.skip_templates else collect_template_cleanup_items(
-        template_table,
-        args.source_template_library_pk,
-        args.target_template_library_pk,
-    )
-    user_items = [] if args.skip_user_settings else collect_user_cleanup_items(
-        user_table,
-        args.source_user_pk,
-        args.target_user_pk,
-    )
-
-    print("[operator-health-copy] Cleanup seeded test data")
-    print(f"  Health table:    {args.health_table}")
-    print(f"  Sessions table:  {args.sessions_table}")
-    print(f"  Templates table: {args.templates_table}")
-    print(f"  User table:      {args.user_table}")
-    print(f"  Source PK:       {args.source_pk}")
-    print(f"  Target PK:       {args.target_pk}")
-    print(f"  Source templates PK: {args.source_template_library_pk}")
-    print(f"  Target templates PK: {args.target_template_library_pk}")
-    print(f"  Dry run:         {args.dry_run}")
-    print(f"  Health items:    {len(health_items)}")
-    print(f"  Session items:   {len(session_items)}")
-    print(f"  Template items:  {len(template_items)}")
-    print(f"  User items:      {len(user_items)}")
-
-    if health_items:
-        print("  Health item SKs:")
-        for item in sorted(health_items, key=lambda row: str(row.get("sk") or ""))[: args.sample_keys]:
-            print(f"    {item['sk']}")
-    if session_items:
-        print("  Sample session SKs:")
-        for item in sort_session_items(session_items)[: args.sample_keys]:
-            print(f"    {item['sk']}")
-    if template_items:
-        print("  Template item SKs:")
-        for item in sorted(template_items, key=lambda row: str(row.get("sk") or ""))[: args.sample_keys]:
-            print(f"    {item['sk']}")
-
-    deleted_sessions = delete_items(sessions_table, session_items, args.dry_run)
-    deleted_health = delete_items(health_table, health_items, args.dry_run)
-    deleted_templates = delete_items(template_table, template_items, args.dry_run)
-    deleted_users = delete_user_items(user_table, user_items, args.dry_run)
-
+    tables = table_plans(args)
+    candidates: list[tuple[Any, dict[str, Any]]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for _, _, _, target_table, target_pk, _ in tables:
+        for item in query_partition(target_table, target_pk):
+            marker_key = (str(target_table.name), str(item.get("pk") or ""), str(item.get("sk") or ""))
+            if item.get("test_seed_marker") == SEED_MARKER and marker_key not in seen:
+                seen.add(marker_key)
+                candidates.append((target_table, item))
+    template_table = next((target_table for label, _, _, target_table, _, _ in tables if label == "global_templates"), None)
+    removed_template_sks = {str(item.get("sk")) for table, item in candidates if template_table is table and str(item.get("sk") or "").startswith(TEMPLATE_SK_PREFIX)}
+    print("[operator-health-copy] marked private test data cleanup")
+    print(f"  mode: {'dry-run' if args.dry_run else 'apply'}")
+    print(f"  marked keys: {len(candidates)}")
+    for table, item in candidates[: args.sample_keys]:
+        print(f"    {table.name} pk={item['pk']} sk={item.get('sk', '<none>')}")
     if args.dry_run:
         print("Dry run only; no DynamoDB deletes performed.")
-    else:
-        print("Cleanup complete.")
-    print(f"  {'Would delete' if args.dry_run else 'Deleted'} session items: {deleted_sessions}")
-    print(f"  {'Would delete' if args.dry_run else 'Deleted'} health items:  {deleted_health}")
-    print(f"  {'Would delete' if args.dry_run else 'Deleted'} template items:{deleted_templates}")
-    print(f"  {'Would delete' if args.dry_run else 'Deleted'} user items:    {deleted_users}")
+        return 0
+    for table, item in candidates:
+        table.delete_item(Key=same_key(item), ConditionExpression="test_seed_marker = :marker", ExpressionAttributeValues={":marker": SEED_MARKER})
+    if template_table:
+        remove_template_index_entries(template_table, args.source_template_library_pk, removed_template_sks)
+    print(f"Deleted marked test items: {len(candidates)}. User identity records were not touched.")
     return 0
 
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description="Copy all operator training data into an existing private test Person mapping.")
+    result.add_argument("--health-table", default=os.getenv("IF_HEALTH_TABLE_NAME", "if-health"))
+    result.add_argument("--sessions-table", default=os.getenv("IF_SESSIONS_TABLE_NAME", "if-sessions"))
+    result.add_argument("--templates-table", default=os.getenv("IF_TEMPLATES_TABLE_NAME", "if-health-templates"))
+    result.add_argument("--competitions-table", default=os.getenv("POWERLIFTING_USER_COMPETITIONS_TABLE", "if-powerlifting-user-competitions"))
+    result.add_argument("--goals-table", default=os.getenv("POWERLIFTING_GOALS_TABLE", "if-powerlifting-goals"))
+    result.add_argument("--budget-table", default=os.getenv("POWERLIFTING_BUDGET_TABLE", "if-powerlifting-budget"))
+    result.add_argument("--analysis-cache-table", default=os.getenv("ANALYSIS_CACHE_TABLE_NAME", "if-powerlifting-analysis-cache"))
+    result.add_argument("--user-table", default=os.getenv("IF_USER_TABLE", "if-user"))
+    result.add_argument("--region", default=os.getenv("AWS_REGION", "ca-central-1"))
+    result.add_argument("--source-pk", default=os.getenv("HEALTH_PROGRAM_PK", "operator"))
+    result.add_argument("--source-person-pk", default=os.getenv("IF_OPERATOR_PERSON_PK", "sir_simpalot"))
+    result.add_argument("--target-pk", default=os.getenv("POWERLIFTING_TEST_MAPPED_PK", "test"))
+    result.add_argument("--target-person-pk", default=os.getenv("POWERLIFTING_TEST_PERSON_PK", "test"))
+    result.add_argument("--source-template-library-pk", default=os.getenv("IF_TEMPLATES_LIBRARY_PK", "template_library"))
+    result.add_argument("--cleanup", action="store_true")
+    result.add_argument("--apply", action="store_true", help="Perform conditional writes or marked-data deletes")
+    result.add_argument("--dry-run", action="store_true", help="Explicitly select the default no-write mode")
+    result.add_argument("--sample-keys", type=int, default=5)
+    return result
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Copy the current operator health program and sessions to pk=test, or clean up copied test data.",
-    )
-    parser.add_argument("--health-table", default=os.environ.get("IF_HEALTH_TABLE_NAME", "if-health"))
-    parser.add_argument("--sessions-table", default=os.environ.get("IF_SESSIONS_TABLE_NAME", "if-sessions"))
-    parser.add_argument("--templates-table", default=os.environ.get("IF_TEMPLATES_TABLE_NAME", "if-health-templates"))
-    parser.add_argument("--user-table", default=os.environ.get("IF_USER_TABLE", "if-user"))
-    parser.add_argument("--region", default=os.environ.get("AWS_REGION", "ca-central-1"))
-    parser.add_argument("--source-pk", default=os.environ.get("HEALTH_PROGRAM_PK", "operator"))
-    parser.add_argument("--target-pk", default=os.environ.get("POWERLIFTING_TEST_MAPPED_PK", "test"))
-    parser.add_argument("--source-template-library-pk", default=os.environ.get("IF_TEMPLATES_LIBRARY_PK", "template_library"))
-    parser.add_argument("--target-template-library-pk", default=os.environ.get("IF_TEMPLATES_TEST_LIBRARY_PK", "test"))
-    parser.add_argument("--source-user-pk", default=os.environ.get("POWERLIFTING_TEST_SOURCE_USER_PK", "operator"))
-    parser.add_argument("--target-user-pk", default=os.environ.get("POWERLIFTING_TEST_USER_PK", "test"))
-    parser.add_argument("--target-user-nickname", default=os.environ.get("POWERLIFTING_TEST_USER_NICKNAME", "test"))
-    parser.add_argument("--target-user-display-name", default=os.environ.get("POWERLIFTING_TEST_USER_DISPLAY_NAME", "Powerlifting Test"))
-    parser.add_argument("--target-user-discord-id", default=os.environ.get("POWERLIFTING_TEST_USER_DISCORD_ID", "test"))
-    parser.add_argument("--skip-templates", action="store_true", help="Do not copy global template-library data")
-    parser.add_argument("--skip-user-settings", action="store_true", help="Do not seed if-user profile settings for the test user")
-    parser.add_argument("--replace", action="store_true", help="Overwrite the target current program and sessions")
-    parser.add_argument("--cleanup", action="store_true", help="Delete items previously copied by this script")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would happen without writing or deleting")
-    parser.add_argument("--sample-keys", type=int, default=5, help="Number of sample keys to print")
-    args = parser.parse_args()
-
-    if args.source_pk == args.target_pk:
-        print("ERROR: --source-pk and --target-pk must be different", file=sys.stderr)
+    args = parser().parse_args()
+    if args.apply and args.dry_run:
+        print("ERROR: --apply and --dry-run are mutually exclusive", file=sys.stderr)
         return 2
-
+    args.dry_run = not args.apply
+    if args.source_pk == args.target_pk or args.source_person_pk == args.target_person_pk:
+        print("ERROR: source and target identities must be different", file=sys.stderr)
+        return 2
     try:
-        return cleanup(args) if args.cleanup else copy_current(args)
+        return cleanup(args) if args.cleanup else copy_data(args)
     except ClientError as exc:
-        message = exc.response.get("Error", {}).get("Message", str(exc))
-        print(f"AWS ERROR: {message}", file=sys.stderr)
+        error = exc.response.get("Error", {})
+        print(f"AWS ERROR: {error.get('Message', str(exc))}", file=sys.stderr)
         return 1
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

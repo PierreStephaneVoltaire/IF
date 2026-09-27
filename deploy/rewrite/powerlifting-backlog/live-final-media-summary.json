@@ -1,0 +1,170 @@
+{
+  "status": "actual_live_acceptance_with_external_upload_limit",
+  "athlete": "live-acceptance-luna",
+  "version": "v020",
+  "date": "2026-09-15",
+  "deployment_digest": "sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+  "source_image_tag": "live-20260915-shared-fixes-v3",
+  "media": {
+    "exact_180_seconds": {
+      "video_id": "5dfb0fc5-281a-5b98-ab27-53ec04dd8002",
+      "target_revision": 1,
+      "allocation_revision": 1,
+      "final_status": "ready",
+      "final_processing_status": "ready",
+      "angle": "side"
+    },
+    "exact_181_seconds": {
+      "video_id": "a17a9e23-5c52-5c51-8154-09f452ec1773",
+      "initial_target_revision": 2,
+      "initial_allocation_revision": 1,
+      "failed_processing_status": "failed",
+      "failure": "Form video exceeds the three-minute limit",
+      "ready_id_preserved": "5dfb0fc5-281a-5b98-ab27-53ec04dd8002",
+      "same_key_retry_video_id": "a17a9e23-5c52-5c51-8154-09f452ec1773",
+      "same_key_retry_allocation_revision": 2,
+      "confirm_replay_http_status": 200
+    },
+    "notifications": {
+      "ready_video_id": "5dfb0fc5-281a-5b98-ab27-53ec04dd8002",
+      "matching_video_ready_count_before_replay": 1,
+      "matching_video_ready_count_after_replay": 1,
+      "inbox_total_at_check": 19
+    },
+    "remove": {
+      "failed_pending_video_id": "a17a9e23-5c52-5c51-8154-09f452ec1773",
+      "failed_pending_remove_http_status": 200,
+      "failed_pending_replay_http_status": 200,
+      "ready_video_id": "5dfb0fc5-281a-5b98-ab27-53ec04dd8002",
+      "ready_remove_http_status": 200,
+      "ready_replay_http_status": 200,
+      "side_slot_after_cleanup": {}
+    }
+  },
+  "current_best_max": {
+    "source_read": "program.current_maxes",
+    "program_sk": "program#v034-861d377a34c84dfbb80fd3ed413300ce",
+    "before": {
+      "squat": 135,
+      "bench": 82.5,
+      "deadlift": 165,
+      "program_revision": 58
+    },
+    "ready_slot_before": {
+      "video_id": "cfdfeff6-5ecd-5079-ad8c-17805c55abfe",
+      "processing_status": "ready",
+      "target_revision": 1,
+      "allocation_revision": 1
+    },
+    "mutation": {
+      "squat": 136,
+      "expected_revision": 58,
+      "returned_revision": 59
+    },
+    "readback_after_mutation": {
+      "squat": 136,
+      "program_revision": 59,
+      "ready_video_id": "cfdfeff6-5ecd-5079-ad8c-17805c55abfe",
+      "processing_status": "ready",
+      "target_revision": 1,
+      "allocation_revision": 1
+    },
+    "restore": {
+      "squat": 135,
+      "expected_revision": 59,
+      "returned_revision": 60
+    },
+    "readback_after_restore": {
+      "squat": 135,
+      "program_revision": 60,
+      "ready_video_id": "cfdfeff6-5ecd-5079-ad8c-17805c55abfe",
+      "processing_status": "ready",
+      "target_revision": 1,
+      "allocation_revision": 1
+    },
+    "actual_source_mutation_and_restore": "passed",
+    "ready_id_unchanged_after_actual_max_update": true,
+    "portal_http_cache_note": "Historical pre-fix run observed stale revision56. The later native_portal_cache_coherence evidence on gatewayd4cbce47 closes same-URL read freshness."
+  },
+  "native_portal_cache_coherence": {
+    "status": "passed",
+    "gateway_digest": "sha256:d4cbce473ab1dd4f6d7f4e7105dbc47f8da362a708f179af43b000369e056cd0",
+    "program_url": "https://dev.nolift.training/api/programs/v034-861d377a34c84dfbb80fd3ed413300ce",
+    "same_url_no_cachebuster": true,
+    "http_statuses": {
+      "program_get_prime": 200,
+      "native_change": 200,
+      "program_get_after_change": 200,
+      "native_restore": 200,
+      "program_get_after_restore": 200,
+      "replacement_upload": 200,
+      "replacement_pending_get": 200,
+      "replacement_ready_get": 200,
+      "replacement_remove": 200,
+      "original_remove": 200,
+      "cleanup_get": 200
+    },
+    "snapshots": {
+      "before": {
+        "squat": 185,
+        "source_revision": 64,
+        "ready_video_id": "b045b905-1ab6-5988-bab9-00b491eab573",
+        "processing_status": "ready",
+        "target_revision": 1,
+        "allocation_revision": 1
+      },
+      "pending": {
+        "published_video_id": "b045b905-1ab6-5988-bab9-00b491eab573",
+        "pending_media_id": "8d86428d-9051-5d2d-90a5-6b52a7c3e838",
+        "processing_status": "pending",
+        "target_revision": 2,
+        "allocation_revision": 2
+      },
+      "ready": {
+        "published_video_id": "8d86428d-9051-5d2d-90a5-6b52a7c3e838",
+        "processing_status": "ready",
+        "target_revision": 2,
+        "allocation_revision": 2
+      },
+      "after_cleanup": {}
+    },
+    "squat": [
+      185,
+      186,
+      185
+    ],
+    "source_revisions": [
+      64,
+      65,
+      66
+    ],
+    "ready_slot_preserved_during_max_change": {
+      "video_id": "b045b905-1ab6-5988-bab9-00b491eab573",
+      "processing_status": "ready",
+      "target_revision": 1,
+      "allocation_revision": 1
+    },
+    "transport": "Signed normal HTTP POST health_update_current_maxes to pl-performance through kubectl port-forward svc/pl-performance 18080:8000; X-Internal-Token plus X-PL-Principal JWT, X-Person-Pk and X-Athlete-Pk scoped to live-acceptance-luna.",
+    "mutation_author": "normal signed typed native-domain HTTP operation; no Codex-generated mutation",
+    "baseline_note": "Earlier isolated Luna source test started at squat 135 and restored 135 at source revisions 58-60. This later independent acceptance observed the same dedicated fixture after subsequent authorized fixture tests at squat 185 and restored it to 185 at revisions 64-66.",
+    "stale_worker_race": "not attempted in this scoped test; separate worker-owned acceptance",
+    "source_artifacts": [
+      "/tmp/luna_program_cache_media_acceptance.py",
+      "/tmp/final-program-cache-coherence.json",
+      "/tmp/live-acceptance-luna-storage-state.json"
+    ]
+  },
+  "lift_profile_context_acceptance": {
+    "status": "passed",
+    "artifact": "live-lift-profile-context-summary.json",
+    "scope": "Actual node boundaries, per-set preservation, Handler/Coach/native context and deployed numeric bar/unit guidance"
+  },
+  "limits": [
+    "Full500MiB public upload awaits the Cloudflare request allowance upgrade"
+  ],
+  "concurrent_processing": {
+    "status": "passed",
+    "artifact": "live-stale-media-race-summary.json",
+    "review": "final-release-review.md"
+  }
+}

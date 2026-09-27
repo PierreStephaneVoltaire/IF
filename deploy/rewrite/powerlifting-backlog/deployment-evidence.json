@@ -1,0 +1,313 @@
+{
+  "recorded_at": "2026-09-15T07:38:00Z",
+  "ecr_lifecycle": {
+    "status": "applied",
+    "repositories": [
+      "if-agent-api",
+      "if-powerlifting-app-backend"
+    ]
+  },
+  "api_foundation": {
+    "status": "applied",
+    "created": 5,
+    "updated": 6,
+    "destroyed": 1,
+    "destroy_scope": "null_resource rollout bookkeeping replacement",
+    "digest": "sha256:3076896f4dd3ca09e779ece06cd58b7e593a32196349b6e970d8f67428a4343f"
+  },
+  "request_table": {
+    "status": "active",
+    "indexes": [
+      "InboxIndex",
+      "RosterIndex",
+      "SentIndex"
+    ]
+  },
+  "portal": {
+    "status": "deployed_live_acceptance_in_progress",
+    "failed_candidate_digest": "sha256:27c6ddb82e236602a05ddb3c4af6a854bb31c29dbfeba1a97865802be5c4b1b9",
+    "candidate_digest": "sha256:f38de3aa5fd1dd1f74b7e07d8789f2381909d75a96e315adcd1d5ca7e15c0e05",
+    "rollback_digest": "sha256:40a54ba282e28a8f5cbc8cbc0201c328a0f2b132129d95721477fe8fbb9b687d",
+    "failure": "OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED",
+    "oidc_fix": "route-scoped HTTPS forwarded-proto, standard discovery, and validated random authorization state; Terra accepted",
+    "deployments_candidate_live": 18,
+    "generations_observed": true,
+    "replicas_ready": true,
+    "services_digest": "sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4",
+    "frontend_digest": "sha256:a0b96a7b99b871b89a2b3bcc2f1a5c96480f69a84268e6d274cd6fee635eea8f",
+    "frontend_verification": "build/typecheck and exact rollout Ready; post-fix browser acceptance in progress",
+    "previous_validated_oidc_digest": "sha256:e96ebc034ddc3d4655b2b326158917b4a6a6251f490ab38bb20a4b2aa91c70c1",
+    "analytics_digest": "sha256:ef34dcd974ba7ddf4644daf7335d66003294a615ffbcf31c2165c8dc8c68e0a0",
+    "services_digest_note": "other fifteen services; Analytics has the later schema correction"
+  },
+  "media": {
+    "status": "applied",
+    "plan_actions": {
+      "create": 0,
+      "update": 3,
+      "destroy": 0
+    },
+    "cloudfront_distribution": "EYF8UFQTP2DCE",
+    "invalidation_id": "IE71FSYP9K4VCIH1WBN5OVU3WM",
+    "invalidation_status": "Completed"
+  },
+  "checks": {
+    "api_health": 200,
+    "backend_health": 200,
+    "service_health_openapi_mcp": "16/16",
+    "legacy_service_data_hook": "failed: unsigned operator probe denied under deployed principal authorization",
+    "cloudfront_invalidation": "Completed",
+    "real_oidc_callback": "passed: verified Luna Person/Athlete mapping, forged identity denial, mismatched state rejection",
+    "public_boundaries": "/tmp/public-boundaries-live-acceptance.json: passed",
+    "native_tool_and_continuation": "/tmp/native-backlog-live-acceptance.json: passed",
+    "block_lifecycle": "16 deployed checks; live-block-summary.json",
+    "session_identity": "deployed duplicate/ambiguous typed409 without writes and unique historical lookup200; local236tests+16subtests",
+    "social": "21 deployed checks; distinct-rival/full Handler/operator moderation matrices not established",
+    "media_upload_processing": "deployed backend multipart, readiness/failure/retry/replacement, auth HEAD/Range; browser six mutating requests and zero storage calls",
+    "authored_notes": "deployed original/shared revision ownership, explicit update, detach, revoked-author denial",
+    "offline": "real post-fix cache removal, retained draft/mutation, revoked sync403blocked, preservedpublicreads; actualAttemptmodal409retains typededit and conflict notice",
+    "historical_exports": "deployed Markdown31721bytes and XLSX257433bytes valid attachments",
+    "spreadsheet_import": "backend upload/native parse/review/apply passed; priorProgram preserved; reviewed gatewayfix deployed and genuine Echo OIDC replay422 without mutation"
+  },
+  "pending": [
+    "Cloudflare request allowance upgrade and full500MiB public upload",
+    "Genuine operator tag approval, catalog migration and approved-tag AND/OR search"
+  ],
+  "current_checkpoint": {
+    "recorded_at": "2026-09-16T04:38:27.034717+00:00",
+    "status": "scoped_corrections_applied_verified_with_explicit_limits",
+    "runtime_inventory": "profile-ui-runtime-inventory.json",
+    "manifest_reconciliation": "profile-ui-manifest-reconciliation.json",
+    "actual_pins": {
+      "services_analytics": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+      "services_program": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a",
+      "services_performance": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:6d0a745a531b1deba442b263f3bd65013deb69228f9138e35c16885c7b01016a",
+      "services_other": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4",
+      "services_videos": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+      "services_profile": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+      "analytics_sidecar": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:2f9ea2299d91289e699be33bf561f2cb3e16574f5579cad3ef49645562a4d262",
+      "gateway_backend": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:b688e943a910ec37b23285f75586f0a7b8f2c346c08653e1509b6b5520130f62",
+      "frontend": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-frontend@sha256:b9d2ac18f54463b2dd88d125f8fa92cb177dede6b0d048a552b03481aad72d2e",
+      "services_federation": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:97de3419f4c10df4cfcf52a628415332f74d159db2b8b6c4921ed36661547622"
+    },
+    "local_regressions": {
+      "service_tests": 253,
+      "subtests": 16,
+      "warnings": 9,
+      "status": "passed"
+    },
+    "live_signed_http_mcp": {
+      "services": 16,
+      "checks": 22,
+      "status": "passed"
+    },
+    "portal_deployments_ready": 18,
+    "browser_authentik_native_processing": "separate linked artifacts in deployment-evidence.md",
+    "final_media_race": "passed; live-stale-media-race-summary.json",
+    "external_limits": [
+      "Cloudflare request allowance upgrade and full500MiB public upload",
+      "Genuine operator tag approval, catalog migration and approved-tag AND/OR search"
+    ],
+    "active": [],
+    "historical_fields_note": "Earlier aggregate checks retain their dated scope. Current pins are in profile-ui-runtime-inventory.json; profile-ui-terra-live.json separately records current UI acceptance. Program pod recovered from one probe-induced OOM restart.",
+    "final_review": "accepted with explicit limits; profile-ui-terra-review.md",
+    "lift_profile_context": "passed; live-lift-profile-context-summary.json",
+    "entry_mobile_correction": "entry-mobile-summary.json",
+    "discord_login_correction": "discord-login-release.json",
+    "discord_login_review": "accepted; discord-login-review.md",
+    "discord_identity_completion": "not performed; no Discord consent available",
+    "production_visibility_recovery": "pointer repair applied; production-visibility-recovery.json",
+    "operator_browser_verification": "Unavailable; storage integrity and normal isolated-auth checks are separate evidence",
+    "profile_ui_correction": "profile-ui-release.json",
+    "profile_ui_review": "profile-ui-terra-review.md",
+    "profile_ui_live": "profile-ui-terra-live.json",
+    "profile_ui_regressions": {
+      "federation_tests": "5 passed",
+      "frontend_typecheck": "passed",
+      "frontend_build": "passed",
+      "competition_partition_test": "passed",
+      "context_restore_test": "passed",
+      "onboarding_role_test": "passed",
+      "git_diff_check": "passed",
+      "repair_script_compile": "passed",
+      "backend_typecheck": "passed",
+      "block_label_tests": "2 passed",
+      "template_integrity": "8 passed",
+      "federation_schema_test": "5 passed",
+      "workspace_typecheck": "passed",
+      "workspace_build": "passed",
+      "block_transition_tests": "14 passed, including actual ProgramStore empty next Block preserving external Sessions"
+    },
+    "acceptance_limits": [
+      "Owner/operator browser and video playback not exercised"
+    ],
+    "empty_personal_federation_library": "normal Coach fixture0 personal entries; live profile form23 master options"
+  },
+  "historical_checkpoints": [
+    {
+      "recorded_at": "2026-09-15T09:12:00Z",
+      "status": "applied_final_scoped_fixes_and_acceptance_active",
+      "program_templates_digest": "sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a",
+      "frontend_digest": "sha256:a7aad69a7c399a115bc4c5b69510ef8a419728d1d86cf0ab1766c72b9d405bd6",
+      "gateway_digest": "sha256:176eafe171ece074a53d1e26f474a37fa71cd3f388977db512461f340af44026",
+      "service_harness": "16/16 services, 22/22 selected signed HTTP/MCP checks",
+      "active": [
+        "flat weekly schema rollout and actual OIDC handler result",
+        "read-only cached Block hit/miss/no-generation",
+        "public native report generation/dedup/cache",
+        "target-max post-commit response repair",
+        "ready lift recording/max-change/replacement acceptance",
+        "final inventory and manifest pin reconciliation"
+      ],
+      "external_limits": [
+        "Cloudflare500MiB allowance pending",
+        "genuine operator unavailable for positive catalog moderation and approved-tag AND/OR"
+      ],
+      "historical_fields_note": "Earlier portal/image/check fields below are chronological checkpoints, superseded by current_checkpoint and final runtime inventory."
+    }
+  ],
+  "entry_mobile_correction": {
+    "recorded_at": "2026-09-15T17:41:03.744372+00:00",
+    "status": "deployed_verified_scoped_correction",
+    "environment": "https://dev.nolift.training",
+    "review": "entry-mobile-review.md",
+    "runtime_inventory": "entry-mobile-runtime-inventory.json",
+    "gateway": {
+      "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:8740348739cfbce86ef59e800e6c80146dc36897067a57dbcc9413d100ff5b4e",
+      "tag": "dual-login-fix-20260915-1740",
+      "generation": 30,
+      "ready": true,
+      "ecr_status": "ACTIVE",
+      "rollback": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:d4cbce473ab1dd4f6d7f4e7105dbc47f8da362a708f179af43b000369e056cd0",
+      "source_hashes": {
+        "backend/src/controllers/authController.ts": "e0a29d00658c8bfbd9e12e92936ca5c082922a43d8604002b33f66e182af49f8",
+        "backend/src/controllers/authLogin.test.ts": "494d055fed70ff1b0b2e532d7a07cecbc252aed9d67e2eeaa6cfc89cbe7f1c9d",
+        "backend/dist/controllers/authController.js": "58dee5156895e3ed81dd23dee5bec0047d1d2e28c4b088ca51de0d04fd5d7bd5"
+      },
+      "compiled_regression_sha256": "b8503a8bc3d64b9086eddec153f1bc0b1315b2b40a5b5500b0004c0637df0ff5"
+    },
+    "frontend": {
+      "image": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-frontend@sha256:5bb25bdb27864d990ecd2b4587a458226eb9f1cc86aedb7396b076afa45c64fe",
+      "tag": "dashboard-fix-20260915-1750",
+      "generation": 12,
+      "ready": true,
+      "ecr_status": "ACTIVE",
+      "rollback": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-frontend@sha256:7c77cf5ea872f56df56d37d303a493a30f75ceedb1f5cbe55ecf326596b8015a",
+      "earlier_rollback": "sha256:a7aad69a7c399a115bc4c5b69510ef8a419728d1d86cf0ab1766c72b9d405bd6",
+      "source_hashes": {
+        "frontend/src/App.tsx": "8b31b13654520fef0be4a1c4aa441de4f9c60ef64f6b8bcf99f12abae24bf811",
+        "frontend/src/auth/AuthProvider.tsx": "252b907886e1ba8c1958fd0b43fd16473c74c8120670e26cdf1b51c5e49a7551",
+        "frontend/src/pages/LandingPage.tsx": "c83e01b79a14951439fa4f93ba1b8514a10450a1355176246916c8ddece1be24",
+        "frontend/src/pages/LoginPage.tsx": "09d01170ad1aa232519e7e8443564e8cca3ab4905f9749a429ef5427dbb72ff1",
+        "frontend/src/components/auth/LoginOptions.tsx": "afdf855a75e9e25e8120fdd5c7cbadb75dc0d821888d64dc4a628258b89c30dc",
+        "frontend/src/components/shared/ReadOnlyBanner.tsx": "463490a2e9a9029efe549e1595a1197b23a32722626d75caf2fa1ecd4624f234",
+        "frontend/src/components/layout/AthleteContext.tsx": "65d4997328eaa6705a1edb5d04430e509b143c79b5f7f181e5c9f4b94b8149c5",
+        "frontend/src/components/layout/Sidebar.tsx": "c2b959a24119e1cc18c1d5512b711635571ad8318311900558604479126c67f7",
+        "frontend/src/index.css": "3bf31f20dc97a586a56c543988e0d303b308f67b67b206731dda2477ba841720"
+      }
+    },
+    "local_checks": {
+      "workspace_typecheck": "passed",
+      "workspace_build": "passed",
+      "final_frontend_typecheck_build": "passed",
+      "passport_middleware_tests_passed": 3,
+      "mocked_browser_assertions_passed": 39,
+      "mocked_browser_uncovered": [
+        "offline conflict dialog"
+      ],
+      "api_interception": true
+    },
+    "deployed_checks": {
+      "api_interception": false,
+      "discord_dispatch_chain": [
+        "dev.nolift.training/api/auth/discord/login",
+        "auth.nolift.training/source/oauth/login/discord/",
+        "discord.com/api/oauth2/authorize"
+      ],
+      "authentik_fresh_login": {
+        "status": 200,
+        "person_pk": "live-acceptance-echo",
+        "own_athlete_pk": "live-acceptance-echo"
+      },
+      "invalid_state_callback": {
+        "status": 302,
+        "destination": "/login?error=auth_failed"
+      },
+      "public_pages": {
+        "routes": [
+          "/",
+          "/login",
+          "/profiles",
+          "/about"
+        ],
+        "viewports": [
+          [
+            320,
+            568
+          ],
+          [
+            375,
+            667
+          ],
+          [
+            1440,
+            900
+          ]
+        ],
+        "dedicated_landing": true,
+        "discord_and_authentik_choices": true,
+        "read_only_notice_absent": true,
+        "horizontal_overflow": false,
+        "captured_frontend_digest": "sha256:7c77cf5ea872f56df56d37d303a493a30f75ceedb1f5cbe55ecf326596b8015a"
+      },
+      "dashboard_final": [
+        {
+          "viewport": {
+            "width": 320,
+            "height": 568
+          },
+          "scrollWidth": 320,
+          "bodyScrollWidth": 320,
+          "clientWidth": 320,
+          "heading": "Dashboard",
+          "contentLoaded": true,
+          "noDocumentOverflow": true,
+          "noBodyOverflow": true
+        },
+        {
+          "viewport": {
+            "width": 375,
+            "height": 568
+          },
+          "scrollWidth": 375,
+          "bodyScrollWidth": 375,
+          "clientWidth": 375,
+          "heading": "Dashboard",
+          "contentLoaded": true,
+          "noDocumentOverflow": true,
+          "noBodyOverflow": true
+        }
+      ],
+      "more_menu": {
+        "artifact": "entry-mobile-more.json",
+        "links": 10,
+        "scroll_to_bottom": true,
+        "horizontal_overflow": false
+      },
+      "context": {
+        "artifact": "entry-mobile-context.json",
+        "compact_and_expand": "passed",
+        "cross_athlete_round_trip": "not fully reverified"
+      }
+    },
+    "limits": [
+      "Discord authorization dispatch verified; a Discord identity login was not completed.",
+      "A complete cross-Athlete switch and return was not fully reverified during this correction.",
+      "Known unrelated public avatar 401 and ranking_percentile 404 responses are recorded in root bug.md."
+    ],
+    "local_cleanup": "Published gateway and final frontend Docker candidates removed after ECR and container-reference checks; containerd, rollback archives and AWS resources retained."
+  },
+  "discord_login_correction": "discord-login-release.json",
+  "production_visibility_recovery": "production-visibility-recovery.json",
+  "profile_ui_correction": "profile-ui-release.json"
+}

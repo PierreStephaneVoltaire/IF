@@ -95,6 +95,7 @@ def test_auxiliary_tools_do_not_receive_report_generation_credentials(monkeypatc
     async def bridge(method, path, **kwargs):
         return {'dispatch': True}
     monkeypatch.setenv('INTERNAL_API_TOKEN', 'test-only')
+    monkeypatch.setenv('PL_PRINCIPAL_SECRET', 'principal-test-secret-never-used-outside-tests')
     monkeypatch.setattr('httpx.AsyncClient', Client)
     monkeypatch.setattr(job_tools, 'get_execution_service', lambda: SimpleNamespace(request=bridge))
     monkeypatch.setattr(job_tools, 'schemas', lambda _: {name: {'inputSchema': {'type': 'object'}} for name in ('report', 'read')})

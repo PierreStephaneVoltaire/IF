@@ -1,0 +1,30 @@
+{
+  "environment": "https://dev.nolift.training",
+  "deployment": "sha256:7c77cf5ea872f56df56d37d303a493a30f75ceedb1f5cbe55ecf326596b8015a",
+  "interception": false,
+  "viewport": {
+    "width": 320,
+    "height": 568
+  },
+  "initial": {
+    "noOverflow": true,
+    "headingVisible": true,
+    "changeHeight": 44,
+    "controlsDisplay": "none",
+    "selected": "Acceptance Luna"
+  },
+  "expanded": {
+    "controlsDisplay": "block",
+    "closeHeight": 44
+  },
+  "selectedDelegated": {
+    "athlete": "Live Acceptance Echo",
+    "readOnlyNotice": true,
+    "switched": true
+  },
+  "restored": {
+    "attempted": true,
+    "restored": false,
+    "reason": "The focused harness did not establish a successful return to the original Athlete; no application-level absence of an option is asserted."
+  }
+}

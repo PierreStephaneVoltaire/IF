@@ -85,6 +85,40 @@ spec:
   YAML
 }
 
+resource "kubectl_manifest" "snippets_authentik_public" {
+  depends_on = [kubectl_manifest.snippets_security_only]
+
+  yaml_body = <<-YAML
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
+metadata:
+  name: authentik-public
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  snippets:
+    - context: http.server.location
+      value: |
+        proxy_set_header X-Forwarded-Proto https;
+  YAML
+}
+
+resource "kubectl_manifest" "snippets_powerlifting_public" {
+  depends_on = [kubectl_manifest.snippets_security_only]
+
+  yaml_body = <<-YAML
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
+metadata:
+  name: powerlifting-public
+  namespace: ${kubernetes_namespace.if_portals.metadata[0].name}
+spec:
+  snippets:
+    - context: http.server.location
+      value: |
+        proxy_set_header X-Forwarded-Proto https;
+  YAML
+}
+
 resource "kubectl_manifest" "snippets_terminal" {
 
   yaml_body = <<-YAML
@@ -449,7 +483,7 @@ spec:
           extensionRef:
             group: gateway.nginx.org
             kind: SnippetsFilter
-            name: security-only
+            name: ${each.key == "powerlifting-app" ? "powerlifting-public" : "security-only"}
       backendRefs:
         - name: ${each.key}-backend
           port: ${local.portal_backend_ports[each.key]}
@@ -462,7 +496,7 @@ spec:
           extensionRef:
             group: gateway.nginx.org
             kind: SnippetsFilter
-            name: security-only
+            name: ${each.key == "powerlifting-app" ? "powerlifting-public" : "security-only"}
       backendRefs:
         - name: ${each.key}-frontend
           port: 3001

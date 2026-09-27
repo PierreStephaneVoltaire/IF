@@ -1,0 +1,177 @@
+{
+  "checked_at": "2026-09-15T09:32:53.849Z",
+  "environment": "https://dev.nolift.training",
+  "fixture": "live-acceptance-river",
+  "requests": {
+    "onboarding_role_stage": {
+      "status": 200
+    },
+    "onboarding_profile_stage": {
+      "status": 200
+    },
+    "onboarding_basics_initial": {
+      "status": 200
+    },
+    "onboarding_basics_edit": {
+      "status": 200
+    },
+    "onboarding_profile_edit": {
+      "status": 200
+    },
+    "role_athlete_for_social": {
+      "status": 200,
+      "state": null,
+      "code": null
+    },
+    "rejection_create": {
+      "status": 200,
+      "state": "rejected",
+      "code": null
+    },
+    "rejection": {
+      "status": 200,
+      "state": "rejected",
+      "code": null
+    },
+    "rejection_replay": {
+      "status": 200,
+      "state": "rejected",
+      "code": null
+    },
+    "cancel_create": {
+      "status": 200,
+      "state": "cancelled",
+      "code": null
+    },
+    "cancel": {
+      "status": 200,
+      "state": "cancelled",
+      "code": null
+    },
+    "role_restored": {
+      "status": 200,
+      "state": null,
+      "code": null
+    }
+  },
+  "readbacks": {
+    "onboarding": {
+      "before": {
+        "status": 200,
+        "next_step": "done",
+        "roles": [
+          "coach"
+        ],
+        "active_role": "coach",
+        "has_athlete_basics": false
+      },
+      "staged": {
+        "status": 200,
+        "next_step": "athlete_basics",
+        "roles": [
+          "athlete",
+          "coach"
+        ],
+        "active_role": "athlete",
+        "has_athlete_basics": false
+      },
+      "dated_basics": {
+        "status": 200,
+        "maxes_date": "2026-01-15",
+        "bodyweight_kg": 82.4,
+        "training_maxes": {
+          "squat_kg": 180,
+          "bench_kg": 120,
+          "deadlift_kg": 220
+        },
+        "estimated": {
+          "squat": true,
+          "bench": false,
+          "deadlift": true
+        },
+        "federation": "fed-cpu"
+      },
+      "edited_basics": {
+        "status": 200,
+        "maxes_date": "2026-02-15",
+        "bodyweight_kg": 83.1,
+        "training_maxes": {
+          "squat_kg": 185,
+          "bench_kg": 122.5,
+          "deadlift_kg": 225
+        },
+        "estimated": {
+          "squat": false,
+          "bench": true,
+          "deadlift": false
+        },
+        "region": "QC",
+        "federation": "fed-cpu"
+      },
+      "final": {
+        "is_onboarded": true,
+        "next_step": "done",
+        "state": {
+          "roles": [
+            "coach"
+          ],
+          "active_role": "coach",
+          "athlete_basics_complete": true,
+          "profile_complete": true
+        },
+        "has_athlete_basics": true
+      }
+    },
+    "relationship_history": {
+      "status": 200,
+      "rejected": true,
+      "cancelled": true
+    },
+    "notification_dedup": {
+      "total": 36,
+      "unique_ids": 36,
+      "kinds": [
+        "relationship_rejected",
+        "relationship_revoked",
+        "relationship_approved",
+        "relationship_requested",
+        "relationship_revoked",
+        "relationship_approved",
+        "relationship_requested",
+        "relationship_revoked",
+        "relationship_approved",
+        "relationship_requested",
+        "relationship_revoked",
+        "relationship_approved",
+        "relationship_requested",
+        "relationship_revoked",
+        "relationship_approved",
+        "relationship_requested",
+        "relationship_revoked",
+        "relationship_approved",
+        "relationship_requested",
+        "relationship_revoked",
+        "relationship_approved",
+        "relationship_requested",
+        "relationship_revoked",
+        "relationship_approved",
+        "relationship_requested",
+        "relationship_revoked",
+        "relationship_revoked",
+        "relationship_approved",
+        "relationship_replaced",
+        "relationship_requested",
+        "relationship_approved",
+        "relationship_requested",
+        "relationship_approved",
+        "relationship_cancelled",
+        "relationship_requested",
+        "relationship_requested"
+      ],
+      "replay_status": 200
+    }
+  },
+  "limits": {
+    "distinct_rival_coach": "Fourth Person provisioning was unavailable through the local Authentik endpoint; peer rejection/cancel and notification replay were isolated to River-owned records."
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "source_artifact": "/tmp/block-training-live-acceptance.json",
+  "started_at": "2026-09-15T06:38:32.206Z",
+  "finished_at": "2026-09-15T06:38:38.929Z",
+  "checks": [
+    {
+      "name": "authenticated Luna session",
+      "passed": true
+    },
+    {
+      "name": "onboarding complete",
+      "passed": true
+    },
+    {
+      "name": "current program readable",
+      "passed": true
+    },
+    {
+      "name": "unfinished session can be seeded in isolated partition",
+      "passed": true
+    },
+    {
+      "name": "complete and start succeeds",
+      "passed": true
+    },
+    {
+      "name": "archive and next have stable distinct ids",
+      "passed": true
+    },
+    {
+      "name": "next block week numbering and settings reset",
+      "passed": true
+    },
+    {
+      "name": "confirmed start maxes captured",
+      "passed": true
+    },
+    {
+      "name": "unfinished session status preserved in archive",
+      "passed": true
+    },
+    {
+      "name": "combined retry is idempotent",
+      "passed": true
+    },
+    {
+      "name": "idempotency payload mismatch rejected",
+      "passed": true
+    },
+    {
+      "name": "stale expected revision rejected",
+      "passed": true
+    },
+    {
+      "name": "complete preserves the active block as an archive",
+      "passed": true
+    },
+    {
+      "name": "start_next requires completed source and succeeds",
+      "passed": true
+    },
+    {
+      "name": "MCP block transition route succeeds",
+      "passed": true
+    },
+    {
+      "name": "MCP rename is visible after reread",
+      "passed": true
+    }
+  ],
+  "revisions": {
+    "initial": 15,
+    "combined": 16,
+    "start_next": 18
+  },
+  "limitations": [
+    "Independent Session-ID uniqueness review is pending.",
+    "These checks do not establish all Template, same-day Session/set, offline, or report acceptance.",
+    "Full private response bodies remain outside this release summary."
+  ]
+}

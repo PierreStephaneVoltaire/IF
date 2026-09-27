@@ -1,0 +1,40 @@
+{
+  "captured_at": "2026-09-15T10:16:59Z",
+  "manifest": "deploy/rewrite/powerlifting-backlog/domain-rollout-manifest.json",
+  "candidates": "deploy/rewrite/powerlifting-backlog/domain-candidates.json",
+  "review_status": "accepted",
+  "candidate_generated_at": "2026-09-15T10:14:24Z",
+  "group_pins": {
+    "services_analytics": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+    "services_program": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:da1aca5eeeb67bad1c6334f58f32d6ac6504551af34fa57bbc3c62d9076f426a",
+    "services_performance": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:6d0a745a531b1deba442b263f3bd65013deb69228f9138e35c16885c7b01016a",
+    "services_other": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:008f6c22e6d99c087e8ba3e0ecf1324ce8da8d2f2b198acba2148af2e0282da4",
+    "services_videos": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+    "services_profile": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-fns@sha256:17a58b454b834eccf2f3033598fc5718c15cd4cf2d66b2516cfcd0af9a0076ba",
+    "analytics_sidecar": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:c868c906c383fd5afd6018e78ce774c5af19354b98b68521fa379da3a5d1b510",
+    "gateway_backend": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:d4cbce473ab1dd4f6d7f4e7105dbc47f8da362a708f179af43b000369e056cd0",
+    "frontend": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-frontend@sha256:a7aad69a7c399a115bc4c5b69510ef8a419728d1d86cf0ab1766c72b9d405bd6"
+  },
+  "live_gateway_pin": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-powerlifting-app-backend@sha256:d4cbce473ab1dd4f6d7f4e7105dbc47f8da362a708f179af43b000369e056cd0",
+  "live_api_pin": "429310424269.dkr.ecr.ca-central-1.amazonaws.com/if-agent-api@sha256:3076896f4dd3ca09e779ece06cd58b7e593a32196349b6e970d8f67428a4343f",
+  "live_worker_pin": "sha256:ca816dfdbe7b6083d55adb61c5123434d7de28c7b10d7affb805d43f010c5636",
+  "deployment_counts": {
+    "portal_deployments": 18,
+    "service_deployments": 16,
+    "rollout_patch_commands": 18
+  },
+  "checks": {
+    "manifest_self_test": "passed",
+    "dry_run": "passed",
+    "dry_run_mutation": false,
+    "all_candidate_digests_immutable": true,
+    "all_candidate_groups_match": true,
+    "api_and_worker_unchanged": true,
+    "rollback_pins_retained": true,
+    "live_inventory_ready": true,
+    "live_service_hook": "16/16 services; 22/22 checks passed",
+    "full_nested_service_suite": "253 passed, 9 warnings, 16 subtests passed; /tmp/final-full-service-suite.log",
+    "candidate_source_attestation": "accepted; source_hashes present in domain-candidates.json"
+  },
+  "scope_note": "Inventory and reconciliation evidence only; no broader feature acceptance claimed."
+}

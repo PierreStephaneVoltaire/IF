@@ -255,12 +255,15 @@ resource "kubernetes_config_map" "powerlifting_app_config" {
     AUTHENTIK_CLIENT_ID                    = data.kubernetes_secret.authentik_powerlifting_oidc.data["AUTHENTIK_CLIENT_ID"]
     AUTHENTIK_CLIENT_SECRET                = data.kubernetes_secret.authentik_powerlifting_oidc.data["AUTHENTIK_CLIENT_SECRET"]
     AUTHENTIK_ISSUER_URL                   = "https://${local.authentik_domain}/application/o/nolift-powerlifting/"
-    AUTHENTIK_INTERNAL_URL                 = "http://authentik-server.${kubernetes_namespace.if_portals.metadata[0].name}.svc.cluster.local/application/o"
     AUTHENTIK_REDIRECT_URI                 = "https://${local.app_domains["powerlifting-app"].domain}/api/auth/authentik/callback"
     JWT_SECRET                             = var.jwt_secret
     COOKIE_DOMAIN                          = var.cookie_domain
     COOKIE_SECURE                          = var.cookie_secure
 
+
+    MEDIA_CDN_BASE_URL        = local.powerlifting_media_base_url
+    MEDIA_SIGNING_KEY_PAIR_ID = nonsensitive(data.aws_ssm_parameter.powerlifting_media_signing_key_pair_id.value)
+    MEDIA_VIDEO_URL_TTL_HOURS = "72"
 
     VALKEY_URL = "redis://pl-valkey.${kubernetes_namespace.if_portals.metadata[0].name}.svc.cluster.local:6379"
   }
@@ -276,6 +279,8 @@ resource "kubernetes_secret" "powerlifting_app_secrets" {
     INTERNAL_API_TOKEN  = var.pl_internal_token
     PL_PRINCIPAL_SECRET = random_password.powerlifting_principal.result
     SESSION_SECRET      = random_password.powerlifting_session.result
+
+    MEDIA_SIGNING_PRIVATE_KEY = data.aws_ssm_parameter.powerlifting_media_signing_private_key.value
   }
 
   type = "Opaque"

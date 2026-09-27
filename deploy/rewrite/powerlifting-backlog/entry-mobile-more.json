@@ -1,0 +1,68 @@
+{
+  "environment": "https://dev.nolift.training",
+  "deployment": "sha256:7c77cf5ea872f56df56d37d303a493a30f75ceedb1f5cbe55ecf326596b8015a",
+  "interception": false,
+  "viewport": {
+    "width": 375,
+    "height": 667
+  },
+  "route": "/sessions?view=Compact",
+  "ariaExpanded": {
+    "before": "false",
+    "after": "true"
+  },
+  "menu": {
+    "box": {
+      "x": 227.296875,
+      "y": 240.875,
+      "width": 141.703125,
+      "height": 353.125
+    },
+    "links": [
+      {
+        "text": "Designer",
+        "href": "/designer"
+      },
+      {
+        "text": "Budget",
+        "href": "/budget"
+      },
+      {
+        "text": "Tools",
+        "href": "/tools"
+      },
+      {
+        "text": "Profile",
+        "href": "/profile"
+      },
+      {
+        "text": "Search",
+        "href": "/profiles"
+      },
+      {
+        "text": "Roster",
+        "href": "/roster"
+      },
+      {
+        "text": "Inbox",
+        "href": "/inbox"
+      },
+      {
+        "text": "My notes",
+        "href": "/my-notes"
+      },
+      {
+        "text": "Competitions",
+        "href": "/designer/competitions"
+      },
+      {
+        "text": "About",
+        "href": "/about"
+      }
+    ],
+    "atBottom": true
+  },
+  "pageOverflow": 0,
+  "consoleErrors": [],
+  "screenshot": "/tmp/entry-mobile-more-terra-375x667.png"
+}

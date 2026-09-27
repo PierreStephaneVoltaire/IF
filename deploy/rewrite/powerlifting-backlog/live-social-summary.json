@@ -1,0 +1,89 @@
+{
+  "evidence_kind": "deployed acceptance",
+  "source": "private /tmp/social-live-acceptance-checkpoint.json",
+  "passed": {
+    "oidc_sessions": true,
+    "river_coach_only_onboarding": true,
+    "favorite_private_no_access": true,
+    "relationship_request_idempotency": true,
+    "relationship_cancel_history": true,
+    "tied_competition_expiry": "2026-10-03T23:59:59.999999+00:00",
+    "note_private_share_detach": true,
+    "tag_normalize_dedupe_pending": true,
+    "tag_self_approval_denied": true,
+    "publication_search_profile": true,
+    "private_profile_restored": true,
+    "private_search_empty": true,
+    "cross_athlete_program_denied": true,
+    "arbitrary_context_has_no_granted_permissions": true,
+    "profile_fix_rollout": {
+      "deployment": "pl-profile",
+      "image_digest": "sha256:8bc0af43eaa46cf47521f461888134916bbfae9df70a927c5d3ae3fdaaff9ba3",
+      "pod_ready": true,
+      "focused_tests": "18 passed",
+      "terra_review": "accepted"
+    },
+    "relationship_approval_after_fix": {
+      "status": 200,
+      "state": "approved",
+      "expires_at": "2026-10-03T23:59:59.999999+00:00",
+      "selected_program_status": 200,
+      "approval_replay_status": 200
+    },
+    "relationship_racing": {
+      "create_status": 200,
+      "parallel_approval_statuses": [
+        409,
+        200
+      ],
+      "final_state": "approved"
+    },
+    "relationship_slot_and_replacement": {
+      "unconfirmed_create_status": 422,
+      "unconfirmed_create_error": "current_relationship_confirmation_required",
+      "replacement_approval_status": 200,
+      "replacement_state": "approved",
+      "revoke_status": 200
+    },
+    "relationship_revocation": {
+      "coach_revoke_status": 200,
+      "coach_access_after_revoke": 403,
+      "peer_revoke_status": 200,
+      "access_after_peer_revoke": 403
+    },
+    "relationship_expiry": {
+      "stored_competition_date": "2025-10-04",
+      "approval_status": 200,
+      "expires_at": "2025-10-11T23:59:59.999999+00:00",
+      "listed_active": false,
+      "program_status": 403,
+      "revoke_status": 200
+    },
+    "publication_projection": {
+      "get_status": 200,
+      "update_status": 200,
+      "update_result": {
+        "domains": [
+          "profile"
+        ],
+        "revision": 3
+      },
+      "replay_status": 200,
+      "replay_result": {
+        "domains": [
+          "profile"
+        ],
+        "revision": 3
+      },
+      "restored_result": {
+        "domains": [],
+        "revision": 4
+      }
+    }
+  },
+  "limits": {
+    "cloudflare_500_mib_upgrade": "pending; full-size upload acceptance not run",
+    "distinct_rival_coach_account": "not available in isolated live fixtures; same-recipient replacement and racing were verified"
+  },
+  "image_note": "Recorded Profile fix pin is historical; later shared rollouts preserve its source."
+}

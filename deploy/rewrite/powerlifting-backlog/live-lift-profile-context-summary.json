@@ -1,0 +1,380 @@
+{
+  "checked_at": "2026-09-15T10:42:59.010Z",
+  "environment": "https://dev.nolift.training",
+  "fixture": "live-acceptance-echo",
+  "status": "passed",
+  "program": {
+    "get_status": 200,
+    "list_status": 200,
+    "version": "current",
+    "revision_before": 24,
+    "raw_squat_max_kg": 185,
+    "stored_competition_id": "38da795e-ada7-4f6c-af30-71113af89267",
+    "original_squat_failure_nodes": []
+  },
+  "handler_context": {
+    "node_update": {
+      "status": 200,
+      "error": null,
+      "returned_revision": 25,
+      "owner_read_status": 200,
+      "owner_nodes": [
+        "echo-live-context-node-alpha",
+        "echo-live-context-node-bravo",
+        "echo-live-context-node-charlie"
+      ]
+    },
+    "actor": "live-acceptance-luna",
+    "target": "live-acceptance-echo",
+    "existing_handler_relationship_id": "5dfac996fe9644c0989befc2aa086c23",
+    "selected_role": "athlete",
+    "read_operation": "GET /api/profiles/athlete/context",
+    "status": 200,
+    "returned_nodes": [
+      "echo-live-context-node-alpha",
+      "echo-live-context-node-bravo",
+      "echo-live-context-node-charlie"
+    ],
+    "exact_distinctive_nodes": true,
+    "restore": {
+      "status": 200,
+      "read_status": 200,
+      "nodes": [],
+      "restored": true
+    }
+  },
+  "native_context": {
+    "operation": "handler_context",
+    "actor": "live-acceptance-luna",
+    "target_athlete": "live-acceptance-echo",
+    "http": {
+      "status": 200,
+      "squat_failure_nodes": [
+        "echo-live-context-node-alpha",
+        "echo-live-context-node-bravo",
+        "echo-live-context-node-charlie"
+      ]
+    },
+    "mcp": {
+      "status": 200,
+      "is_error": false,
+      "squat_failure_nodes": [
+        "echo-live-context-node-alpha",
+        "echo-live-context-node-bravo",
+        "echo-live-context-node-charlie"
+      ]
+    },
+    "exact_http_nodes": [
+      "echo-live-context-node-alpha",
+      "echo-live-context-node-bravo",
+      "echo-live-context-node-charlie"
+    ],
+    "exact_mcp_nodes": [
+      "echo-live-context-node-alpha",
+      "echo-live-context-node-bravo",
+      "echo-live-context-node-charlie"
+    ]
+  },
+  "coach_context": {
+    "actor": "live-acceptance-river",
+    "target": "live-acceptance-echo",
+    "tied_competition_id": "38da795e-ada7-4f6c-af30-71113af89267",
+    "profile_prep": {
+      "status": 200,
+      "revision": 27
+    },
+    "request": {
+      "status": 200,
+      "relationship_id": "f2dc1271cbe240ada17ba5fb89327aa4",
+      "state": "pending"
+    },
+    "approval": {
+      "status": 200,
+      "relationship_id": "f2dc1271cbe240ada17ba5fb89327aa4",
+      "state": "approved"
+    },
+    "river_grant_read": {
+      "status": 200,
+      "matching": [
+        {
+          "state": "approved",
+          "active": true,
+          "permissions": [
+            "analytics:read",
+            "analytics:write",
+            "budget:read",
+            "budget:write",
+            "calculations:read",
+            "calculations:write",
+            "competition:read",
+            "competition:write",
+            "federation:read",
+            "federation:write",
+            "glossary:read",
+            "glossary:write",
+            "goals:read",
+            "goals:write",
+            "imports:read",
+            "imports:write",
+            "lift-profiles:read",
+            "lift-profiles:write",
+            "performance:read",
+            "performance:write",
+            "profile:read",
+            "profile:write",
+            "program:read",
+            "program:write",
+            "sessions:read",
+            "sessions:write",
+            "templates:read",
+            "templates:write",
+            "videos:read",
+            "videos:write",
+            "weight-log:read",
+            "weight-log:write"
+          ],
+          "tied_competition_ids": [
+            "38da795e-ada7-4f6c-af30-71113af89267"
+          ]
+        }
+      ]
+    },
+    "access_refresh": {
+      "status": 200,
+      "permissions": [
+        "analytics:read",
+        "analytics:write",
+        "budget:read",
+        "budget:write",
+        "calculations:read",
+        "calculations:write",
+        "competition:read",
+        "competition:write",
+        "federation:read",
+        "federation:write",
+        "glossary:read",
+        "glossary:write",
+        "goals:read",
+        "goals:write",
+        "imports:read",
+        "imports:write",
+        "lift-profiles:read",
+        "lift-profiles:write",
+        "performance:read",
+        "performance:write",
+        "profile:read",
+        "profile:write",
+        "program:read",
+        "program:write",
+        "sessions:read",
+        "sessions:write",
+        "settings:read",
+        "settings:write",
+        "templates:read",
+        "templates:write",
+        "videos:read",
+        "videos:write",
+        "weight-log:read",
+        "weight-log:write"
+      ]
+    },
+    "read": {
+      "operation": "GET /api/profiles/athlete/context",
+      "status": 200,
+      "returned_nodes": [
+        "echo-live-context-node-alpha",
+        "echo-live-context-node-bravo",
+        "echo-live-context-node-charlie"
+      ],
+      "exact_distinctive_nodes": true
+    },
+    "revoke": {
+      "status": 200,
+      "relationship_id": "f2dc1271cbe240ada17ba5fb89327aa4",
+      "state": "revoked"
+    },
+    "denied_after_revoke": {
+      "status": 403,
+      "expected_403": true
+    },
+    "restore": {
+      "status": 200,
+      "read_status": 200,
+      "nodes": [],
+      "restored": true
+    }
+  },
+  "browser_guidance": {
+    "url": "https://dev.nolift.training/lift-profiles/squat",
+    "raw_squat_max_kg": 185,
+    "controls": {
+      "bar_label": "Bar",
+      "initial_bar": "20",
+      "initial_unit": "kg",
+      "changed_bar_to": "0",
+      "changed_unit_to": "lb",
+      "restored_bar": "20",
+      "restored_unit_visible": true
+    },
+    "actual": {
+      "initial": "For a 185.0 kg max: 120.0 kg (2 red plates per side).",
+      "zero_bar": "For a 185.0 kg max: 100.0 kg (2 red plates per side).",
+      "lb_bar_45": "For a 185.0 kg max: 120.4 kg (2 red plates per side)."
+    },
+    "expected": {
+      "initial": {
+        "plates": 3,
+        "text": "120.0 kg",
+        "red_plates": 2
+      },
+      "zero_bar": {
+        "plates": 3,
+        "text": "100.0 kg",
+        "red_plates": 2
+      },
+      "lb_bar_45": {
+        "plates": 3,
+        "text": "120.4 kg",
+        "red_plates": 2
+      }
+    },
+    "assertions": {
+      "changed_bar_guidance": true,
+      "lb_guidance_visible": true,
+      "restored": true
+    },
+    "limitation": "UI controls and displayed guidance were exercised against the deployed page; no API was intercepted."
+  },
+  "source_artifacts": [
+    "/tmp/final_service_context_probe.py",
+    "/tmp/final_echo_lift_context.mjs"
+  ],
+  "failure_node_limits": {
+    "ten_valid_nodes_http_status": 200,
+    "ten_nodes_readback": true,
+    "eleven_nodes_http_status": 422,
+    "eleven_nodes_rejected": true,
+    "length_160_http_status": 200,
+    "length_161_http_status": 422,
+    "restore_http_status": 200,
+    "revisions": [
+      66,
+      67,
+      68,
+      69
+    ],
+    "nodes": [
+      "node-0",
+      "node-1",
+      "node-2",
+      "node-3",
+      "node-4",
+      "node-5",
+      "node-6",
+      "node-7",
+      "node-8",
+      "node-9"
+    ],
+    "restored": true
+  },
+  "initial_actor_contexts": {
+    "echo": {
+      "status": 200,
+      "person": "live-acceptance-echo",
+      "selected_athlete": "live-acceptance-echo",
+      "role": "athlete",
+      "permissions": [
+        "analytics:read",
+        "analytics:write",
+        "budget:read",
+        "budget:write",
+        "calculations:read",
+        "calculations:write",
+        "competition:read",
+        "competition:write",
+        "federation:read",
+        "federation:write",
+        "glossary:read",
+        "glossary:write",
+        "goals:read",
+        "goals:write",
+        "grants:read",
+        "grants:write",
+        "imports:read",
+        "imports:write",
+        "lift-profiles:read",
+        "lift-profiles:write",
+        "performance:read",
+        "performance:write",
+        "profile:read",
+        "profile:write",
+        "program:read",
+        "program:write",
+        "sessions:read",
+        "sessions:write",
+        "settings:read",
+        "settings:write",
+        "templates:read",
+        "templates:write",
+        "videos:read",
+        "videos:write",
+        "weight-log:read",
+        "weight-log:write"
+      ]
+    },
+    "luna_selected_echo": {
+      "status": 200,
+      "person": "live-acceptance-luna",
+      "selected_athlete": "live-acceptance-echo",
+      "role": "athlete",
+      "permissions": [
+        "analytics:read",
+        "budget:read",
+        "calculations:read",
+        "competition:read",
+        "competition:write",
+        "federation:read",
+        "glossary:read",
+        "goals:read",
+        "imports:read",
+        "lift-profiles:read",
+        "performance:read",
+        "profile:read",
+        "program:read",
+        "sessions:read",
+        "settings:read",
+        "settings:write",
+        "templates:read",
+        "videos:read",
+        "weight-log:read"
+      ]
+    },
+    "river_selected_echo": {
+      "status": 200,
+      "person": "live-acceptance-river",
+      "selected_athlete": "live-acceptance-echo",
+      "role": "coach",
+      "permissions": [
+        "calculations:read",
+        "federation:read",
+        "settings:read",
+        "settings:write"
+      ]
+    }
+  },
+  "prior_owner_profile_preservation": {
+    "scope": "Earlier actual Echo owner profile-only run; not Handler access evidence",
+    "fixture": "live-acceptance-echo",
+    "node_update_status": 200,
+    "failure_reason_hash_before": "c2b9b579ffa896e37b4eb08859f702025ef89346ab6f329e082333c0f85bd4e4",
+    "failure_reason_hash_after": "c2b9b579ffa896e37b4eb08859f702025ef89346ab6f329e082333c0f85bd4e4",
+    "restore_status": 200,
+    "revisions": [
+      0,
+      1,
+      2
+    ]
+  },
+  "evidence_scope": "Actual node-limit API checks, distinct owner/delegate/native context checks, and deployed browser control interactions. Older simulated130/230/custom50 guidance assertions are excluded.",
+  "credentials_and_raw_private_payloads_included": false
+}

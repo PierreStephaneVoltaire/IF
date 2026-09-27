@@ -1,0 +1,65 @@
+{
+  "tag": "discord-direct-20260915-180322",
+  "digest": "sha256:b688e943a910ec37b23285f75586f0a7b8f2c346c08653e1509b6b5520130f62",
+  "base": "node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293",
+  "runtime": {
+    "uid": 1001,
+    "workdir": "/workspace/backend",
+    "assets": [
+      "backend/dist",
+      "packages/types",
+      "services/operations",
+      "services/calculation_constants.json"
+    ],
+    "install": "npm ci --omit=dev"
+  },
+  "source_auth_dist_sha256": "9e731f41df6e82d50e90eb79c1e2d6c924c62219d07c3e9966693a91e66ac0b9",
+  "deployment": {
+    "namespace": "if-portals",
+    "name": "powerlifting-app-backend",
+    "container": "backend",
+    "generation": 31,
+    "observed_generation": 31,
+    "ready_replicas": 1
+  },
+  "safe_oauth": {
+    "client_id": "1459678985473757400",
+    "redirect_uri": "https://dev.nolift.training/api/auth/discord/callback",
+    "invalid_state_status": 302,
+    "invalid_state_location": "https://dev.nolift.training/login?error=auth_failed",
+    "authentik_location": "https://auth.nolift.training/application/o/authorize/"
+  },
+  "local_checks": {
+    "focused_auth_tests": "4 passed",
+    "workspace_typecheck": "passed",
+    "workspace_build": "passed"
+  },
+  "limitations": [
+    "Discord consent and successful live Discord identity callback were unavailable and remain unverified."
+  ],
+  "recorded_at": "2026-09-15T22:06:12.679792+00:00",
+  "review_status": "accepted_source_and_deployed_checks",
+  "rollback_digest": "sha256:8740348739cfbce86ef59e800e6c80146dc36897067a57dbcc9413d100ff5b4e",
+  "source_files_sha256": {
+    "backend/src/middleware/auth.ts": "d1f1fe6972cc2bef91be0bd065e3a936516dae174add62ac417c0563278b2e66",
+    "backend/src/controllers/authController.ts": "7ec4bbe7913d9bd46c1610d14b7089c3672b86ba7c4edf4f166fc60613335599",
+    "backend/src/controllers/authLogin.test.ts": "6a8d8dda9370c8ecacd0f6b9af4eee77475c74100e7f75421e4e123ea217dbee",
+    "backend/src/routes/auth.ts": "cbf3a0caf5b07b05683df44df24b3bd3bdb152b84f9bc8ac4e4dfea83eea1dae",
+    "backend/src/services/userSettings.ts": "fa6d8a746f1964cc0a079433c22faceeddcc71bc3e2bb5525873a03250cfdb72",
+    "backend/package.json": "9ea645475f47f7bec7bf91571bc73dea352c815155e30a62c5de10ac60c06565",
+    "package-lock.json": "de5394d90936f405b3c57877c39aedb9e37046ae7a946132ab0cd00a4e6d67c4"
+  },
+  "independent_live_evidence": "discord-login-live.json",
+  "review": "discord-login-review.md",
+  "local_cleanup": {
+    "removed_tags": [
+      "discord-direct-20260915-175840",
+      "discord-direct-20260915-180322"
+    ],
+    "ecr_digests_verified": [
+      "sha256:a6c68d9e6878d677f92ac0acfeafc21e9150cb8d8d4bad89bdb0f3324ba1ee51",
+      "sha256:b688e943a910ec37b23285f75586f0a7b8f2c346c08653e1509b6b5520130f62"
+    ],
+    "containers_using_tags": []
+  }
+}

@@ -1,11 +1,18 @@
 import json, os, sys, time, uuid
 from pathlib import Path
 import httpx
+import jwt
 
 phase = sys.argv[1] if len(sys.argv) > 1 else 'basic'
 state_path = Path('/tmp/if-native-live-' + phase + '.json') if phase in {'report', 'import'} else Path('/tmp/if-native-live-evidence.json')
-owner = 'native-deployed-canary'
-headers = {'X-Internal-Token': os.environ['INTERNAL_API_TOKEN'], 'X-Person-Pk': owner, 'X-Athlete-Pk': owner}
+owner = os.environ.get('POWERLIFTING_TEST_PERSON_PK', 'native-deployed-canary')
+athlete = os.environ.get('POWERLIFTING_TEST_ATHLETE_PK', owner)
+headers = {'X-Internal-Token': os.environ['INTERNAL_API_TOKEN'], 'X-Person-Pk': owner, 'X-Athlete-Pk': athlete}
+
+def principal_token(operation):
+    now = int(time.time())
+    return jwt.encode({'sub': owner, 'athlete': athlete, 'operation': operation, 'iss': 'if-native', 'aud': 'powerlifting-services', 'iat': now, 'exp': now + 300}, os.environ['PL_PRINCIPAL_SECRET'], algorithm='HS256')
+
 client = httpx.Client(base_url='http://127.0.0.1:8000', headers=headers, timeout=45)
 terminal = {'succeeded','failed','cancelled','uncertain'}
 evidence = json.loads(state_path.read_text()) if state_path.exists() else {'checks': {}, 'jobs': {}}
@@ -27,7 +34,7 @@ def submit(conversation, content, key=None):
 def wait(job, running=False, timeout=240):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        response = client.get('/v1/jobs/' + job['job_id'])
+        response = client.get('/v1/jobs/' + job['job_id'], headers={'X-PL-Principal': principal_token('domain_job_read')})
         response.raise_for_status()
         current = response.json()
         if current['status'] in terminal or (running and current['status']=='running'):
@@ -91,24 +98,28 @@ if phase == 'basic':
         assert 'STREAM_NATIVE_OK' in chunks and '[DONE]' in chunks, chunks[-500:]
     mark('chat_completions_sse')
 elif phase == 'report':
-    sessions = [{'date':f'2026-08-{3+i*7:02d}','week_number':i+1,'block':'current','completed':True,'exercises':[{'name':'Squat','sets':3,'reps':5,'kg':100+i*2.5,'rpe':8},{'name':'Leg press','sets':3,'reps':10,'kg':80+i*5}]} for i in range(4)]
-    args = {'program':{'meta':{'name':'Synthetic deployed native canary'},'sessions':sessions,'lift_profiles':[]},'sessions':sessions,'weeks':4,'window_start':'2026-08-03','pk':owner}
+    sessions = [{'date':f'2026-08-{3+i*7:02d}','week_number':i+1,'block':'current','completed':True,'exercises':[{'name':'Squat','sets':3,'reps':5,'kg':100+i*2.5+0.1,'rpe':8},{'name':'Leg press','sets':3,'reps':10,'kg':80+i*5}]} for i in range(4)]
+    args = {'program':{'meta':{'name':'Synthetic deployed native canary 20260915-0810'},'sessions':sessions,'lift_profiles':[]},'sessions':sessions,'weeks':4,'window_start':'2026-08-03','pk':athlete}
     domain = httpx.Client(base_url='http://pl-analytics:8000',headers=headers,timeout=45)
+    def domain_headers(operation):
+        return {'X-PL-Principal': principal_token(operation)}
     started = time.monotonic()
-    response = domain.post('/operations/block_correlation_analysis',json=args)
+    response = domain.post('/operations/block_correlation_analysis',headers=domain_headers('block_correlation_analysis'),json=args)
     response.raise_for_status()
     report = response.json()
     assert 'generation_id' in report,report
     assert time.monotonic()-started < 20
-    duplicate = domain.post('/operations/block_correlation_analysis',json=args)
+    duplicate = domain.post('/operations/block_correlation_analysis',headers=domain_headers('block_correlation_analysis'),json=args)
     duplicate.raise_for_status()
-    assert duplicate.json()['generation_id']==report['generation_id']
+    duplicate_result = duplicate.json()
+    assert duplicate_result['generation_id']==report['generation_id']
+    assert duplicate_result.get('job_id')==report['job_id']
     completed = success(report)
-    saved = domain.get('/generations/'+report['generation_id'])
+    saved = domain.get('/generations/'+report['generation_id'],headers=domain_headers('generation_status'))
     saved.raise_for_status()
     saved = saved.json()
     assert saved['status']=='succeeded' and saved['result'].get('summary') and not saved['result'].get('insufficient_data'),saved
-    cached = domain.post('/operations/block_correlation_analysis',json=args)
+    cached = domain.post('/operations/block_correlation_analysis',headers=domain_headers('block_correlation_analysis'),json=args)
     cached.raise_for_status()
     assert cached.json().get('cached') is True
     mark('deployed_report_generation_cache',generation_id=report['generation_id'],job_id=report['job_id'])

@@ -1,0 +1,47 @@
+{
+  "checked_at": "2026-09-15T08:04:30Z",
+  "environment": "https://dev.nolift.training",
+  "frontend_image_digest": "sha256:a0b96a7b99b871b89a2b3bcc2f1a5c96480f69a84268e6d274cd6fee635eea8f",
+  "scope": "Actual revoked synchronization, independent public reads and Attempt-modal conflict follow-up. Local simulated Lift Profile guidance and superseded pre-fix44px claim excluded.",
+  "assertions": {
+    "revocation_prior": {
+      "status": "passed",
+      "count": 13,
+      "artifact": "/tmp/frontend-revocation-live-evidence.json"
+    },
+    "revoked_sync": {
+      "status": "passed",
+      "count": 1,
+      "blocked_status": true,
+      "http_status": 403,
+      "queued_edit_retained": true
+    },
+    "revoked_selected_read": {
+      "status": "passed",
+      "http_status": 403
+    },
+    "profile_search_after_revoke": {
+      "status": "passed",
+      "http_status": 200
+    },
+    "public_profile_read_after_revoke": {
+      "status": "passed",
+      "http_status": 200
+    },
+    "river_own_partition_read": {
+      "status": "passed",
+      "http_status": 200
+    }
+  },
+  "ui_attempt_modal": {
+    "status": "passed",
+    "attempt_cards": 9,
+    "stale_revision_http_status": 409,
+    "modal_retained": true,
+    "typed_attempt_retained": true,
+    "conflict_notice": true,
+    "restored_http_status": 200,
+    "remaining_mutations": 0
+  },
+  "later_frontend_release": "live-final-frontend-summary.json"
+}

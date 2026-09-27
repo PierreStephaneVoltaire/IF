@@ -1,0 +1,34 @@
+{
+  "status": "passed",
+  "environment": "https://dev.nolift.training",
+  "tested_at": "2026-09-15T07:39:54Z",
+  "deployment": "powerlifting-app-frontend",
+  "image_digest": "sha256:a0b96a7b99b871b89a2b3bcc2f1a5c96480f69a84268e6d274cd6fee635eea8f",
+  "checks": [
+    "fresh tied Coach grant created and approved through live HTTP",
+    "River resolved the legitimate selected Luna context",
+    "authorized selected Luna program returned 200",
+    "delegated API cache and draft/pending mutation were seeded in River/Luna partition",
+    "River own partition cache was seeded independently",
+    "Luna revoked the tied grant through live HTTP",
+    "revoked selected program returned 403",
+    "saved selected context cleared delegated API cache after reload",
+    "delegated draft remained present",
+    "pending mutation remained present without replay",
+    "other Person/Athlete partition remained present",
+    "reload did not restore revoked selected Athlete",
+    "reload restored River own context"
+  ],
+  "final_state": {
+    "delegated_cache_records": 0,
+    "own_partition_cache_records": 1,
+    "delegated_drafts": 1,
+    "delegated_mutations": 1,
+    "delegated_mutation_status": "pending",
+    "route_after_revoke": 403
+  },
+  "limitations": [
+    "The pending mutation was retained and never replayed after revocation; this run did not claim a blocked status transition.",
+    "Cloudflare 500 MiB request allowance remains pending; no full-size upload was attempted."
+  ]
+}

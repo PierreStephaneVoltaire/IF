@@ -18,7 +18,7 @@ def test_native_domain_compatibility_and_artifact_scope(monkeypatch, tmp_path):
     monkeypatch.setattr(runner, "instruction_payload", lambda owner: {})
     monkeypatch.setattr(job_tools, "domain_operations", lambda: {"test": {"domain": "calculations", "input_schema": {"type": "object"}}})
     async def allow_profile_access(*args):
-        return None
+        return {'permissions': ['calculations:read'], 'competition_scope': {'read': []}}
     monkeypatch.setattr(jobs, "_check_profile_access", allow_profile_access)
     host = ConversationHost(tmp_path / "host", Session)
     service = ExecutionService(JobStore(str(tmp_path / "legacy.db")), httpx.ASGITransport(app=create_app(host)))

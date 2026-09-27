@@ -1,0 +1,31 @@
+{
+  "evidence_kind": "deployed acceptance with separately stated local limits",
+  "source": "private /tmp/live-acceptance-echo-checkpoint.json",
+  "assertions": [
+    "authenticated Echo own-person/athlete context",
+    "unauthenticated missing media denied",
+    "single ordinary multipart backend POST",
+    "no storage upload URL in response",
+    "same idempotency key returns same video id",
+    "separate confirm retry returns the same video id",
+    "library has one attachment",
+    "valid fixture processing reaches ready",
+    "ready media HEAD and Range 206",
+    "cross-athlete media denied",
+    "owned upload removal returns success and library no longer lists it"
+  ],
+  "additional_passed": [
+    "malformed media reached failed in real processing",
+    "same-ID valid retry reached ready",
+    "real lift-slot replacement reached ready at target revision 2",
+    "browser observed six mutating requests through backend and zero storage upload requests"
+  ],
+  "thumbnail_lambda_code_sha256": "dpSXpGhe86w04e3hnpNWDB7q/yRbYg2oWlCeX+UgpR4=",
+  "limits": [
+    "500 MiB public-route acceptance awaits Cloudflare upgrade",
+    "Concurrent stale-result behavior is local/injected evidence, not a real race",
+    "Complete Lift Profile guidance and failure-node browser acceptance is separate"
+  ],
+  "fixture_safety": "Test-owned media cleaned and copied original profile restored; operator records and copied media unchanged.",
+  "image_note": "Prior media checkpoint service/gateway labels contain stale pins; use final runtime inventory for deployed image identity."
+}
